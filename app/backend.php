@@ -41,7 +41,7 @@ function backend_api_send(int $senderUserId, string $originator, array $destinat
     $payload = json_encode([
         'sender_user_id' => $senderUserId,
         'originator'     => ctype_digit($originator) ? (int)$originator : $originator,
-        'destinations'   => array_values($destinations),
+        'destinations'   => array_values(array_map('strval', $destinations)),
         'content'        => $content,
     ], JSON_UNESCAPED_UNICODE);
 

@@ -210,7 +210,11 @@ function parse_destinations(string $raw): array {
         $n = normalize_msisdn($p);
         if ($n) $out[$n] = true;
     }
-    return array_keys($out);
+    // array_keys() would hand back PHP ints here, not strings: PHP
+    // silently casts any array key that looks like a valid decimal
+    // integer (e.g. "989197684063") to an int. strval() undoes that so
+    // callers — and json_encode() for the API request — see real strings.
+    return array_map('strval', array_keys($out));
 }
 
 /** Number of SMS parts for a message (GSM-7 vs Unicode). */
