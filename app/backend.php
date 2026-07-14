@@ -194,3 +194,115 @@ function run_due_schedules(): int {
     }
     return $n;
 }
+
+/**
+ * منشی پیامک — SMS auto-responder.
+ *
+ * Scans `inbound_message` for rows newer than a saved cursor
+ * (ellsms_settings.autoreply_last_inbound_id), matches each one against
+ * active ellsms_autoreply_rules for the line it arrived on, and sends a
+ * templated reply through dispatch_message() for the first rule that
+ * matches. The cursor always advances past every row seen, matched or
+ * not, so nothing is ever reprocessed even if it triggered no rule.
+ * Returns the number of replies actually sent.
+ */
+function run_autoreply_pass(): int {
+    $db = db();
+    $lastId = (int)setting('autoreply_last_inbound_id', '0');
+
+    $rows = $db->prepare('SELECT * FROM inbound_message WHERE id > ? ORDER BY id ASC LIMIT 100');
+    $rows->execute([$lastId]);
+    $rows = $rows->fetchAll();
+    if (!$rows) return 0;
+
+    $maxId = $lastId;
+    $sent  = 0;
+
+    foreach ($rows as $msg) {
+        $maxId = max($maxId, (int)$msg['id']);
+
+        $line   = normalize_originator((string)$msg['destination']); // our line that received it
+        $sender = normalize_originator((string)$msg['originator']);  // the customer's number
+        $content = trim((string)$msg['content']);
+        if (!$line || !$sender || $line === $sender) continue; // skip malformed rows / self-loops
+
+        $rst = $db->prepare(
+            "SELECT * FROM ellsms_autoreply_rules
+             WHERE originator = ? AND is_active = 1
+             ORDER BY FIELD(match_type,'exact','starts_with','contains'), id
+             LIMIT 20"
+        );
+        $rst->execute([$line]);
+        $rule = null;
+        foreach ($rst->fetchAll() as $candidate) {
+            if (autoreply_matches($content, $candidate['keyword'], $candidate['match_type'])) {
+                $rule = $candidate;
+                break;
+            }
+        }
+        if (!$rule) continue;
+
+        $ust = $db->prepare(
+            'SELECT u.id, u.active, u.deleted, u.currentcredit AS credit, m.is_admin
+             FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
+        );
+        $ust->execute([$rule['user_id']]);
+        $owner = $ust->fetch();
+        if (!$owner || !$owner['active'] || $owner['deleted']) continue;
+
+        $rendered = autoreply_render($rule['reply_content'], (int)$rule['user_id'], $sender, $line, $content, $rule['keyword']);
+        $user = ['id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit']];
+        [$ok, $info] = dispatch_message($user, $line, [$sender], $rendered);
+
+        $db->prepare('UPDATE ellsms_autoreply_rules SET hit_count = hit_count + 1 WHERE id = ?')->execute([$rule['id']]);
+        $db->prepare(
+            'INSERT INTO ellsms_autoreply_log (rule_id, inbound_message_id, sender, originator, reply_content, ok, info)
+             VALUES (?,?,?,?,?,?,?)'
+        )->execute([$rule['id'], $msg['id'], $sender, $line, $rendered, (int)$ok, $info]);
+
+        if ($ok) $sent++;
+    }
+
+    set_setting('autoreply_last_inbound_id', (string)$maxId);
+    return $sent;
+}
+
+function autoreply_matches(string $content, string $keyword, string $matchType): bool {
+    $c = mb_strtolower(trim(from_persian_digits($content)));
+    $k = mb_strtolower(trim(from_persian_digits($keyword)));
+    if ($k === '') return false;
+    return match ($matchType) {
+        'starts_with' => str_starts_with($c, $k),
+        'contains'    => str_contains($c, $k),
+        default       => $c === $k, // 'exact'
+    };
+}
+
+/** Substitute {sender} {originator} {name} {date} {time} {keyword} + per-user custom {vars}. */
+function autoreply_render(string $template, int $ownerUserId, string $sender, string $originator, string $incomingContent, string $keyword): string {
+    $now = date('Y-m-d H:i:s');
+    $vars = [
+        'sender'     => $sender,
+        'originator' => $originator,
+        'date'       => jdate($now, false),
+        'time'       => to_persian_digits(date('H:i')),
+        'keyword'    => $keyword,
+        'message'    => $incomingContent,
+    ];
+
+    $cst = db()->prepare('SELECT name FROM ellsms_contacts WHERE user_id = ? AND mobile = ? LIMIT 1');
+    $cst->execute([$ownerUserId, $sender]);
+    $vars['name'] = (string)($cst->fetchColumn() ?: '');
+
+    $vst = db()->prepare('SELECT var_name, var_value FROM ellsms_autoreply_variables WHERE user_id = ?');
+    $vst->execute([$ownerUserId]);
+    foreach ($vst->fetchAll() as $v) {
+        $vars[$v['var_name']] = $v['var_value'];
+    }
+
+    $out = $template;
+    foreach ($vars as $k => $v) {
+        $out = str_replace('{' . $k . '}', $v, $out);
+    }
+    return $out;
+}

@@ -5,6 +5,7 @@ $nav = [
     'dashboard' => ['/index.php',     'داشبورد',        '▦'],
     'send'      => ['/send.php',      'ارسال پیامک',    '➤'],
     'schedules' => ['/schedules.php', 'زمان‌بندی‌شده',   '◷'],
+    'autoreply' => ['/autoreply.php', 'منشی پیامک',     '🤖'],
     'reports'   => ['/reports.php',   'گزارش ارسال',    '≣'],
     'inbox'     => ['/inbox.php',     'صندوق دریافت',   '✉'],
     'contacts'  => ['/contacts.php',  'مخاطبین',        '☰'],
