@@ -141,7 +141,7 @@ tr:hover td { background: #f8faff; }
 .badge { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
 .badge-sent, .badge-active, .badge-ok, .badge-delivered { background: var(--ok-bg); color: var(--ok); }
 .badge-pending, .badge-processing { background: var(--warn-bg); color: var(--warn); }
-.badge-failed, .badge-undelivered, .badge-cancelled, .badge-off { background: var(--err-bg); color: var(--err); }
+.badge-failed, .badge-send_failed, .badge-undelivered, .badge-cancelled, .badge-off { background: var(--err-bg); color: var(--err); }
 .badge-done, .badge-user { background: var(--info-bg); color: var(--indigo); }
 .badge-admin { background: var(--ink); color: #fff; }
 

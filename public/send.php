@@ -1,10 +1,10 @@
 <?php
-require_once __DIR__ . '/../app/sms.php';
+require_once __DIR__ . '/../app/negar.php';
 $me = require_login();
 $pageTitle = 'Send SMS';
 $active = 'send';
 
-$groups = db()->prepare("SELECT DISTINCT group_name FROM contacts WHERE user_id=? AND group_name<>'' ORDER BY group_name");
+$groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE user_id=? AND group_name<>'' ORDER BY group_name");
 $groups->execute([$me['id']]);
 $groups = array_column($groups->fetchAll(), 'group_name');
 
@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dests      = parse_destinations($_POST['destinations'] ?? '');
 
     if (!empty($_POST['group'])) {
-        $st = db()->prepare('SELECT mobile FROM contacts WHERE user_id=? AND group_name=?');
+        $st = db()->prepare('SELECT mobile FROM ellsms_contacts WHERE user_id=? AND group_name=?');
         $st->execute([$me['id'], $_POST['group']]);
         foreach ($st->fetchAll() as $c) {
             $n = normalize_msisdn($c['mobile']);
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'The scheduled time must be in the future.');
         } else {
             $repeat = in_array($_POST['repeat'] ?? 'none', ['none','daily','weekly','monthly'], true) ? $_POST['repeat'] : 'none';
-            db()->prepare('INSERT INTO schedules (user_id, originator, destinations, content, run_at, repeat_type)
+            db()->prepare('INSERT INTO ellsms_schedule (user_id, originator, destinations, content, run_at, repeat_type)
                            VALUES (?,?,?,?,?,?)')
                ->execute([$me['id'], $originator, json_encode($dests), $content, $runAt, $repeat]);
             audit((int)$me['id'], 'schedule.create', count($dests) . ' dest @ ' . $runAt);

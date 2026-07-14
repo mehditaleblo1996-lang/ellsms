@@ -5,7 +5,7 @@
  * scheduled messages every 20 seconds. Can also run once via cron:
  *   php cron/worker.php --once
  */
-require_once __DIR__ . '/../app/sms.php';
+require_once __DIR__ . '/../app/negar.php';
 
 $once = in_array('--once', $argv ?? [], true);
 echo '[' . date('c') . "] ELLSMS worker started\n";

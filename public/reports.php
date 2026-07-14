@@ -12,10 +12,10 @@ $dest   = trim($_GET['dest'] ?? '');
 $text   = trim($_GET['q'] ?? '');
 $userId = is_admin() ? (int)($_GET['user_id'] ?? 0) : (int)$me['id'];
 
-$where  = ['m.created_at >= ?', 'm.created_at < DATE_ADD(?, INTERVAL 1 DAY)'];
+$where  = ['m.sent_at >= ?', 'm.sent_at < DATE_ADD(?, INTERVAL 1 DAY)'];
 $params = [$from, $to];
-if (!is_admin() || $userId) { $where[] = 'm.user_id = ?'; $params[] = $userId ?: (int)$me['id']; }
-if ($status !== '' && in_array($status, ['pending','sent','failed','delivered','undelivered'], true)) {
+if (!is_admin() || $userId) { $where[] = 'm.sender_user_id = ?'; $params[] = $userId ?: (int)$me['id']; }
+if ($status !== '' && in_array($status, ['pending','sent','send_failed','delivered','failed'], true)) {
     $where[] = 'm.status = ?'; $params[] = $status;
 }
 if ($dest !== '') { $where[] = 'm.destination LIKE ?'; $params[] = '%' . preg_replace('/\D/', '', $dest) . '%'; }
@@ -25,25 +25,24 @@ $W = implode(' AND ', $where);
 /* ---------- Summary ---------- */
 $sum = db()->prepare("SELECT COUNT(*) total,
         SUM(status IN ('sent','delivered')) ok,
-        SUM(status IN ('failed','undelivered')) bad,
-        SUM(status = 'delivered') dlv,
-        COALESCE(SUM(parts),0) parts
-      FROM messages m WHERE {$W}");
+        SUM(status IN ('send_failed','failed')) bad,
+        SUM(status = 'delivered') dlv
+      FROM outbound_message m WHERE {$W}");
 $sum->execute($params);
 $S = $sum->fetch();
 
 /* ---------- CSV export ---------- */
 if (isset($_GET['export'])) {
-    $st = db()->prepare("SELECT m.id, u.username, m.originator, m.destination, m.content, m.parts,
-                                m.status, m.api_message_id, m.created_at, m.delivered_at, m.error
-                         FROM messages m JOIN users u ON u.id = m.user_id
+    $st = db()->prepare("SELECT m.id, u.username, m.originator, m.destination, m.content,
+                                m.status, m.reference_id, m.error_code, m.sent_at, m.delivered_at
+                         FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
                          WHERE {$W} ORDER BY m.id DESC LIMIT 100000");
     $st->execute($params);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="ellsms-report-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF"); // BOM so Excel opens UTF-8 (Persian) correctly
-    fputcsv($out, ['id','user','originator','destination','content','parts','status','api_message_id','created_at','delivered_at','error']);
+    fputcsv($out, ['id','user','originator','destination','content','status','reference_id','error_code','sent_at','delivered_at']);
     while ($r = $st->fetch()) fputcsv($out, $r);
     exit;
 }
@@ -55,12 +54,12 @@ $cnt  = (int)$S['total'];
 $pages = max(1, (int)ceil($cnt / $per));
 $off  = ($page - 1) * $per;
 
-$st = db()->prepare("SELECT m.*, u.username FROM messages m JOIN users u ON u.id = m.user_id
+$st = db()->prepare("SELECT m.*, u.username FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
                      WHERE {$W} ORDER BY m.id DESC LIMIT {$per} OFFSET {$off}");
 $st->execute($params);
 $rows = $st->fetchAll();
 
-$users = is_admin() ? db()->query('SELECT id, username FROM users ORDER BY username')->fetchAll() : [];
+$users = is_admin() ? db()->query('SELECT id, username FROM user_ WHERE deleted = 0 ORDER BY username')->fetchAll() : [];
 
 $qs = fn(array $extra = []) => http_build_query(array_merge($_GET, $extra));
 require __DIR__ . '/../app/views/header.php';
@@ -69,7 +68,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="stat"><div class="stat-label">Messages</div><div class="stat-value"><?= number_format($cnt) ?></div></div>
   <div class="stat"><div class="stat-label">Sent / delivered</div><div class="stat-value"><?= number_format((int)$S['ok']) ?></div></div>
   <div class="stat"><div class="stat-label">Failed</div><div class="stat-value"><?= number_format((int)$S['bad']) ?></div></div>
-  <div class="stat"><div class="stat-label">Parts (credits)</div><div class="stat-value"><?= number_format((int)$S['parts']) ?></div></div>
+  <div class="stat"><div class="stat-label">Delivered (confirmed)</div><div class="stat-value"><?= number_format((int)$S['dlv']) ?></div></div>
 </div>
 
 <div class="card" style="margin-top:20px">
@@ -79,8 +78,8 @@ require __DIR__ . '/../app/views/header.php';
     <label>Status
       <select name="status">
         <option value="">All</option>
-        <?php foreach (['sent','delivered','failed','undelivered','pending'] as $s): ?>
-          <option value="<?= $s ?>" <?= $status === $s ? 'selected' : '' ?>><?= ucfirst($s) ?></option>
+        <?php foreach (['sent','delivered','send_failed','failed','pending'] as $s): ?>
+          <option value="<?= $s ?>" <?= $status === $s ? 'selected' : '' ?>><?= ucfirst(str_replace('_',' ',$s)) ?></option>
         <?php endforeach; ?>
       </select>
     </label>
@@ -104,7 +103,7 @@ require __DIR__ . '/../app/views/header.php';
   <table>
     <tr>
       <th>#</th><?php if (is_admin()): ?><th>User</th><?php endif; ?>
-      <th>From</th><th>To</th><th>Message</th><th>Parts</th><th>Status</th><th>Gateway ID</th><th>Sent</th><th>Delivered</th>
+      <th>From</th><th>To</th><th>Message</th><th>Status</th><th>Ref. ID</th><th>Sent</th><th>Delivered</th>
     </tr>
     <?php foreach ($rows as $m): ?>
       <tr>
@@ -112,17 +111,16 @@ require __DIR__ . '/../app/views/header.php';
         <?php if (is_admin()): ?><td><?= e($m['username']) ?></td><?php endif; ?>
         <td class="msisdn"><?= e($m['originator']) ?></td>
         <td class="msisdn"><?= e($m['destination']) ?></td>
-        <td class="msg-preview" title="<?= e($m['content'] . ($m['error'] ? "\n\nError: " . $m['error'] : '')) ?>">
+        <td class="msg-preview" title="<?= e($m['content'] . ($m['error_code'] !== null ? "\n\nVesal error code: " . $m['error_code'] : '')) ?>">
           <?= e(mb_strimwidth($m['content'], 0, 60, '…')) ?>
         </td>
-        <td class="num"><?= $m['parts'] ?></td>
-        <td><span class="badge badge-<?= e($m['status']) ?>"><?= e($m['status']) ?></span></td>
-        <td class="num"><?= e((string)$m['api_message_id']) ?></td>
+        <td><span class="badge badge-<?= e($m['status']) ?>"><?= e(str_replace('_',' ',$m['status'])) ?></span></td>
+        <td class="num"><?= e((string)$m['reference_id']) ?></td>
         <td class="num"><?= e((string)$m['sent_at']) ?></td>
         <td class="num"><?= e((string)$m['delivered_at']) ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="10" class="empty">No messages match these filters.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="9" class="empty">No messages match these filters.</td></tr><?php endif; ?>
   </table>
   </div>
 

@@ -6,38 +6,35 @@ $active = 'settings';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    if (($_POST['do'] ?? '') === 'regen_token') {
-        set_setting('webhook_token', bin2hex(random_bytes(12)));
-        audit((int)$me['id'], 'settings.webhook_token');
-        flash('success', 'New webhook token generated. Update the URLs at your SMS provider.');
-    } else {
-        set_setting('api_base_url',       rtrim(trim($_POST['api_base_url'] ?? ''), '/'));
-        set_setting('default_sender_id',  (string)max(0, (int)($_POST['default_sender_id'] ?? 1)));
-        set_setting('default_originator', trim($_POST['default_originator'] ?? ''));
-        audit((int)$me['id'], 'settings.update');
-        flash('success', 'Settings saved.');
+    set_setting('vesal_rest_url',     rtrim(trim($_POST['vesal_rest_url'] ?? ''), '/'));
+    set_setting('vesal_username',     trim($_POST['vesal_username'] ?? ''));
+    if (trim($_POST['vesal_password'] ?? '') !== '') {
+        set_setting('vesal_password', $_POST['vesal_password']);
     }
+    set_setting('default_originator', trim($_POST['default_originator'] ?? ''));
+    audit((int)$me['id'], 'settings.update');
+    flash('success', 'Settings saved.');
     redirect('/settings.php');
 }
-
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$base   = $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'your-domain');
-$token  = setting('webhook_token', '');
 
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
-  <h2>SMS gateway</h2>
+  <h2>SMS gateway (Vesal / Armaghan)</h2>
+  <p class="hint">ELLSMS calls this gateway directly for every send — the same one negar-python's own backend uses (<code class="kbd">common/smsgateway/vesal</code>). These values only live in the ELLSMS database; negar-python keeps its own copy in its <code class="kbd">.env</code> and is unaffected by changes here.</p>
   <form method="post">
     <?= csrf_field() ?>
     <div class="form-row">
-      <label>API base URL
-        <input type="text" name="api_base_url" value="<?= e(setting('api_base_url', 'https://rest.ravixops.com')) ?>">
-        <div class="hint">Messages are sent to <span class="num">{base}/api/messages/send</span>.</div>
+      <label>Vesal REST base URL
+        <input type="text" name="vesal_rest_url" value="<?= e(setting('vesal_rest_url', '')) ?>" placeholder="http://192.168.2.27:8081/backend">
+        <div class="hint">Messages POST to <span class="num">{base}/OneToMany</span>.</div>
       </label>
-      <label>Default sender_user_id
-        <input type="number" name="default_sender_id" value="<?= e(setting('default_sender_id', '1')) ?>">
-        <div class="hint">Used when a user has no gateway sender id of their own.</div>
+      <label>Vesal username
+        <input type="text" name="vesal_username" value="<?= e(setting('vesal_username', 'negar')) ?>">
+      </label>
+      <label>Vesal password
+        <input type="password" name="vesal_password" placeholder="<?= setting('vesal_password') ? '•••••••• (unchanged)' : 'not set' ?>">
+        <div class="hint">Leave blank to keep the current password.</div>
       </label>
       <label>Default sender line (originator)
         <input type="text" name="default_originator" value="<?= e(setting('default_originator', '')) ?>">
@@ -48,17 +45,7 @@ require __DIR__ . '/../app/views/header.php';
 </div>
 
 <div class="card">
-  <h2>Webhooks (give these URLs to your SMS provider)</h2>
-  <p>Incoming (received) messages:</p>
-  <p><code class="kbd"><?= e($base) ?>/api/incoming.php?token=<?= e($token) ?></code></p>
-  <p class="hint">POST JSON like <span class="num">{"sender":"98912…","recipient":"5000435800","content":"…"}</span> — common field aliases (from/to/text/message/originator/destination) are accepted too.</p>
-  <p>Delivery reports (status updates):</p>
-  <p><code class="kbd"><?= e($base) ?>/api/dlr.php?token=<?= e($token) ?></code></p>
-  <p class="hint">POST JSON like <span class="num">{"message_id":"…","status":"delivered"}</span>. Statuses mapping to delivered/undelivered/failed are recognized.</p>
-  <form method="post" onsubmit="return confirm('Generate a new token? Old webhook URLs will stop working.')">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="regen_token">
-    <button class="btn btn-danger">Generate a new webhook token</button>
-  </form>
+  <h2>Receiving messages &amp; delivery reports</h2>
+  <p>Nothing to configure here — incoming SMS and delivery status updates already flow into the shared database automatically, written by negar-python's own <code class="kbd">/mo</code> and <code class="kbd">/delivery</code> endpoints (already registered with your Vesal/Armaghan account). ELLSMS just reads <code class="kbd">inbound_message</code> and <code class="kbd">outbound_message</code>.</p>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

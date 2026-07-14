@@ -4,30 +4,30 @@ $me = require_login();
 $pageTitle = 'Dashboard';
 $active = 'dashboard';
 
-$scope   = $me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id'];
-$scopeW  = $me['role'] === 'admin' ? '1=1' : 'user_id = ' . (int)$me['id'];
+$scope  = $me['role'] === 'admin' ? '' : ' AND sender_user_id = ' . (int)$me['id'];
+$scopeW = $me['role'] === 'admin' ? '1=1' : 'sender_user_id = ' . (int)$me['id'];
 
 $q = fn(string $sql) => (int)db()->query($sql)->fetch()['c'];
 
-$todaySent   = $q("SELECT COUNT(*) c FROM messages WHERE status IN ('sent','delivered') AND DATE(created_at)=CURDATE(){$scope}");
-$todayFailed = $q("SELECT COUNT(*) c FROM messages WHERE status IN ('failed','undelivered') AND DATE(created_at)=CURDATE(){$scope}");
-$totalSent   = $q("SELECT COUNT(*) c FROM messages WHERE status IN ('sent','delivered'){$scope}");
-$pendingSch  = $q("SELECT COUNT(*) c FROM schedules WHERE status='active'{$scope}");
+$todaySent   = $q("SELECT COUNT(*) c FROM outbound_message WHERE status IN ('sent','delivered') AND DATE(sent_at)=CURDATE(){$scope}");
+$todayFailed = $q("SELECT COUNT(*) c FROM outbound_message WHERE status IN ('send_failed','failed') AND DATE(sent_at)=CURDATE(){$scope}");
+$totalSent   = $q("SELECT COUNT(*) c FROM outbound_message WHERE status IN ('sent','delivered'){$scope}");
+$pendingSch  = $q("SELECT COUNT(*) c FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']));
 $inboxToday  = $me['role'] === 'admin'
-    ? $q("SELECT COUNT(*) c FROM incoming_messages WHERE DATE(received_at)=CURDATE()")
+    ? $q("SELECT COUNT(*) c FROM inbound_message WHERE DATE(received_at)=CURDATE()")
     : null;
 
 /* Last 7 days volume */
 $days = [];
 for ($i = 6; $i >= 0; $i--) $days[date('Y-m-d', strtotime("-{$i} day"))] = 0;
-$rows = db()->query("SELECT DATE(created_at) d, COUNT(*) c FROM messages
-                     WHERE created_at >= CURDATE() - INTERVAL 6 DAY AND {$scopeW}
-                     GROUP BY DATE(created_at)")->fetchAll();
+$rows = db()->query("SELECT DATE(sent_at) d, COUNT(*) c FROM outbound_message
+                     WHERE sent_at >= CURDATE() - INTERVAL 6 DAY AND {$scopeW}
+                     GROUP BY DATE(sent_at)")->fetchAll();
 foreach ($rows as $r) $days[$r['d']] = (int)$r['c'];
 $max = max(1, max($days));
 
 /* Recent messages */
-$recent = db()->query("SELECT m.*, u.username FROM messages m JOIN users u ON u.id=m.user_id
+$recent = db()->query("SELECT m.*, u.username FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
                        WHERE {$scopeW} ORDER BY m.id DESC LIMIT 8")->fetchAll();
 
 require __DIR__ . '/../app/views/header.php';
@@ -68,7 +68,7 @@ require __DIR__ . '/../app/views/header.php';
         <td class="msisdn"><?= e($m['destination']) ?></td>
         <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e(mb_strimwidth($m['content'], 0, 60, '…')) ?></td>
         <td><span class="badge badge-<?= e($m['status']) ?>"><?= e($m['status']) ?></span></td>
-        <td class="num"><?= e($m['created_at']) ?></td>
+        <td class="num"><?= e((string)$m['sent_at']) ?></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$recent): ?><tr><td colspan="6" class="empty">Nothing sent yet — start with <a href="/send.php">Send SMS</a>.</td></tr><?php endif; ?>

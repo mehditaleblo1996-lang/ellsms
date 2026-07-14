@@ -1,30 +1,34 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 
-/* First run: create the default admin if no users exist yet. */
-if ((int)db()->query('SELECT COUNT(*) c FROM users')->fetch()['c'] === 0) {
-    db()->prepare('INSERT INTO users (username, password_hash, full_name, role, originator, api_sender_id, credit)
-                   VALUES (?,?,?,?,?,?,0)')
-        ->execute(['admin', password_hash('admin123', PASSWORD_BCRYPT), 'Administrator', 'admin',
-                   setting('default_originator', ''), (int)setting('default_sender_id', '1')]);
-}
-
 if (current_user()) redirect('/index.php');
+
+/* No negar account has ELLSMS admin yet — send people to bootstrap. */
+if (!ellsms_has_admin()) redirect('/bootstrap-admin.php');
 
 $error = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    $st = db()->prepare('SELECT * FROM users WHERE username = ?');
+    $st = db()->prepare('SELECT id, password, active, deleted FROM user_ WHERE username = ?');
     $st->execute([trim($_POST['username'] ?? '')]);
     $u = $st->fetch();
-    if ($u && $u['is_active'] && password_verify($_POST['password'] ?? '', $u['password_hash'])) {
-        session_regenerate_id(true);
-        $_SESSION['uid'] = $u['id'];
-        audit((int)$u['id'], 'login');
-        redirect('/index.php');
+
+    if (!$u || !$u['active'] || $u['deleted'] || !negar_verify_password($_POST['password'] ?? '', $u['password'])) {
+        usleep(400000);
+        $error = 'Wrong username or password, or the account is disabled.';
+    } else {
+        $m = db()->prepare('SELECT panel_access FROM ellsms_meta WHERE user_id = ?');
+        $m->execute([$u['id']]);
+        $meta = $m->fetch();
+        if (!$meta || !$meta['panel_access']) {
+            $error = 'This negar account exists, but has not been granted access to the ELLSMS panel. Ask an ELLSMS admin.';
+        } else {
+            session_regenerate_id(true);
+            $_SESSION['uid'] = $u['id'];
+            audit((int)$u['id'], 'login');
+            redirect('/index.php');
+        }
     }
-    usleep(400000); // slow brute force a little
-    $error = 'Wrong username or password, or the account is disabled.';
 }
 ?><!doctype html>
 <html lang="en">
@@ -41,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post" autocomplete="off">
       <?= csrf_field() ?>
-      <label>Username
+      <label>Negar username
         <input type="text" name="username" required autofocus>
       </label>
       <label>Password
@@ -49,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <button type="submit" class="btn btn-primary btn-block">Sign in</button>
     </form>
-    <p class="login-foot">ELLSMS v<?= ELLSMS_VERSION ?> · Smart SMS Panel</p>
+    <p class="login-foot">Sign in with your existing negar account.<br>ELLSMS v<?= ELLSMS_VERSION ?> · Smart SMS Panel</p>
   </main>
 </body>
 </html>

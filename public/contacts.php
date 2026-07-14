@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$mobile) {
             flash('error', 'That mobile number is not valid.');
         } else {
-            db()->prepare('INSERT INTO contacts (user_id, name, mobile, group_name) VALUES (?,?,?,?)')
+            db()->prepare('INSERT INTO ellsms_contacts (user_id, name, mobile, group_name) VALUES (?,?,?,?)')
                ->execute([$me['id'], trim($_POST['name'] ?? ''), $mobile, trim($_POST['group_name'] ?? '')]);
             flash('success', 'Contact added.');
         }
@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($do === 'import') {
         $group = trim($_POST['group_name'] ?? '');
         $lines = preg_split('/\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
-        $ins = db()->prepare('INSERT INTO contacts (user_id, name, mobile, group_name) VALUES (?,?,?,?)');
+        $ins = db()->prepare('INSERT INTO ellsms_contacts (user_id, name, mobile, group_name) VALUES (?,?,?,?)');
         $n = 0;
         foreach ($lines as $line) {
             [$a, $b] = array_pad(array_map('trim', explode(',', $line, 2)), 2, '');
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($do === 'delete') {
-        db()->prepare('DELETE FROM contacts WHERE id=? AND user_id=?')->execute([(int)$_POST['id'], $me['id']]);
+        db()->prepare('DELETE FROM ellsms_contacts WHERE id=? AND user_id=?')->execute([(int)$_POST['id'], $me['id']]);
         flash('info', 'Contact removed.');
     }
     redirect('/contacts.php');
@@ -44,11 +44,11 @@ $g = trim($_GET['group'] ?? '');
 $params = [$me['id']];
 $where = 'user_id = ?';
 if ($g !== '') { $where .= ' AND group_name = ?'; $params[] = $g; }
-$st = db()->prepare("SELECT * FROM contacts WHERE {$where} ORDER BY group_name, name LIMIT 1000");
+$st = db()->prepare("SELECT * FROM ellsms_contacts WHERE {$where} ORDER BY group_name, name LIMIT 1000");
 $st->execute($params);
 $rows = $st->fetchAll();
 
-$gr = db()->prepare("SELECT group_name, COUNT(*) c FROM contacts WHERE user_id=? AND group_name<>'' GROUP BY group_name ORDER BY group_name");
+$gr = db()->prepare("SELECT group_name, COUNT(*) c FROM ellsms_contacts WHERE user_id=? AND group_name<>'' GROUP BY group_name ORDER BY group_name");
 $gr->execute([$me['id']]);
 $groups = $gr->fetchAll();
 

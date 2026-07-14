@@ -1,3 +1,10 @@
+########################################################################
+# ELLSMS — connects to the SAME MySQL database as the negar-python
+# project (network `negar_net`, container `negar-mysql`, database
+# `negar`). This stack does NOT run its own MySQL — bring up the
+# negar-python stack first so that network + database exist, then
+# bring this one up.
+########################################################################
 services:
   app:
     build:
@@ -8,16 +15,18 @@ services:
     ports:
       - "${APP_PORT:-8080}:80"
     environment:
-      DB_HOST: db
-      DB_NAME: ${DB_NAME:-ellsms}
-      DB_USER: ${DB_USER:-ellsms}
-      DB_PASS: ${DB_PASS:-ellsms_secret}
-      SMS_API_BASE: ${SMS_API_BASE:-https://rest.ravixops.com}
+      NEGAR_DB_HOST: ${NEGAR_DB_HOST:-negar-mysql}
+      NEGAR_DB_PORT: ${NEGAR_DB_PORT:-3306}
+      NEGAR_DB_NAME: ${NEGAR_DB_NAME:-negar}
+      NEGAR_DB_USER: ${NEGAR_DB_USER:-dbtest}
+      NEGAR_DB_PASS: ${NEGAR_DB_PASS}
+      VESAL_REST_URL: ${VESAL_REST_URL:-}
+      VESAL_USERNAME: ${VESAL_USERNAME:-negar}
+      VESAL_PASSWORD: ${VESAL_PASSWORD:-}
     volumes:
       - ./:/var/www/html
-    depends_on:
-      db:
-        condition: service_healthy
+    networks:
+      - negar_net
 
   worker:
     build:
@@ -27,47 +36,19 @@ services:
     restart: unless-stopped
     command: php /var/www/html/cron/worker.php
     environment:
-      DB_HOST: db
-      DB_NAME: ${DB_NAME:-ellsms}
-      DB_USER: ${DB_USER:-ellsms}
-      DB_PASS: ${DB_PASS:-ellsms_secret}
-      SMS_API_BASE: ${SMS_API_BASE:-https://rest.ravixops.com}
+      NEGAR_DB_HOST: ${NEGAR_DB_HOST:-negar-mysql}
+      NEGAR_DB_PORT: ${NEGAR_DB_PORT:-3306}
+      NEGAR_DB_NAME: ${NEGAR_DB_NAME:-negar}
+      NEGAR_DB_USER: ${NEGAR_DB_USER:-dbtest}
+      NEGAR_DB_PASS: ${NEGAR_DB_PASS}
+      VESAL_REST_URL: ${VESAL_REST_URL:-}
+      VESAL_USERNAME: ${VESAL_USERNAME:-negar}
+      VESAL_PASSWORD: ${VESAL_PASSWORD:-}
     volumes:
       - ./:/var/www/html
-    depends_on:
-      db:
-        condition: service_healthy
+    networks:
+      - negar_net
 
-  db:
-    image: mysql:8.0
-    container_name: ellsms-db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${DB_NAME:-ellsms}
-      MYSQL_USER: ${DB_USER:-ellsms}
-      MYSQL_PASSWORD: ${DB_PASS:-ellsms_secret}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:-root_secret_change_me}
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-    volumes:
-      - dbdata:/var/lib/mysql
-      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_ROOT_PASS:-root_secret_change_me}"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  # Optional DB admin UI — remove in production or protect it.
-  phpmyadmin:
-    image: phpmyadmin:latest
-    container_name: ellsms-pma
-    restart: unless-stopped
-    environment:
-      PMA_HOST: db
-    ports:
-      - "${PMA_PORT:-8081}:80"
-    depends_on:
-      - db
-
-volumes:
-  dbdata:
+networks:
+  negar_net:
+    external: true   # created by negar-python's docker-compose.yml — bring that stack up first

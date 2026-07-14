@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = (int)($_POST['id'] ?? 0);
     $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
     if (($_POST['do'] ?? '') === 'cancel') {
-        db()->exec("UPDATE schedules SET status='cancelled' WHERE id={$id} AND status IN ('active','processing'){$own}");
+        db()->exec("UPDATE ellsms_schedule SET status='cancelled' WHERE id={$id} AND status IN ('active','processing'){$own}");
         flash('info', "Schedule #{$id} cancelled.");
         audit((int)$me['id'], 'schedule.cancel', "#{$id}");
     }
@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $where = is_admin() ? '1=1' : 's.user_id = ' . (int)$me['id'];
-$rows = db()->query("SELECT s.*, u.username FROM schedules s JOIN users u ON u.id = s.user_id
+$rows = db()->query("SELECT s.*, u.username FROM ellsms_schedule s JOIN user_ u ON u.id = s.user_id
                      WHERE {$where} ORDER BY FIELD(s.status,'active','processing','done','cancelled'), s.run_at DESC
                      LIMIT 300")->fetchAll();
 
