@@ -235,82 +235,93 @@ function run_autoreply_pass(): int {
 
     foreach ($rows as $msg) {
         $maxId = max($maxId, (int)$msg['id']);
-
-        $line   = normalize_originator((string)$msg['destination']); // our line that received it
-        $sender = normalize_originator((string)$msg['originator']);  // the customer's number
-        $content = trim((string)$msg['content']);
-        if (!$line || !$sender || $line === $sender) continue; // skip malformed rows / self-loops
-
-        $rst = $db->prepare(
-            "SELECT * FROM ellsms_autoreply_rules
-             WHERE originator = ? AND is_active = 1
-             ORDER BY FIELD(match_type,'exact','starts_with','contains'), id
-             LIMIT 20"
-        );
-        $rst->execute([$line]);
-        $rule = null;
-        foreach ($rst->fetchAll() as $candidate) {
-            if (autoreply_matches($content, $candidate['keyword'], $candidate['match_type'])) {
-                $rule = $candidate;
-                break;
-            }
-        }
-        if (!$rule) continue;
-
-        // Claim this specific inbound row first — if another pass already
-        // claimed it (duplicate key), skip without sending anything.
         try {
-            $claim = $db->prepare(
-                'INSERT INTO ellsms_autoreply_log (rule_id, inbound_message_id, sender, originator, reply_content, ok, info)
-                 VALUES (?,?,?,?,?,0,?)'
-            );
-            $claim->execute([$rule['id'], $msg['id'], $sender, $line, '', 'در حال پردازش']);
-            $logId = (int)$db->lastInsertId();
-        } catch (PDOException $e) {
-            continue; // duplicate key on inbound_message_id => already claimed
+            autoreply_process_one($db, $msg, $sent);
+        } catch (Throwable $t) {
+            // Never let one bad row block the cursor from moving past it —
+            // that was the actual root cause of duplicate replies before
+            // this fix: an exception here left the cursor stuck, so the
+            // same row kept getting re-fetched and re-sent every tick.
+            error_log('[ellsms autoreply] row ' . $msg['id'] . ' failed: ' . $t->getMessage());
         }
-
-        // Cooldown — this same rule already replied to this same number
-        // very recently, so treat this as a duplicate delivery / repeat
-        // send rather than firing again.
-        $cd = $db->prepare(
-            "SELECT COUNT(*) c FROM ellsms_autoreply_log
-             WHERE rule_id = ? AND sender = ? AND ok = 1
-               AND created_at >= (NOW() - INTERVAL ? SECOND) AND id <> ?"
-        );
-        $cd->execute([$rule['id'], $sender, AUTOREPLY_COOLDOWN_SECONDS, $logId]);
-        if ((int)$cd->fetch()['c'] > 0) {
-            $db->prepare('UPDATE ellsms_autoreply_log SET info = ? WHERE id = ?')
-               ->execute(['رد شد: به‌تازگی برای همین شماره ارسال شده بود', $logId]);
-            continue;
-        }
-
-        $owner = null;
-        $ust = $db->prepare(
-            'SELECT u.id, u.active, u.deleted, u.currentcredit AS credit, m.is_admin
-             FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
-        );
-        $ust->execute([$rule['user_id']]);
-        $owner = $ust->fetch();
-        if (!$owner || !$owner['active'] || $owner['deleted']) {
-            $db->prepare('UPDATE ellsms_autoreply_log SET info = ? WHERE id = ?')
-               ->execute(['رد شد: حساب مالک قانون غیرفعال است', $logId]);
-            continue;
-        }
-
-        $rendered = autoreply_render($rule['reply_content'], (int)$rule['user_id'], $sender, $line, $content, $rule['keyword']);
-        $user = ['id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit']];
-        [$ok, $info] = dispatch_message($user, $line, [$sender], $rendered);
-
-        $db->prepare('UPDATE ellsms_autoreply_rules SET hit_count = hit_count + 1 WHERE id = ?')->execute([$rule['id']]);
-        $db->prepare('UPDATE ellsms_autoreply_log SET reply_content = ?, ok = ?, info = ? WHERE id = ?')
-           ->execute([$rendered, (int)$ok, $info, $logId]);
-
-        if ($ok) $sent++;
     }
 
     set_setting('autoreply_last_inbound_id', (string)$maxId);
     return $sent;
+}
+
+/** Process a single inbound_message row: match, claim, cooldown-check, send. Throws on real errors — caller isolates them per-row. */
+function autoreply_process_one(PDO $db, array $msg, int &$sent): void {
+    $line   = normalize_originator((string)$msg['destination']); // our line that received it
+    $sender = normalize_originator((string)$msg['originator']);  // the customer's number
+    $content = trim((string)$msg['content']);
+    if (!$line || !$sender || $line === $sender) return; // malformed row / self-loop
+
+    $rst = $db->prepare(
+        "SELECT * FROM ellsms_autoreply_rules
+         WHERE originator = ? AND is_active = 1
+         ORDER BY FIELD(match_type,'exact','starts_with','contains'), id
+         LIMIT 20"
+    );
+    $rst->execute([$line]);
+    $rule = null;
+    foreach ($rst->fetchAll() as $candidate) {
+        if (autoreply_matches($content, $candidate['keyword'], $candidate['match_type'])) {
+            $rule = $candidate;
+            break;
+        }
+    }
+    if (!$rule) return;
+
+    // Claim this specific inbound row first — if another pass already
+    // claimed it (duplicate key), skip without sending anything.
+    try {
+        $claim = $db->prepare(
+            'INSERT INTO ellsms_autoreply_log (rule_id, inbound_message_id, sender, originator, reply_content, ok, info)
+             VALUES (?,?,?,?,?,0,?)'
+        );
+        $claim->execute([$rule['id'], $msg['id'], $sender, $line, '', 'در حال پردازش']);
+        $logId = (int)$db->lastInsertId();
+    } catch (PDOException $e) {
+        return; // duplicate key on inbound_message_id => already claimed
+    }
+
+    // Cooldown — this same rule already replied to this same number very
+    // recently, so treat this as a duplicate delivery / repeat send
+    // rather than firing again.
+    $cd = $db->prepare(
+        "SELECT COUNT(*) c FROM ellsms_autoreply_log
+         WHERE rule_id = ? AND sender = ? AND ok = 1
+           AND created_at >= (NOW() - INTERVAL ? SECOND) AND id <> ?"
+    );
+    $cd->execute([$rule['id'], $sender, AUTOREPLY_COOLDOWN_SECONDS, $logId]);
+    if ((int)$cd->fetch()['c'] > 0) {
+        $db->prepare('UPDATE ellsms_autoreply_log SET info = ? WHERE id = ?')
+           ->execute(['رد شد: به‌تازگی برای همین شماره ارسال شده بود', $logId]);
+        return;
+    }
+
+    $ust = $db->prepare(
+        'SELECT u.id, u.active, u.deleted, u.currentcredit AS credit, m.is_admin
+         FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
+    );
+    $ust->execute([$rule['user_id']]);
+    $owner = $ust->fetch();
+    if (!$owner || !$owner['active'] || $owner['deleted']) {
+        $db->prepare('UPDATE ellsms_autoreply_log SET info = ? WHERE id = ?')
+           ->execute(['رد شد: حساب مالک قانون غیرفعال است', $logId]);
+        return;
+    }
+
+    $rendered = autoreply_render($rule['reply_content'], (int)$rule['user_id'], $sender, $line, $content, $rule['keyword']);
+    $user = ['id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit']];
+    [$ok, $info] = dispatch_message($user, $line, [$sender], $rendered);
+
+    $db->prepare('UPDATE ellsms_autoreply_rules SET hit_count = hit_count + 1 WHERE id = ?')->execute([$rule['id']]);
+    $db->prepare('UPDATE ellsms_autoreply_log SET reply_content = ?, ok = ?, info = ? WHERE id = ?')
+       ->execute([$rendered, (int)$ok, $info, $logId]);
+
+    if ($ok) $sent++;
 }
 
 function autoreply_matches(string $content, string $keyword, string $matchType): bool {
