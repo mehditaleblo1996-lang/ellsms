@@ -108,9 +108,13 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         return [false, 'Database error while saving the send: ' . $t->getMessage()];
     }
 
+    $reason = $ok ? null : ($http === 0
+        ? ($resp['error'] ?? 'Could not reach the Vesal gateway.')
+        : "Gateway rejected the send (error code {$errorCode}, HTTP {$http}).");
+
     return $ok
         ? [true, 'Sent to ' . count($destinations) . " number(s) — {$parts} part(s) each, {$cost} credit(s)."]
-        : [false, "Gateway rejected the send (error code {$errorCode}, HTTP {$http}). See the report for details."];
+        : [false, $reason . ' See the report for details.'];
 }
 
 /** Process due scheduled messages. Returns number processed. Used by the worker. */
