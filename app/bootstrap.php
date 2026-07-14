@@ -90,7 +90,7 @@ function current_user(): ?array {
         $user = null;
         if (!empty($_SESSION['uid'])) {
             $st = db()->prepare(
-                'SELECT u.id, u.username, u.first_name, u.last_name, u.email, u.mobile,
+                'SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.email, u.mobile,
                         u.active, u.deleted, u.currentcredit AS credit,
                         m.panel_access, m.is_admin, m.originator
                  FROM user_ u

@@ -79,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $editUser = null;
 if (!empty($_GET['edit'])) {
     $st = db()->prepare(
-        'SELECT u.id, u.username, u.first_name, u.last_name, u.currentcredit AS credit, u.active, u.deleted,
+        'SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.currentcredit AS credit, u.active, u.deleted,
                 m.panel_access, m.is_admin, m.originator
          FROM user_ u LEFT JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
     );
@@ -88,7 +88,7 @@ if (!empty($_GET['edit'])) {
 }
 
 $panelUsers = db()->query(
-    "SELECT u.id, u.username, u.first_name, u.last_name, u.currentcredit AS credit, u.active, u.deleted,
+    "SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.currentcredit AS credit, u.active, u.deleted,
             m.panel_access, m.is_admin, m.originator,
             (SELECT COUNT(*) FROM outbound_message o WHERE o.sender_user_id = u.id) sent_count
      FROM ellsms_meta m JOIN user_ u ON u.id = m.user_id
