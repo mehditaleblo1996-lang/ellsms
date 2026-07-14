@@ -1,11 +1,11 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 $me = require_login();
-$pageTitle = 'Inbox — received messages';
+$pageTitle = 'صندوق دریافت';
 $active = 'inbox';
 
-$from = $_GET['from'] ?? date('Y-m-d', strtotime('-29 day'));
-$to   = $_GET['to']   ?? date('Y-m-d');
+$from = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-29 day'));
+$to   = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
 $sndr = trim($_GET['sender'] ?? '');
 $text = trim($_GET['q'] ?? '');
 
@@ -24,7 +24,7 @@ if (isset($_GET['export'])) {
     header('Content-Disposition: attachment; filename="ellsms-inbox-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['id','sender','recipient','content','received_at']);
+    fputcsv($out, ['شناسه','فرستنده','گیرنده','متن پیام','زمان دریافت']);
     while ($r = $st->fetch()) fputcsv($out, $r);
     exit;
 }
@@ -43,29 +43,29 @@ require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
   <form method="get" class="toolbar">
-    <label>From <input type="date" name="from" value="<?= e($from) ?>"></label>
-    <label>To <input type="date" name="to" value="<?= e($to) ?>"></label>
-    <label>Sender <input type="text" name="sender" value="<?= e($sndr) ?>" placeholder="9891…"></label>
-    <label>Text contains <input type="text" name="q" value="<?= e($text) ?>"></label>
-    <button class="btn btn-primary">Filter</button>
-    <a class="btn" href="/inbox.php?<?= e($qs(['export' => 1])) ?>">Export CSV</a>
+    <label>از تاریخ <?= jalali_date_select('from', $from) ?></label>
+    <label>تا تاریخ <?= jalali_date_select('to', $to) ?></label>
+    <label>فرستنده <input type="text" name="sender" value="<?= e($sndr) ?>" placeholder="۹۸۹۱…" class="ltr"></label>
+    <label>شامل متن <input type="text" name="q" value="<?= e($text) ?>"></label>
+    <button class="btn btn-primary">اعمال فیلتر</button>
+    <a class="btn" href="/inbox.php?<?= e($qs(['export' => 1])) ?>">خروجی CSV</a>
   </form>
 
   <div class="table-wrap">
   <table>
-    <tr><th>#</th><th>From</th><th>To (your line)</th><th>Message</th><th>Received</th></tr>
+    <tr><th>#</th><th>فرستنده</th><th>گیرنده (خط شما)</th><th>متن پیام</th><th>زمان دریافت</th></tr>
     <?php foreach ($rows as $m): ?>
       <tr>
-        <td class="num"><?= $m['id'] ?></td>
+        <td class="num"><?= to_persian_digits((string)$m['id']) ?></td>
         <td class="msisdn"><?= e((string)$m['originator']) ?></td>
         <td class="msisdn"><?= e((string)$m['destination']) ?></td>
         <td><?= e($m['content']) ?></td>
-        <td class="num"><?= e($m['received_at']) ?></td>
+        <td class="num"><?= jdate($m['received_at']) ?></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$rows): ?>
       <tr><td colspan="5" class="empty">
-        No received messages in this range. Incoming SMS arrives automatically through the backend platform's own <code class="kbd">/mo</code> endpoint straight into the shared database — nothing to configure here.
+        در این بازه‌ی زمانی پیامک دریافتی‌ای وجود ندارد. پیامک‌های دریافتی به‌طور خودکار از طریق اندپوینت <code class="kbd">/mo</code> سامانه‌ی مرکزی مستقیماً وارد پایگاه‌داده‌ی مشترک می‌شوند — نیازی به تنظیم چیزی اینجا نیست.
       </td></tr>
     <?php endif; ?>
   </table>
@@ -73,9 +73,9 @@ require __DIR__ . '/../app/views/header.php';
 
   <?php if ($pages > 1): ?>
   <div class="pagination">
-    <?php if ($page > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page - 1])) ?>">← Prev</a><?php endif; ?>
-    <span class="btn btn-sm btn-ghost">Page <?= $page ?> / <?= $pages ?></span>
-    <?php if ($page < $pages): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page + 1])) ?>">Next →</a><?php endif; ?>
+    <?php if ($page > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page - 1])) ?>">→ قبلی</a><?php endif; ?>
+    <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits((string)$page) ?> از <?= to_persian_digits((string)$pages) ?></span>
+    <?php if ($page < $pages): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page + 1])) ?>">بعدی ←</a><?php endif; ?>
   </div>
   <?php endif; ?>
 </div>

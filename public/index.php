@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 $me = require_login();
-$pageTitle = 'Dashboard';
+$pageTitle = 'داشبورد';
 $active = 'dashboard';
 
 $scope  = $me['role'] === 'admin' ? '' : ' AND sender_user_id = ' . (int)$me['id'];
@@ -26,6 +26,8 @@ $rows = db()->query("SELECT DATE(sent_at) d, COUNT(*) c FROM outbound_message
 foreach ($rows as $r) $days[$r['d']] = (int)$r['c'];
 $max = max(1, max($days));
 
+$weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','سه‌شنبه'=>'س','چهارشنبه'=>'چ','پنج‌شنبه'=>'پ','جمعه'=>'ج'];
+
 /* Recent messages */
 $recent = db()->query("SELECT m.*, u.username FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
                        WHERE {$scopeW} ORDER BY m.id DESC LIMIT 8")->fetchAll();
@@ -33,45 +35,49 @@ $recent = db()->query("SELECT m.*, u.username FROM outbound_message m JOIN user_
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="grid grid-4">
-  <div class="stat stat-accent"><div class="stat-label">Sent today</div><div class="stat-value"><?= number_format($todaySent) ?></div></div>
-  <div class="stat"><div class="stat-label">Failed today</div><div class="stat-value"><?= number_format($todayFailed) ?></div></div>
-  <div class="stat"><div class="stat-label">Scheduled &amp; waiting</div><div class="stat-value"><?= number_format($pendingSch) ?></div></div>
+  <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value"><?= to_persian_digits(number_format($todaySent)) ?></div></div>
+  <div class="stat"><div class="stat-label">ناموفق امروز</div><div class="stat-value"><?= to_persian_digits(number_format($todayFailed)) ?></div></div>
+  <div class="stat"><div class="stat-label">در صف زمان‌بندی</div><div class="stat-value"><?= to_persian_digits(number_format($pendingSch)) ?></div></div>
   <?php if ($inboxToday !== null): ?>
-    <div class="stat"><div class="stat-label">Received today</div><div class="stat-value"><?= number_format($inboxToday) ?></div></div>
+    <div class="stat"><div class="stat-label">دریافتی امروز</div><div class="stat-value"><?= to_persian_digits(number_format($inboxToday)) ?></div></div>
   <?php else: ?>
-    <div class="stat"><div class="stat-label">Sent — all time</div><div class="stat-value"><?= number_format($totalSent) ?></div></div>
+    <div class="stat"><div class="stat-label">مجموع ارسال‌ها</div><div class="stat-value"><?= to_persian_digits(number_format($totalSent)) ?></div></div>
   <?php endif; ?>
 </div>
 
-<div class="card" style="margin-top:20px">
-  <h2>Messages — last 7 days</h2>
+<div class="card" style="margin-top:22px">
+  <h2>پیامک‌های ۷ روز اخیر</h2>
   <div class="bars">
-    <?php foreach ($days as $d => $c): ?>
+    <?php foreach ($days as $d => $c):
+        $ts = strtotime($d);
+        $wd = (int)date('w', $ts); // 0=Sun..6=Sat (PHP)
+        $faWeekday = JALALI_WEEKDAYS[($wd + 1) % 7];
+    ?>
       <div class="bar">
-        <div class="bar-v"><?= $c ?></div>
+        <div class="bar-v"><?= to_persian_digits((string)$c) ?></div>
         <div class="bar-fill" style="height:<?= (int)round($c / $max * 110) ?>px"></div>
-        <div class="bar-x"><?= date('D', strtotime($d)) ?></div>
+        <div class="bar-x"><?= e($weekdayShort[$faWeekday] ?? '') ?></div>
       </div>
     <?php endforeach; ?>
   </div>
 </div>
 
 <div class="card">
-  <h2>Latest messages <a class="btn btn-sm btn-ghost" style="float:right" href="/reports.php">Full report →</a></h2>
+  <h2>آخرین پیامک‌ها <a class="btn btn-sm btn-ghost" style="float:left" href="/reports.php">مشاهده‌ی گزارش کامل ←</a></h2>
   <div class="table-wrap">
   <table>
-    <tr><th>#</th><?php if (is_admin()): ?><th>User</th><?php endif; ?><th>Destination</th><th>Message</th><th>Status</th><th>Time</th></tr>
+    <tr><th>#</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>گیرنده</th><th>متن پیام</th><th>وضعیت</th><th>زمان</th></tr>
     <?php foreach ($recent as $m): ?>
       <tr>
-        <td class="num"><?= $m['id'] ?></td>
+        <td class="num"><?= to_persian_digits((string)$m['id']) ?></td>
         <?php if (is_admin()): ?><td><?= e($m['username']) ?></td><?php endif; ?>
         <td class="msisdn"><?= e($m['destination']) ?></td>
         <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e(mb_strimwidth($m['content'], 0, 60, '…')) ?></td>
-        <td><span class="badge badge-<?= e($m['status']) ?>"><?= e($m['status']) ?></span></td>
-        <td class="num"><?= e((string)$m['sent_at']) ?></td>
+        <td><span class="badge badge-<?= e($m['status']) ?>"><?= e(['sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','send_failed'=>'ناموفق','failed'=>'ناموفق','pending'=>'در انتظار'][$m['status']] ?? $m['status']) ?></span></td>
+        <td class="num"><?= jdate($m['sent_at']) ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$recent): ?><tr><td colspan="6" class="empty">Nothing sent yet — start with <a href="/send.php">Send SMS</a>.</td></tr><?php endif; ?>
+    <?php if (!$recent): ?><tr><td colspan="6" class="empty">هنوز پیامکی ارسال نشده — از <a href="/send.php">ارسال پیامک</a> شروع کنید.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>

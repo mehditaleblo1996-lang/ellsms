@@ -15,13 +15,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password($_POST['password'] ?? '', $u['password'])) {
         usleep(400000);
-        $error = 'Wrong username or password, or the account is disabled.';
+        $error = 'نام کاربری یا رمز عبور اشتباه است، یا حساب غیرفعال شده است.';
     } else {
         $m = db()->prepare('SELECT panel_access FROM ellsms_meta WHERE user_id = ?');
         $m->execute([$u['id']]);
         $meta = $m->fetch();
         if (!$meta || !$meta['panel_access']) {
-            $error = 'This account exists, but has not been granted access to the ELLSMS panel. Ask an ELLSMS admin.';
+            $error = 'این حساب وجود دارد، اما دسترسی به پنل ELLSMS برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
         } else {
             session_regenerate_id(true);
             $_SESSION['uid'] = $u['id'];
@@ -31,29 +31,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 ?><!doctype html>
-<html lang="en">
+<html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign in — ELLSMS</title>
+<title>ورود — ELLSMS</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="/assets/img/logo.png" alt="ELLSMS — Smart SMS Panel" class="login-logo">
+    <img src="/assets/img/logo.png" alt="ELLSMS — پنل هوشمند پیامک" class="login-logo">
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post" autocomplete="off">
       <?= csrf_field() ?>
-      <label>Username
+      <label>نام کاربری
         <input type="text" name="username" required autofocus>
       </label>
-      <label>Password
+      <label>رمز عبور
         <input type="password" name="password" required>
       </label>
-      <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+      <button type="submit" class="btn btn-primary btn-block">ورود</button>
     </form>
-    <p class="login-foot">ELLSMS v<?= ELLSMS_VERSION ?> · Smart SMS Panel</p>
+    <p class="login-foot">ELLSMS نسخه <span class="ltr"><?= ELLSMS_VERSION ?></span> · پنل هوشمند پیامک</p>
   </main>
 </body>
 </html>

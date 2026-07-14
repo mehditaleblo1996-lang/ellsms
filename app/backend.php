@@ -34,7 +34,7 @@ require_once __DIR__ . '/bootstrap.php';
 function backend_api_send(int $senderUserId, string $originator, array $destinations, string $content): array {
     $base = rtrim((string)setting('api_base_url', env('API_BASE_URL', '')), '/');
     if ($base === '') {
-        return [false, 0, null, 'The API base URL is not configured — set it in Settings.'];
+        return [false, 0, null, 'آدرس API تنظیم نشده است — آن را در بخش تنظیمات وارد کنید.'];
     }
     $url = $base . '/api/messages/send';
 
@@ -60,7 +60,7 @@ function backend_api_send(int $senderUserId, string $originator, array $destinat
     curl_close($ch);
 
     if ($body === false) {
-        return [false, 0, null, $err ?: 'connection failed'];
+        return [false, 0, null, $err ?: 'برقراری اتصال ناموفق بود.'];
     }
     $decoded = json_decode($body, true);
     $ok = $code >= 200 && $code < 300 && is_array($decoded);
@@ -75,7 +75,7 @@ function backend_api_send(int $senderUserId, string $originator, array $destinat
  */
 function describe_api_error(int $http, ?string $rawBody): string {
     if ($http === 0) {
-        return $rawBody ?: 'Could not reach the API.';
+        return $rawBody ?: 'اتصال به API برقرار نشد.';
     }
     $decoded = $rawBody ? json_decode($rawBody, true) : null;
     if (is_array($decoded['detail'] ?? null)) {
@@ -85,11 +85,11 @@ function describe_api_error(int $http, ?string $rawBody): string {
             $msg   = $d['msg'] ?? null;
             if ($field && $msg) $parts[] = "{$field}: {$msg}";
         }
-        if ($parts) return 'The API rejected the request (HTTP ' . $http . '): ' . implode('; ', $parts) . '.';
+        if ($parts) return 'درخواست توسط API رد شد (HTTP ' . $http . '): ' . implode('؛ ', $parts) . '.';
     } elseif (is_string($decoded['detail'] ?? null)) {
-        return 'The API rejected the request (HTTP ' . $http . '): ' . $decoded['detail'] . '.';
+        return 'درخواست توسط API رد شد (HTTP ' . $http . '): ' . $decoded['detail'] . '.';
     }
-    return "The API returned HTTP {$http}" . ($rawBody ? ': ' . mb_strimwidth($rawBody, 0, 200, '…') : '.') . '.';
+    return "API پاسخ HTTP {$http} را برگرداند" . ($rawBody ? ': ' . mb_strimwidth($rawBody, 0, 200, '…') : '.') . '.';
 }
 
 /**
@@ -98,17 +98,17 @@ function describe_api_error(int $http, ?string $rawBody): string {
  * Returns [ok, infoMessage].
  */
 function dispatch_message(array $user, string $originator, array $destinations, string $content, ?int $scheduleId = null): array {
-    if (!$destinations)          return [false, 'No valid destination numbers.'];
-    if (trim($content) === '')   return [false, 'Message content is empty.'];
+    if (!$destinations)          return [false, 'شماره مقصد معتبری وارد نشده است.'];
+    if (trim($content) === '')   return [false, 'متن پیام خالی است.'];
 
     $originator = normalize_originator($originator);
-    if ($originator === null) return [false, 'Sender line (originator) is missing or not numeric — set it above or in Settings.'];
+    if ($originator === null) return [false, 'خط ارسال‌کننده خالی یا غیرعددی است — آن را بالا یا در تنظیمات وارد کنید.'];
 
     $parts = sms_parts($content);
     $cost  = $parts * count($destinations);
 
     if ($user['role'] !== 'admin' && (float)$user['credit'] < $cost) {
-        return [false, "Not enough credit: this send needs {$cost} credit(s), you have " . (int)$user['credit'] . '.'];
+        return [false, "اعتبار کافی نیست: این ارسال به {$cost} واحد اعتبار نیاز دارد، اعتبار فعلی شما " . (int)$user['credit'] . ' است.'];
     }
 
     [$reached, $http, $rows, $err] = backend_api_send((int)$user['id'], $originator, $destinations, $content);
@@ -125,7 +125,7 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         foreach ($destinations as $dest) {
             $ins->execute([$user['id'], $originator, $dest, $content, 'send_failed', -501]);
         }
-        return [false, describe_api_error($http, $err) . ' See the report for details.'];
+        return [false, describe_api_error($http, $err) . ' جزئیات در گزارش موجود است.'];
     }
 
     $sentCount = 0;
@@ -144,12 +144,12 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     }
 
     if ($allOk) {
-        return [true, 'Sent to ' . count($destinations) . " number(s) — {$parts} part(s) each, " . ($parts * $sentCount) . ' credit(s).'];
+        return [true, 'به ' . to_persian_digits((string)count($destinations)) . " شماره ارسال شد — {$parts} بخش برای هرکدام، " . to_persian_digits((string)($parts * $sentCount)) . ' واحد اعتبار.'];
     }
     if ($sentCount > 0) {
-        return [true, "Sent to {$sentCount} of " . count($destinations) . ' number(s) — see the report for which ones failed.'];
+        return [true, 'به ' . to_persian_digits((string)$sentCount) . ' از ' . to_persian_digits((string)count($destinations)) . ' شماره ارسال شد — برای مشاهده‌ی موارد ناموفق به گزارش مراجعه کنید.'];
     }
-    return [false, 'The gateway rejected every destination. See the report for details.'];
+    return [false, 'گیت‌وی همه‌ی مقصدها را رد کرد. جزئیات در گزارش موجود است.'];
 }
 
 /** Process due scheduled messages. Returns number processed. Used by the worker. */
@@ -176,7 +176,7 @@ function run_due_schedules(): int {
             $user = ['id' => $row['id'], 'role' => $row['is_admin'] ? 'admin' : 'user', 'credit' => $row['credit']];
             [$ok, $info] = dispatch_message($user, $s['originator'], $dests, $s['content'], (int)$s['id']);
         } else {
-            [$ok, $info] = [false, 'User account is missing, disabled, or no longer has panel access.'];
+            [$ok, $info] = [false, 'حساب کاربری وجود ندارد، غیرفعال است، یا دیگر دسترسی پنل ندارد.'];
         }
 
         $next = null;
@@ -189,7 +189,7 @@ function run_due_schedules(): int {
 
         $db->prepare('UPDATE ellsms_schedule SET status=?, run_at=COALESCE(?, run_at),
                       last_run_at=NOW(), last_result=?, run_count=run_count+1 WHERE id=?')
-           ->execute([$next ? 'active' : 'done', $next, ($ok ? 'OK: ' : 'FAIL: ') . $info, $s['id']]);
+           ->execute([$next ? 'active' : 'done', $next, ($ok ? 'موفق: ' : 'ناموفق: ') . $info, $s['id']]);
         $n++;
     }
     return $n;

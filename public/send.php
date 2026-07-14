@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/../app/backend.php';
 $me = require_login();
-$pageTitle = 'Send SMS';
+$pageTitle = 'ارسال پیامک';
 $active = 'send';
 
 $groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE user_id=? AND group_name<>'' ORDER BY group_name");
@@ -24,22 +24,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $dests = array_values(array_unique($dests));
     }
 
-    $when = trim($_POST['send_at'] ?? '');
-    if (($_POST['mode'] ?? 'now') === 'later' && $when !== '') {
-        $runAt = date('Y-m-d H:i:s', strtotime($when));
+    if (($_POST['mode'] ?? 'now') === 'later') {
+        $gDate = jalali_request_to_gregorian('send_date');
+        $time  = time_post('send_time');
+        $runAt = ($gDate && $time) ? "{$gDate} {$time}:00" : null;
+
         if (!$dests) {
-            flash('error', 'No valid destination numbers.');
+            flash('error', 'شماره مقصد معتبری وارد نشده است.');
         } elseif ($content === '') {
-            flash('error', 'Message content is empty.');
-        } elseif ($runAt <= date('Y-m-d H:i:s')) {
-            flash('error', 'The scheduled time must be in the future.');
+            flash('error', 'متن پیام خالی است.');
+        } elseif (!$runAt || $runAt <= date('Y-m-d H:i:s')) {
+            flash('error', 'زمان زمان‌بندی‌شده باید در آینده باشد.');
         } else {
             $repeat = in_array($_POST['repeat'] ?? 'none', ['none','daily','weekly','monthly'], true) ? $_POST['repeat'] : 'none';
             db()->prepare('INSERT INTO ellsms_schedule (user_id, originator, destinations, content, run_at, repeat_type)
                            VALUES (?,?,?,?,?,?)')
                ->execute([$me['id'], $originator, json_encode($dests), $content, $runAt, $repeat]);
             audit((int)$me['id'], 'schedule.create', count($dests) . ' dest @ ' . $runAt);
-            flash('success', 'Scheduled for ' . $runAt . ($repeat !== 'none' ? " (repeats {$repeat})" : '') . ' — ' . count($dests) . ' number(s).');
+            $repeatFa = ['none' => '', 'daily' => ' (تکرار روزانه)', 'weekly' => ' (تکرار هفتگی)', 'monthly' => ' (تکرار ماهانه)'][$repeat];
+            flash('success', 'برای ' . jdate($runAt) . $repeatFa . ' زمان‌بندی شد — ' . to_persian_digits((string)count($dests)) . ' شماره.');
             redirect('/schedules.php');
         }
     } else {
@@ -56,55 +59,58 @@ require __DIR__ . '/../app/views/header.php';
   <form method="post">
     <?= csrf_field() ?>
     <div class="form-row">
-      <label>Sender line (originator)
+      <label>خط ارسال‌کننده (originator)
         <input type="text" name="originator" class="msisdn" value="<?= e($me['originator'] ?: setting('default_originator','')) ?>">
-        <div class="hint">The line your recipients see, e.g. 5000435800.</div>
+        <div class="hint">خطی که گیرنده می‌بیند، مثلاً ۵۰۰۰۴۳۵۸۰۰.</div>
       </label>
       <?php if ($groups): ?>
-      <label>Add a contact group
+      <label>افزودن یک گروه مخاطب
         <select name="group">
-          <option value="">— none —</option>
+          <option value="">— هیچ‌کدام —</option>
           <?php foreach ($groups as $g): ?><option value="<?= e($g) ?>"><?= e($g) ?></option><?php endforeach; ?>
         </select>
-        <div class="hint">All numbers from the group are added to the list below.</div>
+        <div class="hint">همه‌ی شماره‌های گروه به فهرست زیر افزوده می‌شوند.</div>
       </label>
       <?php endif; ?>
     </div>
 
-    <label>Destination numbers
-      <textarea name="destinations" placeholder="989121234567&#10;989351234567 — one per line, or separated by comma / space"><?= e($_POST['destinations'] ?? '') ?></textarea>
-      <div class="hint">09… numbers are converted to 98… automatically. Duplicates are removed.</div>
+    <label>شماره‌های مقصد
+      <textarea name="destinations" placeholder="989121234567&#10;989351234567 — هر شماره در یک خط، یا جدا‌شده با ویرگول / فاصله"><?= e($_POST['destinations'] ?? '') ?></textarea>
+      <div class="hint">شماره‌های ۰۹… به‌طور خودکار به ۹۸… تبدیل می‌شوند. موارد تکراری حذف می‌شوند.</div>
     </label>
 
-    <label>Message
+    <label>متن پیام
       <textarea name="content" id="content" required oninput="counter()"><?= e($_POST['content'] ?? '') ?></textarea>
-      <div class="hint" id="cnt">0 characters · 0 part(s)</div>
+      <div class="hint" id="cnt">۰ نویسه · ۰ بخش</div>
     </label>
 
     <div class="form-row">
-      <label>When to send
+      <label>زمان ارسال
         <select name="mode" id="mode" onchange="document.getElementById('when').style.display=this.value==='later'?'grid':'none'">
-          <option value="now">Send now</option>
-          <option value="later">Schedule for later</option>
+          <option value="now">ارسال فوری</option>
+          <option value="later">زمان‌بندی برای بعداً</option>
         </select>
       </label>
     </div>
 
     <div class="form-row" id="when" style="display:none">
-      <label>Date &amp; time
-        <input type="datetime-local" name="send_at" min="<?= date('Y-m-d\TH:i') ?>">
+      <label>تاریخ ارسال
+        <?= jalali_date_select('send_date') ?>
       </label>
-      <label>Repeat
+      <label>ساعت ارسال
+        <?= time_select('send_time') ?>
+      </label>
+      <label>تکرار
         <select name="repeat">
-          <option value="none">Only once</option>
-          <option value="daily">Every day</option>
-          <option value="weekly">Every week</option>
-          <option value="monthly">Every month</option>
+          <option value="none">فقط یک‌بار</option>
+          <option value="daily">هر روز</option>
+          <option value="weekly">هر هفته</option>
+          <option value="monthly">هر ماه</option>
         </select>
       </label>
     </div>
 
-    <button class="btn btn-primary" type="submit">Send message</button>
+    <button class="btn btn-primary" type="submit">ارسال پیام</button>
   </form>
 </div>
 
@@ -115,8 +121,9 @@ function counter() {
   const len = [...v].length;
   let parts = 0;
   if (len > 0) parts = uni ? (len <= 70 ? 1 : Math.ceil(len / 67)) : (len <= 160 ? 1 : Math.ceil(len / 153));
+  const fa = n => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
   document.getElementById('cnt').textContent =
-    len + ' characters · ' + parts + ' part(s)' + (uni ? ' · Unicode (Persian)' : '');
+    fa(len) + ' نویسه · ' + fa(parts) + ' بخش' + (uni ? ' · یونیکد (فارسی)' : '');
 }
 counter();
 </script>

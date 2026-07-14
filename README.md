@@ -96,6 +96,10 @@ If MySQL isn't reachable via `docker exec` (e.g. it's a managed/remote server, n
 mysql -h <host> -u <user> -p <database> < db/ellsms_extra.sql
 ```
 
+## Language & calendar
+
+The panel is Persian (Farsi) and right-to-left throughout — every menu, label, button, and message. Dates and times are shown in the Jalali (Shamsi) calendar with Persian digits everywhere they're read, while phone numbers, credit amounts, and other raw figures stay in Latin digits and left-to-right so they remain scannable and copyable inside RTL text. Date pickers (scheduling a send, filtering reports/inbox) are plain year/month/day/hour/minute dropdowns using the Jalali calendar — no JavaScript date-picker library or CDN dependency, so it works the same with or without outside network access. The Jalali↔Gregorian conversion is a small pure-PHP implementation in `app/bootstrap.php` (`gregorian_to_jalali()` / `jalali_to_gregorian()`), verified against known Nowruz dates.
+
 ## Production notes
 
 - Put the panel behind HTTPS (Caddy/nginx reverse proxy in front of port 8080).

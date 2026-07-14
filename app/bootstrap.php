@@ -121,7 +121,7 @@ function require_admin(): array {
     $u = require_login();
     if ($u['role'] !== 'admin') {
         http_response_code(403);
-        exit('403 — Admins only.');
+        exit('۴۰۳ — این بخش فقط برای مدیران است.');
     }
     return $u;
 }
@@ -152,7 +152,7 @@ function csrf_check(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['_csrf'] ?? '')) {
             http_response_code(400);
-            exit('Invalid request token. Go back and try again.');
+            exit('نشانه‌ی درخواست نامعتبر است. بازگردید و دوباره تلاش کنید.');
         }
     }
 }
@@ -230,4 +230,168 @@ function sms_parts(string $content): int {
 function audit(int $userId, string $action, string $details = ''): void {
     $st = db()->prepare('INSERT INTO ellsms_audit_log (user_id, action, details, ip) VALUES (?,?,?,?)');
     $st->execute([$userId, $action, $details, $_SERVER['REMOTE_ADDR'] ?? 'cli']);
+}
+
+/* ==========================================================================
+   Persian (Jalali) calendar helpers
+   Pure PHP, no external library — a well-known algorithmic conversion
+   (Kazimierz Borkowski's method), so there's no CDN or package dependency
+   for something as central as every date on every page.
+   ========================================================================== */
+
+const JALALI_MONTHS = [
+    1 => 'فروردین', 2 => 'اردیبهشت', 3 => 'خرداد', 4 => 'تیر',
+    5 => 'مرداد', 6 => 'شهریور', 7 => 'مهر', 8 => 'آبان',
+    9 => 'آذر', 10 => 'دی', 11 => 'بهمن', 12 => 'اسفند',
+];
+
+const JALALI_WEEKDAYS = [
+    'شنبه', 'یک‌شنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه',
+];
+
+/** Gregorian y/m/d -> Jalali [jy, jm, jd]. */
+function gregorian_to_jalali(int $gy, int $gm, int $gd): array {
+    $g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    $jy = ($gy <= 1600) ? 0 : 979;
+    $gy -= ($gy <= 1600) ? 621 : 1600;
+    $gy2 = ($gm > 2) ? ($gy + 1) : $gy;
+    $days = (365 * $gy) + (int)(($gy2 + 3) / 4) - (int)(($gy2 + 99) / 100)
+          + (int)(($gy2 + 399) / 400) - 80 + $gd + $g_d_m[$gm - 1];
+    $jy += 33 * (int)($days / 12053);
+    $days %= 12053;
+    $jy += 4 * (int)($days / 1461);
+    $days %= 1461;
+    if ($days > 365) {
+        $jy += (int)(($days - 1) / 365);
+        $days = ($days - 1) % 365;
+    }
+    if ($days < 186) {
+        $jm = 1 + (int)($days / 31);
+        $jd = 1 + ($days % 31);
+    } else {
+        $jm = 7 + (int)(($days - 186) / 30);
+        $jd = 1 + (($days - 186) % 30);
+    }
+    return [$jy, $jm, $jd];
+}
+
+/** Jalali y/m/d -> Gregorian [gy, gm, gd]. */
+function jalali_to_gregorian(int $jy, int $jm, int $jd): array {
+    $jy += 1595;
+    $days = -355668 + (365 * $jy) + ((int)($jy / 33) * 8) + (int)((($jy % 33) + 3) / 4)
+          + $jd + (($jm < 7) ? ($jm - 1) * 31 : (($jm - 7) * 30) + 186);
+    $gy = 400 * (int)($days / 146097);
+    $days %= 146097;
+    if ($days > 36524) {
+        $gy += 100 * (int)(--$days / 36524);
+        $days %= 36524;
+        if ($days >= 365) $days++;
+    }
+    $gy += 4 * (int)($days / 1461);
+    $days %= 1461;
+    if ($days > 365) {
+        $gy += (int)(($days - 1) / 365);
+        $days = ($days - 1) % 365;
+    }
+    $gd = $days + 1;
+    $sal_a = [0, 31, ((($gy % 4 === 0) && ($gy % 100 !== 0)) || ($gy % 400 === 0)) ? 29 : 28,
+              31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    $gm = 0;
+    for ($gm = 0; $gm < 13 && $gd > $sal_a[$gm]; $gm++) $gd -= $sal_a[$gm];
+    return [$gy, $gm, $gd];
+}
+
+/** Convert every ASCII digit in a string to its Persian digit form. */
+function to_persian_digits(string $s): string {
+    static $en = ['0','1','2','3','4','5','6','7','8','9'];
+    static $fa = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'];
+    return str_replace($en, $fa, $s);
+}
+
+/** Convert Persian/Arabic-Indic digits back to ASCII (for reading $_POST values). */
+function from_persian_digits(string $s): string {
+    static $fa = ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹','٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    static $en = ['0','1','2','3','4','5','6','7','8','9','0','1','2','3','4','5','6','7','8','9'];
+    return str_replace($fa, $en, $s);
+}
+
+/**
+ * Format a MySQL DATETIME/DATE string as a Persian Jalali date (and
+ * optionally time), with Persian digits. Returns '' for null/empty input.
+ */
+function jdate(?string $mysqlDateTime, bool $withTime = true): string {
+    if (!$mysqlDateTime) return '';
+    $ts = strtotime($mysqlDateTime);
+    if ($ts === false) return '';
+    [$jy, $jm, $jd] = gregorian_to_jalali((int)date('Y', $ts), (int)date('n', $ts), (int)date('j', $ts));
+    $out = to_persian_digits(sprintf('%04d/%02d/%02d', $jy, $jm, $jd));
+    if ($withTime) $out .= ' - ' . to_persian_digits(date('H:i', $ts));
+    return $out;
+}
+
+/** Same as jdate() but spells the month name out — e.g. "۲۳ تیر ۱۴۰۵". */
+function jdate_long(?string $mysqlDateTime): string {
+    if (!$mysqlDateTime) return '';
+    $ts = strtotime($mysqlDateTime);
+    if ($ts === false) return '';
+    [$jy, $jm, $jd] = gregorian_to_jalali((int)date('Y', $ts), (int)date('n', $ts), (int)date('j', $ts));
+    return to_persian_digits((string)$jd) . ' ' . JALALI_MONTHS[$jm] . ' ' . to_persian_digits((string)$jy);
+}
+
+/**
+ * Render three <select> boxes (year/month/day) for picking a Jalali date,
+ * named "{$name}_y", "{$name}_m", "{$name}_d". $defaultYmd is a Gregorian
+ * 'Y-m-d' string (or null for no default / today).
+ */
+function jalali_date_select(string $name, ?string $defaultYmd = null, int $yearsAhead = 2): string {
+    $ts = $defaultYmd ? strtotime($defaultYmd) : time();
+    [$dy, $dm, $dd] = gregorian_to_jalali((int)date('Y', $ts), (int)date('n', $ts), (int)date('j', $ts));
+    $todayTs = time();
+    [$ty] = gregorian_to_jalali((int)date('Y', $todayTs), (int)date('n', $todayTs), (int)date('j', $todayTs));
+
+    $h = '<span class="jdate">';
+    $h .= '<select name="' . e($name) . '_y" class="jdate-y">';
+    for ($y = $ty - 1; $y <= $ty + $yearsAhead; $y++) {
+        $h .= '<option value="' . $y . '"' . ($y === $dy ? ' selected' : '') . '>' . to_persian_digits((string)$y) . '</option>';
+    }
+    $h .= '</select>';
+    $h .= '<select name="' . e($name) . '_m" class="jdate-m">';
+    foreach (JALALI_MONTHS as $num => $label) {
+        $h .= '<option value="' . $num . '"' . ($num === $dm ? ' selected' : '') . '>' . $label . '</option>';
+    }
+    $h .= '</select>';
+    $h .= '<select name="' . e($name) . '_d" class="jdate-d">';
+    for ($d = 1; $d <= 31; $d++) {
+        $h .= '<option value="' . $d . '"' . ($d === $dd ? ' selected' : '') . '>' . to_persian_digits((string)$d) . '</option>';
+    }
+    $h .= '</select></span>';
+    return $h;
+}
+
+/** Read back a jalali_date_select() submission (GET or POST) as a Gregorian 'Y-m-d' string, or null. */
+function jalali_request_to_gregorian(string $name): ?string {
+    $y = (int)($_REQUEST["{$name}_y"] ?? 0);
+    $m = (int)($_REQUEST["{$name}_m"] ?? 0);
+    $d = (int)($_REQUEST["{$name}_d"] ?? 0);
+    if (!$y || !$m || !$d) return null;
+    [$gy, $gm, $gd] = jalali_to_gregorian($y, $m, min($d, 31));
+    return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+}
+
+/** Render hour/minute <select> boxes named "{$name}_h" / "{$name}_i". */
+function time_select(string $name, ?string $defaultHi = null): string {
+    [$dh, $di] = $defaultHi ? array_map('intval', explode(':', $defaultHi)) : [(int)date('H'), 0];
+    $h = '<span class="jtime">';
+    $h .= '<select name="' . e($name) . '_h" class="jtime-h">';
+    for ($x = 0; $x < 24; $x++) $h .= '<option value="' . $x . '"' . ($x === $dh ? ' selected' : '') . '>' . to_persian_digits(str_pad((string)$x, 2, '0', STR_PAD_LEFT)) . '</option>';
+    $h .= '</select><span class="jtime-sep">:</span><select name="' . e($name) . '_i" class="jtime-i">';
+    for ($x = 0; $x < 60; $x += 5) $h .= '<option value="' . $x . '"' . ($x === $di ? ' selected' : '') . '>' . to_persian_digits(str_pad((string)$x, 2, '0', STR_PAD_LEFT)) . '</option>';
+    $h .= '</select></span>';
+    return $h;
+}
+
+/** Read back a time_select() submission as 'H:i', or null. */
+function time_post(string $name): ?string {
+    if (!isset($_POST["{$name}_h"], $_POST["{$name}_i"])) return null;
+    return sprintf('%02d:%02d', (int)$_POST["{$name}_h"], (int)$_POST["{$name}_i"]);
 }
