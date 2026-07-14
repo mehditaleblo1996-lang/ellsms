@@ -13,8 +13,8 @@ docker compose up -d
 
 echo "==> Applying ELLSMS supplementary schema (safe to re-run)..."
 set -a; [ -f .env ] && . ./.env; set +a
-docker exec -i "${NEGAR_DB_HOST:-negar-mysql}" \
-  mysql -u"${NEGAR_DB_USER:-dbtest}" -p"${NEGAR_DB_PASS}" "${NEGAR_DB_NAME:-negar}" \
+docker exec -i "${BACKEND_DB_HOST}" \
+  mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/ellsms_extra.sql
 
 echo "==> Done. Status:"

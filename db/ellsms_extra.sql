@@ -1,13 +1,14 @@
--- ELLSMS — supplementary tables added ALONGSIDE the existing `negar`
--- database. Nothing here touches or renames negar-python's own tables
--- (user_, outbound_message, inbound_message, domain, customer, role,
--- access) — everything ELLSMS-specific is prefixed `ellsms_` so it can
--- never collide with theirs, now or after a future negar-python migration.
+-- ELLSMS — supplementary tables added ALONGSIDE the existing backend
+-- platform database. Nothing here touches or renames the platform's own
+-- tables (user_, outbound_message, inbound_message, domain, customer,
+-- role, access) — everything ELLSMS-specific is prefixed `ellsms_` so it
+-- can never collide with theirs, now or after a future migration on
+-- their side.
 SET NAMES utf8mb4;
 
--- Which negar user_ accounts may sign into the ELLSMS panel, and with
--- what role. A negar account with no row here (or panel_access=0)
--- cannot log into ELLSMS, even though it's a valid negar login —
+-- Which accounts may sign into the ELLSMS panel, and with what role.
+-- An account with no row here (or panel_access=0) cannot log into
+-- ELLSMS, even though it's a valid login on the connected backend —
 -- access must be granted explicitly from Users → Grant access.
 CREATE TABLE IF NOT EXISTS ellsms_meta (
   user_id      BIGINT NOT NULL PRIMARY KEY,   -- = user_.id (no FK constraint: we don't own that table)
@@ -35,10 +36,10 @@ CREATE TABLE IF NOT EXISTS ellsms_schedule (
   KEY (status, run_at), KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Panel-only settings (Vesal gateway credentials + default sender line).
--- negar-python's rest_api reads its own OPERATOR_LINK__VESAL_* from its
--- own .env file. ELLSMS keeps an editable copy here since it now calls
--- Vesal directly and an admin should be able to update it without redeploying.
+-- Panel-only settings (backend API base URL + default sender line).
+-- The connected backend's own REST service reads its config from its
+-- own .env file — ELLSMS keeps a separate editable copy here so an
+-- admin can update it from the panel without redeploying anything.
 CREATE TABLE IF NOT EXISTS ellsms_settings (
   skey   VARCHAR(80) PRIMARY KEY,
   svalue TEXT NOT NULL
@@ -64,12 +65,10 @@ CREATE TABLE IF NOT EXISTS ellsms_audit_log (
   KEY (user_id), KEY (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Seed default Vesal settings — EDIT THESE in Settings after first login,
--- or override via env vars (see .env.example) which win if the row is
+-- Seed default settings — EDIT THESE in Settings after first login, or
+-- override via env vars (see .env.example) which win if the row is
 -- still empty.
 INSERT INTO ellsms_settings (skey, svalue) VALUES
-  ('vesal_rest_url',     ''),
-  ('vesal_username',     'negar'),
-  ('vesal_password',     ''),
+  ('api_base_url',       ''),
   ('default_originator', '')
 ON DUPLICATE KEY UPDATE skey = skey;

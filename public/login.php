@@ -3,7 +3,7 @@ require_once __DIR__ . '/../app/bootstrap.php';
 
 if (current_user()) redirect('/index.php');
 
-/* No negar account has ELLSMS admin yet — send people to bootstrap. */
+/* No account has ELLSMS admin yet — send people to bootstrap. */
 if (!ellsms_has_admin()) redirect('/bootstrap-admin.php');
 
 $error = null;
@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $st->execute([trim($_POST['username'] ?? '')]);
     $u = $st->fetch();
 
-    if (!$u || !$u['active'] || $u['deleted'] || !negar_verify_password($_POST['password'] ?? '', $u['password'])) {
+    if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password($_POST['password'] ?? '', $u['password'])) {
         usleep(400000);
         $error = 'Wrong username or password, or the account is disabled.';
     } else {
@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $m->execute([$u['id']]);
         $meta = $m->fetch();
         if (!$meta || !$meta['panel_access']) {
-            $error = 'This negar account exists, but has not been granted access to the ELLSMS panel. Ask an ELLSMS admin.';
+            $error = 'This account exists, but has not been granted access to the ELLSMS panel. Ask an ELLSMS admin.';
         } else {
             session_regenerate_id(true);
             $_SESSION['uid'] = $u['id'];
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post" autocomplete="off">
       <?= csrf_field() ?>
-      <label>Negar username
+      <label>Username
         <input type="text" name="username" required autofocus>
       </label>
       <label>Password
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <button type="submit" class="btn btn-primary btn-block">Sign in</button>
     </form>
-    <p class="login-foot">Sign in with your existing negar account.<br>ELLSMS v<?= ELLSMS_VERSION ?> · Smart SMS Panel</p>
+    <p class="login-foot">ELLSMS v<?= ELLSMS_VERSION ?> · Smart SMS Panel</p>
   </main>
 </body>
 </html>

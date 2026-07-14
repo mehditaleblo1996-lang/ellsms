@@ -12,9 +12,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $st->execute([trim($_POST['username'] ?? '')]);
     $u = $st->fetch();
 
-    if (!$u || !$u['active'] || $u['deleted'] || !negar_verify_password($_POST['password'] ?? '', $u['password'])) {
+    if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password($_POST['password'] ?? '', $u['password'])) {
         usleep(400000);
-        $error = 'Wrong username or password, or that negar account is disabled.';
+        $error = 'Wrong username or password, or that account is disabled.';
     } elseif (!ellsms_has_admin()) { // re-check inside the race window
         db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
                        VALUES (?,1,1,?)
@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         session_regenerate_id(true);
         $_SESSION['uid'] = $u['id'];
         audit((int)$u['id'], 'bootstrap_admin');
-        flash('success', 'This negar account is now the ELLSMS admin. You can grant access to other accounts from Users.');
+        flash('success', 'This account is now the ELLSMS admin. You can grant access to other accounts from Users.');
         redirect('/index.php');
     } else {
         redirect('/login.php');
@@ -41,13 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="login-body">
   <main class="login-card">
     <img src="/assets/img/logo.png" alt="ELLSMS — Smart SMS Panel" class="login-logo">
-    <p style="text-align:center;color:var(--muted);margin-top:-6px">First-time setup — no negar account has ELLSMS access yet.</p>
+    <p style="text-align:center;color:var(--muted);margin-top:-6px">First-time setup — no account has ELLSMS access yet.</p>
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post" autocomplete="off">
       <?= csrf_field() ?>
-      <label>Existing negar username
+      <label>Existing username
         <input type="text" name="username" required autofocus>
-        <div class="hint">Any account already in the negar database. It becomes the first ELLSMS admin.</div>
+        <div class="hint">Any account already provisioned on the connected backend. It becomes the first ELLSMS admin.</div>
       </label>
       <label>Password
         <input type="password" name="password" required>

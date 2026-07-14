@@ -3,8 +3,8 @@
  * ELLSMS — Smart SMS Panel
  * Bootstrap: environment, database, session, helpers.
  *
- * IMPORTANT: ELLSMS shares the `negar` MySQL database used by the
- * negar-python project. It does NOT own or migrate negar's own tables
+ * IMPORTANT: ELLSMS shares its MySQL database with the backend SMS
+ * platform. It does NOT own or migrate the platform's own tables
  * (user_, outbound_message, inbound_message, domain, customer, role,
  * access) — it only reads/writes those, plus its own supplementary
  * tables prefixed `ellsms_` (see db/ellsms_extra.sql).
@@ -21,15 +21,15 @@ function env(string $key, ?string $default = null): ?string {
     return ($v === false || $v === '') ? $default : $v;
 }
 
-/* ---------- Database (shared `negar` DB) ---------- */
+/* ---------- Database (shared backend platform DB) ---------- */
 function db(): PDO {
     static $pdo = null;
     if ($pdo === null) {
-        $host = env('NEGAR_DB_HOST', 'negar-mysql');
-        $port = env('NEGAR_DB_PORT', '3306');
-        $name = env('NEGAR_DB_NAME', 'negar');
-        $user = env('NEGAR_DB_USER', 'dbtest');
-        $pass = env('NEGAR_DB_PASS', '');
+        $host = env('BACKEND_DB_HOST', 'localhost');
+        $port = env('BACKEND_DB_PORT', '3306');
+        $name = env('BACKEND_DB_NAME', 'change_me');
+        $user = env('BACKEND_DB_USER', 'change_me');
+        $pass = env('BACKEND_DB_PASS', '');
         $dsn  = "mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4";
         $pdo  = new PDO($dsn, $user, $pass, [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
@@ -59,18 +59,17 @@ function set_setting(string $key, string $value): void {
     $st->execute([$key, $value]);
 }
 
-/* ---------- Password hashing (matches negar-python's placeholder scheme) ----------
- * negar-python's rest_api/routers/users.py hashes passwords with plain
- * SHA-256 over the UTF-8 plaintext, stored as raw bytes in user_.password
- * (their own code calls this "NOT production-ready" — it's a placeholder
- * until real hashing lands on their side). ELLSMS matches it exactly so
- * both systems can authenticate the same account. */
-function negar_hash_password(string $plain): string {
+/* ---------- Password hashing (matches the backend platform's scheme) ----------
+ * The connected backend hashes passwords with plain SHA-256 over the
+ * UTF-8 plaintext, stored as raw bytes in user_.password — a known
+ * placeholder scheme on that side, not something ELLSMS chose. ELLSMS
+ * matches it exactly so both systems can authenticate the same account. */
+function backend_hash_password(string $plain): string {
     return hash('sha256', $plain, true); // raw 32-byte digest, binary-safe
 }
 
-function negar_verify_password(string $plain, string $stored): bool {
-    return hash_equals(negar_hash_password($plain), $stored);
+function backend_verify_password(string $plain, string $stored): bool {
+    return hash_equals(backend_hash_password($plain), $stored);
 }
 
 /* ---------- Session & Auth ---------- */
@@ -81,8 +80,8 @@ if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
 }
 
 /**
- * The logged-in identity: the negar `user_` row merged with its
- * `ellsms_meta` row (panel_access / is_admin / originator).
+ * The logged-in identity: the backend platform's `user_` row merged
+ * with its `ellsms_meta` row (panel_access / is_admin / originator).
  */
 function current_user(): ?array {
     static $user = false;
@@ -132,7 +131,7 @@ function is_admin(): bool {
     return $u && $u['role'] === 'admin';
 }
 
-/** True if at least one negar account has been granted ELLSMS admin. */
+/** True if at least one account has been granted ELLSMS admin. */
 function ellsms_has_admin(): bool {
     return (int)db()->query('SELECT COUNT(*) c FROM ellsms_meta WHERE is_admin = 1')->fetch()['c'] > 0;
 }

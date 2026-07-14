@@ -5,15 +5,14 @@ $pageTitle = 'Users';
 $active = 'users';
 
 /*
- * SCOPE NOTE: negar's own user_ table requires a full Customer/Domain
- * graph to create a new account (Domain -> owning Customer -> User is a
- * circular, multi-table relationship — see common/models/customer.py in
- * negar-python). Fabricating that from here would risk corrupting real
- * platform data, so ELLSMS does not create brand-new negar accounts.
- * Instead: grant ELLSMS panel access to an EXISTING negar username
- * (created the normal way, on the negar side), and manage its
- * panel-only settings (access, admin flag, credit, sender line,
- * password) from here.
+ * SCOPE NOTE: the connected backend's own user_ table requires a full
+ * Customer/Domain graph to create a new account (Domain -> owning
+ * Customer -> User is a circular, multi-table relationship). Fabricating
+ * that from here would risk corrupting real platform data, so ELLSMS
+ * does not create brand-new accounts. Instead: grant ELLSMS panel access
+ * to an EXISTING username (created the normal way, on the backend side),
+ * and manage its panel-only settings (access, admin flag, credit,
+ * sender line, password) from here.
  */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -25,7 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $st->execute([trim($_POST['username'] ?? '')]);
         $u = $st->fetch();
         if (!$u) {
-            flash('error', 'No negar account with that username was found.');
+            flash('error', 'No account with that username was found.');
         } else {
             db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
                            VALUES (?,1,0,?)
@@ -68,9 +67,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (strlen($p) < 6) {
             flash('error', 'Password must be at least 6 characters.');
         } else {
-            db()->prepare('UPDATE user_ SET password=? WHERE id=?')->execute([negar_hash_password($p), $id]);
+            db()->prepare('UPDATE user_ SET password=? WHERE id=?')->execute([backend_hash_password($p), $id]);
             audit((int)$me['id'], 'user.password_reset', "#{$id}");
-            flash('success', 'Password changed. Note: this is the negar account password everywhere, not just ELLSMS.');
+            flash('success', 'Password changed. Note: this password is shared everywhere this account is used, not just ELLSMS.');
         }
     }
     redirect('/users.php' . (!empty($_POST['back']) ? '?edit=' . $id : ''));
@@ -103,7 +102,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2><?= e($editUser['username']) ?> <a class="btn btn-sm btn-ghost" style="float:right" href="/users.php">← Back to list</a></h2>
   <?php if (!$editUser['active'] || $editUser['deleted']): ?>
-    <div class="flash flash-error">This negar account is inactive or deleted — it cannot sign in until that's fixed on the negar side.</div>
+    <div class="flash flash-error">This account is inactive or deleted — it cannot sign in until that's fixed on the backend side.</div>
   <?php endif; ?>
   <div class="grid grid-2">
     <div>
@@ -134,7 +133,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="grid grid-2">
   <div class="card">
     <h2>Set a new password</h2>
-    <p class="hint">This changes the negar account's password everywhere it's used, not just ELLSMS.</p>
+    <p class="hint">This changes the account's password everywhere it's used, not just ELLSMS.</p>
     <form method="post">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="password">
@@ -152,7 +151,7 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
       <input type="hidden" name="back" value="1">
       <label>Add / subtract credits <input type="number" name="amount" value="1000" required>
-        <div class="hint">Use a negative number to subtract. Credits = SMS parts. Writes to negar's currentcredit.</div>
+        <div class="hint">Use a negative number to subtract. Credits = SMS parts. Writes directly to the shared currentcredit column.</div>
       </label>
       <button class="btn btn-primary">Apply</button>
     </form>
@@ -161,14 +160,14 @@ require __DIR__ . '/../app/views/header.php';
 <?php endif; ?>
 
 <div class="card">
-  <h2>Grant ELLSMS access to a negar account</h2>
+  <h2>Grant ELLSMS access to an account</h2>
   <form method="post" class="toolbar">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="grant">
-    <label>Negar username <input type="text" name="username" required placeholder="existing negar account"></label>
+    <label>Username <input type="text" name="username" required placeholder="existing account"></label>
     <button class="btn btn-primary">Grant access</button>
   </form>
-  <p class="hint">ELLSMS doesn't create new negar accounts — Customer/Domain setup for a brand-new account needs to happen on the negar side first (usual negar admin flow). Once the account exists, grant it access here.</p>
+  <p class="hint">ELLSMS doesn't create new accounts — Customer/Domain setup for a brand-new account needs to happen on the backend side first. Once the account exists, grant it access here.</p>
 </div>
 
 <div class="card">

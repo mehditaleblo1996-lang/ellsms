@@ -65,7 +65,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php endforeach; ?>
     <?php if (!$rows): ?>
       <tr><td colspan="5" class="empty">
-        No received messages in this range. Incoming SMS arrives automatically through negar-python's own <code class="kbd">/mo</code> endpoint straight into the shared database — nothing to configure here.
+        No received messages in this range. Incoming SMS arrives automatically through the backend platform's own <code class="kbd">/mo</code> endpoint straight into the shared database — nothing to configure here.
       </td></tr>
     <?php endif; ?>
   </table>

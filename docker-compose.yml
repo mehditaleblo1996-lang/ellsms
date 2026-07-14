@@ -1,9 +1,13 @@
 ########################################################################
-# ELLSMS — connects to the SAME MySQL database as the negar-python
-# project (network `negar_net`, container `negar-mysql`, database
-# `negar`). This stack does NOT run its own MySQL — bring up the
-# negar-python stack first so that network + database exist, then
-# bring this one up.
+# ELLSMS — connects to the SAME MySQL database and Docker network as
+# the connected backend SMS platform. This stack does NOT run its own
+# MySQL — bring up the backend's own stack first so that its network
+# and database already exist, then bring this one up.
+#
+# BACKEND_NETWORK must match the Docker network name the backend's own
+# docker-compose.yml created (an "external" network here just means
+# "already exists, created by someone else" — it is not published or
+# owned by ELLSMS).
 ########################################################################
 services:
   app:
@@ -15,18 +19,16 @@ services:
     ports:
       - "${APP_PORT:-8080}:80"
     environment:
-      NEGAR_DB_HOST: ${NEGAR_DB_HOST:-negar-mysql}
-      NEGAR_DB_PORT: ${NEGAR_DB_PORT:-3306}
-      NEGAR_DB_NAME: ${NEGAR_DB_NAME:-negar}
-      NEGAR_DB_USER: ${NEGAR_DB_USER:-dbtest}
-      NEGAR_DB_PASS: ${NEGAR_DB_PASS}
-      VESAL_REST_URL: ${VESAL_REST_URL:-}
-      VESAL_USERNAME: ${VESAL_USERNAME:-negar}
-      VESAL_PASSWORD: ${VESAL_PASSWORD:-}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      API_BASE_URL: ${API_BASE_URL:-}
     volumes:
       - ./:/var/www/html
     networks:
-      - negar_net
+      - backend_net
 
   worker:
     build:
@@ -36,19 +38,18 @@ services:
     restart: unless-stopped
     command: php /var/www/html/cron/worker.php
     environment:
-      NEGAR_DB_HOST: ${NEGAR_DB_HOST:-negar-mysql}
-      NEGAR_DB_PORT: ${NEGAR_DB_PORT:-3306}
-      NEGAR_DB_NAME: ${NEGAR_DB_NAME:-negar}
-      NEGAR_DB_USER: ${NEGAR_DB_USER:-dbtest}
-      NEGAR_DB_PASS: ${NEGAR_DB_PASS}
-      VESAL_REST_URL: ${VESAL_REST_URL:-}
-      VESAL_USERNAME: ${VESAL_USERNAME:-negar}
-      VESAL_PASSWORD: ${VESAL_PASSWORD:-}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      API_BASE_URL: ${API_BASE_URL:-}
     volumes:
       - ./:/var/www/html
     networks:
-      - negar_net
+      - backend_net
 
 networks:
-  negar_net:
-    external: true   # created by negar-python's docker-compose.yml — bring that stack up first
+  backend_net:
+    external: true
+    name: ${BACKEND_NETWORK:?set BACKEND_NETWORK in .env to the backend stack's Docker network name}
