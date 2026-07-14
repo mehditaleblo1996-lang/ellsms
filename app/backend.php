@@ -204,8 +204,23 @@ function run_due_schedules(): int {
  * templated reply through dispatch_message() for the first rule that
  * matches. The cursor always advances past every row seen, matched or
  * not, so nothing is ever reprocessed even if it triggered no rule.
+ *
+ * Two safeguards against duplicate replies:
+ *  - Each inbound_message_id is claimed with an INSERT protected by a
+ *    UNIQUE key before sending — if two worker passes ever raced on the
+ *    same row (e.g. a slow pass overlapping the next tick, or more than
+ *    one worker container running), only the first claim wins.
+ *  - A short per-(rule, sender) cooldown skips sending again if this
+ *    rule already replied to the same number very recently — this is
+ *    what actually protects against a gateway delivering the same
+ *    physical SMS more than once (each delivery becomes its own,
+ *    distinct inbound_message row with its own id, so the claim above
+ *    can't catch it; the cooldown can).
+ *
  * Returns the number of replies actually sent.
  */
+const AUTOREPLY_COOLDOWN_SECONDS = 120;
+
 function run_autoreply_pass(): int {
     $db = db();
     $lastId = (int)setting('autoreply_last_inbound_id', '0');
@@ -242,23 +257,54 @@ function run_autoreply_pass(): int {
         }
         if (!$rule) continue;
 
+        // Claim this specific inbound row first — if another pass already
+        // claimed it (duplicate key), skip without sending anything.
+        try {
+            $claim = $db->prepare(
+                'INSERT INTO ellsms_autoreply_log (rule_id, inbound_message_id, sender, originator, reply_content, ok, info)
+                 VALUES (?,?,?,?,?,0,?)'
+            );
+            $claim->execute([$rule['id'], $msg['id'], $sender, $line, '', 'در حال پردازش']);
+            $logId = (int)$db->lastInsertId();
+        } catch (PDOException $e) {
+            continue; // duplicate key on inbound_message_id => already claimed
+        }
+
+        // Cooldown — this same rule already replied to this same number
+        // very recently, so treat this as a duplicate delivery / repeat
+        // send rather than firing again.
+        $cd = $db->prepare(
+            "SELECT COUNT(*) c FROM ellsms_autoreply_log
+             WHERE rule_id = ? AND sender = ? AND ok = 1
+               AND created_at >= (NOW() - INTERVAL ? SECOND) AND id <> ?"
+        );
+        $cd->execute([$rule['id'], $sender, AUTOREPLY_COOLDOWN_SECONDS, $logId]);
+        if ((int)$cd->fetch()['c'] > 0) {
+            $db->prepare('UPDATE ellsms_autoreply_log SET info = ? WHERE id = ?')
+               ->execute(['رد شد: به‌تازگی برای همین شماره ارسال شده بود', $logId]);
+            continue;
+        }
+
+        $owner = null;
         $ust = $db->prepare(
             'SELECT u.id, u.active, u.deleted, u.currentcredit AS credit, m.is_admin
              FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
         );
         $ust->execute([$rule['user_id']]);
         $owner = $ust->fetch();
-        if (!$owner || !$owner['active'] || $owner['deleted']) continue;
+        if (!$owner || !$owner['active'] || $owner['deleted']) {
+            $db->prepare('UPDATE ellsms_autoreply_log SET info = ? WHERE id = ?')
+               ->execute(['رد شد: حساب مالک قانون غیرفعال است', $logId]);
+            continue;
+        }
 
         $rendered = autoreply_render($rule['reply_content'], (int)$rule['user_id'], $sender, $line, $content, $rule['keyword']);
         $user = ['id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit']];
         [$ok, $info] = dispatch_message($user, $line, [$sender], $rendered);
 
         $db->prepare('UPDATE ellsms_autoreply_rules SET hit_count = hit_count + 1 WHERE id = ?')->execute([$rule['id']]);
-        $db->prepare(
-            'INSERT INTO ellsms_autoreply_log (rule_id, inbound_message_id, sender, originator, reply_content, ok, info)
-             VALUES (?,?,?,?,?,?,?)'
-        )->execute([$rule['id'], $msg['id'], $sender, $line, $rendered, (int)$ok, $info]);
+        $db->prepare('UPDATE ellsms_autoreply_log SET reply_content = ?, ok = ?, info = ? WHERE id = ?')
+           ->execute([$rendered, (int)$ok, $info, $logId]);
 
         if ($ok) $sent++;
     }

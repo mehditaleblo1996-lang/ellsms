@@ -95,6 +95,10 @@ CREATE TABLE IF NOT EXISTS ellsms_autoreply_variables (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- History of what the auto-responder actually sent, for review/debugging.
+-- inbound_message_id is UNIQUE on purpose: it's how run_autoreply_pass()
+-- atomically "claims" a specific inbound row before sending, so the same
+-- physical inbound row can never be replied to twice even if two worker
+-- passes ever raced on it.
 CREATE TABLE IF NOT EXISTS ellsms_autoreply_log (
   id                 BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   rule_id            INT UNSIGNED NOT NULL,
@@ -105,8 +109,24 @@ CREATE TABLE IF NOT EXISTS ellsms_autoreply_log (
   ok                 TINYINT(1) NOT NULL DEFAULT 0,
   info               TEXT NULL,
   created_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  KEY (rule_id), KEY (inbound_message_id), KEY (created_at)
+  UNIQUE KEY uniq_inbound (inbound_message_id),
+  KEY (rule_id), KEY (sender), KEY (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Migration for installs that already had ellsms_autoreply_log without
+-- the UNIQUE key (created before this safeguard existed) — adds it if
+-- missing, harmless/no-op if already present. Safe to re-run every deploy.
+SET @idx_exists = (
+  SELECT COUNT(*) FROM information_schema.statistics
+  WHERE table_schema = DATABASE() AND table_name = 'ellsms_autoreply_log' AND index_name = 'uniq_inbound'
+);
+SET @sql = IF(@idx_exists = 0,
+  'ALTER TABLE ellsms_autoreply_log ADD UNIQUE KEY uniq_inbound (inbound_message_id)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
