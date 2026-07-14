@@ -191,6 +191,17 @@ function normalize_msisdn(string $raw): ?string {
     return preg_match('/^\d{10,15}$/', $n) ? $n : null;
 }
 
+/**
+ * Normalize a sender line / originator to digits only. Unlike
+ * normalize_msisdn(), this does NOT rewrite a leading 09 to 98 — a
+ * sender line or short code isn't a mobile number, so that rewrite
+ * would corrupt it. The backend API requires this as a plain integer.
+ */
+function normalize_originator(string $raw): ?string {
+    $n = preg_replace('/\D/', '', trim($raw));
+    return $n !== '' ? $n : null;
+}
+
 /** Parse a textarea / CSV of numbers into a unique normalized list. */
 function parse_destinations(string $raw): array {
     $parts = preg_split('/[\s,;،]+/u', $raw, -1, PREG_SPLIT_NO_EMPTY);

@@ -64,7 +64,32 @@ function backend_api_send(int $senderUserId, string $originator, array $destinat
     }
     $decoded = json_decode($body, true);
     $ok = $code >= 200 && $code < 300 && is_array($decoded);
-    return [$ok, $code, $ok ? $decoded : null, $ok ? null : (is_string($body) ? substr($body, 0, 500) : 'unexpected response')];
+    return [$ok, $code, $ok ? $decoded : null, $ok ? null : (is_string($body) ? substr($body, 0, 1000) : 'unexpected response')];
+}
+
+/**
+ * Turn a failed API response into a readable message. FastAPI validation
+ * errors (HTTP 422) come back as {"detail": [{"loc": [...], "msg": "..."}]}
+ * — this pulls the field name and reason out instead of just showing the
+ * HTTP status code, which on its own doesn't say what was actually wrong.
+ */
+function describe_api_error(int $http, ?string $rawBody): string {
+    if ($http === 0) {
+        return $rawBody ?: 'Could not reach the API.';
+    }
+    $decoded = $rawBody ? json_decode($rawBody, true) : null;
+    if (is_array($decoded['detail'] ?? null)) {
+        $parts = [];
+        foreach ($decoded['detail'] as $d) {
+            $field = is_array($d['loc'] ?? null) ? end($d['loc']) : null;
+            $msg   = $d['msg'] ?? null;
+            if ($field && $msg) $parts[] = "{$field}: {$msg}";
+        }
+        if ($parts) return 'The API rejected the request (HTTP ' . $http . '): ' . implode('; ', $parts) . '.';
+    } elseif (is_string($decoded['detail'] ?? null)) {
+        return 'The API rejected the request (HTTP ' . $http . '): ' . $decoded['detail'] . '.';
+    }
+    return "The API returned HTTP {$http}" . ($rawBody ? ': ' . mb_strimwidth($rawBody, 0, 200, '…') : '.') . '.';
 }
 
 /**
@@ -76,6 +101,9 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     if (!$destinations)          return [false, 'No valid destination numbers.'];
     if (trim($content) === '')   return [false, 'Message content is empty.'];
 
+    $originator = normalize_originator($originator);
+    if ($originator === null) return [false, 'Sender line (originator) is missing or not numeric — set it above or in Settings.'];
+
     $parts = sms_parts($content);
     $cost  = $parts * count($destinations);
 
@@ -86,8 +114,9 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     [$reached, $http, $rows, $err] = backend_api_send((int)$user['id'], $originator, $destinations, $content);
 
     if (!$reached) {
-        // Couldn't even reach the API — write our own failed rows so the
-        // attempt is still visible in the report, and surface the real reason.
+        // Couldn't get a usable success response — write our own failed
+        // rows so the attempt is still visible in the report, and surface
+        // the real reason instead of a generic HTTP-code message.
         $db = db();
         $ins = $db->prepare(
             'INSERT INTO outbound_message (sender_user_id, originator, destination, content, status, error_code, sent_at)
@@ -96,7 +125,7 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         foreach ($destinations as $dest) {
             $ins->execute([$user['id'], $originator, $dest, $content, 'send_failed', -501]);
         }
-        return [false, ($http === 0 ? $err : "The API returned an unexpected response (HTTP {$http}).") . ' See the report for details.'];
+        return [false, describe_api_error($http, $err) . ' See the report for details.'];
     }
 
     $sentCount = 0;
