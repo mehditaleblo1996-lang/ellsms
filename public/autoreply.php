@@ -6,6 +6,16 @@ $active = 'autoreply';
 
 $matchTypeFa = ['exact' => 'دقیقاً برابر', 'starts_with' => 'شروع با', 'contains' => 'شامل'];
 
+$myNumbers = [];
+if (!is_admin()) {
+    $nst = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
+    $nst->execute([$me['id']]);
+    $myNumbers = $nst->fetchAll();
+}
+$myAllowedOriginators = $myNumbers
+    ? array_column($myNumbers, 'number')
+    : array_filter([normalize_originator((string)$me['originator'])]); // legacy fallback
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
@@ -20,8 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$originator) {
             flash('error', 'خط (originator) معتبر نیست.');
-        } elseif (!is_admin() && $originator !== normalize_originator((string)$me['originator'])) {
-            flash('error', 'شما فقط می‌توانید برای خط خودتان قانون بسازید.');
+        } elseif (!is_admin() && !in_array($originator, $myAllowedOriginators, true)) {
+            flash('error', 'شما فقط می‌توانید برای خط‌های تخصیص‌یافته به خودتان قانون بسازید.');
         } elseif ($keyword === '') {
             flash('error', 'کلیدواژه نمی‌تواند خالی باشد.');
         } elseif ($reply === '') {
@@ -109,10 +119,18 @@ require __DIR__ . '/../app/views/header.php';
     <input type="hidden" name="do" value="create_rule">
     <div class="form-row">
       <label>خط (originator)
-        <input type="text" name="originator" class="ltr" required
-               value="<?= e(is_admin() ? '' : (string)$me['originator']) ?>"
-               <?= is_admin() ? '' : 'readonly' ?>>
-        <?php if (!is_admin()): ?><div class="hint">فقط می‌توانید برای خط خودتان قانون بسازید.</div><?php endif; ?>
+        <?php if (!is_admin() && $myNumbers): ?>
+          <select name="originator">
+            <?php foreach ($myNumbers as $n): ?>
+              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?><?= $n['label'] ? ' — ' . e($n['label']) : '' ?></option>
+            <?php endforeach; ?>
+          </select>
+        <?php else: ?>
+          <input type="text" name="originator" class="ltr" required
+                 value="<?= e(is_admin() ? '' : (string)$me['originator']) ?>"
+                 <?= is_admin() ? '' : 'readonly' ?>>
+        <?php endif; ?>
+        <?php if (!is_admin()): ?><div class="hint">فقط می‌توانید برای خط‌های تخصیص‌یافته به خودتان قانون بسازید.</div><?php endif; ?>
       </label>
       <?php if (is_admin()): ?>
       <label>مالک قانون (اعتبار از حساب او کسر می‌شود)

@@ -11,8 +11,10 @@ $nav = [
     'contacts'  => ['/contacts.php',  'مخاطبین',        '☰'],
 ];
 $adminNav = [
-    'users'     => ['/users.php',     'کاربران',        '👤'],
-    'settings'  => ['/settings.php',  'تنظیمات',        '⚙'],
+    'users'             => ['/users.php',             'کاربران',        '👤'],
+    'numbers'           => ['/numbers.php',            'شماره‌ها',        '📞'],
+    'number_categories' => ['/number-categories.php',  'دسته‌های شماره',  '🗂'],
+    'settings'          => ['/settings.php',            'تنظیمات',        '⚙'],
 ];
 ?><!doctype html>
 <html lang="fa" dir="rtl">

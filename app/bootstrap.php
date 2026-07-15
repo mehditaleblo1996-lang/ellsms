@@ -12,7 +12,7 @@
 
 declare(strict_types=1);
 
-define('ELLSMS_VERSION', '2.0.0');
+define('ELLSMS_VERSION', '3.0.0');
 define('APP_ROOT', dirname(__DIR__));
 
 /* ---------- Environment ---------- */
@@ -395,3 +395,70 @@ function time_post(string $name): ?string {
     if (!isset($_POST["{$name}_h"], $_POST["{$name}_i"])) return null;
     return sprintf('%02d:%02d', (int)$_POST["{$name}_h"], (int)$_POST["{$name}_i"]);
 }
+
+/* ==========================================================================
+   KYC document uploads
+   Stored OUTSIDE the public web root (APP_ROOT/storage/kyc) so a photo of
+   someone's ID card is never reachable by a guessed/shared URL — every
+   read goes through public/kyc-photo.php, which checks the viewer is
+   either that user or an admin before streaming the file.
+   ========================================================================== */
+
+define('KYC_STORAGE_DIR', APP_ROOT . '/storage/kyc');
+define('KYC_MAX_BYTES', 8 * 1024 * 1024); // 8MB
+const KYC_ALLOWED_MIME = [
+    'image/jpeg' => 'jpg',
+    'image/png'  => 'png',
+    'image/webp' => 'webp',
+    'application/pdf' => 'pdf',
+];
+
+/**
+ * Validate and store an uploaded KYC document from $_FILES[$field].
+ * Returns the stored filename (to save in ellsms_user_kyc) on success,
+ * null if no file was submitted, or throws a RuntimeException with a
+ * Persian message on validation failure (caller shows it as a flash).
+ */
+function kyc_store_upload(string $field, int $userId): ?string {
+    if (empty($_FILES[$field]) || $_FILES[$field]['error'] === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    $f = $_FILES[$field];
+    if ($f['error'] !== UPLOAD_ERR_OK) {
+        throw new RuntimeException('بارگذاری فایل با خطا مواجه شد.');
+    }
+    if ($f['size'] > KYC_MAX_BYTES) {
+        throw new RuntimeException('حجم فایل نباید بیشتر از ۸ مگابایت باشد.');
+    }
+    $mime = function_exists('mime_content_type') ? (mime_content_type($f['tmp_name']) ?: '') : '';
+    if ($mime === '') {
+        // fileinfo unavailable for some reason — fall back to the
+        // extension the browser reported. Weaker, but better than
+        // rejecting every upload outright.
+        $extGuess = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+        if ($extGuess === 'jpeg') $extGuess = 'jpg';
+        $extToMime = array_flip(KYC_ALLOWED_MIME);
+        $mime = $extToMime[$extGuess] ?? '';
+    }
+    if (!isset(KYC_ALLOWED_MIME[$mime])) {
+        throw new RuntimeException('فرمت فایل باید JPG، PNG، WEBP یا PDF باشد.');
+    }
+    if (!is_dir(KYC_STORAGE_DIR)) {
+        mkdir(KYC_STORAGE_DIR, 0750, true);
+    }
+    $ext = KYC_ALLOWED_MIME[$mime];
+    $name = 'u' . $userId . '_' . $field . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
+    if (!move_uploaded_file($f['tmp_name'], KYC_STORAGE_DIR . '/' . $name)) {
+        throw new RuntimeException('ذخیره‌ی فایل ممکن نشد.');
+    }
+    return $name;
+}
+
+/* ==========================================================================
+   SMS-based two-factor login
+   (send_2fa_code() / verify_2fa_code() live in app/backend.php — they call
+   dispatch_message(), which is defined there.)
+   ========================================================================== */
+
+const TWOFA_CODE_TTL_SECONDS = 300; // 5 minutes
+const TWOFA_RESEND_COOLDOWN  = 60;  // seconds between resend requests

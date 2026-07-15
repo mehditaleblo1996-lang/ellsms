@@ -8,6 +8,18 @@ $groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE u
 $groups->execute([$me['id']]);
 $groups = array_column($groups->fetchAll(), 'group_name');
 
+$myNumbers = [];
+if (!is_admin()) {
+    $nst = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
+    $nst->execute([$me['id']]);
+    $myNumbers = $nst->fetchAll();
+}
+
+$categories = db()->query(
+    "SELECT c.id, c.name, (SELECT COUNT(*) FROM ellsms_number_category_items i WHERE i.category_id = c.id) c
+     FROM ellsms_number_categories c ORDER BY c.name"
+)->fetchAll();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $originator = trim($_POST['originator'] ?? '') ?: ($me['originator'] ?: setting('default_originator', ''));
@@ -21,8 +33,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $n = normalize_msisdn($c['mobile']);
             if ($n) $dests[] = $n;
         }
-        $dests = array_values(array_unique($dests));
     }
+
+    if (!empty($_POST['category'])) {
+        $st = db()->prepare('SELECT mobile FROM ellsms_number_category_items WHERE category_id = ?');
+        $st->execute([(int)$_POST['category']]);
+        foreach ($st->fetchAll() as $c) $dests[] = $c['mobile'];
+    }
+    $dests = array_values(array_unique($dests));
 
     if (($_POST['mode'] ?? 'now') === 'later') {
         $gDate = jalali_request_to_gregorian('send_date');
@@ -60,16 +78,37 @@ require __DIR__ . '/../app/views/header.php';
     <?= csrf_field() ?>
     <div class="form-row">
       <label>خط ارسال‌کننده (originator)
-        <input type="text" name="originator" class="msisdn" value="<?= e($me['originator'] ?: setting('default_originator','')) ?>">
-        <div class="hint">خطی که گیرنده می‌بیند، مثلاً ۵۰۰۰۴۳۵۸۰۰.</div>
+        <?php if ($myNumbers): ?>
+          <select name="originator">
+            <?php foreach ($myNumbers as $n): ?>
+              <option value="<?= e($n['number']) ?>" <?= $n['number'] === (string)$me['originator'] ? 'selected' : '' ?>>
+                <?= e($n['number']) ?><?= $n['label'] ? ' — ' . e($n['label']) : '' ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        <?php else: ?>
+          <input type="text" name="originator" class="msisdn" value="<?= e($me['originator'] ?: setting('default_originator','')) ?>">
+          <div class="hint">خطی که گیرنده می‌بیند، مثلاً ۵۰۰۰۴۳۵۸۰۰.</div>
+        <?php endif; ?>
       </label>
       <?php if ($groups): ?>
-      <label>افزودن یک گروه مخاطب
+      <label>افزودن یک گروه مخاطب من
         <select name="group">
           <option value="">— هیچ‌کدام —</option>
           <?php foreach ($groups as $g): ?><option value="<?= e($g) ?>"><?= e($g) ?></option><?php endforeach; ?>
         </select>
         <div class="hint">همه‌ی شماره‌های گروه به فهرست زیر افزوده می‌شوند.</div>
+      </label>
+      <?php endif; ?>
+      <?php if ($categories): ?>
+      <label>افزودن یک دسته‌ی عمومی شماره
+        <select name="category">
+          <option value="">— هیچ‌کدام —</option>
+          <?php foreach ($categories as $c): ?>
+            <option value="<?= $c['id'] ?>"><?= e($c['name']) ?> (<?= to_persian_digits((string)$c['c']) ?>)</option>
+          <?php endforeach; ?>
+        </select>
+        <div class="hint">دسته‌های شماره را مدیر از «دسته‌های شماره» بارگذاری می‌کند.</div>
       </label>
       <?php endif; ?>
     </div>

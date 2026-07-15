@@ -100,6 +100,13 @@ mysql -h <host> -u <user> -p <database> < db/ellsms_extra.sql
 
 The panel is Persian (Farsi) and right-to-left throughout — every menu, label, button, and message. Dates and times are shown in the Jalali (Shamsi) calendar with Persian digits everywhere they're read, while phone numbers, credit amounts, and other raw figures stay in Latin digits and left-to-right so they remain scannable and copyable inside RTL text. Date pickers (scheduling a send, filtering reports/inbox) are plain year/month/day/hour/minute dropdowns using the Jalali calendar — no JavaScript date-picker library or CDN dependency, so it works the same with or without outside network access. The Jalali↔Gregorian conversion is a small pure-PHP implementation in `app/bootstrap.php` (`gregorian_to_jalali()` / `jalali_to_gregorian()`), verified against known Nowruz dates.
 
+## Numbers, bulk categories, KYC profiles, and SMS 2FA
+
+- **Numbers pool** (admin, Numbers page) — create sender lines and assign each to one panel user. A user with assigned numbers gets a dropdown instead of free-text entry when sending or setting up منشی پیامک rules; a user with none falls back to the legacy single `originator` field for backward compatibility.
+- **Bulk number categories** (admin, Number Categories page) — upload a newline-separated `.txt` file of numbers under a name. Every panel user (not just admins) sees these as a selectable option on Send, alongside their own private Contacts groups.
+- **KYC profile layer** (Users page for admins, Profile page for self-service) — father's name, address, and two document photo uploads (ID card + a second document such as a passport) live entirely in ELLSMS's own tables, layered on top of a granted-access account. ELLSMS does not create or edit the backend's own `user_` row for this — see "Login model" above for why. Photos are stored outside the web root (`storage/kyc/`, gitignored) and served only through `public/kyc-photo.php`, which checks the viewer is either that user or an admin before streaming anything.
+- **SMS-based 2FA** — admin can enable it per user (Users → edit) or for everyone at once (Users → "فعال‌سازی ورود دومرحله‌ای برای همه"). When enabled, a correct password redirects to a 6-digit code sent to the account's `user_.mobile` (5-minute expiry, 5 wrong attempts before being sent back to login, 60-second resend cooldown) before a session is actually created.
+
 ## Production notes
 
 - Put the panel behind HTTPS (Caddy/nginx reverse proxy in front of port 8080).

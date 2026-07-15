@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/backend.php'; // needed for send_2fa_code()
 
 if (current_user()) redirect('/index.php');
 
@@ -9,7 +9,7 @@ if (!ellsms_has_admin()) redirect('/bootstrap-admin.php');
 $error = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    $st = db()->prepare('SELECT id, password, active, deleted FROM user_ WHERE username = ?');
+    $st = db()->prepare('SELECT id, password, mobile, active, deleted FROM user_ WHERE username = ?');
     $st->execute([trim($_POST['username'] ?? '')]);
     $u = $st->fetch();
 
@@ -17,11 +17,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         usleep(400000);
         $error = 'نام کاربری یا رمز عبور اشتباه است، یا حساب غیرفعال شده است.';
     } else {
-        $m = db()->prepare('SELECT panel_access FROM ellsms_meta WHERE user_id = ?');
+        $m = db()->prepare('SELECT panel_access, twofa_enabled FROM ellsms_meta WHERE user_id = ?');
         $m->execute([$u['id']]);
         $meta = $m->fetch();
         if (!$meta || !$meta['panel_access']) {
             $error = 'این حساب وجود دارد، اما دسترسی به پنل ELLSMS برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
+        } elseif ($meta['twofa_enabled']) {
+            [$ok, $info] = send_2fa_code((int)$u['id'], (string)$u['mobile']);
+            if (!$ok) {
+                $error = 'ارسال کد تأیید ممکن نشد: ' . $info;
+            } else {
+                session_regenerate_id(true);
+                $_SESSION['twofa_uid'] = $u['id'];
+                $_SESSION['twofa_sent_at'] = time();
+                redirect('/verify-2fa.php');
+            }
         } else {
             session_regenerate_id(true);
             $_SESSION['uid'] = $u['id'];

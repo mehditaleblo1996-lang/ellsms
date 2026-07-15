@@ -363,3 +363,46 @@ function autoreply_render(string $template, int $ownerUserId, string $sender, st
     }
     return $out;
 }
+
+/* ==========================================================================
+   SMS-based two-factor login
+   ========================================================================== */
+
+/** Generate a fresh 6-digit code for $userId, store it, and text it to $mobile. Returns [ok, info]. */
+function send_2fa_code(int $userId, string $mobile): array {
+    $mobile = normalize_msisdn($mobile) ?? '';
+    if ($mobile === '') {
+        return [false, 'شماره موبایل معتبری برای این حساب ثبت نشده — از مدیر بخواهید آن را اصلاح کند.'];
+    }
+
+    $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    db()->prepare('INSERT INTO ellsms_2fa_codes (user_id, code, expires_at) VALUES (?,?, DATE_ADD(NOW(), INTERVAL ? SECOND))')
+       ->execute([$userId, $code, TWOFA_CODE_TTL_SECONDS]);
+
+    $originator = normalize_originator(setting('default_originator', '') ?? '') ?? '';
+    if ($originator === '') {
+        return [false, 'خط ارسال پیش‌فرض تنظیم نشده — از مدیر بخواهید آن را در تنظیمات مشخص کند.'];
+    }
+    $text = "کد ورود شما به ELLSMS: {$code}\nاین کد تا ۵ دقیقه معتبر است.";
+
+    // System message — sent under the target user's own id but with role
+    // forced to 'admin' here only to bypass dispatch_message()'s credit
+    // check, since logging in shouldn't cost the user SMS credit.
+    [$ok, $info] = dispatch_message(['id' => $userId, 'role' => 'admin', 'credit' => 0], $originator, [$mobile], $text);
+    return [$ok, $ok ? 'کد ارسال شد.' : $info];
+}
+
+/** Verify a submitted 2FA code for $userId; marks it consumed on success. */
+function verify_2fa_code(int $userId, string $code): bool {
+    $code = from_persian_digits(trim($code));
+    $st = db()->prepare(
+        "SELECT id FROM ellsms_2fa_codes
+         WHERE user_id = ? AND code = ? AND consumed = 0 AND expires_at > NOW()
+         ORDER BY id DESC LIMIT 1"
+    );
+    $st->execute([$userId, $code]);
+    $row = $st->fetch();
+    if (!$row) return false;
+    db()->prepare('UPDATE ellsms_2fa_codes SET consumed = 1 WHERE id = ?')->execute([$row['id']]);
+    return true;
+}

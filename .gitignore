@@ -2,3 +2,5 @@
 *.log
 .DS_Store
 node_modules/
+storage/kyc/*
+!storage/kyc/.gitkeep

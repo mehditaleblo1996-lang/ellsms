@@ -128,6 +128,80 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- Migration: add ellsms_meta.twofa_enabled to installs that predate SMS
+-- 2FA. Guarded the same way as the unique-key migration above — safe to
+-- re-run every deploy.
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'ellsms_meta' AND column_name = 'twofa_enabled'
+);
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE ellsms_meta ADD COLUMN twofa_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER is_admin',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Numbers pool. Admin creates lines here and assigns each to at most one
+-- panel user; Send / منشی پیامک then offer that user a dropdown of only
+-- their assigned numbers instead of free-text entry. A user with no
+-- assigned numbers falls back to the legacy ellsms_meta.originator field
+-- for backward compatibility with installs from before this existed.
+CREATE TABLE IF NOT EXISTS ellsms_numbers (
+  id               INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  number           VARCHAR(20) NOT NULL UNIQUE,
+  label            VARCHAR(120) NOT NULL DEFAULT '',
+  assigned_user_id BIGINT NULL,                    -- NULL = unassigned / in the pool
+  created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY (assigned_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- KYC profile layer on top of a granted-access account. ELLSMS does not
+-- create or edit the backend's own user_ row (firstname/lastname/mobile
+-- already live there) — this only holds the fields the backend doesn't
+-- have: father's name, address, and paths to uploaded ID document
+-- photos. Files themselves are stored outside the web root and served
+-- through public/kyc-photo.php with an access check, never linked directly.
+CREATE TABLE IF NOT EXISTS ellsms_user_kyc (
+  user_id           BIGINT NOT NULL PRIMARY KEY,
+  father_name       VARCHAR(120) NOT NULL DEFAULT '',
+  address           TEXT NULL,
+  id_card_photo     VARCHAR(255) NULL,             -- stored filename under storage/kyc/
+  second_doc_photo  VARCHAR(255) NULL,             -- e.g. passport or the back of the ID card
+  updated_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Bulk number categories — admin uploads a newline-separated .txt file of
+-- numbers under a name; every panel user can then see and pick that
+-- category from Send to fan a message out to the whole list. Unlike
+-- ellsms_contacts (private, per-user), these are visible to everyone.
+CREATE TABLE IF NOT EXISTS ellsms_number_categories (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name       VARCHAR(120) NOT NULL,
+  created_by BIGINT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ellsms_number_category_items (
+  id          BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  category_id INT UNSIGNED NOT NULL,
+  mobile      VARCHAR(20) NOT NULL,
+  UNIQUE KEY uniq_cat_mobile (category_id, mobile)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- SMS-based two-factor login codes. A fresh 6-digit code per login
+-- attempt, short-lived, single-use.
+CREATE TABLE IF NOT EXISTS ellsms_2fa_codes (
+  id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    BIGINT NOT NULL,
+  code       VARCHAR(6) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  consumed   TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY (user_id, code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
 -- still empty.
