@@ -107,6 +107,16 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 - **KYC profile layer** (Users page for admins, Profile page for self-service) — father's name, address, and two document photo uploads (ID card + a second document such as a passport) live entirely in ELLSMS's own tables, layered on top of a granted-access account. ELLSMS does not create or edit the backend's own `user_` row for this — see "Login model" above for why. Photos are stored outside the web root (`storage/kyc/`, gitignored) and served only through `public/kyc-photo.php`, which checks the viewer is either that user or an admin before streaming anything.
 - **SMS-based 2FA** — admin can enable it per user (Users → edit) or for everyone at once (Users → "فعال‌سازی ورود دومرحله‌ای برای همه"). When enabled, a correct password redirects to a 6-digit code sent to the account's `user_.mobile` (5-minute expiry, 5 wrong attempts before being sent back to login, 60-second resend cooldown) before a session is actually created.
 
+## پنل جدید ارسال — combined send panel
+
+A single three-column page (`/new-send.php`) matching a reference design: message composer on the right (character/part counter, emoji insert, a Persian→Latin digit converter to save SMS parts, live preview, quick-send shortcut), recipient building in the middle (manual entry with a live valid/invalid split as you type, file upload, clipboard paste — all three funnel into the same textarea), and send-mode settings on the left. It doesn't duplicate logic — every mode routes to something that already existed:
+
+- **ارسال مستقیم** (direct) → the same `dispatch_message()` call the regular Send page uses.
+- **ارسال دوره‌ای** (recurring) → `ellsms_schedule`, same as Schedules.
+- **ارسال تدریجی** (gradual/throttled) → a new pacing mode on the bulk-send engine (`ellsms_bulk_jobs.throttle_count`/`throttle_minutes`): "send N rows every M minutes" instead of the worker's normal as-fast-as-it-can batching. p2p and smart jobs are unaffected — they simply don't set a throttle, so they keep the original behavior.
+
+Two new per-user concepts came with this: a **do-not-contact list** (`/blacklist.php`, `ellsms_blacklist`) that the "فقط ارسال به لیست سفید" toggle filters against before sending, and **saved campaigns** (`ellsms_campaigns`) — a reusable sender+message template reloadable from a dropdown on the new panel.
+
 ## Bulk personalized sending — نظیر به نظیر and پیامک هوشمند
 
 Two upload-a-spreadsheet features that share one engine (`ellsms_bulk_jobs` / `ellsms_bulk_items`, processed by the worker's `run_bulk_send_pass()`):

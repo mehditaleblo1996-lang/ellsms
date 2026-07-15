@@ -498,3 +498,23 @@ function detect_operator(string $normalizedMobile): string {
     }
     return OPERATOR_PREFIX_MAP[$m[1]] ?? 'سایر / نامشخص';
 }
+
+/**
+ * Remove any destination on $userId's do-not-contact list.
+ * Returns [filteredDestinations, blockedCount].
+ */
+function filter_blacklist(int $userId, array $destinations): array {
+    if (!$destinations) return [$destinations, 0];
+    $st = db()->prepare('SELECT mobile FROM ellsms_blacklist WHERE user_id = ?');
+    $st->execute([$userId]);
+    $blocked = array_flip(array_column($st->fetchAll(), 'mobile'));
+    if (!$blocked) return [$destinations, 0];
+
+    $kept = [];
+    $blockedCount = 0;
+    foreach ($destinations as $d) {
+        if (isset($blocked[$d])) $blockedCount++;
+        else $kept[] = $d;
+    }
+    return [$kept, $blockedCount];
+}

@@ -238,6 +238,71 @@ CREATE TABLE IF NOT EXISTS ellsms_bulk_items (
   KEY (job_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Migration: پنل جدید ارسال needs a 'gradual' job type (same rows/table
+-- as p2p and smart, just every row shares identical content — it's a
+-- broadcast, spread out over time rather than personalized per row) and
+-- three columns to control the pacing. A NULL throttle_count means "no
+-- throttle" — run_bulk_send_pass() falls back to its original
+-- unthrottled batch-of-20-per-tick behavior for those jobs, so p2p and
+-- smart jobs are completely unaffected by this. Guarded so it's safe to
+-- re-run on installs that already have ellsms_bulk_jobs.
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'ellsms_bulk_jobs' AND column_name = 'throttle_count'
+);
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE ellsms_bulk_jobs
+     ADD COLUMN throttle_count INT UNSIGNED NULL AFTER template,
+     ADD COLUMN throttle_minutes INT UNSIGNED NULL AFTER throttle_count,
+     ADD COLUMN last_throttle_at DATETIME NULL AFTER throttle_minutes,
+     MODIFY COLUMN type ENUM(''p2p'',''smart'',''gradual'') NOT NULL',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Migration: a notes/title field on schedules, for پنل جدید ارسال's
+-- توضیحات field on recurring (ارسال دوره‌ای) sends. Guarded the same way.
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'ellsms_schedule' AND column_name = 'title'
+);
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE ellsms_schedule ADD COLUMN title VARCHAR(160) NOT NULL DEFAULT '''' AFTER user_id',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Do-not-contact list. Per-user scope: each account maintains its own —
+-- a number blacklisted by one user has no effect on anyone else's sends.
+-- Checked only when a send explicitly opts in via "فقط ارسال به لیست
+-- سفید" (the toggle name in the reference UI is literally "whitelist",
+-- but its own description says it filters out blacklisted numbers —
+-- this table is the do-not-contact/suppression list that toggle checks).
+CREATE TABLE IF NOT EXISTS ellsms_blacklist (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    BIGINT NOT NULL,
+  mobile     VARCHAR(20) NOT NULL,
+  note       VARCHAR(160) NOT NULL DEFAULT '',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uniq_user_mobile (user_id, mobile)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Saved campaigns (ذخیره به عنوان کمپین) — a reusable sender+message
+-- template a user can reload next time instead of retyping.
+CREATE TABLE IF NOT EXISTS ellsms_campaigns (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    BIGINT NOT NULL,
+  name       VARCHAR(160) NOT NULL,
+  originator VARCHAR(20) NOT NULL DEFAULT '',
+  content    TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
 -- still empty.

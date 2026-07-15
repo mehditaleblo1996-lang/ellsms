@@ -125,8 +125,9 @@ a:hover { text-decoration: underline; }
 .card h2 { margin: 0 0 16px; font-size: 17px; font-weight: 700; }
 .grid { display: grid; gap: 18px; }
 .grid-4 { grid-template-columns: repeat(4, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
 .grid-2 { grid-template-columns: repeat(2, 1fr); }
-@media (max-width: 980px) { .grid-4 { grid-template-columns: repeat(2,1fr); } .grid-2 { grid-template-columns: 1fr; } }
+@media (max-width: 980px) { .grid-4 { grid-template-columns: repeat(2,1fr); } .grid-3 { grid-template-columns: 1fr; } .grid-2 { grid-template-columns: 1fr; } }
 
 .stat {
   background: var(--card); border: 1px solid var(--line); border-radius: 14px;

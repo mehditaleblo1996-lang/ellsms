@@ -482,10 +482,19 @@ function render_bulk_template(string $template, array $vars): string {
  * Queue a bulk-send job. $items is [['mobile'=>string,'content'=>string], ...],
  * already normalized/rendered by the caller. Total cost is checked against
  * credit up front (unless admin) so the whole batch is rejected clearly
- * with one message instead of failing midway through. Returns
- * [ok, message, jobId|null].
+ * with one message instead of failing midway through.
+ *
+ * $throttleCount/$throttleMinutes are optional — set both to pace this
+ * job as "send $throttleCount rows every $throttleMinutes minutes"
+ * (ارسال تدریجی). Leave both null for the original as-fast-as-the-worker-
+ * can behavior (p2p, smart).
+ *
+ * Returns [ok, message, jobId|null].
  */
-function bulk_queue_job(array $user, string $type, string $title, string $originator, ?string $template, array $items): array {
+function bulk_queue_job(
+    array $user, string $type, string $title, string $originator, ?string $template, array $items,
+    ?int $throttleCount = null, ?int $throttleMinutes = null
+): array {
     if (!$items) return [false, 'هیچ ردیف معتبری در فایل پیدا نشد.', null];
 
     $totalCost = 0;
@@ -498,9 +507,9 @@ function bulk_queue_job(array $user, string $type, string $title, string $origin
     $db = db();
     $db->beginTransaction();
     try {
-        $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, type, title, originator, template, status, total_rows)
-                      VALUES (?,?,?,?,?,'pending',?)")
-           ->execute([$user['id'], $type, $title, $originator, $template, count($items)]);
+        $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, type, title, originator, template, throttle_count, throttle_minutes, status, total_rows)
+                      VALUES (?,?,?,?,?,?,?,'pending',?)")
+           ->execute([$user['id'], $type, $title, $originator, $template, $throttleCount, $throttleMinutes, count($items)]);
         $jobId = (int)$db->lastInsertId();
 
         $ins = $db->prepare('INSERT INTO ellsms_bulk_items (job_id, mobile, content) VALUES (?,?,?)');
@@ -516,52 +525,92 @@ function bulk_queue_job(array $user, string $type, string $title, string $origin
 }
 
 /**
- * Worker pass: claims one pending job, sends up to 20 of its rows per
- * tick (kept small deliberately — each row is a live API round-trip, and
- * this runs every 8 seconds alongside schedules and منشی پیامک in the
- * same worker loop), and marks a job done once nothing pending remains
- * for it. Returns how many rows actually sent this pass.
+ * Send one queued bulk item and record the result. Shared by both the
+ * throttled and unthrottled paths in run_bulk_send_pass() below.
+ * Returns true if it actually sent.
+ */
+function bulk_send_one_item(PDO $db, array $item): bool {
+    $ust = $db->prepare(
+        'SELECT u.id, u.active, u.deleted, u.currentcredit AS credit, m.is_admin
+         FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
+    );
+    $ust->execute([$item['user_id']]);
+    $owner = $ust->fetch();
+
+    if (!$owner || !$owner['active'] || $owner['deleted']) {
+        $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=? WHERE id=?")
+           ->execute(['حساب مالک ارسال غیرفعال است.', $item['id']]);
+        $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
+        return false;
+    }
+
+    $user = ['id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit']];
+    [$ok, $info] = dispatch_message($user, $item['originator'], [$item['mobile']], $item['content']);
+
+    $db->prepare('UPDATE ellsms_bulk_items SET status=?, error=? WHERE id=?')
+       ->execute([$ok ? 'sent' : 'failed', $ok ? null : $info, $item['id']]);
+    $counterCol = $ok ? 'sent_rows' : 'failed_rows';
+    $db->prepare("UPDATE ellsms_bulk_jobs SET {$counterCol} = {$counterCol} + 1 WHERE id=?")
+       ->execute([$item['job_id']]);
+
+    return $ok;
+}
+
+/**
+ * Worker pass. Two kinds of job coexist in the same table:
+ *
+ *  - Unthrottled (p2p, smart, or gradual-without-a-rate): the original
+ *    behavior — up to 20 pending rows total per tick, across all such
+ *    jobs, first-come-first-served.
+ *  - Throttled (گرادوال ارسال تدریجی — throttle_count/throttle_minutes
+ *    set): each such job is paced independently. A job only gets a
+ *    batch when enough time has passed since its last batch
+ *    (last_throttle_at), and that batch is capped at throttle_count
+ *    rows — "send N every M minutes," not a global rate.
+ *
+ * Marks a job done once nothing pending remains for it either way.
+ * Returns how many rows actually sent this pass.
  */
 function run_bulk_send_pass(): int {
     $db = db();
     $db->exec("UPDATE ellsms_bulk_jobs SET status='processing' WHERE status='pending' ORDER BY id LIMIT 1");
 
+    $sent = 0;
+
+    $throttled = $db->query(
+        "SELECT * FROM ellsms_bulk_jobs
+         WHERE status = 'processing' AND throttle_count IS NOT NULL AND throttle_minutes IS NOT NULL
+           AND (last_throttle_at IS NULL OR last_throttle_at <= DATE_SUB(NOW(), INTERVAL throttle_minutes MINUTE))"
+    )->fetchAll();
+
+    foreach ($throttled as $job) {
+        $limit = max(1, (int)$job['throttle_count']);
+        $jobId = (int)$job['id'];
+        $items = $db->query(
+            "SELECT * FROM ellsms_bulk_items WHERE job_id = {$jobId} AND status = 'pending' ORDER BY id LIMIT {$limit}"
+        )->fetchAll();
+        if (!$items) continue;
+
+        foreach ($items as $item) {
+            try {
+                if (bulk_send_one_item($db, $item)) $sent++;
+            } catch (Throwable $t) {
+                error_log('[ellsms bulk] item ' . $item['id'] . ' failed: ' . $t->getMessage());
+            }
+        }
+        $db->prepare('UPDATE ellsms_bulk_jobs SET last_throttle_at = NOW() WHERE id = ?')->execute([$jobId]);
+    }
+
     $st = $db->prepare(
-        "SELECT i.*, j.originator, j.user_id FROM ellsms_bulk_items i
+        "SELECT i.* FROM ellsms_bulk_items i
          JOIN ellsms_bulk_jobs j ON j.id = i.job_id
-         WHERE j.status = 'processing' AND i.status = 'pending'
+         WHERE j.status = 'processing' AND i.status = 'pending' AND j.throttle_count IS NULL
          ORDER BY i.id LIMIT 20"
     );
     $st->execute();
-    $items = $st->fetchAll();
-
-    $sent = 0;
-    foreach ($items as $item) {
+    foreach ($st->fetchAll() as $item) {
         try {
-            $ust = $db->prepare(
-                'SELECT u.id, u.active, u.deleted, u.currentcredit AS credit, m.is_admin
-                 FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
-            );
-            $ust->execute([$item['user_id']]);
-            $owner = $ust->fetch();
-
-            if (!$owner || !$owner['active'] || $owner['deleted']) {
-                $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=? WHERE id=?")
-                   ->execute(['حساب مالک ارسال غیرفعال است.', $item['id']]);
-                $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
-                continue;
-            }
-
-            $user = ['id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit']];
-            [$ok, $info] = dispatch_message($user, $item['originator'], [$item['mobile']], $item['content']);
-
-            $db->prepare('UPDATE ellsms_bulk_items SET status=?, error=? WHERE id=?')
-               ->execute([$ok ? 'sent' : 'failed', $ok ? null : $info, $item['id']]);
-            $counterCol = $ok ? 'sent_rows' : 'failed_rows';
-            $db->prepare("UPDATE ellsms_bulk_jobs SET {$counterCol} = {$counterCol} + 1 WHERE id=?")
-               ->execute([$item['job_id']]);
-
-            if ($ok) $sent++;
+            if (bulk_send_one_item($db, $item)) $sent++;
         } catch (Throwable $t) {
             error_log('[ellsms bulk] item ' . $item['id'] . ' failed: ' . $t->getMessage());
         }
