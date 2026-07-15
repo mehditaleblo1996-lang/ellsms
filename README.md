@@ -107,6 +107,26 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 - **KYC profile layer** (Users page for admins, Profile page for self-service) — father's name, address, and two document photo uploads (ID card + a second document such as a passport) live entirely in ELLSMS's own tables, layered on top of a granted-access account. ELLSMS does not create or edit the backend's own `user_` row for this — see "Login model" above for why. Photos are stored outside the web root (`storage/kyc/`, gitignored) and served only through `public/kyc-photo.php`, which checks the viewer is either that user or an admin before streaming anything.
 - **SMS-based 2FA** — admin can enable it per user (Users → edit) or for everyone at once (Users → "فعال‌سازی ورود دومرحله‌ای برای همه"). When enabled, a correct password redirects to a 6-digit code sent to the account's `user_.mobile` (5-minute expiry, 5 wrong attempts before being sent back to login, 60-second resend cooldown) before a session is actually created.
 
+## Buying credit — ZarinPal
+
+Any logged-in user can buy credit from `/buy-credit.php` — pick a preset package or a custom amount, pay through ZarinPal, and credit lands on `user_.currentcredit` automatically once the payment is confirmed. Built against ZarinPal's real v4 REST API (endpoints and request/response shapes verified against their own sample code and official docs, not reconstructed from memory) — `app/zarinpal.php` handles the request/verify calls, `public/zarinpal-callback.php` is where ZarinPal redirects the user back to.
+
+**Important — the unit is Rial, not Toman.** ZarinPal's v4 API defaults to Rial unless a request explicitly opts into Toman; this integration never sends that opt-in, so `چند ریال معادل ۱ واحد اعتبار است` in Settings, `ellsms_payments.amount_rial`, and every amount ELLSMS sends to ZarinPal are all unambiguously Rial. Don't introduce a Toman value anywhere in this path without converting it first.
+
+Admin configures, from **Settings → پرداخت (زرین‌پال)**:
+- Rial-per-credit exchange rate
+- Minimum purchase (in credits)
+- Suggested package sizes (comma-separated, shown as quick-pick buttons)
+- Merchant ID, callback URL, and sandbox mode (test payments, no real money) — these three can also come from `.env`:
+  ```
+  ZARINPAL_MERCHANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # from https://next.zarinpal.com
+  ZARINPAL_CALLBACK_URL=https://your-domain/zarinpal-callback.php
+  ZARINPAL_SANDBOX=0                                            # 1 for test mode
+  ```
+  Settings (`ellsms_settings`) always wins over `.env` if both are set — same pattern as every other config in this project.
+
+**Double-crediting is explicitly guarded against.** ZarinPal can call the callback URL more than once for the same payment (retries, a user refreshing the result page). The callback handler only credits an account on the specific database update that actually flips a payment row from `pending` to `paid` — a repeat hit finds the row already `paid`, does nothing, and shows "already processed" instead of adding credit twice.
+
 ## پنل جدید ارسال — combined send panel
 
 A single three-column page (`/new-send.php`) matching a reference design: message composer on the right (character/part counter, emoji insert, a Persian→Latin digit converter to save SMS parts, live preview, quick-send shortcut), recipient building in the middle (manual entry with a live valid/invalid split as you type, file upload, clipboard paste — all three funnel into the same textarea), and send-mode settings on the left. It doesn't duplicate logic — every mode routes to something that already existed:

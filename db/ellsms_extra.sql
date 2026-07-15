@@ -303,11 +303,35 @@ CREATE TABLE IF NOT EXISTS ellsms_campaigns (
   KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- ZarinPal credit purchases. amount_rial is always Rial (not Toman) —
+-- ZarinPal's v4 API defaults to Rial unless a request explicitly opts
+-- into Toman via a "currency" field, which ELLSMS deliberately never
+-- sends, to keep the unit unambiguous everywhere in this table.
+-- status transitions pending -> paid|failed exactly once — the
+-- callback handler only credits the account on a pending->paid update
+-- that actually matched a row, so a duplicate/retried callback from
+-- ZarinPal can never double-credit an account.
+CREATE TABLE IF NOT EXISTS ellsms_payments (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id     BIGINT NOT NULL,
+  credits     INT UNSIGNED NOT NULL,
+  amount_rial BIGINT UNSIGNED NOT NULL,
+  authority   VARCHAR(64) NULL,
+  ref_id      VARCHAR(64) NULL,
+  status      ENUM('pending','paid','failed') NOT NULL DEFAULT 'pending',
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY (user_id), KEY (status), KEY (authority)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
 -- still empty.
 INSERT INTO ellsms_settings (skey, svalue) VALUES
   ('api_base_url',               ''),
   ('default_originator',         ''),
-  ('autoreply_last_inbound_id',  '0')
+  ('autoreply_last_inbound_id',  '0'),
+  ('rial_per_credit',            '1000'),
+  ('min_credit_purchase',        '100'),
+  ('credit_packages',            '500,1000,5000,20000')
 ON DUPLICATE KEY UPDATE skey = skey;

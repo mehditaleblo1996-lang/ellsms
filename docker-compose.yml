@@ -25,6 +25,9 @@ services:
       BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
       BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
       API_BASE_URL: ${API_BASE_URL:-}
+      ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
+      ZARINPAL_CALLBACK_URL: ${ZARINPAL_CALLBACK_URL:-}
+      ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-0}
     volumes:
       - ./:/var/www/html
     networks:
