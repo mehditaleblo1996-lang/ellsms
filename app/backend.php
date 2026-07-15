@@ -406,3 +406,54 @@ function verify_2fa_code(int $userId, string $code): bool {
     db()->prepare('UPDATE ellsms_2fa_codes SET consumed = 1 WHERE id = ?')->execute([$row['id']]);
     return true;
 }
+
+/* ==========================================================================
+   Real account creation
+   Reuses the backend's own POST /api/users/ endpoint (rest_api/routers/
+   users.py) instead of ELLSMS writing directly into user_ — that endpoint
+   already knows the exact required columns, applies the same password
+   hashing every other login on the platform expects, and lets the real
+   UNIQUE constraints (username/email/code) produce a clean 409 on
+   conflict instead of ELLSMS having to guess at that logic itself.
+   ========================================================================== */
+
+/**
+ * Create a real backend account. $data must match CreateUserRequest in
+ * rest_api/routers/users.py: username, password, first_name, last_name,
+ * email, mobile (int), national_id, domain_id (int), gender
+ * ('MALE'|'FEMALE'), code, daily_limit, min_credit_notify,
+ * limit_time_from, limit_time_to.
+ * Returns [ok, message, createdUserOrNull].
+ */
+function backend_create_account(array $data): array {
+    $base = rtrim((string)setting('api_base_url', env('API_BASE_URL', '')), '/');
+    if ($base === '') {
+        return [false, 'آدرس API تنظیم نشده است — آن را در بخش تنظیمات وارد کنید.', null];
+    }
+    $url = $base . '/api/users/';
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode($data, JSON_UNESCAPED_UNICODE),
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json'],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $body = curl_exec($ch);
+    $err  = curl_error($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($body === false) {
+        return [false, $err ?: 'اتصال به API برقرار نشد.', null];
+    }
+    $decoded = json_decode($body, true);
+
+    if ($code === 201 && is_array($decoded)) {
+        return [true, 'حساب ساخته شد.', $decoded];
+    }
+
+    return [false, describe_api_error($code, is_string($body) ? $body : null), null];
+}

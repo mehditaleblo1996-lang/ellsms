@@ -39,7 +39,7 @@ You still need the backend platform's stack running (for its REST API, its `/mo`
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.
 
-An account only gets into the ELLSMS panel once an admin **grants access** (Users → Grant access). ELLSMS does not create brand-new accounts (that requires a Customer/Domain graph owned by the backend) — grant access to an account created the normal way first.
+An account only gets into the ELLSMS panel once an admin **grants access** or **creates it** (Users page). Creating a new account calls the backend's own `POST /api/users/` endpoint (the same one that already existed for this purpose) rather than ELLSMS writing directly into `user_` — that endpoint already knows the exact required columns and applies the backend's own password hashing and uniqueness rules, so ELLSMS doesn't have to guess at any of it. A domain (multi-tenant scope) must already exist on the backend side; ELLSMS lets you pick one but doesn't create domains.
 
 ## Quick start
 

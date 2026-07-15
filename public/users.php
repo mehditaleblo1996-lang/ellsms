@@ -5,12 +5,11 @@ $pageTitle = 'کاربران';
 $active = 'users';
 
 /*
- * محدوده‌ی کار: جدول user_ سامانه‌ی مرکزی برای ساخت حساب جدید به یک
- * زنجیره‌ی کامل Customer/Domain نیاز دارد (رابطه‌ای چندجدولی و حلقوی).
- * ساختن آن از اینجا ریسک آسیب به داده‌ی واقعی پلتفرم را دارد، پس ELLSMS
- * حساب تازه نمی‌سازد. در عوض: به یک حساب موجود دسترسی پنل می‌دهد، و
- * تنظیمات مخصوص پنل (دسترسی، نقش مدیر، اعتبار، خط ارسال، رمز عبور،
- * اطلاعات هویتی) را از همین‌جا مدیریت می‌کند.
+ * حساب‌سازی واقعی: از اندپوینت خودِ سامانه‌ی مرکزی (POST /api/users/)
+ * استفاده می‌شود، نه نوشتن مستقیم در جدول user_ — چون آن اندپوینت همان
+ * منطق هش رمز عبور و مقداردهی پیش‌فرض‌ها را دارد که بقیه‌ی سامانه انتظارش
+ * را دارد. هر دامنه (Domain) باید از قبل در سامانه‌ی مرکزی ساخته شده
+ * باشد؛ ELLSMS دامنه نمی‌سازد، فقط از میان دامنه‌های موجود انتخاب می‌کند.
  */
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -108,6 +107,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($do === 'create_account') {
+        $username   = trim($_POST['username'] ?? '');
+        $password   = $_POST['password'] ?? '';
+        $firstName  = trim($_POST['first_name'] ?? '');
+        $lastName   = trim($_POST['last_name'] ?? '');
+        $email      = trim($_POST['email'] ?? '');
+        $mobile     = normalize_msisdn($_POST['mobile'] ?? '');
+        $nationalId = trim(from_persian_digits($_POST['national_id'] ?? ''));
+        $domainId   = (int)($_POST['domain_id'] ?? 0);
+        $gender     = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
+        $dailyLimit = max(1, (int)($_POST['daily_limit'] ?? 1000));
+
+        if ($username === '' || strlen($password) < 6 || $firstName === '' || $lastName === ''
+            || $email === '' || !$mobile || strlen($nationalId) !== 10 || !$domainId) {
+            flash('error', 'همه‌ی فیلدهای ستاره‌دار را به‌درستی پر کنید (کد ملی باید دقیقاً ۱۰ رقم باشد).');
+        } else {
+            [$ok, $info, $created] = backend_create_account([
+                'username'         => $username,
+                'password'         => $password,
+                'first_name'       => $firstName,
+                'last_name'        => $lastName,
+                'email'            => $email,
+                'mobile'           => (int)$mobile,
+                'national_id'      => $nationalId,
+                'domain_id'        => $domainId,
+                'gender'           => $gender,
+                'code'             => (string)random_int(10000000, 99999999),
+                'daily_limit'      => $dailyLimit,
+                'min_credit_notify'=> 0,
+                'limit_time_from'  => '00:00',
+                'limit_time_to'    => '23:59',
+            ]);
+
+            if ($ok && $created && !empty($created['id'])) {
+                db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
+                               VALUES (?,1,0,?)
+                               ON DUPLICATE KEY UPDATE panel_access=1')
+                   ->execute([$created['id'], setting('default_originator', '')]);
+                audit((int)$me['id'], 'user.create_account', $username);
+                flash('success', 'حساب «' . $username . '» ساخته شد و دسترسی ELLSMS نیز فعال شد.');
+                redirect('/users.php?edit=' . (int)$created['id']);
+            } else {
+                flash('error', 'ساخت حساب ناموفق بود: ' . $info);
+            }
+        }
+    }
+
     redirect('/users.php' . (!empty($_POST['back']) ? '?edit=' . $id : ''));
 }
 
@@ -138,6 +184,8 @@ $panelUsers = db()->query(
      WHERE m.panel_access = 1
      ORDER BY m.is_admin DESC, u.username"
 )->fetchAll();
+
+$domains = db()->query('SELECT id, name FROM domain ORDER BY name')->fetchAll();
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -245,14 +293,53 @@ require __DIR__ . '/../app/views/header.php';
 <?php endif; ?>
 
 <div class="card">
-  <h2>دادن دسترسی ELLSMS به یک حساب</h2>
+  <h2>ساخت حساب تازه</h2>
+  <?php if (!$domains): ?>
+    <div class="flash flash-error">هیچ دامنه‌ای (Domain) در سامانه‌ی مرکزی پیدا نشد — ساخت حساب تازه بدون دامنه ممکن نیست. یک دامنه باید ابتدا در سامانه‌ی مرکزی ساخته شود.</div>
+  <?php else: ?>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="create_account">
+    <div class="form-row">
+      <label>نام کاربری * <input type="text" name="username" required></label>
+      <label>رمز عبور * <input type="password" name="password" minlength="6" required></label>
+      <label>نام * <input type="text" name="first_name" required></label>
+      <label>نام‌خانوادگی * <input type="text" name="last_name" required></label>
+    </div>
+    <div class="form-row">
+      <label>ایمیل * <input type="email" name="email" required class="ltr"></label>
+      <label>موبایل * <input type="text" name="mobile" required class="ltr" placeholder="0912…"></label>
+      <label>کد ملی * <input type="text" name="national_id" required maxlength="10" class="ltr" placeholder="۱۰ رقم"></label>
+      <label>جنسیت
+        <select name="gender">
+          <option value="MALE">مرد</option>
+          <option value="FEMALE">زن</option>
+        </select>
+      </label>
+    </div>
+    <div class="form-row">
+      <label>دامنه (Domain) *
+        <select name="domain_id" required>
+          <?php foreach ($domains as $d): ?><option value="<?= $d['id'] ?>"><?= e($d['name']) ?></option><?php endforeach; ?>
+        </select>
+      </label>
+      <label>سقف ارسال روزانه <input type="number" name="daily_limit" value="1000" min="1"></label>
+    </div>
+    <button class="btn btn-primary">ساخت حساب</button>
+  </form>
+  <p class="hint">پس از ساخت، دسترسی ELLSMS به‌طور خودکار فعال می‌شود و می‌توانید بلافاصله اعتبار، شماره، و اطلاعات هویتی برای آن تنظیم کنید. کد کاربری (code) به‌صورت خودکار و یکتا تولید می‌شود.</p>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <h2>یا دادن دسترسی به یک حساب موجود</h2>
   <form method="post" class="toolbar">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="grant">
     <label>نام کاربری <input type="text" name="username" required placeholder="نام کاربری موجود"></label>
     <button class="btn btn-primary">دادن دسترسی</button>
   </form>
-  <p class="hint">ELLSMS حساب تازه نمی‌سازد — راه‌اندازی Customer/Domain برای حساب جدید باید ابتدا در سامانه‌ی مرکزی انجام شود. پس از ساخته‌شدن حساب، از همین‌جا دسترسی بدهید.</p>
+  <p class="hint">اگر حساب از قبل در سامانه‌ی مرکزی وجود دارد (مثلاً از طریق ابزارهای دیگر ساخته شده)، به‌جای ساخت دوباره، فقط دسترسی ELLSMS را برایش فعال کنید.</p>
 </div>
 
 <div class="card">
