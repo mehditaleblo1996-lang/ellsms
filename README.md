@@ -118,6 +118,10 @@ Both accept `.xlsx` or `.csv`. XLSX reading is a small hand-written parser in `a
 
 Uploads don't send synchronously — a large file sending row-by-row inside one HTTP request risks a PHP timeout. Instead the upload is parsed, costed against your credit up front, and queued; the worker sends up to 20 rows per 8-second tick (the same loop already running schedules and منشی پیامک) and the page shows live sent/failed/total counts. Cancelling a job stops any rows still pending.
 
+## Mobile & general UX polish
+
+The panel now has a real mobile navigation drawer instead of stacking the entire sidebar above page content — as the nav grew past a dozen links, that stacking became genuinely unusable on a phone. Below 900px a hamburger button in the topbar slides the sidebar in from the right with a dismissible backdrop (tap outside, press Escape, or tap any link to close); above that it's the normal fixed sidebar. Other changes: form inputs are 16px to stop iOS Safari's auto-zoom-on-focus, buttons and nav items get larger touch targets on small screens, tables and cards tighten their padding progressively at 900px and 480px breakpoints, and every page (not just login) now has the same subtle brand-color background wash instead of a flat canvas. All of this lives in `public/assets/css/style.css` plus a small vanilla-JS toggle in `app/views/footer.php` — no framework, no build step.
+
 ## Production notes
 
 - Put the panel behind HTTPS (Caddy/nginx reverse proxy in front of port 8080).

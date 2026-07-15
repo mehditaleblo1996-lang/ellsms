@@ -30,7 +30,8 @@ $adminNav = [
 </head>
 <body>
 <div class="shell">
-  <aside class="sidebar">
+  <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+  <aside class="sidebar" id="sidebar">
     <a class="brand" href="/index.php">
       <img src="/assets/img/logo.png" alt="ELLSMS">
     </a>
@@ -55,6 +56,9 @@ $adminNav = [
 
   <div class="main">
     <header class="topbar">
+      <button class="menu-toggle" id="menuToggle" aria-label="باز کردن منو" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
       <h1 class="page-title"><?= e($pageTitle ?? '') ?></h1>
       <div class="topbar-right">
         <?php if ($me['role'] !== 'admin'): ?>
