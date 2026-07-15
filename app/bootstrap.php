@@ -462,3 +462,39 @@ function kyc_store_upload(string $field, int $userId): ?string {
 
 const TWOFA_CODE_TTL_SECONDS = 300; // 5 minutes
 const TWOFA_RESEND_COOLDOWN  = 60;  // seconds between resend requests
+
+/* ==========================================================================
+   Mobile operator detection (for the per-operator analytics breakdown)
+
+   This is a STATIC, best-effort mapping from the 3-digit block after
+   "989" (e.g. "912" for a 0912 number) to an Iranian mobile operator.
+   It only covers the long-established, stable ranges for the three
+   major carriers — anything else (newer/reassigned blocks, smaller
+   MVNOs, landlines, foreign numbers) falls into "سایر / نامشخص"
+   (other/unknown) rather than guessing. The regulator periodically
+   reassigns number blocks, so this table can go stale — it is NOT a
+   live registry lookup. If precision here matters for billing or
+   compliance, verify/extend OPERATOR_PREFIX_MAP below rather than
+   trusting it blindly.
+   ========================================================================== */
+const OPERATOR_PREFIX_MAP = [
+    // Hamrah-e Avval (MCI)
+    '910' => 'همراه اول', '911' => 'همراه اول', '912' => 'همراه اول', '913' => 'همراه اول',
+    '914' => 'همراه اول', '915' => 'همراه اول', '916' => 'همراه اول', '917' => 'همراه اول',
+    '918' => 'همراه اول', '919' => 'همراه اول', '990' => 'همراه اول', '991' => 'همراه اول',
+    '992' => 'همراه اول', '993' => 'همراه اول',
+    // Irancell
+    '930' => 'ایرانسل', '933' => 'ایرانسل', '935' => 'ایرانسل', '936' => 'ایرانسل',
+    '937' => 'ایرانسل', '938' => 'ایرانسل', '939' => 'ایرانسل', '901' => 'ایرانسل',
+    '902' => 'ایرانسل', '903' => 'ایرانسل', '905' => 'ایرانسل', '941' => 'ایرانسل',
+    // Rightel
+    '920' => 'رایتل', '921' => 'رایتل', '922' => 'رایتل',
+];
+
+/** Best-effort operator name for a normalized Iranian mobile number (98912...). */
+function detect_operator(string $normalizedMobile): string {
+    if (!preg_match('/^98(9\d{2})\d{7}$/', $normalizedMobile, $m)) {
+        return 'سایر / نامشخص';
+    }
+    return OPERATOR_PREFIX_MAP[$m[1]] ?? 'سایر / نامشخص';
+}

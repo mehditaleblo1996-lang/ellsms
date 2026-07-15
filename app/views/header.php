@@ -14,6 +14,7 @@ $nav = [
 ];
 $adminNav = [
     'users'             => ['/users.php',             'کاربران',        '👤'],
+    'analytics'         => ['/analytics.php',          'آمار تفصیلی',    '📊'],
     'numbers'           => ['/numbers.php',            'شماره‌ها',        '📞'],
     'number_categories' => ['/number-categories.php',  'دسته‌های شماره',  '🗂'],
     'settings'          => ['/settings.php',            'تنظیمات',        '⚙'],
