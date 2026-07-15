@@ -457,3 +457,122 @@ function backend_create_account(array $data): array {
 
     return [false, describe_api_error($code, is_string($body) ? $body : null), null];
 }
+
+/* ==========================================================================
+   Bulk personalized sending
+   Shared engine behind ارسال نظیر به نظیر and پیامک هوشمند — see the
+   schema comment in db/ellsms_extra.sql for the full rationale. Both
+   upload pages resolve their spreadsheet into a plain list of
+   ['mobile' => ..., 'content' => ...] before calling bulk_queue_job();
+   from that point on neither page is involved again, the worker just
+   sends what's in ellsms_bulk_items via the same dispatch_message() path
+   as everything else.
+   ========================================================================== */
+
+/** Substitute {column_name} placeholders. Unmatched placeholders are left as literal text. */
+function render_bulk_template(string $template, array $vars): string {
+    $out = $template;
+    foreach ($vars as $k => $v) {
+        $out = str_replace('{' . $k . '}', $v, $out);
+    }
+    return $out;
+}
+
+/**
+ * Queue a bulk-send job. $items is [['mobile'=>string,'content'=>string], ...],
+ * already normalized/rendered by the caller. Total cost is checked against
+ * credit up front (unless admin) so the whole batch is rejected clearly
+ * with one message instead of failing midway through. Returns
+ * [ok, message, jobId|null].
+ */
+function bulk_queue_job(array $user, string $type, string $title, string $originator, ?string $template, array $items): array {
+    if (!$items) return [false, 'هیچ ردیف معتبری در فایل پیدا نشد.', null];
+
+    $totalCost = 0;
+    foreach ($items as $it) $totalCost += sms_parts($it['content']);
+
+    if ($user['role'] !== 'admin' && (float)$user['credit'] < $totalCost) {
+        return [false, "اعتبار کافی نیست: این ارسال به {$totalCost} واحد اعتبار نیاز دارد، اعتبار فعلی شما " . (int)$user['credit'] . ' است.', null];
+    }
+
+    $db = db();
+    $db->beginTransaction();
+    try {
+        $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, type, title, originator, template, status, total_rows)
+                      VALUES (?,?,?,?,?,'pending',?)")
+           ->execute([$user['id'], $type, $title, $originator, $template, count($items)]);
+        $jobId = (int)$db->lastInsertId();
+
+        $ins = $db->prepare('INSERT INTO ellsms_bulk_items (job_id, mobile, content) VALUES (?,?,?)');
+        foreach ($items as $it) $ins->execute([$jobId, $it['mobile'], $it['content']]);
+
+        $db->commit();
+    } catch (Throwable $t) {
+        $db->rollBack();
+        return [false, 'خطا در ذخیره‌سازی: ' . $t->getMessage(), null];
+    }
+
+    return [true, to_persian_digits((string)count($items)) . ' ردیف در صف ارسال قرار گرفت.', $jobId];
+}
+
+/**
+ * Worker pass: claims one pending job, sends up to 20 of its rows per
+ * tick (kept small deliberately — each row is a live API round-trip, and
+ * this runs every 8 seconds alongside schedules and منشی پیامک in the
+ * same worker loop), and marks a job done once nothing pending remains
+ * for it. Returns how many rows actually sent this pass.
+ */
+function run_bulk_send_pass(): int {
+    $db = db();
+    $db->exec("UPDATE ellsms_bulk_jobs SET status='processing' WHERE status='pending' ORDER BY id LIMIT 1");
+
+    $st = $db->prepare(
+        "SELECT i.*, j.originator, j.user_id FROM ellsms_bulk_items i
+         JOIN ellsms_bulk_jobs j ON j.id = i.job_id
+         WHERE j.status = 'processing' AND i.status = 'pending'
+         ORDER BY i.id LIMIT 20"
+    );
+    $st->execute();
+    $items = $st->fetchAll();
+
+    $sent = 0;
+    foreach ($items as $item) {
+        try {
+            $ust = $db->prepare(
+                'SELECT u.id, u.active, u.deleted, u.currentcredit AS credit, m.is_admin
+                 FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
+            );
+            $ust->execute([$item['user_id']]);
+            $owner = $ust->fetch();
+
+            if (!$owner || !$owner['active'] || $owner['deleted']) {
+                $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=? WHERE id=?")
+                   ->execute(['حساب مالک ارسال غیرفعال است.', $item['id']]);
+                $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
+                continue;
+            }
+
+            $user = ['id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit']];
+            [$ok, $info] = dispatch_message($user, $item['originator'], [$item['mobile']], $item['content']);
+
+            $db->prepare('UPDATE ellsms_bulk_items SET status=?, error=? WHERE id=?')
+               ->execute([$ok ? 'sent' : 'failed', $ok ? null : $info, $item['id']]);
+            $counterCol = $ok ? 'sent_rows' : 'failed_rows';
+            $db->prepare("UPDATE ellsms_bulk_jobs SET {$counterCol} = {$counterCol} + 1 WHERE id=?")
+               ->execute([$item['job_id']]);
+
+            if ($ok) $sent++;
+        } catch (Throwable $t) {
+            error_log('[ellsms bulk] item ' . $item['id'] . ' failed: ' . $t->getMessage());
+        }
+    }
+
+    $db->exec(
+        "UPDATE ellsms_bulk_jobs j SET status='done'
+         WHERE status='processing' AND NOT EXISTS (
+           SELECT 1 FROM ellsms_bulk_items i WHERE i.job_id = j.id AND i.status='pending'
+         )"
+    );
+
+    return $sent;
+}

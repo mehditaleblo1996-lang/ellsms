@@ -1,6 +1,9 @@
 FROM php:8.2-apache
 
-RUN docker-php-ext-install pdo_mysql && a2enmod rewrite headers
+RUN apt-get update && apt-get install -y --no-install-recommends libzip-dev \
+ && docker-php-ext-install pdo_mysql zip \
+ && a2enmod rewrite headers \
+ && rm -rf /var/lib/apt/lists/*
 
 # Serve from /public
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public

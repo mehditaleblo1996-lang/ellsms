@@ -1,0 +1,159 @@
+<?php
+require_once __DIR__ . '/../app/backend.php';
+require_once __DIR__ . '/../app/xlsx_reader.php';
+$me = require_login();
+$pageTitle = 'پیامک هوشمند';
+$active = 'smart';
+
+$myNumbers = [];
+if (!is_admin()) {
+    $nst = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
+    $nst->execute([$me['id']]);
+    $myNumbers = $nst->fetchAll();
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
+    $do = $_POST['do'] ?? '';
+
+    if ($do === 'cancel') {
+        $id = (int)($_POST['id'] ?? 0);
+        $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
+        db()->exec("UPDATE ellsms_bulk_jobs SET status='cancelled' WHERE id={$id} AND type='smart' AND status IN ('pending','processing'){$own}");
+        flash('info', 'ارسال لغو شد.');
+        redirect('/smart-send.php');
+    }
+
+    if ($do === 'upload') {
+        $title      = trim($_POST['title'] ?? '') ?: 'بدون عنوان';
+        $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
+        $template   = trim($_POST['template'] ?? '');
+
+        if ($originator === '') {
+            flash('error', 'خط ارسال معتبر نیست.');
+        } elseif ($template === '') {
+            flash('error', 'متن پیام (قالب) نمی‌تواند خالی باشد.');
+        } elseif (empty($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
+            flash('error', 'فایل را انتخاب کنید.');
+        } elseif ($_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+            flash('error', 'بارگذاری فایل با خطا مواجه شد.');
+        } else {
+            try {
+                $rows = read_spreadsheet_rows($_FILES['file']['tmp_name'], $_FILES['file']['name']);
+                if (count($rows) < 2) {
+                    flash('error', 'فایل باید یک ردیف عنوان ستون‌ها و حداقل یک ردیف داده داشته باشد.');
+                } elseif (count($rows) > 20001) {
+                    flash('error', 'حداکثر ۲۰٬۰۰۰ ردیف داده (به‌علاوه‌ی عنوان) پشتیبانی می‌شود.');
+                } else {
+                    $headers = array_map('trim', array_shift($rows));
+                    // Column A's header is always "the mobile column" regardless of its literal text.
+                    $varHeaders = array_slice($headers, 1);
+
+                    $items = [];
+                    $skipped = 0;
+                    foreach ($rows as $row) {
+                        $mobile = normalize_msisdn($row[0] ?? '');
+                        if (!$mobile) { $skipped++; continue; }
+                        $vars = [];
+                        foreach ($varHeaders as $i => $h) {
+                            if ($h === '') continue;
+                            $vars[$h] = trim($row[$i + 1] ?? '');
+                        }
+                        $content = trim(render_bulk_template($template, $vars));
+                        if ($content === '') { $skipped++; continue; }
+                        $items[] = ['mobile' => $mobile, 'content' => $content];
+                    }
+
+                    [$ok, $info, $jobId] = bulk_queue_job($me, 'smart', $title, $originator, $template, $items);
+                    if ($ok) {
+                        audit((int)$me['id'], 'smart.upload', "{$title}: " . count($items) . ' rows');
+                        flash('success', $info . ($skipped ? ' (' . to_persian_digits((string)$skipped) . ' ردیف نامعتبر نادیده گرفته شد)' : ''));
+                    } else {
+                        flash('error', $info);
+                    }
+                }
+            } catch (RuntimeException $e) {
+                flash('error', $e->getMessage());
+            }
+        }
+        redirect('/smart-send.php');
+    }
+}
+
+$where = is_admin() ? "type='smart'" : "type='smart' AND user_id = " . (int)$me['id'];
+$jobs = db()->query(
+    "SELECT j.*, u.username FROM ellsms_bulk_jobs j JOIN user_ u ON u.id = j.user_id
+     WHERE {$where} ORDER BY j.id DESC LIMIT 50"
+)->fetchAll();
+
+$statusFa = ['pending' => 'در صف', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده'];
+
+require __DIR__ . '/../app/views/header.php';
+?>
+<div class="card">
+  <h2>بارگذاری فایل</h2>
+  <p class="hint">
+    ستون اول: شماره موبایل — ستون‌های بعدی: متغیرها، با نام هرکدام در ردیف اول فایل (عنوان ستون‌ها).
+    در متن پیام از <code class="kbd">{نام_ستون}</code> برای هر متغیر استفاده کنید — مثلاً اگر ستون دوم عنوان «نام» دارد، بنویسید <code class="kbd">{نام}</code>.
+    اگر متغیری در فایل پیدا نشود، همان <code class="kbd">{...}</code> بدون تغییر در پیام باقی می‌ماند تا اشتباه فوراً معلوم شود.
+  </p>
+  <form method="post" enctype="multipart/form-data">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="upload">
+    <div class="form-row">
+      <label>عنوان ارسال <input type="text" name="title" placeholder="مثلاً اطلاع‌رسانی فاکتور"></label>
+      <label>خط ارسال‌کننده
+        <?php if ($myNumbers): ?>
+          <select name="originator">
+            <?php foreach ($myNumbers as $n): ?>
+              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?><?= $n['label'] ? ' — ' . e($n['label']) : '' ?></option>
+            <?php endforeach; ?>
+          </select>
+        <?php else: ?>
+          <input type="text" name="originator" class="ltr" value="<?= e($me['originator'] ?: setting('default_originator', '')) ?>">
+        <?php endif; ?>
+      </label>
+      <label>فایل (xlsx یا csv) <input type="file" name="file" accept=".xlsx,.csv" required></label>
+    </div>
+    <label>متن پیام (قالب)
+      <textarea name="template" required placeholder="سلام {نام}، مبلغ {مبلغ} تومان فاکتور شما تا {تاریخ} قابل پرداخت است."></textarea>
+    </label>
+    <button class="btn btn-primary">بارگذاری و افزودن به صف ارسال</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>ارسال‌های پیامک هوشمند</h2>
+  <div class="table-wrap">
+  <table>
+    <tr>
+      <th>عنوان</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?>
+      <th>خط</th><th>کل</th><th>ارسال‌شده</th><th>ناموفق</th><th>وضعیت</th><th>تاریخ</th><th></th>
+    </tr>
+    <?php foreach ($jobs as $j): ?>
+      <tr>
+        <td><?= e($j['title']) ?></td>
+        <?php if (is_admin()): ?><td><?= e($j['username']) ?></td><?php endif; ?>
+        <td class="msisdn"><?= e($j['originator']) ?></td>
+        <td class="num"><?= to_persian_digits((string)$j['total_rows']) ?></td>
+        <td class="num"><?= to_persian_digits((string)$j['sent_rows']) ?></td>
+        <td class="num"><?= to_persian_digits((string)$j['failed_rows']) ?></td>
+        <td><span class="badge badge-<?= e($j['status']) ?>"><?= e($statusFa[$j['status']]) ?></span></td>
+        <td class="num"><?= jdate($j['created_at']) ?></td>
+        <td>
+          <?php if (in_array($j['status'], ['pending', 'processing'], true)): ?>
+          <form method="post" onsubmit="return confirm('این ارسال لغو شود؟')">
+            <?= csrf_field() ?>
+            <input type="hidden" name="do" value="cancel">
+            <input type="hidden" name="id" value="<?= $j['id'] ?>">
+            <button class="btn btn-sm btn-danger">لغو</button>
+          </form>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$jobs): ?><tr><td colspan="9" class="empty">هنوز ارسالی انجام نشده.</td></tr><?php endif; ?>
+  </table>
+  </div>
+</div>
+<?php require __DIR__ . '/../app/views/footer.php'; ?>

@@ -202,6 +202,42 @@ CREATE TABLE IF NOT EXISTS ellsms_2fa_codes (
   KEY (user_id, code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Bulk personalized sending — shared engine behind both ارسال نظیر به
+-- نظیر (peer-to-peer: each row's message is typed out in full in the
+-- spreadsheet) and پیامک هوشمند (smart SMS: one shared template with
+-- {column_name} placeholders filled in per row). Both upload flows
+-- resolve to the SAME final per-row text at upload time and land here
+-- as plain rows — run_bulk_send_pass() (the worker) doesn't know or
+-- care which type produced them, it just sends what's in `content`.
+-- This exists because sending thousands of rows synchronously inside
+-- one HTTP request risks a PHP timeout; queuing lets the worker send
+-- a batch every tick instead, with live progress on the page.
+CREATE TABLE IF NOT EXISTS ellsms_bulk_jobs (
+  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id     BIGINT NOT NULL,
+  type        ENUM('p2p','smart') NOT NULL,
+  title       VARCHAR(160) NOT NULL DEFAULT '',
+  originator  VARCHAR(20) NOT NULL,
+  template    TEXT NULL,                 -- only set for type='smart', kept for reference/display
+  status      ENUM('pending','processing','done','cancelled') NOT NULL DEFAULT 'pending',
+  total_rows  INT UNSIGNED NOT NULL DEFAULT 0,
+  sent_rows   INT UNSIGNED NOT NULL DEFAULT 0,
+  failed_rows INT UNSIGNED NOT NULL DEFAULT 0,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY (status), KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ellsms_bulk_items (
+  id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  job_id     INT UNSIGNED NOT NULL,
+  mobile     VARCHAR(20) NOT NULL,
+  content    TEXT NOT NULL,              -- fully rendered, ready to send as-is
+  status     ENUM('pending','sent','failed') NOT NULL DEFAULT 'pending',
+  error      TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY (job_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
 -- still empty.

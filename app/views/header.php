@@ -2,13 +2,15 @@
 /** expects: $pageTitle (string), $active (string nav key), $me (user array) */
 $me = $me ?? require_login();
 $nav = [
-    'dashboard' => ['/index.php',     'داشبورد',        '▦'],
-    'send'      => ['/send.php',      'ارسال پیامک',    '➤'],
-    'schedules' => ['/schedules.php', 'زمان‌بندی‌شده',   '◷'],
-    'autoreply' => ['/autoreply.php', 'منشی پیامک',     '🤖'],
-    'reports'   => ['/reports.php',   'گزارش ارسال',    '≣'],
-    'inbox'     => ['/inbox.php',     'صندوق دریافت',   '✉'],
-    'contacts'  => ['/contacts.php',  'مخاطبین',        '☰'],
+    'dashboard' => ['/index.php',       'داشبورد',         '▦'],
+    'send'      => ['/send.php',        'ارسال پیامک',     '➤'],
+    'p2p'       => ['/p2p-send.php',    'نظیر به نظیر',    '⇄'],
+    'smart'     => ['/smart-send.php',  'پیامک هوشمند',    '✦'],
+    'schedules' => ['/schedules.php',   'زمان‌بندی‌شده',    '◷'],
+    'autoreply' => ['/autoreply.php',   'منشی پیامک',      '🤖'],
+    'reports'   => ['/reports.php',     'گزارش ارسال',     '≣'],
+    'inbox'     => ['/inbox.php',       'صندوق دریافت',    '✉'],
+    'contacts'  => ['/contacts.php',    'مخاطبین',         '☰'],
 ];
 $adminNav = [
     'users'             => ['/users.php',             'کاربران',        '👤'],

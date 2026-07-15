@@ -107,6 +107,17 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 - **KYC profile layer** (Users page for admins, Profile page for self-service) — father's name, address, and two document photo uploads (ID card + a second document such as a passport) live entirely in ELLSMS's own tables, layered on top of a granted-access account. ELLSMS does not create or edit the backend's own `user_` row for this — see "Login model" above for why. Photos are stored outside the web root (`storage/kyc/`, gitignored) and served only through `public/kyc-photo.php`, which checks the viewer is either that user or an admin before streaming anything.
 - **SMS-based 2FA** — admin can enable it per user (Users → edit) or for everyone at once (Users → "فعال‌سازی ورود دومرحله‌ای برای همه"). When enabled, a correct password redirects to a 6-digit code sent to the account's `user_.mobile` (5-minute expiry, 5 wrong attempts before being sent back to login, 60-second resend cooldown) before a session is actually created.
 
+## Bulk personalized sending — نظیر به نظیر and پیامک هوشمند
+
+Two upload-a-spreadsheet features that share one engine (`ellsms_bulk_jobs` / `ellsms_bulk_items`, processed by the worker's `run_bulk_send_pass()`):
+
+- **ارسال نظیر به نظیر** (`/p2p-send.php`) — column A is the mobile number, column B is that row's complete message text, already written out. Every row can say something completely different.
+- **پیامک هوشمند** (`/smart-send.php`) — column A is the mobile number, the rest of the columns are variables named by their header row. You write one message template with `{column_name}` placeholders; each row's values get substituted in before sending. An unmatched placeholder is left literal in the message rather than silently going blank, so a typo in a column name is obvious immediately.
+
+Both accept `.xlsx` or `.csv`. XLSX reading is a small hand-written parser in `app/xlsx_reader.php` (ZipArchive + SimpleXML, both PHP built-ins) rather than a Composer package — this project has no `vendor/` directory anywhere else, and the actual need is narrow (plain cell values, no formulas/styles). Requires the PHP `zip` extension, which `docker/Dockerfile` installs.
+
+Uploads don't send synchronously — a large file sending row-by-row inside one HTTP request risks a PHP timeout. Instead the upload is parsed, costed against your credit up front, and queued; the worker sends up to 20 rows per 8-second tick (the same loop already running schedules and منشی پیامک) and the page shows live sent/failed/total counts. Cancelling a job stops any rows still pending.
+
 ## Production notes
 
 - Put the panel behind HTTPS (Caddy/nginx reverse proxy in front of port 8080).
