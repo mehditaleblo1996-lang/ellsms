@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/backend.php'; // needed for backend_create_account()
 $me = require_admin();
 $pageTitle = 'کاربران';
 $active = 'users';
