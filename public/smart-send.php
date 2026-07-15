@@ -27,12 +27,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($do === 'upload') {
         $title      = trim($_POST['title'] ?? '') ?: 'بدون عنوان';
         $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
-        $template   = trim($_POST['template'] ?? '');
 
         if ($originator === '') {
             flash('error', 'خط ارسال معتبر نیست.');
-        } elseif ($template === '') {
-            flash('error', 'متن پیام (قالب) نمی‌تواند خالی باشد.');
         } elseif (empty($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
             flash('error', 'فایل را انتخاب کنید.');
         } elseif ($_FILES['file']['error'] !== UPLOAD_ERR_OK) {
@@ -46,25 +43,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     flash('error', 'حداکثر ۲۰٬۰۰۰ ردیف داده (به‌علاوه‌ی عنوان) پشتیبانی می‌شود.');
                 } else {
                     $headers = array_map('trim', array_shift($rows));
-                    // Column A's header is always "the mobile column" regardless of its literal text.
-                    $varHeaders = array_slice($headers, 1);
+                    // Column A = mobile, column B = per-row template — both fixed by
+                    // position, no header needed for them. Column C onward are the
+                    // variable values, named by their header text.
+                    $varHeaders = array_slice($headers, 2);
 
                     $items = [];
                     $skipped = 0;
                     foreach ($rows as $row) {
-                        $mobile = normalize_msisdn($row[0] ?? '');
-                        if (!$mobile) { $skipped++; continue; }
+                        $mobile   = normalize_msisdn($row[0] ?? '');
+                        $template = trim($row[1] ?? '');
+                        if (!$mobile || $template === '') { $skipped++; continue; }
+
                         $vars = [];
                         foreach ($varHeaders as $i => $h) {
                             if ($h === '') continue;
-                            $vars[$h] = trim($row[$i + 1] ?? '');
+                            $vars[$h] = trim($row[$i + 2] ?? '');
                         }
                         $content = trim(render_bulk_template($template, $vars));
                         if ($content === '') { $skipped++; continue; }
                         $items[] = ['mobile' => $mobile, 'content' => $content];
                     }
 
-                    [$ok, $info, $jobId] = bulk_queue_job($me, 'smart', $title, $originator, $template, $items);
+                    [$ok, $info, $jobId] = bulk_queue_job($me, 'smart', $title, $originator, null, $items);
                     if ($ok) {
                         audit((int)$me['id'], 'smart.upload', "{$title}: " . count($items) . ' rows');
                         flash('success', $info . ($skipped ? ' (' . to_persian_digits((string)$skipped) . ' ردیف نامعتبر نادیده گرفته شد)' : ''));
@@ -93,10 +94,17 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2>بارگذاری فایل</h2>
   <p class="hint">
-    ستون اول: شماره موبایل — ستون‌های بعدی: متغیرها، با نام هرکدام در ردیف اول فایل (عنوان ستون‌ها).
-    در متن پیام از <code class="kbd">{نام_ستون}</code> برای هر متغیر استفاده کنید — مثلاً اگر ستون دوم عنوان «نام» دارد، بنویسید <code class="kbd">{نام}</code>.
+    ستون اول: شماره موبایل. ستون دوم: متن پیام همان ردیف، شامل متغیرهایی مثل <code class="kbd">{نام}</code> یا <code class="kbd">{مبلغ}</code>.
+    ستون‌های بعدی: مقدار هر متغیر، با نام دقیق متغیر در ردیف اول (عنوان ستون) — مثلاً اگر ستون سوم عنوانش «نام» باشد، مقدار همان ردیف به‌جای <code class="kbd">{نام}</code> در متن ستون دوم قرار می‌گیرد.
     اگر متغیری در فایل پیدا نشود، همان <code class="kbd">{...}</code> بدون تغییر در پیام باقی می‌ماند تا اشتباه فوراً معلوم شود.
   </p>
+  <div class="table-wrap" style="margin-bottom:16px">
+  <table>
+    <tr><th>A (موبایل)</th><th>B (متن پیام)</th><th>C (نام)</th><th>D (مبلغ)</th></tr>
+    <tr><td class="msisdn">989121234567</td><td>سلام {نام}، مبلغ {مبلغ} تومان فاکتور شماست.</td><td>علی</td><td>150000</td></tr>
+    <tr><td class="msisdn">989351234567</td><td>سلام {نام}، مبلغ {مبلغ} تومان فاکتور شماست.</td><td>سارا</td><td>320000</td></tr>
+  </table>
+  </div>
   <form method="post" enctype="multipart/form-data">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="upload">
@@ -115,9 +123,6 @@ require __DIR__ . '/../app/views/header.php';
       </label>
       <label>فایل (xlsx یا csv) <input type="file" name="file" accept=".xlsx,.csv" required></label>
     </div>
-    <label>متن پیام (قالب)
-      <textarea name="template" required placeholder="سلام {نام}، مبلغ {مبلغ} تومان فاکتور شما تا {تاریخ} قابل پرداخت است."></textarea>
-    </label>
     <button class="btn btn-primary">بارگذاری و افزودن به صف ارسال</button>
   </form>
 </div>
