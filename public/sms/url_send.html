@@ -16,18 +16,28 @@
  * scoped to this directory, so integrations already pointed at a
  * "url_send.html"-shaped endpoint from another provider work unchanged.
  *
- * Response is a single line of plain text, not JSON:
- *   on success: the new outbound_message.id
- *   on failure: a negative code —
- *     -1 missing parameter, -2 authentication failed,
- *     -3 account has no ELLSMS panel access, -4 invalid destination,
- *     -5 insufficient credit, -6 send failed at the gateway
+ * Response is JSON: {"status":"ok","reference_id":123,"error_code":null}
+ * on success (reference_id is the new outbound_message.id), or
+ * {"status":"not ok","reference_id":null,"error_code":-2} on failure.
+ * error_code is one of:
+ *   -1 missing parameter, -2 authentication failed,
+ *   -3 account has no ELLSMS panel access, -4 invalid destination,
+ *   -5 insufficient credit, -6 send failed at the gateway
  */
 
 require_once __DIR__ . '/../../app/bootstrap.php';
 require_once __DIR__ . '/../../app/backend.php';
 
-header('Content-Type: text/plain; charset=utf-8');
+header('Content-Type: application/json; charset=utf-8');
+
+function url_send_respond(bool $ok, ?int $referenceId, ?int $errorCode): never {
+    echo json_encode([
+        'status'       => $ok ? 'ok' : 'not ok',
+        'reference_id' => $referenceId,
+        'error_code'   => $errorCode,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $username    = trim((string)($_REQUEST['username'] ?? ''));
 $password    = (string)($_REQUEST['password'] ?? '');
@@ -36,7 +46,7 @@ $destination = trim((string)($_REQUEST['destination'] ?? ''));
 $content     = (string)($_REQUEST['content'] ?? '');
 
 if ($username === '' || $password === '' || $originator === '' || $destination === '' || $content === '') {
-    exit('-1');
+    url_send_respond(false, null, -1);
 }
 
 $st = db()->prepare('SELECT id, password, currentcredit AS credit, active, deleted FROM user_ WHERE username = ?');
@@ -45,19 +55,19 @@ $u = $st->fetch();
 
 if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password($password, $u['password'])) {
     usleep(400000); // same timing-attack mitigation as login.php
-    exit('-2');
+    url_send_respond(false, null, -2);
 }
 
 $m = db()->prepare('SELECT panel_access, is_admin FROM ellsms_meta WHERE user_id = ?');
 $m->execute([$u['id']]);
 $meta = $m->fetch();
 if (!$meta || !$meta['panel_access']) {
-    exit('-3');
+    url_send_respond(false, null, -3);
 }
 
 $dest = normalize_msisdn($destination);
 if (!$dest) {
-    exit('-4');
+    url_send_respond(false, null, -4);
 }
 
 $user = ['id' => (int)$u['id'], 'credit' => (float)$u['credit'], 'role' => $meta['is_admin'] ? 'admin' : 'user'];
@@ -65,7 +75,7 @@ $user = ['id' => (int)$u['id'], 'credit' => (float)$u['credit'], 'role' => $meta
 [$ok, $msg] = dispatch_message($user, $originator, [$dest], $content);
 
 if (!$ok) {
-    exit(str_contains($msg, 'اعتبار کافی نیست') ? '-5' : '-6');
+    url_send_respond(false, null, str_contains($msg, 'اعتبار کافی نیست') ? -5 : -6);
 }
 
 audit((int)$u['id'], 'api.url_send', $dest);
@@ -73,4 +83,4 @@ audit((int)$u['id'], 'api.url_send', $dest);
 $row = db()->prepare('SELECT id FROM outbound_message WHERE sender_user_id = ? AND destination = ? ORDER BY id DESC LIMIT 1');
 $row->execute([$u['id'], $dest]);
 $id = $row->fetchColumn();
-echo $id !== false ? (string)$id : '1';
+url_send_respond(true, $id !== false ? (int)$id : null, null);
