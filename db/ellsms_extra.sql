@@ -324,6 +324,52 @@ CREATE TABLE IF NOT EXISTS ellsms_payments (
   KEY (user_id), KEY (status), KEY (authority)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Landing-page hero slider — managed from Settings → اسلایدر صفحه‌ی
+-- اصلی (public/slides.php). image is a filename under
+-- public/assets/img/slides/ (served directly by Apache, not gated like
+-- KYC documents — these are public marketing banners).
+CREATE TABLE IF NOT EXISTS ellsms_slides (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  title      VARCHAR(190) NOT NULL,
+  body       TEXT NULL,
+  image      VARCHAR(190) NOT NULL,
+  link_url   VARCHAR(255) NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  active     TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Marketing pricing cards shown on the landing page (public/pricing.php
+-- manages them). Deliberately separate from the real credit-purchase
+-- rate in ellsms_settings (rial_per_credit) — this table is only for
+-- how packages are presented publicly, not what buy-credit.php actually
+-- charges.
+CREATE TABLE IF NOT EXISTS ellsms_pricing_packages (
+  id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name          VARCHAR(120) NOT NULL,
+  credit_amount INT UNSIGNED NOT NULL DEFAULT 0,
+  price_rial    BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  features      TEXT NULL,
+  is_featured   TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order    INT NOT NULL DEFAULT 0,
+  active        TINYINT(1) NOT NULL DEFAULT 1,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Public "راهنمای استفاده" articles (public/guide-admin.php manages
+-- them, public/guide.php lists them as an accordion). Plain text body,
+-- rendered with nl2br() — no markdown parser, consistent with this
+-- project having no vendor/ dependencies anywhere else.
+CREATE TABLE IF NOT EXISTS ellsms_guide_articles (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  title      VARCHAR(190) NOT NULL,
+  body       MEDIUMTEXT NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  active     TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
 -- still empty.

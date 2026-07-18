@@ -4,3 +4,5 @@
 node_modules/
 storage/kyc/*
 !storage/kyc/.gitkeep
+public/assets/img/slides/*
+!public/assets/img/slides/.gitkeep

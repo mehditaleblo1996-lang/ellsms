@@ -20,6 +20,9 @@ $adminNav = [
     'analytics'         => ['/analytics.php',          'آمار تفصیلی',    '📊'],
     'numbers'           => ['/numbers.php',            'شماره‌ها',        '📞'],
     'number_categories' => ['/number-categories.php',  'دسته‌های شماره',  '🗂'],
+    'slides'            => ['/slides.php',             'اسلایدر صفحه‌ی اصلی', '🖼'],
+    'pricing'           => ['/pricing.php',            'بسته‌های قیمتی',  '🏷'],
+    'guide_admin'       => ['/guide-admin.php',        'راهنمای استفاده', '📘'],
     'settings'          => ['/settings.php',            'تنظیمات',        '⚙'],
 ];
 ?><!doctype html>

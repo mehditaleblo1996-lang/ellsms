@@ -15,6 +15,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'تنظیمات ذخیره شد.');
     }
 
+    if ($do === 'contact') {
+        set_setting('contact_address',     trim($_POST['contact_address'] ?? ''));
+        set_setting('contact_phone',       trim($_POST['contact_phone'] ?? ''));
+        set_setting('telegram_bot_token',  trim($_POST['telegram_bot_token'] ?? ''));
+        set_setting('telegram_chat_id',    trim($_POST['telegram_chat_id'] ?? ''));
+        audit((int)$me['id'], 'settings.contact_update');
+        flash('success', 'تنظیمات تماس با ما ذخیره شد.');
+    }
+
     if ($do === 'zarinpal') {
         set_setting('zarinpal_merchant_id',   trim($_POST['zarinpal_merchant_id'] ?? ''));
         set_setting('zarinpal_callback_url',  rtrim(trim($_POST['zarinpal_callback_url'] ?? ''), '/'));
@@ -81,6 +90,34 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     </div>
     <button class="btn btn-primary">ذخیره‌ی تنظیمات پرداخت</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>تماس با ما</h2>
+  <p class="hint">آدرس و تلفن در صفحه‌ی عمومی <a href="/contact.php" target="_blank">تماس با ما</a> نمایش داده می‌شوند. فرم تیکت آن صفحه با فرستادن یک پیام به همین ربات تلگرام کار می‌کند — Token و Chat ID را می‌توان از <code class="kbd">.env</code> هم تنظیم کرد؛ آنچه اینجا ذخیره شود اولویت دارد.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="contact">
+    <div class="form-row">
+      <label>آدرس (هر خط یک آدرس)
+        <textarea name="contact_address" rows="3"><?= e(setting('contact_address', '')) ?></textarea>
+      </label>
+      <label>تلفن (هر خط یک شماره)
+        <textarea name="contact_phone" rows="3" class="ltr"><?= e(setting('contact_phone', '')) ?></textarea>
+      </label>
+    </div>
+    <div class="form-row">
+      <label>Bot Token تلگرام
+        <input type="text" name="telegram_bot_token" value="<?= e(setting('telegram_bot_token', '')) ?>" placeholder="123456789:AAExampleTokenFromBotFather" class="ltr">
+        <div class="hint">از <span class="ltr">@BotFather</span> در تلگرام یک ربات بسازید و توکن را اینجا وارد کنید.</div>
+      </label>
+      <label>Chat ID
+        <input type="text" name="telegram_chat_id" value="<?= e(setting('telegram_chat_id', '')) ?>" placeholder="123456789" class="ltr">
+        <div class="hint">شناسه‌ی چتی که تیکت‌ها باید به آن ارسال شوند (کاربر، گروه یا کانال).</div>
+      </label>
+    </div>
+    <button class="btn btn-primary">ذخیره‌ی تنظیمات تماس با ما</button>
   </form>
 </div>
 

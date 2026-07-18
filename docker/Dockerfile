@@ -20,6 +20,16 @@ RUN { \
       echo 'expose_php = Off'; \
     } > /usr/local/etc/php/conf.d/ellsms.ini
 
+# The legacy-style SMS API deliberately lives at /sms/url_send.html (not
+# .php) so integrations already pointed at a "url_send.html"-shaped
+# endpoint from another provider work unchanged — this makes Apache
+# actually run it as PHP instead of serving it as a static file.
+RUN { \
+      echo '<Directory "${APACHE_DOCUMENT_ROOT}/sms">'; \
+      echo '    AddHandler application/x-httpd-php .html'; \
+      echo '</Directory>'; \
+    } > /etc/apache2/conf-enabled/ellsms-sms-api.conf
+
 WORKDIR /var/www/html
 COPY . /var/www/html
 

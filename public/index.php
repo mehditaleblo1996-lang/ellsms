@@ -1,5 +1,9 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+if (!current_user()) {
+    require __DIR__ . '/landing.php';
+    exit;
+}
 $me = require_login();
 $pageTitle = 'داشبورد';
 $active = 'dashboard';
