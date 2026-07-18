@@ -78,9 +78,15 @@ if (!$ok) {
     url_send_respond(false, null, str_contains($msg, 'اعتبار کافی نیست') ? -5 : -6);
 }
 
-audit((int)$u['id'], 'api.url_send', $dest);
-
 $row = db()->prepare('SELECT id FROM outbound_message WHERE sender_user_id = ? AND destination = ? ORDER BY id DESC LIMIT 1');
 $row->execute([$u['id'], $dest]);
 $id = $row->fetchColumn();
-url_send_respond(true, $id !== false ? (int)$id : null, null);
+
+// reference_id is a random token handed back to the caller, deliberately
+// not outbound_message.id — a raw sequential id would leak how many
+// messages the whole system has ever sent. The real id still goes in the
+// audit log so support can trace a reference back to the actual row.
+$referenceId = random_int(100000000, 999999999);
+audit((int)$u['id'], 'api.url_send', $dest . ' (outbound_message #' . ($id !== false ? $id : '?') . ", reference {$referenceId})");
+
+url_send_respond(true, $referenceId, null);
