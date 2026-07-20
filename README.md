@@ -191,3 +191,4 @@ db/ellsms_extra.sql supplementary ELLSMS tables — never touches the backend's 
 docker/             PHP-Apache image
 deploy.sh           git pull + rebuild + restart + re-apply supplementary schema
 ```
+# ellsms
