@@ -370,6 +370,35 @@ CREATE TABLE IF NOT EXISTS ellsms_guide_articles (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- In-panel support tickets. Separate from the public "تماس با ما" contact
+-- form (public/contact.php / app/telegram.php), which stays a stateless
+-- Telegram relay with no persistence — this is a real, authenticated,
+-- threaded ticket system. A ticket's opening message is not a column on
+-- this table; it's simply the first row in ellsms_ticket_replies, so
+-- rendering a thread never needs to special-case the first message.
+CREATE TABLE IF NOT EXISTS ellsms_tickets (
+  id         INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id    BIGINT NOT NULL,               -- ticket owner (= user_.id)
+  subject    VARCHAR(160) NOT NULL,
+  status     ENUM('open','answered','closed') NOT NULL DEFAULT 'open',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY (user_id), KEY (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Every message in a ticket's thread, oldest first. is_admin_reply is a
+-- snapshot of the author's role at post time (not a live join against
+-- ellsms_meta.is_admin), so a later role change never rewrites history.
+CREATE TABLE IF NOT EXISTS ellsms_ticket_replies (
+  id             BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ticket_id      INT UNSIGNED NOT NULL,
+  user_id        BIGINT NOT NULL,            -- author (owner or admin — both are user_ rows)
+  is_admin_reply TINYINT(1) NOT NULL DEFAULT 0,
+  body           TEXT NOT NULL,
+  created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY (ticket_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
 -- still empty.
