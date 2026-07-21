@@ -13,6 +13,7 @@ $nav = [
     'inbox'      => ['/inbox.php',       'صندوق دریافت',    '✉'],
     'contacts'   => ['/contacts.php',    'مخاطبین',         '☰'],
     'blacklist'  => ['/blacklist.php',   'لیست سیاه',        '🚫'],
+    'tickets'    => ['/tickets.php',     'پشتیبانی',        '🎫'],
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
 ];
 $adminNav = [

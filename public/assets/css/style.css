@@ -185,6 +185,15 @@ tr:hover td { background: #f9f9ff; }
 .badge-done, .badge-user { background: var(--tint); color: var(--indigo); }
 .badge-admin { background: var(--ink); color: #fff; }
 
+.badge-open { background: var(--warn-bg); color: var(--warn); }
+.badge-answered { background: var(--tint); color: var(--indigo); }
+.badge-closed { background: var(--ok-bg); color: var(--ok); }
+
+.ticket-thread { display: flex; flex-direction: column; gap: 14px; margin: 18px 0; }
+.ticket-msg { padding: 12px 16px; border-radius: 10px; background: var(--tint); }
+.ticket-msg.is-admin { background: var(--ink); color: #fff; }
+.ticket-msg-meta { font-size: 12px; opacity: .7; margin-bottom: 6px; }
+
 .flash { border-radius: 11px; padding: 12px 16px; margin-bottom: 18px; font-weight: 500; }
 .flash-success { background: var(--ok-bg); color: var(--ok); }
 .flash-error   { background: var(--err-bg); color: var(--err); }
