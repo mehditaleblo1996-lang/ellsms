@@ -71,7 +71,7 @@ function ticket_add_reply(int $ticketId, int $userId, string $username, string $
        ->execute([$ticketId, $userId, $isAdmin ? 1 : 0, $body]);
 
     $newStatus = $isAdmin ? 'answered' : 'open';
-    $db->prepare('UPDATE ellsms_tickets SET status = ? WHERE id = ?')->execute([$newStatus, $ticketId]);
+    $db->prepare('UPDATE ellsms_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')->execute([$newStatus, $ticketId]);
 
     if (!$isAdmin) {
         ticket_notify_telegram(
