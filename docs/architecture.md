@@ -334,3 +334,23 @@ Load-bearing properties:
   re-price.
 
 See `docs/sms-pricing.md`.
+
+## Support impersonation
+
+`app/impersonation.php` lets a platform administrator open a customer's panel for support, without
+their password. Its whole design is one decision: **while impersonating, `$_SESSION['uid']` is the
+TARGET's id**, so `current_user()`, `current_organization()` and every RBAC primitive resolve exactly
+as they would in the customer's own session. There is no hybrid identity, and therefore no
+platform-admin bypass to leak into a customer page — `is_admin()` is false and the admin area returns
+403 until the operator exits.
+
+The real actor is preserved beside it in the session and used for exactly three things: the banner
+rendered on every authenticated page, the audit trail
+(`ellsms_audit_log.impersonator_user_id`, populated automatically by `audit()`), and the exit control.
+
+Support mode is read-mostly: one central deny-list blocks sending, credential changes, integration
+secrets, billing/wallet mutations and destructive deletions, enforced server-side at the existing
+choke points. Cost preview and all reading stay available. The feature lives entirely in `$_SESSION`,
+so the public API and the workers are structurally unaffected by it.
+
+See `docs/admin-impersonation.md`.

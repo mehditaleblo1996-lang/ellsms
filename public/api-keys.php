@@ -28,6 +28,11 @@ $revealedSecret = null; // ['label' => string, 'raw_key' => string] — set only
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // Integration secrets are not support-session material (STEP 28).
+    $impersonationAction = ['create' => 'apikey.create', 'rotate' => 'apikey.rotate', 'revoke' => 'apikey.revoke'][$_POST['do'] ?? ''] ?? null;
+    if ($impersonationAction !== null && impersonation_guard_post($impersonationAction)) {
+        redirect('/api-keys.php');
+    }
     require_permission(Permissions::API_KEYS_MANAGE);
     $do = $_POST['do'] ?? '';
 
@@ -71,6 +76,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $keys = api_key_list($orgId);
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'apikey.create';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 ?>
 <?php if ($revealedSecret): ?>
 <div class="card" style="border:2px solid #c0392b">

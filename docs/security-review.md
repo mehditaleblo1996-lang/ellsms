@@ -637,3 +637,46 @@ was populated before the revocation. Verified by
 closed on null/inactive/deleted/no-access rows) and
 `tests/Integration/AuthorizationIntegrationTest.php` (`can_use_originator()` end-to-end against a
 real assigned-numbers table, including the default-originator fallback and the deny case).
+
+---
+
+## 16. Platform-admin support impersonation (added 2026-08-11)
+
+A new privileged capability, reviewed here because it is the kind of feature that silently becomes a
+backdoor if built casually. Full detail: `docs/admin-impersonation.md`.
+
+**What it is.** A platform administrator can open a customer's panel to reproduce a support issue.
+**No password is read, verified, set or reset, and no 2FA verifier is touched** — a test asserts the
+source of `app/impersonation.php` contains no credential primitive at all, with comments stripped so
+the file's own prose cannot satisfy the check.
+
+**Why it does not escalate privilege.** While impersonating, `$_SESSION['uid']` IS the target's id.
+Every authorization primitive therefore resolves the target's own identity and memberships; there is
+no hybrid "admin + customer" identity for a bypass to leak through. `is_admin()` returns false and
+the entire platform-admin area returns 403 until the operator exits. The real actor is kept beside
+the session for the banner, the audit trail and the exit control only — no authorization decision
+consults it.
+
+**Controls.**
+
+| Control | Mechanism |
+|---|---|
+| Only platform admins may start | `require_admin()` on the endpoint **and** an independent re-check inside `impersonation_start()` |
+| POST-only, CSRF-protected | no GET route starts anything |
+| Session fixation | `session_regenerate_id(true)` on start and exit, asserted over real HTTP |
+| Forged session state | `impersonation_state()` binds the recorded target to the session's effective user; anything else destroys the session |
+| Nesting | refused by the service and by `require_admin()` |
+| Stale privilege | the actor's admin status is re-read from the database every request, never trusted from the session |
+| Bounded duration | 60 minutes, then automatic return to the admin panel |
+| Enumeration | starts rate-limited per actor and per IP |
+| Sensitive mutations | one central deny-list, enforced server-side at the choke points — sending, credentials, integration secrets, billing/wallet, org structure, destructive deletes |
+| Attribution | `ellsms_audit_log.impersonator_user_id`, filled automatically by `audit()` |
+
+**Residual risk, stated plainly.** An operator with this capability can *see* customer data —
+message bodies, contacts, reports — exactly as the customer sees them. There is no per-field
+redaction. The control is not prevention but accountability: access is bounded, requires a written
+reason, and is attributed to a named administrator in an append-only trail. Deployments where that
+is insufficient should restrict who holds `ellsms_meta.is_admin`.
+
+Coverage: `tests/Integration/ImpersonationTest.php` (35 tests) and
+`tests/Integration/ImpersonationHttpTest.php` (15 tests, real server, real sessions).

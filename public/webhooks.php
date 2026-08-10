@@ -20,6 +20,12 @@ $revealedSecret = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // Endpoint changes and secret rotation both alter where a customer's data is delivered (STEP 28).
+    // 'test' stays allowed: it is a diagnostic, which is precisely what a support session is for.
+    $impersonationAction = ['create' => 'webhook.write', 'delete' => 'webhook.write', 'toggle' => 'webhook.write', 'rotate' => 'webhook.rotate'][$_POST['do'] ?? ''] ?? null;
+    if ($impersonationAction !== null && impersonation_guard_post($impersonationAction)) {
+        redirect('/webhooks.php');
+    }
     require_permission(Permissions::WEBHOOKS_MANAGE);
     $do = $_POST['do'] ?? '';
     $id = (int)($_POST['id'] ?? 0);
@@ -73,6 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $endpoints = webhook_endpoint_list($orgId);
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'webhook.write';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 ?>
 <?php if ($revealedSecret): ?>
 <div class="card" style="border:2px solid #c0392b">

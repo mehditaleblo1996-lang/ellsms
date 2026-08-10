@@ -243,6 +243,17 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     $refType = $walletRefType ?? ($scheduleId !== null ? 'schedule' : 'direct_send');
     $refId   = $walletRefId   ?? ($scheduleId !== null ? (string)$scheduleId : dispatch_direct_send_dedup_key($userId, $originator, $destinations, $content));
 
+    // Support impersonation: nothing may leave the gateway on a customer's behalf
+    // (docs/admin-impersonation.md, STEP 8). Enforced HERE — the one function every non-bulk send
+    // funnels through — rather than on each send page, so a path anyone adds later is covered by
+    // default. Inert outside a browser session: workers, cron and the public API have no
+    // $_SESSION, so is_impersonating() is false for all of them and this costs them nothing.
+    // Checked before the quota reservation so a refused send consumes no allowance.
+    if (!impersonation_action_allowed('send.direct')) {
+        impersonation_record_block('send.direct');
+        return [false, impersonation_block_message('send.direct'), false, 0, $total, 0];
+    }
+
     // Phase 13 (STEP 20): the message quota is reserved BEFORE the wallet, deliberately — a
     // quota rejection then costs nothing to unwind, whereas checking money first would mean
     // releasing a wallet reservation on every over-quota send. Uses the SAME refType/refId the
@@ -368,6 +379,14 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
     $userId  = (int)($user['id'] ?? 0);
     $isAdmin = ($user['role'] ?? null) === 'admin';
     $total   = count($destinations);
+
+    // Same support-impersonation block as dispatch_message(). In practice this path is reached only
+    // by the worker (scheduled occurrences, auto-replies), where impersonation can never be active —
+    // it is here so the rule holds for the FUNCTION rather than for the callers it happens to have.
+    if (!impersonation_action_allowed('send.schedule')) {
+        impersonation_record_block('send.schedule');
+        return [false, impersonation_block_message('send.schedule'), false];
+    }
 
     // Phase 13 (STEP 20/21/22): identical quota handling to dispatch_message(), with one crucial
     // difference mirroring how the wallet reservation already behaves here — the quota is finalized
@@ -1121,6 +1140,13 @@ function bulk_queue_job(
     ?int $throttleCount = null, ?int $throttleMinutes = null, ?string $messageType = null
 ): array {
     if (!$items) return [false, 'هیچ ردیف معتبری در فایل پیدا نشد.', null];
+
+    // Support impersonation: a queued bulk job is a send that happens LATER, which makes it exactly
+    // the thing a support session must not be able to leave behind (STEP 8).
+    if (!impersonation_action_allowed('send.bulk')) {
+        impersonation_record_block('send.bulk');
+        return [false, impersonation_block_message('send.bulk'), null, 'impersonation_blocked'];
+    }
 
     $isAdmin = ($user['role'] ?? null) === 'admin';
     $userId  = (int)($user['id'] ?? 0);

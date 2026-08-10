@@ -16,8 +16,25 @@ require_once __DIR__ . '/../app/bootstrap.php';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     if (current_user()) {
+        // Logout during a support impersonation ends the WHOLE session — it does not merely drop
+        // back to the administrator (docs/admin-impersonation.md, STEP 11). Two controls, two
+        // meanings, deliberately: "بازگشت به پنل مدیریت" in the banner exits the impersonation,
+        // "خروج" logs out. Anything else would make "log out" ambiguous at exactly the moment an
+        // operator wants it to be unambiguous — e.g. on a shared machine.
+        //
+        // audit() records the effective (target) user with the real administrator alongside, so the
+        // trail shows who actually ended the session.
+        if (is_impersonating()) {
+            $impersonationState = impersonation_state();
+            Logger::info('impersonation.ended', [
+                'impersonator_user_id' => $impersonationState['actor_user_id'],
+                'effective_user_id'    => $impersonationState['target_user_id'],
+                'how'                  => 'logout',
+            ]);
+            audit((int)current_user()['id'], 'impersonation.ended', 'how=logout actor=' . $impersonationState['actor_user_id']);
+        }
         audit((int)current_user()['id'], 'logout');
-        Logger::info('auth.logout', ['user_id' => current_user()['id']]);
+        Logger::info('auth.logout', ['user_id' => current_user()['id'], 'impersonating' => is_impersonating()]);
     }
     $_SESSION = [];
     session_destroy();

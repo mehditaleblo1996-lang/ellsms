@@ -19,6 +19,11 @@ $orgId = (int)$org['organization_id'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // Plan changes and cancellations are financial commitments made on the customer's behalf; the
+    // page stays fully READABLE during support, which is the part that actually helps (STEP 27).
+    if (impersonation_guard_post('billing.subscription')) {
+        redirect('/billing.php');
+    }
     // BILLING_MANAGE is owner-only by default (app/rbac.php) — an org admin may VIEW this page but
     // not commit the organization to a paid plan, mirroring the existing WALLET_ADJUST precedent.
     require_permission(Permissions::BILLING_MANAGE);
@@ -89,6 +94,8 @@ $statusFa = [
 ];
 
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'billing.subscription';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 ?>
 <div class="card">
   <h2>اشتراک فعلی</h2>

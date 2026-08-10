@@ -111,6 +111,8 @@ unset($j);
 $statusFa = ['pending' => 'در صف', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده'];
 
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'send.bulk';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 ?>
 <div class="card">
   <h2>بارگذاری فایل</h2>

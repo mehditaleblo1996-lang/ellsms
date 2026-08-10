@@ -103,6 +103,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'متن پیام خالی است.');
         } elseif (!$runAt || $runAt <= date('Y-m-d H:i:s')) {
             flash('error', 'زمان زمان‌بندی‌شده باید در آینده باشد.');
+        } elseif (impersonation_guard_post('send.schedule')) {
+            // A schedule is a send that happens later, so it is blocked in support mode exactly like
+            // an immediate one (docs/admin-impersonation.md).
         } else {
             $repeat = in_array($_POST['repeat'] ?? 'none', ['none','daily','weekly','monthly'], true) ? $_POST['repeat'] : 'none';
             $slot = entitlement_with_resource_slot((int)($me['organization_id'] ?? 0), Limits::ACTIVE_SCHEDULES, static function (PDO $db) use ($me, $originator, $dests, $content, $runAt, $repeat) {
@@ -158,6 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'send.direct';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 
 // Carries the original submission forward so confirming resubmits IDENTICAL inputs — the confirm
 // branch re-parses and re-prices them server-side, so these are inputs to be re-validated, never

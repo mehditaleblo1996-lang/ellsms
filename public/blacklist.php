@@ -7,6 +7,10 @@ $active = 'blacklist';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
+    // Removing a number from the blacklist re-opens it to messages the customer asked to stop.
+    if ($do === 'delete' && impersonation_guard_post('blacklist.delete')) {
+        redirect('/blacklist.php');
+    }
 
     if ($do === 'add') {
         $mobile = normalize_msisdn($_POST['mobile'] ?? '');

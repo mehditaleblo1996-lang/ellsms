@@ -17,6 +17,11 @@ if (!is_admin()) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
+    // Deleting a contact is recoverable only from a backup, so it is not a support action. Adding
+    // and importing stay allowed — they are how an operator reproduces a customer's report.
+    if ($do === 'delete' && impersonation_guard_post('contacts.delete')) {
+        redirect('/contacts.php');
+    }
 
     if (!is_admin()) {
         require_permission(Permissions::CONTACTS_MANAGE);

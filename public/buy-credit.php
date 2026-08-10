@@ -25,6 +25,10 @@ $packages      = array_filter(array_map('intval', explode(',', (string)setting('
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // Never start a payment on a customer's behalf (STEP 27).
+    if (impersonation_guard_post('billing.payment')) {
+        redirect('/buy-credit.php');
+    }
     $credits = max(0, (int)($_POST['credits'] ?? 0));
 
     if ($credits < $minPurchase) {
@@ -62,6 +66,8 @@ $payments = $pst->fetchAll();
 $statusFa = ['pending' => 'در انتظار', 'verification_failed' => 'در حال بررسی مجدد', 'paid' => 'موفق', 'failed' => 'ناموفق'];
 
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'billing.payment';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 ?>
 <div class="grid grid-2">
   <div class="card">

@@ -254,6 +254,18 @@ require __DIR__ . '/../app/views/header.php';
           <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
           <button class="btn btn-sm"><?= $editUser['twofa_enabled'] ? 'غیرفعال‌سازی ۲مرحله‌ای' : 'فعال‌سازی ۲مرحله‌ای' ?></button>
         </form>
+        <?php
+        /*
+         * Support impersonation (docs/admin-impersonation.md). A LINK to a confirmation page, not a
+         * one-click POST: entering a customer's account is exactly the kind of action that should
+         * cost a deliberate second step, and the confirmation page is where the reason is captured.
+         * Shown only when the target is actually impersonable, so the operator does not click into a
+         * refusal.
+         */
+        ?>
+        <?php if (impersonation_target_refusal($editUser, (int)$me['id']) === null): ?>
+          <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>">ورود به پنل مشتری</a>
+        <?php endif; ?>
       </div>
     </div>
     <form method="post">

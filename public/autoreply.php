@@ -24,6 +24,11 @@ if (!is_admin()) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
+    // Creating or enabling a rule arms an automatic sender — the one thing a support session must
+    // not be able to leave behind (STEP 8).
+    if (in_array($do, ['create_rule', 'toggle_rule'], true) && impersonation_guard_post('send.autoreply')) {
+        redirect('/autoreply.php');
+    }
     if (!is_admin()) {
         require_permission(Permissions::AUTOREPLY_MANAGE);
     }

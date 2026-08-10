@@ -33,6 +33,9 @@ require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/jobqueue.php';
 require_once __DIR__ . '/tenant.php';
 require_once __DIR__ . '/rbac.php';
+// Platform-admin support impersonation (docs/admin-impersonation.md). Loaded after the identity,
+// tenant and RBAC primitives it re-validates against, and before anything that renders a page.
+require_once __DIR__ . '/impersonation.php';
 // Phase 12 — public API/webhooks (docs/public-api.md, docs/webhooks.md). Loaded after
 // rbac.php/wallet.php/jobqueue.php since ApiKeys/Webhooks build on organization_status(),
 // db_transaction(), and the existing job-retry backoff math rather than duplicating any of it.
@@ -488,6 +491,11 @@ function require_login(): array {
         header('Location: /login.php');
         exit;
     }
+    // Re-validates an impersonating session on EVERY authenticated request: a crafted session, an
+    // actor who has since lost platform-admin, or an elapsed support window all end here rather
+    // than degrading into an administrator silently browsing a customer's account as that customer
+    // (docs/admin-impersonation.md). A no-op for ordinary sessions.
+    impersonation_enforce();
     $org = current_organization();
     if ($org) {
         $u['organization_id'] = (int)$org['organization_id'];
@@ -497,6 +505,15 @@ function require_login(): array {
 
 function require_admin(): array {
     $u = require_login();
+    // The platform-admin area is unreachable while impersonating. This is mostly belt-and-braces —
+    // the effective user during an impersonation is an ordinary customer, so the role check below
+    // already denies — but it is stated explicitly so the operator gets an actionable message
+    // instead of a bare 403, and so the rule survives even if a target somehow held admin rights
+    // (impersonation_target_refusal() forbids starting one, but this file must not depend on that).
+    if (is_impersonating()) {
+        http_response_code(403);
+        exit('۴۰۳ — در حالت پشتیبانی به بخش مدیریت دسترسی ندارید. ابتدا از حالت پشتیبانی خارج شوید.');
+    }
     if ($u['role'] !== 'admin') {
         http_response_code(403);
         exit('۴۰۳ — این بخش فقط برای مدیران است.');
@@ -605,9 +622,40 @@ function sms_parts(string $content): int {
 }
 
 /* ---------- Audit log ---------- */
+/**
+ * Appends an audit row.
+ *
+ * `impersonator_user_id` is filled in AUTOMATICALLY from the session whenever a platform admin is
+ * impersonating, so every existing call site keeps attributing the action to the effective user
+ * (which is what the row means) while the real human behind it is never lost — Invariant D/E of
+ * docs/admin-impersonation.md, achieved without editing a hundred audit() calls.
+ *
+ * The column is additive (db/migrations/2026_08_11_audit_impersonator.sql). An install running this
+ * code against a not-yet-migrated database silently falls back to the original statement rather
+ * than failing every audited action; the fallback is latched, so it costs one failed statement per
+ * process, not one per call.
+ */
 function audit(int $userId, string $action, string $details = ''): void {
-    $st = db()->prepare('INSERT INTO ellsms_audit_log (user_id, action, details, ip) VALUES (?,?,?,?)');
-    $st->execute([$userId, $action, $details, $_SERVER['REMOTE_ADDR'] ?? 'cli']);
+    static $hasImpersonatorColumn = true;
+
+    $ip = function_exists('client_ip') && PHP_SAPI !== 'cli' ? client_ip() : ($_SERVER['REMOTE_ADDR'] ?? 'cli');
+    $impersonatorUserId = null;
+    if (function_exists('is_impersonating') && is_impersonating()) {
+        $impersonatorUserId = real_actor_user_id();
+    }
+
+    if ($hasImpersonatorColumn) {
+        try {
+            db()->prepare('INSERT INTO ellsms_audit_log (user_id, action, details, ip, impersonator_user_id) VALUES (?,?,?,?,?)')
+                ->execute([$userId, $action, $details, $ip, $impersonatorUserId]);
+            return;
+        } catch (PDOException $e) {
+            $hasImpersonatorColumn = false;
+        }
+    }
+
+    db()->prepare('INSERT INTO ellsms_audit_log (user_id, action, details, ip) VALUES (?,?,?,?)')
+        ->execute([$userId, $action, $details, $ip]);
 }
 
 /* ==========================================================================

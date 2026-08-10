@@ -199,6 +199,23 @@ oversight: re-checking live actor permission inside a worker would require attac
 identity to background execution, which Phase 6 explicitly rejected for the same reason sessions don't
 exist in a worker process.
 
+## 12b. Platform-admin support impersonation
+
+`docs/admin-impersonation.md` adds a way for a platform administrator to open a customer's panel. It
+is worth stating here what it does **not** do to RBAC: nothing.
+
+While impersonating, `$_SESSION['uid']` is the TARGET's id, so every function in this document —
+`current_organization()`, `membership_has_permission()`, `has_permission()`, `require_permission()` —
+resolves the target's own membership and nothing else. There is no platform-admin bypass to leak,
+because the admin role is simply not present in the effective session: `is_admin()` returns **false**
+and the whole platform-admin area returns 403 until the operator exits.
+
+The real actor is preserved separately, for the banner, the audit trail and the exit control only.
+No permission decision in this document consults it. `tests/Integration/ImpersonationTest.php`
+asserts a member-level target is denied `members.manage`, `api_keys.manage`, `settings.manage`,
+`billing.manage` and `wallet.adjust` while a platform admin is behind the session — and still
+*granted* `campaigns.manage`, so the isolation is role fidelity rather than blanket denial.
+
 ## 13. Ticket / KYC policy — unchanged, explicitly
 
 Neither is touched by RBAC. Tickets remain strictly user-private (Phase 6's own explicit policy,

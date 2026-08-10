@@ -113,6 +113,33 @@ $adminNav = [
     </header>
 
     <main class="content">
+      <?php
+      /*
+       * Support-impersonation banner (docs/admin-impersonation.md, STEP 18). Rendered on EVERY
+       * authenticated page, above everything else, because the single worst failure mode of this
+       * feature is an operator forgetting which account they are looking at. Deliberately text and
+       * a colour, not an icon — an icon is missable, and this must not be.
+       *
+       * It carries the ONLY control in the panel that uses the preserved real-actor context; every
+       * other part of the page behaves as the target user.
+       */
+      $impersonationBanner = is_impersonating() ? impersonation_banner_context() : null;
+      ?>
+      <?php if ($impersonationBanner): ?>
+        <div class="flash flash-error" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
+          <span>
+            <strong>حالت پشتیبانی فعال است</strong> — شما در حال مشاهده حساب
+            «<?= e(trim(($impersonationBanner['organization_name'] !== '' ? $impersonationBanner['organization_name'] . ' / ' : '') . $impersonationBanner['target_username'])) ?>»
+            هستید. عملیات حساس غیرفعال است و این نشست ممیزی می‌شود.
+            <span class="hint" style="display:inline">(<?= to_persian_digits((string)(int)ceil($impersonationBanner['expires_in'] / 60)) ?> دقیقه باقی‌مانده)</span>
+          </span>
+          <form method="post" action="/impersonate.php" style="margin:0">
+            <?= csrf_field() ?>
+            <input type="hidden" name="do" value="exit">
+            <button type="submit" class="btn btn-sm btn-primary">بازگشت به پنل مدیریت</button>
+          </form>
+        </div>
+      <?php endif; ?>
       <?php foreach (flashes() as $f): ?>
         <div class="flash flash-<?= e($f['type']) ?>"><?= e($f['msg']) ?></div>
       <?php endforeach; ?>

@@ -232,6 +232,36 @@ cancellations, and stale-reservation release all depend on it:
 unrestricted behavior; no data is touched and nothing is left locked out. Do not drop the billing
 tables — prefer a forward fix. See `docs/billing-operations.md` for incident recovery.
 
+## Support impersonation (ورود به پنل مشتری)
+
+A platform administrator can enter a customer's panel to reproduce an issue, without their password.
+Nothing needs enabling; apply the migration and it is available:
+
+```bash
+make db-migrations-apply          # adds ellsms_audit_log.impersonator_user_id (additive)
+```
+
+Operationally:
+
+- **A reason is mandatory** and is stored in the audit trail. Write the ticket number.
+- The session is bounded to **60 minutes** and then returns the operator to the admin panel.
+- **Real sending is blocked**, as are password/2FA changes, API-key and webhook secret operations,
+  subscription/payment/wallet changes, and destructive deletions. Cost preview and all reading remain
+  available.
+- The platform-admin area is **unreachable** until the operator exits — that is expected, not a bug.
+- «خروج» during a support session logs out entirely; «بازگشت به پنل مدیریت» is the exit control.
+
+To review who entered which customer's panel and why:
+
+```sql
+SELECT created_at, action, user_id AS customer, impersonator_user_id AS admin, details
+FROM ellsms_audit_log
+WHERE impersonator_user_id IS NOT NULL OR action LIKE 'impersonation.%'
+ORDER BY id DESC LIMIT 200;
+```
+
+Full reference: `docs/admin-impersonation.md`.
+
 ## 9. Blue/green & rolling deployment compatibility (honest assessment — documentation only)
 
 This project implements neither blue/green nor rolling deployment infrastructure (explicitly out

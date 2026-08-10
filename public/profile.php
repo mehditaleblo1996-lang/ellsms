@@ -7,6 +7,12 @@ $active = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? 'password';
+    // Support impersonation must never become account-takeover tooling: credentials are off-limits
+    // (docs/admin-impersonation.md, STEP 29). KYC edits stay allowed — they are ordinary profile data.
+    $impersonationAction = ['password' => 'account.password', 'twofa' => 'account.twofa'][$do] ?? null;
+    if ($impersonationAction !== null && impersonation_guard_post($impersonationAction)) {
+        redirect('/profile.php');
+    }
 
     if ($do === 'password') {
         $cur = $_POST['current'] ?? '';
@@ -60,6 +66,8 @@ $kst->execute([$me['id']]);
 $kyc = $kst->fetch() ?: ['father_name' => '', 'address' => '', 'id_card_photo' => null, 'second_doc_photo' => null];
 
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'account.password';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 ?>
 <div class="grid grid-2">
   <div class="card">

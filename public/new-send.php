@@ -146,6 +146,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!$runAt || $runAt <= date('Y-m-d H:i:s')) {
             flash('error', 'زمان ارسال باید در آینده باشد.');
+        } elseif (impersonation_guard_post('send.schedule')) {
+            // A schedule is a send that happens later — blocked in support mode exactly like an
+            // immediate one (docs/admin-impersonation.md).
         } else {
             $slot = entitlement_with_resource_slot((int)($me['organization_id'] ?? 0), Limits::ACTIVE_SCHEDULES, static function (PDO $db) use ($me, $notes, $originator, $dests, $content, $runAt, $repeat) {
                 $db->prepare('INSERT INTO ellsms_schedule (user_id, organization_id, title, originator, destinations, content, run_at, repeat_type)
@@ -178,6 +181,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 require __DIR__ . '/../app/views/header.php';
+$impersonationNoticeAction = 'send.direct';
+require __DIR__ . '/../app/views/impersonation_notice.php';
 
 // Carries the original submission forward so confirming resubmits IDENTICAL inputs, which the
 // confirm path re-parses and re-prices server-side (Invariant I — these are inputs to re-validate,
