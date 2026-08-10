@@ -5,12 +5,16 @@ $me = require_login();
 $pageTitle = 'ارسال نظیر به نظیر';
 $active = 'p2p';
 
-$myNumbers = [];
+// Phase 7: same MESSAGES_SEND gate as public/new-send.php — this page dispatches a bulk 'p2p' job,
+// granted to every built-in role by default today (app/rbac.php), platform admins keep their
+// existing unrestricted bypass.
 if (!is_admin()) {
-    $nst = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
-    $nst->execute([$me['id']]);
-    $myNumbers = $nst->fetchAll();
+    require_permission(Permissions::MESSAGES_SEND);
+    // Phase 13 (STEP 14): bulk sending is a plan-gated capability, checked alongside RBAC.
+    require_entitlement((int)($me['organization_id'] ?? 0), Entitlements::BULK_SEND);
 }
+
+$myNumbers = user_assigned_numbers($me);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -19,7 +23,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($do === 'cancel') {
         $id = (int)($_POST['id'] ?? 0);
         $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
-        db()->exec("UPDATE ellsms_bulk_jobs SET status='cancelled' WHERE id={$id} AND type='p2p' AND status IN ('pending','processing'){$own}");
+        $affected = db()->exec("UPDATE ellsms_bulk_jobs SET status='cancelled' WHERE id={$id} AND type='p2p' AND status IN ('pending','processing'){$own}");
+        if ($affected > 0) {
+            // Give back whatever the job's worst-case reservation still
+            // holds — a cancelled job must not strand reserved credit
+            // (Phase 3, STEP 9). Idempotent no-op if nothing was reserved
+            // (an admin's job never reserves) or already released.
+            wallet_release_reservation('bulk_job', (string)$id);
+            // Only rows still 'pending' — an item a worker already claimed
+            // ('processing') is left alone; its own fresh cancellation
+            // re-check in bulk_send_one_item() decides its fate safely
+            // (Phase 4, STEP 21) instead of this racing directly against
+            // whatever that worker is doing with it right now.
+            db()->exec("UPDATE ellsms_bulk_items SET status='cancelled' WHERE job_id={$id} AND status='pending'");
+        }
         flash('info', 'ارسال لغو شد.');
         redirect('/p2p-send.php');
     }
@@ -75,9 +92,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $where = is_admin() ? "type='p2p'" : "type='p2p' AND user_id = " . (int)$me['id'];
 $jobs = db()->query(
-    "SELECT j.*, u.username FROM ellsms_bulk_jobs j JOIN user_ u ON u.id = j.user_id
-     WHERE {$where} ORDER BY j.id DESC LIMIT 50"
+    "SELECT j.* FROM ellsms_bulk_jobs j WHERE {$where} ORDER BY j.id DESC LIMIT 50"
 )->fetchAll();
+$jobUsernames = backend_usernames_by_ids(array_column($jobs, 'user_id'));
+foreach ($jobs as &$j) {
+    $j['username'] = $jobUsernames[(int)$j['user_id']] ?? null;
+}
+unset($j);
 
 $statusFa = ['pending' => 'در صف', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده'];
 

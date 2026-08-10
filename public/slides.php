@@ -8,28 +8,42 @@ define('SLIDE_STORAGE_DIR', APP_ROOT . '/public/assets/img/slides');
 const SLIDE_ALLOWED_MIME = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
 const SLIDE_MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
-/** Validate + store an uploaded slide image. Returns the stored filename,
- *  null if no file was submitted, or throws on validation failure. */
+/**
+ * Validate + store an uploaded slide image. Returns the stored filename,
+ * null if no file was submitted, or throws an AppException (safe to
+ * show verbatim — see app/Support/AppException.php) on validation
+ * failure. Mirrors kyc_store_upload() (app/bootstrap.php) — including
+ * its extension-based fallback when mime_content_type() is unavailable,
+ * which this validator previously lacked (Phase 2 STEP 13
+ * consistency fix — both now degrade the same way instead of just
+ * rejecting every upload outright when fileinfo isn't installed).
+ */
 function slide_store_upload(): ?string {
     if (empty($_FILES['image']) || $_FILES['image']['error'] === UPLOAD_ERR_NO_FILE) {
         return null;
     }
     $f = $_FILES['image'];
     if ($f['error'] !== UPLOAD_ERR_OK) {
-        throw new RuntimeException('بارگذاری تصویر با خطا مواجه شد.');
+        throw new AppException('بارگذاری تصویر با خطا مواجه شد.');
     }
     if ($f['size'] > SLIDE_MAX_BYTES) {
-        throw new RuntimeException('حجم تصویر نباید بیشتر از ۵ مگابایت باشد.');
+        throw new AppException('حجم تصویر نباید بیشتر از ۵ مگابایت باشد.');
     }
     $mime = function_exists('mime_content_type') ? (mime_content_type($f['tmp_name']) ?: '') : '';
+    if ($mime === '') {
+        $extGuess = strtolower(pathinfo($f['name'], PATHINFO_EXTENSION));
+        if ($extGuess === 'jpeg') $extGuess = 'jpg';
+        $extToMime = array_flip(SLIDE_ALLOWED_MIME);
+        $mime = $extToMime[$extGuess] ?? '';
+    }
     if (!isset(SLIDE_ALLOWED_MIME[$mime])) {
-        throw new RuntimeException('فرمت تصویر باید JPG، PNG یا WEBP باشد.');
+        throw new AppException('فرمت تصویر باید JPG، PNG یا WEBP باشد.');
     }
     if (!is_dir(SLIDE_STORAGE_DIR)) mkdir(SLIDE_STORAGE_DIR, 0755, true);
     $ext  = SLIDE_ALLOWED_MIME[$mime];
     $name = 'slide_' . bin2hex(random_bytes(8)) . '.' . $ext;
     if (!move_uploaded_file($f['tmp_name'], SLIDE_STORAGE_DIR . '/' . $name)) {
-        throw new RuntimeException('ذخیره‌ی تصویر ممکن نشد.');
+        throw new AppException('ذخیره‌ی تصویر ممکن نشد.');
     }
     return $name;
 }

@@ -23,13 +23,7 @@ function analytics_bump(array &$buckets, string $key, string $status, int $parts
     else $b['pending']++;
 }
 
-$st = db()->prepare(
-    "SELECT originator, sender_user_id, destination, content, status FROM outbound_message
-     WHERE sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)
-     LIMIT " . (ANALYTICS_ROW_CAP + 1)
-);
-$st->execute([$from, $to]);
-$rows = $st->fetchAll();
+$rows = backend_outbound_scan('sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)', [$from, $to], ANALYTICS_ROW_CAP);
 $truncated = count($rows) > ANALYTICS_ROW_CAP;
 if ($truncated) $rows = array_slice($rows, 0, ANALYTICS_ROW_CAP);
 
@@ -47,11 +41,38 @@ $overall = $overallBucket['_'] ?? ['total' => 0, 'sent' => 0, 'delivered' => 0, 
 // Resolve usernames for the per-user breakdown in one query instead of per-row.
 $userIds = array_keys($byUser);
 $usernames = [];
-if ($userIds) {
-    $in = implode(',', array_map('intval', $userIds));
-    foreach (db()->query("SELECT id, username FROM user_ WHERE id IN ({$in})")->fetchAll() as $u) {
-        $usernames[(string)$u['id']] = $u['username'];
+foreach (backend_usernames_by_ids(array_map('intval', $userIds)) as $id => $username) {
+    $usernames[(string)$id] = $username;
+}
+
+// Historical COST comes from the immutable price snapshots written at send acceptance
+// (ellsms_sms_price_snapshots), NEVER recomputed from the current tariff tables — that is the whole
+// point of the snapshot: an admin raising a rate today must not retroactively change what last
+// month's sends cost (STEP 45 / Invariant G). `committed` is what was actually settled once the
+// gateway answered; `accepted` is what was reserved at acceptance, and the two differ exactly by
+// what never sent.
+$costByProvider = [];
+$costTotals = ['accepted' => 0, 'committed' => 0];
+try {
+    $costSt = db()->prepare(
+        "SELECT provider_code, route_code, operator_code, message_type,
+                SUM(recipient_count) AS recipients, SUM(segment_count) AS segments,
+                SUM(total_cost_credits) AS accepted, SUM(committed_cost_credits) AS committed,
+                MIN(unit_price_millicredits) AS unit_min, MAX(unit_price_millicredits) AS unit_max
+         FROM ellsms_sms_price_snapshots
+         WHERE priced_at >= ? AND priced_at < DATE_ADD(?, INTERVAL 1 DAY)
+         GROUP BY provider_code, route_code, operator_code, message_type
+         ORDER BY committed DESC"
+    );
+    $costSt->execute([$from, $to]);
+    $costByProvider = $costSt->fetchAll();
+    foreach ($costByProvider as $row) {
+        $costTotals['accepted']  += (int)$row['accepted'];
+        $costTotals['committed'] += (int)$row['committed'];
     }
+} catch (Throwable $t) {
+    // Pricing tables not migrated yet — the rest of this page is unaffected.
+    Logger::info('analytics.price_snapshots_unavailable', ['exception' => $t]);
 }
 
 // Sort every breakdown by total messages, descending.
@@ -140,6 +161,42 @@ require __DIR__ . '/../app/views/header.php';
       </tr>
     <?php endforeach; ?>
     <?php if (!$byOperator): ?><tr><td colspan="7" class="empty">داده‌ای در این بازه نیست.</td></tr><?php endif; ?>
+  </table>
+  </div>
+</div>
+<div class="card">
+  <h2>هزینه‌ی واقعی بر اساس ارائه‌دهنده و مسیر</h2>
+  <p class="hint">
+    این ارقام از «عکس لحظه‌ای تعرفه» که هنگام پذیرش هر ارسال ثبت شده خوانده می‌شوند، نه از تعرفه‌ی امروز —
+    بنابراین تغییر تعرفه توسط مدیر، هزینه‌ی ارسال‌های گذشته را تغییر نمی‌دهد.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>ارائه‌دهنده</th><th>مسیر</th><th>اپراتور</th><th>نوع پیام</th><th>گیرندگان</th><th>بخش</th><th>هر بخش</th><th>پذیرفته‌شده</th><th>کسرشده</th></tr>
+    <?php foreach ($costByProvider as $c): ?>
+      <tr>
+        <td class="ltr"><?= e((string)$c['provider_code']) ?></td>
+        <td class="ltr"><?= e((string)$c['route_code']) ?></td>
+        <td class="ltr"><?= e((string)$c['operator_code']) ?></td>
+        <td class="ltr"><?= e((string)$c['message_type']) ?></td>
+        <td class="num"><?= to_persian_digits(number_format((int)$c['recipients'])) ?></td>
+        <td class="num"><?= to_persian_digits(number_format((int)$c['segments'])) ?></td>
+        <td class="num"><?php
+          $min = sms_pricing_millicredits_to_credits((int)$c['unit_min']);
+          $max = sms_pricing_millicredits_to_credits((int)$c['unit_max']);
+          echo to_persian_digits($min === $max ? (string)$min : $min . ' – ' . $max);
+        ?></td>
+        <td class="num"><?= to_persian_digits(number_format((int)$c['accepted'])) ?></td>
+        <td class="num"><strong><?= to_persian_digits(number_format((int)$c['committed'])) ?></strong></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$costByProvider): ?><tr><td colspan="9" class="empty">در این بازه هزینه‌ای ثبت نشده است.</td></tr><?php endif; ?>
+    <?php if ($costByProvider): ?>
+      <tr><th colspan="7">مجموع</th>
+        <td class="num"><?= to_persian_digits(number_format($costTotals['accepted'])) ?></td>
+        <td class="num"><strong><?= to_persian_digits(number_format($costTotals['committed'])) ?></strong></td>
+      </tr>
+    <?php endif; ?>
   </table>
   </div>
 </div>

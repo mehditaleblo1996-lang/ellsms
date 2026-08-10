@@ -1,0 +1,423 @@
+{
+  "communities": {
+    "0": [
+      "app_backend_autoreply_render",
+      "app_bootstrap",
+      "app_bootstrap_backend_hash_password",
+      "app_bootstrap_backend_verify_password",
+      "app_bootstrap_csrf_check",
+      "app_bootstrap_csrf_field",
+      "app_bootstrap_csrf_token",
+      "app_bootstrap_current_user",
+      "app_bootstrap_detect_operator",
+      "app_bootstrap_e",
+      "app_bootstrap_flash",
+      "app_bootstrap_flashes",
+      "app_bootstrap_gregorian_to_jalali",
+      "app_bootstrap_is_admin",
+      "app_bootstrap_jalali_date_select",
+      "app_bootstrap_jalali_request_to_gregorian",
+      "app_bootstrap_jalali_to_gregorian",
+      "app_bootstrap_jdate",
+      "app_bootstrap_jdate_long",
+      "app_bootstrap_kyc_store_upload",
+      "app_bootstrap_normalize_msisdn",
+      "app_bootstrap_parse_destinations",
+      "app_bootstrap_redirect",
+      "app_bootstrap_require_admin",
+      "app_bootstrap_require_login",
+      "app_bootstrap_time_post",
+      "app_bootstrap_time_select",
+      "app_bootstrap_to_persian_digits"
+    ],
+    "1": [
+      "app_backend",
+      "app_backend_autoreply_matches",
+      "app_backend_autoreply_process_one",
+      "app_backend_backend_api_send",
+      "app_backend_backend_create_account",
+      "app_backend_bulk_queue_job",
+      "app_backend_bulk_send_one_item",
+      "app_backend_describe_api_error",
+      "app_backend_dispatch_message",
+      "app_backend_php_pdo",
+      "app_backend_render_bulk_template",
+      "app_backend_run_autoreply_pass",
+      "app_backend_run_bulk_send_pass",
+      "app_backend_run_due_schedules",
+      "app_backend_send_2fa_code",
+      "app_backend_verify_2fa_code",
+      "app_bootstrap_audit",
+      "app_bootstrap_db",
+      "app_bootstrap_ellsms_has_admin",
+      "app_bootstrap_filter_blacklist",
+      "app_bootstrap_from_persian_digits",
+      "app_bootstrap_normalize_originator",
+      "app_bootstrap_php_pdo",
+      "app_bootstrap_set_setting",
+      "app_bootstrap_setting",
+      "app_bootstrap_sms_parts"
+    ],
+    "2": [
+      "claude_skills_ui_ux_pro_max_scripts_core",
+      "claude_skills_ui_ux_pro_max_scripts_core_bm25",
+      "claude_skills_ui_ux_pro_max_scripts_core_bm25_fit",
+      "claude_skills_ui_ux_pro_max_scripts_core_bm25_init",
+      "claude_skills_ui_ux_pro_max_scripts_core_bm25_score",
+      "claude_skills_ui_ux_pro_max_scripts_core_bm25_tokenize",
+      "claude_skills_ui_ux_pro_max_scripts_core_detect_domain",
+      "claude_skills_ui_ux_pro_max_scripts_core_load_csv",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_110",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_115",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_134",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_160",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_166",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_191",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_213",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_235",
+      "claude_skills_ui_ux_pro_max_scripts_core_rationale_97",
+      "claude_skills_ui_ux_pro_max_scripts_core_search",
+      "claude_skills_ui_ux_pro_max_scripts_core_search_csv",
+      "claude_skills_ui_ux_pro_max_scripts_core_search_stack"
+    ],
+    "3": [
+      "claude_skills_ui_ux_pro_max_scripts_design_system",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_detect_page_type",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_format_ascii_box",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_format_markdown",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_format_master_md",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_format_page_override_md",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_generate_design_system",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_generate_intelligent_overrides",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_persist_design_system",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_1021",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_243",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_368",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_464",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_492",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_543",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_806",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_915",
+      "claude_skills_ui_ux_pro_max_scripts_search",
+      "claude_skills_ui_ux_pro_max_scripts_search_format_output",
+      "claude_skills_ui_ux_pro_max_scripts_search_rationale_31"
+    ],
+    "4": [
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_apply_reasoning",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_extract_results",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_find_reasoning_rule",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_generate",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_init",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_load_reasoning",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_multi_domain_search",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator_select_best_match",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_123",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_160",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_164",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_38",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_44",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_52",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_65",
+      "claude_skills_ui_ux_pro_max_scripts_design_system_rationale_89"
+    ],
+    "5": [
+      "app_bootstrap_env",
+      "app_telegram",
+      "app_telegram_telegram_bot_token",
+      "app_telegram_telegram_chat_id",
+      "app_telegram_telegram_configured",
+      "app_telegram_telegram_send_message",
+      "app_zarinpal",
+      "app_zarinpal_zarinpal_base_url",
+      "app_zarinpal_zarinpal_call",
+      "app_zarinpal_zarinpal_callback_url",
+      "app_zarinpal_zarinpal_merchant_id",
+      "app_zarinpal_zarinpal_request",
+      "app_zarinpal_zarinpal_sandbox",
+      "app_zarinpal_zarinpal_start_pay_url",
+      "app_zarinpal_zarinpal_verify"
+    ],
+    "6": [
+      "app_xlsx_reader",
+      "app_xlsx_reader_read_csv_rows",
+      "app_xlsx_reader_read_spreadsheet_rows",
+      "app_xlsx_reader_read_xlsx_rows",
+      "app_xlsx_reader_xlsx_col_index"
+    ],
+    "7": [
+      "deploy",
+      "deploy_sh__entry"
+    ],
+    "8": [
+      "docker_entrypoint",
+      "docker_entrypoint_sh__entry"
+    ],
+    "9": [
+      "public_analytics",
+      "public_analytics_analytics_bump"
+    ],
+    "10": [
+      "public_slides",
+      "public_slides_slide_store_upload"
+    ],
+    "11": [
+      "app_views_footer"
+    ],
+    "12": [
+      "app_views_header"
+    ],
+    "13": [
+      "app_views_public_footer"
+    ],
+    "14": [
+      "app_views_public_header"
+    ],
+    "15": [
+      "cron_worker"
+    ],
+    "16": [
+      "public_autoreply"
+    ],
+    "17": [
+      "public_blacklist"
+    ],
+    "18": [
+      "public_bootstrap_admin"
+    ],
+    "19": [
+      "public_buy_credit"
+    ],
+    "20": [
+      "public_contact"
+    ],
+    "21": [
+      "public_contacts"
+    ],
+    "22": [
+      "public_guide"
+    ],
+    "23": [
+      "public_guide_admin"
+    ],
+    "24": [
+      "public_inbox"
+    ],
+    "25": [
+      "public_index"
+    ],
+    "26": [
+      "public_kyc_photo"
+    ],
+    "27": [
+      "public_landing"
+    ],
+    "28": [
+      "public_login"
+    ],
+    "29": [
+      "public_logout"
+    ],
+    "30": [
+      "public_new_send"
+    ],
+    "31": [
+      "public_number_categories"
+    ],
+    "32": [
+      "public_numbers"
+    ],
+    "33": [
+      "public_p2p_send"
+    ],
+    "34": [
+      "public_pricing"
+    ],
+    "35": [
+      "public_profile"
+    ],
+    "36": [
+      "public_reports"
+    ],
+    "37": [
+      "public_schedules"
+    ],
+    "38": [
+      "public_send"
+    ],
+    "39": [
+      "public_settings"
+    ],
+    "40": [
+      "public_smart_send"
+    ],
+    "41": [
+      "public_users"
+    ],
+    "42": [
+      "public_verify_2fa"
+    ],
+    "43": [
+      "public_zarinpal_callback"
+    ]
+  },
+  "cohesion": {
+    "0": 0.1164021164021164,
+    "1": 0.15692307692307692,
+    "2": 0.14736842105263157,
+    "3": 0.1368421052631579,
+    "4": 0.16176470588235295,
+    "5": 0.2761904761904762,
+    "6": 0.7,
+    "7": 1.0,
+    "8": 1.0,
+    "9": 1.0,
+    "10": 1.0,
+    "11": 1.0,
+    "12": 1.0,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0,
+    "17": 1.0,
+    "18": 1.0,
+    "19": 1.0,
+    "20": 1.0,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0,
+    "25": 1.0,
+    "26": 1.0,
+    "27": 1.0,
+    "28": 1.0,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0,
+    "33": 1.0,
+    "34": 1.0,
+    "35": 1.0,
+    "36": 1.0,
+    "37": 1.0,
+    "38": 1.0,
+    "39": 1.0,
+    "40": 1.0,
+    "41": 1.0,
+    "42": 1.0,
+    "43": 1.0
+  },
+  "gods": [
+    {
+      "id": "app_bootstrap_db",
+      "label": "db()",
+      "degree": 17
+    },
+    {
+      "id": "claude_skills_ui_ux_pro_max_scripts_design_system_designsystemgenerator",
+      "label": "DesignSystemGenerator",
+      "degree": 11
+    },
+    {
+      "id": "app_backend_dispatch_message",
+      "label": "dispatch_message()",
+      "degree": 11
+    },
+    {
+      "id": "app_bootstrap_setting",
+      "label": "setting()",
+      "degree": 11
+    },
+    {
+      "id": "app_bootstrap_env",
+      "label": "env()",
+      "degree": 9
+    },
+    {
+      "id": "claude_skills_ui_ux_pro_max_scripts_core_search_csv",
+      "label": "_search_csv()",
+      "degree": 8
+    },
+    {
+      "id": "app_bootstrap_to_persian_digits",
+      "label": "to_persian_digits()",
+      "degree": 8
+    },
+    {
+      "id": "claude_skills_ui_ux_pro_max_scripts_core_bm25",
+      "label": "BM25",
+      "degree": 7
+    },
+    {
+      "id": "claude_skills_ui_ux_pro_max_scripts_core_search",
+      "label": "search()",
+      "degree": 7
+    },
+    {
+      "id": "claude_skills_ui_ux_pro_max_scripts_design_system_generate_design_system",
+      "label": "generate_design_system()",
+      "degree": 7
+    }
+  ],
+  "surprises": [
+    {
+      "source": "_generate_intelligent_overrides()",
+      "target": "search()",
+      "source_files": [
+        ".claude/skills/ui-ux-pro-max/scripts/design_system.py",
+        ".claude/skills/ui-ux-pro-max/scripts/core.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "backend_api_send()",
+      "target": "env()",
+      "source_files": [
+        "app/backend.php",
+        "app/bootstrap.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "dispatch_message()",
+      "target": "to_persian_digits()",
+      "source_files": [
+        "app/backend.php",
+        "app/bootstrap.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "autoreply_render()",
+      "target": "db()",
+      "source_files": [
+        "app/backend.php",
+        "app/bootstrap.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    },
+    {
+      "source": "send_2fa_code()",
+      "target": "normalize_msisdn()",
+      "source_files": [
+        "app/backend.php",
+        "app/bootstrap.php"
+      ],
+      "confidence": "INFERRED",
+      "relation": "calls",
+      "why": "inferred connection - not explicitly stated in source; bridges separate communities"
+    }
+  ],
+  "tokens": {
+    "input": 0,
+    "output": 0
+  }
+}

@@ -1,0 +1,26 @@
+# ELLSMS — excluded from the Docker build context (Phase 10, STEP 28).
+#
+# docker-compose.yml also bind-mounts the project root at runtime (./:/var/www/html), so this file
+# only controls what gets baked into the IMAGE at build time, not what's visible inside a running
+# container from that mount — this still matters for image size/hygiene and for anyone who ever
+# builds without the bind mount (e.g. a registry-pushed image for a non-compose deployment).
+.git
+.gitignore
+.env
+.env.example
+*.log
+storage/logs/*
+storage/benchmarks/*
+storage/kyc/*
+!storage/kyc/.gitkeep
+tests/
+docs/
+PATHFINDER-2026-07-26/
+graphify-out/
+phpunit.xml
+phpunit.integration.xml
+vendor/
+composer.lock
+.phpunit.cache/
+node_modules/
+.claude/

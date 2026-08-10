@@ -13,28 +13,24 @@ $scopeW = $me['role'] === 'admin' ? '1=1' : 'sender_user_id = ' . (int)$me['id']
 
 $q = fn(string $sql) => (int)db()->query($sql)->fetch()['c'];
 
-$todaySent   = $q("SELECT COUNT(*) c FROM outbound_message WHERE status IN ('sent','delivered') AND DATE(sent_at)=CURDATE(){$scope}");
-$todayFailed = $q("SELECT COUNT(*) c FROM outbound_message WHERE status IN ('send_failed','failed') AND DATE(sent_at)=CURDATE(){$scope}");
-$totalSent   = $q("SELECT COUNT(*) c FROM outbound_message WHERE status IN ('sent','delivered'){$scope}");
+$todaySent   = backend_outbound_count("status IN ('sent','delivered') AND DATE(sent_at)=CURDATE(){$scope}");
+$todayFailed = backend_outbound_count("status IN ('send_failed','failed') AND DATE(sent_at)=CURDATE(){$scope}");
+$totalSent   = backend_outbound_count("status IN ('sent','delivered'){$scope}");
 $pendingSch  = $q("SELECT COUNT(*) c FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']));
-$inboxToday  = $me['role'] === 'admin'
-    ? $q("SELECT COUNT(*) c FROM inbound_message WHERE DATE(received_at)=CURDATE()")
-    : null;
+$inboxToday  = $me['role'] === 'admin' ? backend_inbound_today_count() : null;
 
 /* Last 7 days volume */
 $days = [];
 for ($i = 6; $i >= 0; $i--) $days[date('Y-m-d', strtotime("-{$i} day"))] = 0;
-$rows = db()->query("SELECT DATE(sent_at) d, COUNT(*) c FROM outbound_message
-                     WHERE sent_at >= CURDATE() - INTERVAL 6 DAY AND {$scopeW}
-                     GROUP BY DATE(sent_at)")->fetchAll();
-foreach ($rows as $r) $days[$r['d']] = (int)$r['c'];
+foreach (backend_outbound_daily_counts("sent_at >= CURDATE() - INTERVAL 6 DAY AND {$scopeW}") as $d => $c) {
+    $days[$d] = $c;
+}
 $max = max(1, max($days));
 
 $weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','سه‌شنبه'=>'س','چهارشنبه'=>'چ','پنج‌شنبه'=>'پ','جمعه'=>'ج'];
 
 /* Recent messages */
-$recent = db()->query("SELECT m.*, u.username FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
-                       WHERE {$scopeW} ORDER BY m.id DESC LIMIT 8")->fetchAll();
+$recent = backend_outbound_rows($scopeW, [], 8);
 
 require __DIR__ . '/../app/views/header.php';
 ?>

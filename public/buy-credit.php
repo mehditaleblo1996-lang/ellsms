@@ -4,6 +4,21 @@ $me = require_login();
 $pageTitle = 'خرید اعتبار';
 $active = 'buy_credit';
 
+// Phase 7: platform admins keep their existing unrestricted bypass; an ordinary org member needs
+// WALLET_VIEW (this page shows their own balance) and PAYMENTS_VIEW (their own payment history) —
+// both granted to every built-in role by default today (app/rbac.php). Purchasing a new payment
+// (the POST branch below) is deliberately NOT gated behind WALLET_ADJUST — that permission is
+// reserved for MANUAL credit adjustment (app/wallet.php's wallet_manual_adjustment(), platform-admin
+// only via public/users.php), a completely different action from a user spending their own money to
+// buy their own credit; STEP 18's own instruction is "payments.create... depending on current
+// product behavior" — this codebase's existing behavior already lets any logged-in user purchase
+// credit, so PAYMENTS_VIEW (read) is what this phase adds explicit enforcement for, matching every
+// other page's read/write split, without introducing a new restriction on the purchase action itself.
+if (!is_admin()) {
+    require_permission(Permissions::WALLET_VIEW);
+    require_permission(Permissions::PAYMENTS_VIEW);
+}
+
 $rialPerCredit = (int)setting('rial_per_credit', '1000');
 $minPurchase   = (int)setting('min_credit_purchase', '100');
 $packages      = array_filter(array_map('intval', explode(',', (string)setting('credit_packages', ''))));
@@ -16,8 +31,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', 'حداقل میزان خرید ' . to_persian_digits(number_format($minPurchase)) . ' واحد اعتبار است.');
     } else {
         $amountRial = $credits * $rialPerCredit;
-        db()->prepare('INSERT INTO ellsms_payments (user_id, credits, amount_rial) VALUES (?,?,?)')
-           ->execute([$me['id'], $credits, $amountRial]);
+        // Phase 6 closure: organization_id is persisted at creation time from the PURCHASING
+        // user's server-resolved organization (require_login()/current_organization() — never from
+        // request input) — payment_claim_and_credit() and the reconciliation job both read this
+        // persisted value later; neither re-derives organization from whatever the browser session
+        // happens to be pointed at by the time ZarinPal calls back, which could be long after this
+        // request and after the user has switched their active organization.
+        db()->prepare('INSERT INTO ellsms_payments (user_id, organization_id, credits, amount_rial) VALUES (?,?,?,?)')
+           ->execute([$me['id'], $me['organization_id'] ?? null, $credits, $amountRial]);
         $paymentId = (int)db()->lastInsertId();
 
         $description = "خرید {$credits} واحد اعتبار ELLSMS";
@@ -38,7 +59,7 @@ $pst = db()->prepare('SELECT * FROM ellsms_payments WHERE user_id=? ORDER BY id 
 $pst->execute([$me['id']]);
 $payments = $pst->fetchAll();
 
-$statusFa = ['pending' => 'در انتظار', 'paid' => 'موفق', 'failed' => 'ناموفق'];
+$statusFa = ['pending' => 'در انتظار', 'verification_failed' => 'در حال بررسی مجدد', 'paid' => 'موفق', 'failed' => 'ناموفق'];
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -78,7 +99,7 @@ require __DIR__ . '/../app/views/header.php';
         <tr>
           <td class="num"><?= to_persian_digits(number_format($p['credits'])) ?></td>
           <td class="num"><?= to_persian_digits(number_format($p['amount_rial'])) ?></td>
-          <td><span class="badge badge-<?= $p['status'] === 'paid' ? 'ok' : ($p['status'] === 'pending' ? 'pending' : 'off') ?>"><?= e($statusFa[$p['status']]) ?></span></td>
+          <td><span class="badge badge-<?= $p['status'] === 'paid' ? 'ok' : (in_array($p['status'], ['pending', 'verification_failed'], true) ? 'pending' : 'off') ?>"><?= e($statusFa[$p['status']]) ?></span></td>
           <td class="num"><?= e((string)($p['ref_id'] ?: '—')) ?></td>
           <td class="num"><?= jdate($p['created_at']) ?></td>
         </tr>

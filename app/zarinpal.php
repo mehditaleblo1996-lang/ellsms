@@ -41,10 +41,15 @@ function zarinpal_merchant_id(): string {
 function zarinpal_callback_url(): string {
     $configured = setting('zarinpal_callback_url', env('ZARINPAL_CALLBACK_URL', ''));
     if ($configured) return rtrim($configured, '/');
-    // Fallback: derive from the current request, same pattern used for
-    // the webhook URLs shown in Settings — convenient default, but a
-    // real ZarinPal merchant account typically expects a fixed,
-    // pre-registered domain, so an explicit setting always wins.
+    // Next: an explicit, admin-controlled APP_URL — safer than deriving
+    // from the request below, since $_SERVER['HTTP_HOST'] reflects
+    // whatever Host header the client sent, not necessarily the real
+    // domain.
+    if (app_url() !== '') return app_url() . '/zarinpal-callback.php';
+    // Last resort: derive from the current request — convenient default
+    // for local/dev use, but a real ZarinPal merchant account typically
+    // expects a fixed, pre-registered domain, so either setting above
+    // always wins when configured.
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
     return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/zarinpal-callback.php';
 }
@@ -137,4 +142,146 @@ function zarinpal_verify(int $amountRial, string $authority): array {
         return [true, $code == 101 ? 'قبلاً تأیید شده بود.' : 'پرداخت تأیید شد.', (string)($result['data']['ref_id'] ?? '')];
     }
     return [false, 'پرداخت تأیید نشد (کد ' . ($code ?? '?') . ').', null];
+}
+
+/**
+ * Atomically claim a pending/verification_failed payment row and credit
+ * the wallet in ONE transaction (Phase 3, STEP 13) — the single code path
+ * both public/zarinpal-callback.php (a live browser return from
+ * checkout) and cron/payments-reconcile.php (STEP 15, catching payments
+ * that succeeded at the gateway but whose browser never came back) use,
+ * so the atomicity/idempotency guarantee only has to be gotten right
+ * once. Caller must already know $refId (from a fresh zarinpal_verify()
+ * call) and must NOT call this unless that verification already
+ * succeeded.
+ *
+ * Returns ['claimed' => bool, 'credit' => array|null] — claimed=false
+ * means someone else already processed this exact payment (replay), not
+ * an error.
+ */
+/**
+ * Phase 13 (STEP 32/34) — the SUBSCRIPTION counterpart of payment_claim_and_credit() below.
+ * Deliberately a separate function rather than a branch inside that one: a subscription payment
+ * credits no wallet, and a credit purchase activates no subscription (STEP 33 — the two remain
+ * explicitly different concepts). What they DO share, on purpose, is the exact same proven
+ * transaction-integrity model:
+ *
+ *   - the atomic claim `UPDATE ... WHERE status IN ('pending','verification_failed')` is what makes
+ *     a duplicate/retried ZarinPal callback a no-op: only the request that actually flips the row
+ *     to 'paid' proceeds, every other one sees rowCount()===0 and does nothing;
+ *   - everything happens in ONE transaction, so a crash can never leave a payment marked paid with
+ *     no subscription activated (or vice versa);
+ *   - the subscription transition itself carries an idempotency key derived from the payment id, a
+ *     second independent guard against double-activation even if this were somehow re-entered
+ *     outside the claim (Invariant I).
+ *
+ * Returns ['claimed'=>bool, 'activated'=>bool, 'reason'=>string]. claimed=false means someone else
+ * already processed this exact payment — a replay, not an error.
+ */
+function payment_claim_and_activate_subscription(array $payment, string $refId): array {
+    return db_transaction(function (PDO $db) use ($payment, $refId): array {
+        $claim = $db->prepare("UPDATE ellsms_payments SET status='paid', ref_id=? WHERE id=? AND status IN ('pending','verification_failed')");
+        $claim->execute([$refId, $payment['id']]);
+        if ($claim->rowCount() === 0) {
+            return ['claimed' => false, 'activated' => false, 'reason' => 'already_processed'];
+        }
+
+        $billingRecordId = isset($payment['billing_record_id']) ? (int)$payment['billing_record_id'] : 0;
+        if ($billingRecordId <= 0) {
+            return ['claimed' => true, 'activated' => false, 'reason' => 'no_billing_record'];
+        }
+
+        $brSt = $db->prepare('SELECT * FROM ellsms_billing_records WHERE id = ? FOR UPDATE');
+        $brSt->execute([$billingRecordId]);
+        $record = $brSt->fetch();
+        if (!$record) {
+            return ['claimed' => true, 'activated' => false, 'reason' => 'billing_record_missing'];
+        }
+        // Ownership re-check (STEP 50/51): the billing record and the payment must belong to the
+        // SAME organization. Both were written server-side at request time, so a mismatch means
+        // tampering or a bug — either way, refuse rather than activate a subscription paid for by
+        // somebody else's transaction.
+        if ((int)$record['organization_id'] !== (int)($payment['organization_id'] ?? 0)) {
+            Logger::critical('billing.payment.organization_mismatch', ['payment_id' => $payment['id'], 'billing_record_id' => $billingRecordId]);
+            return ['claimed' => true, 'activated' => false, 'reason' => 'organization_mismatch'];
+        }
+
+        $organizationId = (int)$record['organization_id'];
+        $planId = (int)$record['plan_id'];
+        $idempotencyKey = 'payment_activation:' . $payment['id'];
+
+        $existing = $db->prepare('SELECT * FROM ellsms_subscriptions WHERE effective_organization_id = ? FOR UPDATE');
+        $existing->execute([$organizationId]);
+        $subscription = $existing->fetch();
+
+        $periodMonths = $record['billing_period'] === 'yearly' ? 12 : ($record['billing_period'] === 'monthly' ? 1 : 0);
+        $periodEnd = $periodMonths > 0 ? gmdate('Y-m-d H:i:s', billing_add_months(time(), $periodMonths)) : null;
+
+        if ($subscription) {
+            // Extend/upgrade in place. The event row's idempotency key is what stops a concurrent
+            // second activation of the SAME payment from extending the period twice (STEP 34).
+            if (!subscription_record_event($db, (int)$subscription['id'], $organizationId, 'activated_by_payment', $subscription['status'], 'active', (int)$subscription['plan_id'], $planId, null, $idempotencyKey, "payment={$payment['id']}")) {
+                return ['claimed' => true, 'activated' => false, 'reason' => 'already_activated'];
+            }
+            $db->prepare(
+                "UPDATE ellsms_subscriptions
+                 SET plan_id = ?, status = 'active', current_period_start = UTC_TIMESTAMP(), current_period_end = ?,
+                     pending_plan_id = NULL, cancel_at_period_end = 0, suspended_at = NULL, grace_ends_at = NULL, source = 'payment',
+                     effective_organization_id = ?
+                 WHERE id = ?"
+            )->execute([$planId, $periodEnd, billing_effective_organization_id($organizationId, 'active'), $subscription['id']]);
+            $subscriptionId = (int)$subscription['id'];
+        } else {
+            $db->prepare(
+                "INSERT INTO ellsms_subscriptions (organization_id, plan_id, status, current_period_start, current_period_end, source, effective_organization_id)
+                 VALUES (?,?, 'active', UTC_TIMESTAMP(), ?, 'payment', ?)"
+            )->execute([$organizationId, $planId, $periodEnd, billing_effective_organization_id($organizationId, 'active')]);
+            $subscriptionId = (int)$db->lastInsertId();
+            if (!subscription_record_event($db, $subscriptionId, $organizationId, 'activated_by_payment', null, 'active', null, $planId, null, $idempotencyKey, "payment={$payment['id']}")) {
+                return ['claimed' => true, 'activated' => false, 'reason' => 'already_activated'];
+            }
+        }
+
+        $db->prepare("UPDATE ellsms_billing_records SET status='paid', subscription_id=?, paid_at=UTC_TIMESTAMP() WHERE id=?")
+           ->execute([$subscriptionId, $billingRecordId]);
+
+        Logger::info('billing.subscription.activated_by_payment', ['organization_id' => $organizationId, 'subscription_id' => $subscriptionId, 'payment_id' => $payment['id'], 'plan_id' => $planId]);
+        Metrics::increment('billing.subscription.activated', 1, ['plan_code' => $record['plan_code']]);
+
+        return ['claimed' => true, 'activated' => true, 'reason' => 'activated', 'subscription_id' => $subscriptionId, 'organization_id' => $organizationId];
+    });
+}
+
+function payment_claim_and_credit(array $payment, string $refId): array {
+    $result = db_transaction(function (PDO $db) use ($payment, $refId): array {
+        $claim = $db->prepare("UPDATE ellsms_payments SET status='paid', ref_id=? WHERE id=? AND status IN ('pending','verification_failed')");
+        $claim->execute([$refId, $payment['id']]);
+        if ($claim->rowCount() === 0) {
+            return ['claimed' => false, 'credit' => null];
+        }
+        $credit = wallet_credit(
+            (int)$payment['user_id'], (int)$payment['credits'], 'purchase', 'payment', (string)$payment['id'],
+            'payment_credit:' . $payment['id']
+        );
+        return ['claimed' => true, 'credit' => $credit];
+    });
+
+    // Phase 12 (STEP 27/28): fired only for the caller that actually WON the claim (a replay from
+    // either public/zarinpal-callback.php or cron/payments-reconcile.php racing the same payment
+    // correctly sees claimed=false and emits nothing) — and only after the crediting transaction
+    // above has already committed. Skipped for a payment with no organization_id (pre-tenant-backfill).
+    if ($result['claimed'] && ($result['credit']['ok'] ?? false) && isset($payment['organization_id']) && $payment['organization_id'] !== null) {
+        try {
+            webhook_event_emit((int)$payment['organization_id'], WebhookEvents::PAYMENT_CREDITED, 'payment', (string)$payment['id'], [
+                'payment_id' => (int)$payment['id'],
+                'user_id'    => (int)$payment['user_id'],
+                'credits'    => (int)$payment['credits'],
+                'ref_id'     => $refId,
+            ]);
+        } catch (Throwable $t) {
+            Logger::error('webhook.event.emit_failed', ['payment_id' => $payment['id'] ?? null, 'exception' => $t]);
+        }
+    }
+
+    return $result;
 }

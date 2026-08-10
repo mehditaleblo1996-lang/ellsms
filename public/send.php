@@ -4,21 +4,28 @@ $me = require_login();
 $pageTitle = 'ارسال پیامک';
 $active = 'send';
 
-$groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE user_id=? AND group_name<>'' ORDER BY group_name");
-$groups->execute([$me['id']]);
+// Phase 7: same MESSAGES_SEND gate as public/new-send.php — granted to every built-in role by
+// default today (app/rbac.php), platform admins keep their existing unrestricted bypass.
+$rbacOrg = is_admin() ? null : require_permission(Permissions::MESSAGES_SEND);
+
+// Phase 6 closure: same organization-or-legacy-fallback ownership shape as public/contacts.php —
+// an organization-scoped row is visible to any active member; a legacy row not yet backfilled
+// (NULL) falls back to the exact pre-Phase-6 user-only behavior.
+$myOrgId = $me['organization_id'] ?? null;
+$contactOwnership = '(organization_id = ? OR (organization_id IS NULL AND user_id = ?))';
+
+$groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE {$contactOwnership} AND group_name<>'' ORDER BY group_name");
+$groups->execute([$myOrgId, $me['id']]);
 $groups = array_column($groups->fetchAll(), 'group_name');
 
-$myNumbers = [];
-if (!is_admin()) {
-    $nst = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
-    $nst->execute([$me['id']]);
-    $myNumbers = $nst->fetchAll();
-}
+$myNumbers = user_assigned_numbers($me);
 
-$categories = db()->query(
+$categories = db()->prepare(
     "SELECT c.id, c.name, (SELECT COUNT(*) FROM ellsms_number_category_items i WHERE i.category_id = c.id) c
-     FROM ellsms_number_categories c ORDER BY c.name"
-)->fetchAll();
+     FROM ellsms_number_categories c WHERE (c.organization_id = ? OR (c.organization_id IS NULL AND ? IS NULL)) ORDER BY c.name"
+);
+$categories->execute([$myOrgId, $myOrgId]);
+$categories = $categories->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -26,28 +33,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $content    = trim($_POST['content'] ?? '');
     $dests      = parse_destinations($_POST['destinations'] ?? '');
 
+    // The RAW, pre-normalization tokens, collected alongside $dests purely so the cost preview can
+    // report what was actually filtered out. $dests is already normalized AND deduplicated by
+    // parse_destinations(), so handing that to the estimator would make it truthfully report zero
+    // invalid and zero duplicates — accurate about what it received, but useless to a user who
+    // pasted 10 numbers and wants to know why only 7 will be sent. The send itself still uses
+    // $dests exactly as before; this list is only ever read by the preview.
+    $rawDests = preg_split('/[\s,;،]+/u', (string)($_POST['destinations'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
     if (!empty($_POST['group'])) {
-        $st = db()->prepare('SELECT mobile FROM ellsms_contacts WHERE user_id=? AND group_name=?');
-        $st->execute([$me['id'], $_POST['group']]);
+        $st = db()->prepare("SELECT mobile FROM ellsms_contacts WHERE {$contactOwnership} AND group_name=?");
+        $st->execute([$myOrgId, $me['id'], $_POST['group']]);
         foreach ($st->fetchAll() as $c) {
+            $rawDests[] = $c['mobile'];
             $n = normalize_msisdn($c['mobile']);
             if ($n) $dests[] = $n;
         }
     }
 
     if (!empty($_POST['category'])) {
-        $st = db()->prepare('SELECT mobile FROM ellsms_number_category_items WHERE category_id = ?');
-        $st->execute([(int)$_POST['category']]);
-        foreach ($st->fetchAll() as $c) $dests[] = $c['mobile'];
+        // Phase 6 closure: this previously had NO ownership check at all — any authenticated user
+        // could submit any category_id and get its numbers expanded, a real IDOR once categories
+        // became organization-scoped (harmless before, when every category was globally shared by
+        // design). Verifies the category belongs to the caller's own organization (or is a
+        // not-yet-backfilled legacy row) before ever reading its items.
+        $st = db()->prepare(
+            "SELECT i.mobile FROM ellsms_number_category_items i
+             JOIN ellsms_number_categories c ON c.id = i.category_id
+             WHERE i.category_id = ? AND (c.organization_id = ? OR (c.organization_id IS NULL AND ? IS NULL))"
+        );
+        $st->execute([(int)$_POST['category'], $myOrgId, $myOrgId]);
+        foreach ($st->fetchAll() as $c) { $dests[] = $c['mobile']; $rawDests[] = $c['mobile']; }
     }
     $dests = array_values(array_unique($dests));
 
-    if (($_POST['mode'] ?? 'now') === 'later') {
+    // Preview is checked BEFORE the immediate/scheduled split so BOTH modes get a cost preview
+    // (STEP 17) — otherwise picking "schedule" and clicking preview would have created the schedule
+    // outright, with no preview at all.
+    if (($_POST['do'] ?? '') === 'preview') {
+        // Read-only. Prices the EXACT $originator/$dests/$content this same request already
+        // assembled above, so what is shown is what the confirm branch will send — there is no
+        // second parsing path that could drift.
+        $costPreview = estimate_message_cost($me, $originator, $rawDests, $content);
+        cost_preview_record($costPreview, (int)($me['organization_id'] ?? 0), (int)$me['id'], 'web_send');
+        if (!$costPreview['ok']) {
+            // A pricing gap gets its own card rather than a one-line flash: STEP 44 requires the
+            // user to see input / priced / unpriced counts and the reason, not just "failed".
+            if (($costPreview['reason'] ?? '') === 'pricing_unavailable') {
+                $costPricingFailure = $costPreview;
+            } else {
+                flash('error', cost_preview_reason_message((string)$costPreview['reason']));
+            }
+            $costPreview = null;
+        }
+    } elseif (($_POST['mode'] ?? 'now') === 'later') {
         $gDate = jalali_request_to_gregorian('send_date');
         $time  = time_post('send_time');
         $runAt = ($gDate && $time) ? "{$gDate} {$time}:00" : null;
 
-        if (!$dests) {
+        if ($rbacOrg !== null && !membership_has_permission($rbacOrg, Permissions::SCHEDULES_MANAGE)) {
+            flash('error', 'شما اجازه‌ی زمان‌بندی ارسال را ندارید.');
+        } elseif (!organization_has_entitlement((int)($me['organization_id'] ?? 0), Entitlements::SCHEDULES)) {
+            // Phase 13 (STEP 14): plan entitlement checked alongside the RBAC gate above, same as
+            // public/new-send.php's own scheduling branch.
+            flash('error', 'ارسال زمان‌بندی‌شده در پلن فعلی سازمان شما موجود نیست. برای استفاده، پلن خود را ارتقا دهید.');
+        } elseif (!$dests) {
             flash('error', 'شماره مقصد معتبری وارد نشده است.');
         } elseif ($content === '') {
             flash('error', 'متن پیام خالی است.');
@@ -55,23 +105,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'زمان زمان‌بندی‌شده باید در آینده باشد.');
         } else {
             $repeat = in_array($_POST['repeat'] ?? 'none', ['none','daily','weekly','monthly'], true) ? $_POST['repeat'] : 'none';
-            db()->prepare('INSERT INTO ellsms_schedule (user_id, originator, destinations, content, run_at, repeat_type)
-                           VALUES (?,?,?,?,?,?)')
-               ->execute([$me['id'], $originator, json_encode($dests), $content, $runAt, $repeat]);
-            audit((int)$me['id'], 'schedule.create', count($dests) . ' dest @ ' . $runAt);
-            $repeatFa = ['none' => '', 'daily' => ' (تکرار روزانه)', 'weekly' => ' (تکرار هفتگی)', 'monthly' => ' (تکرار ماهانه)'][$repeat];
-            flash('success', 'برای ' . jdate($runAt) . $repeatFa . ' زمان‌بندی شد — ' . to_persian_digits((string)count($dests)) . ' شماره.');
-            redirect('/schedules.php');
+            $slot = entitlement_with_resource_slot((int)($me['organization_id'] ?? 0), Limits::ACTIVE_SCHEDULES, static function (PDO $db) use ($me, $originator, $dests, $content, $runAt, $repeat) {
+                $db->prepare('INSERT INTO ellsms_schedule (user_id, organization_id, originator, destinations, content, run_at, repeat_type)
+                              VALUES (?,?,?,?,?,?,?)')
+                   ->execute([$me['id'], $me['organization_id'] ?? null, $originator, json_encode($dests), $content, $runAt, $repeat]);
+                return true;
+            });
+            if (!$slot['ok']) {
+                flash('error', 'به سقف تعداد زمان‌بندی‌های فعال پلن فعلی رسیده‌اید (' . to_persian_digits((string)$slot['limit']) . ' مورد). زمان‌بندی‌های موجود دست‌نخورده باقی می‌مانند.');
+            } else {
+                audit((int)$me['id'], 'schedule.create', count($dests) . ' dest @ ' . $runAt);
+                $repeatFa = ['none' => '', 'daily' => ' (تکرار روزانه)', 'weekly' => ' (تکرار هفتگی)', 'monthly' => ' (تکرار ماهانه)'][$repeat];
+                flash('success', 'برای ' . jdate($runAt) . $repeatFa . ' زمان‌بندی شد — ' . to_persian_digits((string)count($dests)) . ' شماره.');
+                redirect('/schedules.php');
+            }
         }
     } else {
-        [$ok, $info] = dispatch_message($me, $originator, $dests, $content);
-        flash($ok ? 'success' : 'error', $info);
-        audit((int)$me['id'], 'sms.send', count($dests) . ' dest, ok=' . (int)$ok);
-        if ($ok) redirect('/reports.php');
+        // Confirm branch. Everything is recomputed server-side from the resubmitted inputs — the
+        // hidden previewed-cost field is used ONLY to detect that the authoritative price moved
+        // since the user looked at it, never as the price itself (Invariant I/H).
+        $previewedCost = isset($_POST['previewed_cost']) && ctype_digit((string)$_POST['previewed_cost']) ? (int)$_POST['previewed_cost'] : null;
+        $previewedAt   = isset($_POST['previewed_at']) && ctype_digit((string)$_POST['previewed_at']) ? (int)$_POST['previewed_at'] : null;
+
+        $blocked = false;
+        if ($previewedCost !== null) {
+            // Same raw input the preview priced, so the two estimates are directly comparable.
+            $recheck = estimate_message_cost($me, $originator, $rawDests, $content);
+            if ($recheck['ok']) {
+                $check = cost_preview_confirmation_check($previewedCost, (int)$recheck['pricing']['estimated_cost'], $previewedAt);
+                if ($check['require_reconfirm']) {
+                    // Re-show the preview with the CURRENT numbers rather than silently charging a
+                    // different amount than the user agreed to (STEP 21/22).
+                    $costPreview = $recheck;
+                    $blocked = true;
+                    flash('error', $check['expired']
+                        ? 'پیش‌نمایش هزینه منقضی شده است — لطفاً هزینه‌ی به‌روز را بررسی و دوباره تأیید کنید.'
+                        : 'هزینه‌ی ارسال از زمان پیش‌نمایش تغییر کرده است — لطفاً مقدار جدید را بررسی و دوباره تأیید کنید.');
+                }
+            }
+        }
+
+        if (!$blocked) {
+            // The authoritative charge. dispatch_message() re-derives cost, re-reserves the wallet
+            // under a row lock and re-reserves quota atomically — the preview above never reserved
+            // anything, so a balance/quota race between preview and here fails safely right here.
+            [$ok, $info] = dispatch_message($me, $originator, $dests, $content);
+            flash($ok ? 'success' : 'error', $info);
+            audit((int)$me['id'], 'sms.send', count($dests) . ' dest, ok=' . (int)$ok);
+            if ($ok) redirect('/reports.php');
+        }
     }
 }
 
 require __DIR__ . '/../app/views/header.php';
+
+// Carries the original submission forward so confirming resubmits IDENTICAL inputs — the confirm
+// branch re-parses and re-prices them server-side, so these are inputs to be re-validated, never
+// trusted values (Invariant I).
+if (!empty($costPricingFailure)) {
+    require __DIR__ . '/../app/views/cost_preview_unpriced.php';
+}
+if (isset($costPreview) && $costPreview) {
+    $previewFormFields = '';
+    foreach (['originator', 'destinations', 'content', 'group', 'category', 'mode'] as $field) {
+        $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)($_POST[$field] ?? '')) . '">';
+    }
+    require __DIR__ . '/../app/views/cost_preview.php';
+}
 ?>
 <div class="card">
   <form method="post">
@@ -149,7 +249,11 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     </div>
 
-    <button class="btn btn-primary" type="submit">ارسال پیام</button>
+    <div class="toolbar">
+      <button class="btn btn-primary" name="do" value="preview">محاسبه‌ی هزینه و ادامه</button>
+      <button class="btn" name="do" value="confirm">ارسال بدون پیش‌نمایش</button>
+    </div>
+    <div class="hint">«محاسبه‌ی هزینه» چیزی ارسال نمی‌کند و از اعتبار شما کسر نمی‌شود — فقط تعداد پیامک و هزینه‌ی تقریبی را نشان می‌دهد.</div>
   </form>
 </div>
 

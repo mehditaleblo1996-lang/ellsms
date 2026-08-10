@@ -4,6 +4,11 @@ $me = require_login();
 $pageTitle = 'پشتیبانی';
 $active = 'tickets';
 
+// Phase 7 (STEP 22): deliberately untouched by organization RBAC — tickets stay user-private
+// (is_admin() vs. exact ticket.user_id match, below and in app/tickets.php's own docblock), not an
+// organization-shared resource. No Permissions::* constant gates anything in this file; introducing
+// one here would silently re-open the exact privacy regression Phase 6 explicitly closed.
+
 $ticketId = (int)($_GET['id'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -17,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'موضوع و متن پیام را کامل وارد کنید.');
             redirect('/tickets.php');
         }
-        $newId = ticket_create((int)$me['id'], $me['username'], $subject, $body);
+        $newId = ticket_create((int)$me['id'], $me['username'], $subject, $body, $me['organization_id'] ?? null);
         audit((int)$me['id'], 'ticket.create', "#{$newId} {$subject}");
         flash('success', 'تیکت شما ثبت شد.');
         redirect('/tickets.php?id=' . $newId);

@@ -2,7 +2,7 @@
 
 <footer class="lp-footer">
   <img src="/assets/img/logo.png" alt="ELLSMS" class="lp-footer-logo">
-  <p>ELLSMS نسخه <span class="ltr"><?= e(ELLSMS_VERSION) ?></span> · پنل هوشمند پیامک</p>
+  <p>ELLSMS نسخه <span class="ltr"><?= e(app_version()) ?></span> · پنل هوشمند پیامک</p>
 </footer>
 
 <script>

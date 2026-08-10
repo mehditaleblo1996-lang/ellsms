@@ -1,0 +1,397 @@
+openapi: 3.0.3
+info:
+  title: ELLSMS Public API
+  version: "1.0"
+  description: >
+    Phase 12 public integration API. See docs/public-api.md and docs/webhooks.md for the full
+    narrative reference — this document mirrors the implementation exactly and does not extend
+    beyond what public/api/index.php actually routes.
+servers:
+  - url: https://{domain}/api/v1
+    variables:
+      domain:
+        default: your-domain.example.com
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "ellsms_{live|test}_{prefix}_{secret}"
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    After:
+      name: after
+      in: query
+      schema: { type: string }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code: { type: string, example: forbidden }
+            message: { type: string }
+            request_id: { type: string }
+            fields:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+    Me:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            api_key_id: { type: integer }
+            key_prefix: { type: string }
+            environment: { type: string, enum: [live, test] }
+            scopes: { type: array, items: { type: string } }
+            organization_id: { type: integer }
+            acting_user:
+              type: object
+              nullable: true
+              properties:
+                id: { type: integer }
+                username: { type: string }
+
+    Organization:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            slug: { type: string }
+            status: { type: string, enum: [active, suspended, disabled] }
+
+    MessageCreateRequest:
+      type: object
+      required: [destinations, content]
+      properties:
+        originator: { type: string }
+        destinations:
+          type: array
+          items: { type: string }
+          minItems: 1
+          maxItems: 100
+        content: { type: string, maxLength: 2000 }
+
+    Message:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            status: { type: string, enum: [sent, partially_sent, failed] }
+            sent_count: { type: integer }
+            total_count: { type: integer }
+            originator: { type: string }
+            destinations: { type: array, items: { type: string } }
+            created_at: { type: string, format: date-time }
+
+    BulkJobCreateRequest:
+      type: object
+      required: [type, title, items]
+      properties:
+        type: { type: string, enum: [p2p, smart, gradual] }
+        title: { type: string }
+        originator: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            required: [mobile, content]
+            properties:
+              mobile: { type: string }
+              content: { type: string }
+        throttle_count: { type: integer, minimum: 1 }
+        throttle_minutes: { type: integer, minimum: 1 }
+
+    BulkJob:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            type: { type: string }
+            title: { type: string }
+            status: { type: string, enum: [pending, processing, done] }
+            sent_rows: { type: integer }
+            failed_rows: { type: integer }
+            total_rows: { type: integer }
+            created_at: { type: string, format: date-time }
+
+    Contact:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        mobile: { type: string }
+        group: { type: string }
+        created_at: { type: string, format: date-time }
+
+    ContactWrite:
+      type: object
+      properties:
+        mobile: { type: string }
+        name: { type: string }
+        group: { type: string }
+
+    Balance:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            available: { type: integer }
+            reserved: { type: integer }
+            total: { type: integer }
+            unit: { type: string, example: credits }
+
+    WebhookEndpoint:
+      type: object
+      properties:
+        id: { type: string }
+        url: { type: string }
+        description: { type: string }
+        enabled: { type: boolean }
+        event_types: { type: array, items: { type: string } }
+        consecutive_failures: { type: integer }
+        last_success_at: { type: string, format: date-time, nullable: true }
+        last_failure_at: { type: string, format: date-time, nullable: true }
+        disabled_reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    WebhookEndpointCreateRequest:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri }
+        description: { type: string }
+        event_types:
+          type: array
+          items:
+            type: string
+            enum: [message.sent, message.failed, bulk.completed, bulk.failed, payment.credited]
+
+paths:
+  /me:
+    get:
+      summary: Authenticated key metadata
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        "401": { $ref: '#/components/responses/Unauthenticated' }
+
+  /organization:
+    get:
+      summary: Caller's own organization
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } } }
+
+  /messages:
+    post:
+      summary: Send a message (scope messages:send)
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/MessageCreateRequest' } }
+      responses:
+        "201": { description: Sent (fully or partially), content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        "402": { description: Business rejection (e.g. insufficient credit), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        "409": { $ref: '#/components/responses/IdempotencyConflict' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+
+  /messages/{id}:
+    get:
+      summary: Get a message (scope messages:read)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /bulk-jobs:
+    post:
+      summary: Create a bulk send job (scope bulk:write)
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/BulkJobCreateRequest' } }
+      responses:
+        "201": { description: Queued, content: { application/json: { schema: { $ref: '#/components/schemas/BulkJob' } } } }
+        "409": { $ref: '#/components/responses/IdempotencyConflict' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+
+  /bulk-jobs/{id}:
+    get:
+      summary: Bulk job status summary (scope bulk:read)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BulkJob' } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /contacts:
+    get:
+      summary: List contacts (scope contacts:read)
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/After' }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/Contact' } }
+                  meta:
+                    type: object
+                    properties:
+                      next_cursor: { type: string, nullable: true }
+                      limit: { type: integer }
+    post:
+      summary: Create a contact (scope contacts:write)
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/ContactWrite' } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/Contact' } } } } } }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+
+  /contacts/{id}:
+    get:
+      summary: Get a contact (scope contacts:read)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/Contact' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Update a contact (scope contacts:write)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/ContactWrite' } }
+      responses:
+        "200": { description: OK }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      summary: Delete a contact (scope contacts:write)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /balance:
+    get:
+      summary: Wallet balance (scope balance:read)
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Balance' } } } }
+
+  /webhooks:
+    get:
+      summary: List webhook endpoints (scope webhooks:read)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/WebhookEndpoint' } } } }
+    post:
+      summary: Create a webhook endpoint (scope webhooks:write)
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/WebhookEndpointCreateRequest' } }
+      responses:
+        "201":
+          description: Created — secret shown once
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { id: { type: string }, secret: { type: string } } } } }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+
+  /webhooks/{id}:
+    get:
+      summary: Get a webhook endpoint (scope webhooks:read)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/WebhookEndpoint' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+    patch:
+      summary: Update a webhook endpoint (scope webhooks:write)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK }
+        "404": { $ref: '#/components/responses/NotFound' }
+    delete:
+      summary: Delete (or disable, if it has delivery history) a webhook endpoint (scope webhooks:write)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /webhooks/{id}/rotate-secret:
+    post:
+      summary: Rotate a webhook endpoint's signing secret (scope webhooks:write)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: New secret, shown once
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { id: { type: string }, secret: { type: string } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /webhooks/{id}/test:
+    post:
+      summary: Queue a synthetic test event to this endpoint only (scope webhooks:write)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "202":
+          description: Queued
+          content:
+            application/json:
+              schema: { type: object, properties: { data: { type: object, properties: { event_id: { type: string }, note: { type: string } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+components:
+  responses:
+    Unauthenticated:
+      description: Missing or invalid credentials
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Not found (including a cross-tenant id)
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ValidationFailed:
+      description: Validation failed
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    IdempotencyConflict:
+      description: Idempotency-Key reused with a different request body, or still processing
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }

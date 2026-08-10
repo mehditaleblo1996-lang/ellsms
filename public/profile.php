@@ -13,9 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $new = $_POST['new'] ?? '';
         $rep = $_POST['repeat'] ?? '';
 
-        $st = db()->prepare('SELECT password FROM user_ WHERE id = ?');
-        $st->execute([$me['id']]);
-        $hash = $st->fetchColumn();
+        // Phase 8 (Invariant B): identity provider, not a direct user_ query.
+        $hash = backend_user_password_hash((int)$me['id']);
 
         if (!backend_verify_password($cur, (string)$hash)) {
             flash('error', 'رمز عبور فعلی درست نیست.');
@@ -24,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($new !== $rep) {
             flash('error', 'دو رمز عبور جدید یکسان نیستند.');
         } else {
-            db()->prepare('UPDATE user_ SET password=? WHERE id=?')->execute([backend_hash_password($new), $me['id']]);
+            backend_update_user_password((int)$me['id'], backend_hash_password($new));
             audit((int)$me['id'], 'password.change');
             flash('success', 'رمز عبور تغییر کرد — این تغییر همه‌جا برای این حساب اعمال می‌شود.');
         }

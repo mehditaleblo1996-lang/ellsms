@@ -13,13 +13,36 @@ $where  = ['received_at >= ?', 'received_at < DATE_ADD(?, INTERVAL 1 DAY)'];
 $params = [$from, $to];
 if ($sndr !== '') { $where[] = 'originator LIKE ?'; $params[] = '%' . preg_replace('/\D/', '', $sndr) . '%'; }
 if ($text !== '') { $where[] = 'content LIKE ?';    $params[] = '%' . $text . '%'; }
-/* Non-admin users only see messages sent to their own line. */
-if (!is_admin() && $me['originator'] !== '') { $where[] = 'destination = ?'; $params[] = preg_replace('/\D/', '', $me['originator']); }
+
+/*
+ * Ownership scoping — fail closed. A non-admin may only see messages
+ * that arrived on a line they're actually allowed to use
+ * (allowed_originators(), app/authorization.php). Previously this only
+ * checked `$me['originator'] !== ''` and applied NO filter at all when
+ * that legacy field was empty (the normal state for any account set up
+ * under the current ellsms_numbers model) — meaning such a user saw
+ * every user's inbound messages system-wide. A user with zero allowed
+ * originators now sees zero rows, never an unfiltered table.
+ */
+$hasSenderScope = true;
+$allowedOriginators = allowed_originators($me);
+if (!in_array('*', $allowedOriginators, true)) {
+    if (!$allowedOriginators) {
+        $hasSenderScope = false;
+        $where[] = '1 = 0';
+    } else {
+        $placeholders = implode(',', array_fill(0, count($allowedOriginators), '?'));
+        $where[] = "destination IN ({$placeholders})";
+        array_push($params, ...$allowedOriginators);
+    }
+}
 $W = implode(' AND ', $where);
 
 if (isset($_GET['export'])) {
-    $st = db()->prepare("SELECT id, originator AS sender, destination AS recipient, content, received_at FROM inbound_message WHERE {$W} ORDER BY id DESC LIMIT 100000");
-    $st->execute($params);
+    // Phase 8 (Invariant C): inbound repository, not a direct inbound_message query — $W/$params
+    // are still built entirely by this page (tenant scoping, date/sender/text filters); only the
+    // actual SELECT execution moved to app/Backend/messages.php.
+    $st = backend_inbound_export_rows($W, $params, 100000);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="ellsms-inbox-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
@@ -30,13 +53,9 @@ if (isset($_GET['export'])) {
 }
 
 $per = 50; $page = max(1, (int)($_GET['page'] ?? 1));
-$c = db()->prepare("SELECT COUNT(*) c FROM inbound_message WHERE {$W}");
-$c->execute($params);
-$cnt = (int)$c->fetch()['c'];
+$cnt = backend_inbound_count($W, $params);
 $pages = max(1, (int)ceil($cnt / $per));
-$st = db()->prepare("SELECT * FROM inbound_message WHERE {$W} ORDER BY id DESC LIMIT {$per} OFFSET " . (($page - 1) * $per));
-$st->execute($params);
-$rows = $st->fetchAll();
+$rows = backend_inbound_rows($W, $params, $per, ($page - 1) * $per);
 
 $qs = fn(array $extra = []) => http_build_query(array_merge($_GET, $extra));
 require __DIR__ . '/../app/views/header.php';
@@ -63,7 +82,10 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= jdate($m['received_at']) ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?>
+    <?php if (!$rows && !$hasSenderScope): ?>
+      <tr><td colspan="5" class="empty">
+        هنوز هیچ خط ارسالی به شما تخصیص داده نشده — صندوق دریافت فقط پیامک‌های خطوط تخصیص‌یافته را نشان می‌دهد. از مدیر بخواهید یک شماره از صفحه‌ی «شماره‌ها» به شما تخصیص دهد.</td></tr>
+    <?php elseif (!$rows): ?>
       <tr><td colspan="5" class="empty">
         در این بازه‌ی زمانی پیامک دریافتی‌ای وجود ندارد. پیامک‌های دریافتی به‌طور خودکار از طریق اندپوینت <code class="kbd">/mo</code> سامانه‌ی مرکزی مستقیماً وارد پایگاه‌داده‌ی مشترک می‌شوند — نیازی به تنظیم چیزی اینجا نیست.
       </td></tr>

@@ -44,13 +44,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $numbers = db()->query(
-    "SELECT n.*, u.username FROM ellsms_numbers n LEFT JOIN user_ u ON u.id = n.assigned_user_id
-     ORDER BY (n.assigned_user_id IS NULL) DESC, n.number"
+    "SELECT n.* FROM ellsms_numbers n ORDER BY (n.assigned_user_id IS NULL) DESC, n.number"
 )->fetchAll();
+$numberUsernames = backend_usernames_by_ids(array_column($numbers, 'assigned_user_id'));
+foreach ($numbers as &$n) {
+    $n['username'] = $n['assigned_user_id'] !== null ? ($numberUsernames[(int)$n['assigned_user_id']] ?? null) : null;
+}
+unset($n);
 
-$panelUsers = db()->query(
-    "SELECT u.id, u.username FROM ellsms_meta m JOIN user_ u ON u.id = m.user_id WHERE m.panel_access = 1 ORDER BY u.username"
-)->fetchAll();
+$panelUsers = backend_panel_access_users();
 
 require __DIR__ . '/../app/views/header.php';
 ?>

@@ -6,19 +6,27 @@ $active = 'autoreply';
 
 $matchTypeFa = ['exact' => 'دقیقاً برابر', 'starts_with' => 'شروع با', 'contains' => 'شامل'];
 
-$myNumbers = [];
+$myNumbers = user_assigned_numbers($me);
+$myAllowedOriginators = allowed_originators($me); // app/authorization.php — same rule inbox.php/dispatch_message() use
+
+// Phase 7: platform admins keep the pre-existing unrestricted bypass (create/see rules for anyone);
+// an ordinary org member needs AUTOREPLY_VIEW to see this page and AUTOREPLY_MANAGE to mutate — both
+// granted to every built-in role by default today, so this is explicit fail-closed enforcement on
+// top of existing behavior, not a new restriction (see app/rbac.php's role_permissions() docblock).
 if (!is_admin()) {
-    $nst = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
-    $nst->execute([$me['id']]);
-    $myNumbers = $nst->fetchAll();
+    require_permission(Permissions::AUTOREPLY_VIEW);
+    // Phase 13 (STEP 14): plan entitlement alongside RBAC. A platform admin keeps the pre-existing
+    // unrestricted bypass on this page (Invariant O — platform administration is never governed by
+    // a customer organization's plan), which is why this sits inside the same !is_admin() branch.
+    require_entitlement((int)($me['organization_id'] ?? 0), Entitlements::AUTOREPLY);
 }
-$myAllowedOriginators = $myNumbers
-    ? array_column($myNumbers, 'number')
-    : array_filter([normalize_originator((string)$me['originator'])]); // legacy fallback
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
+    if (!is_admin()) {
+        require_permission(Permissions::AUTOREPLY_MANAGE);
+    }
     $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
 
     if ($do === 'create_rule') {
@@ -37,9 +45,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($reply === '') {
             flash('error', 'متن پاسخ نمی‌تواند خالی باشد.');
         } else {
-            db()->prepare('INSERT INTO ellsms_autoreply_rules (user_id, originator, keyword, match_type, reply_content, is_active)
-                           VALUES (?,?,?,?,?,1)')
-               ->execute([$ownerUserId, $originator, $keyword, $matchType, $reply]);
+            // Phase 6: resolved for the RULE'S OWNER ($ownerUserId — which an admin may have set to
+            // a different user than themselves), not the acting admin's own organization_id.
+            $ruleOrgId = $ownerUserId === (int)$me['id']
+                ? ($me['organization_id'] ?? null)
+                : user_default_organization_id($ownerUserId);
+            db()->prepare('INSERT INTO ellsms_autoreply_rules (user_id, organization_id, originator, keyword, match_type, reply_content, is_active)
+                           VALUES (?,?,?,?,?,?,1)')
+               ->execute([$ownerUserId, $ruleOrgId, $originator, $keyword, $matchType, $reply]);
             audit((int)$me['id'], 'autoreply.create', "{$originator} / {$keyword}");
             flash('success', 'قانون منشی پیامک ساخته شد.');
         }
@@ -81,9 +94,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $where = is_admin() ? '1=1' : 'r.user_id = ' . (int)$me['id'];
 $rules = db()->query(
-    "SELECT r.*, u.username FROM ellsms_autoreply_rules r JOIN user_ u ON u.id = r.user_id
-     WHERE {$where} ORDER BY r.originator, r.id DESC"
+    "SELECT r.* FROM ellsms_autoreply_rules r WHERE {$where} ORDER BY r.originator, r.id DESC"
 )->fetchAll();
+$ruleUsernames = backend_usernames_by_ids(array_column($rules, 'user_id'));
+foreach ($rules as &$r) {
+    $r['username'] = $ruleUsernames[(int)$r['user_id']] ?? null;
+}
+unset($r);
 
 $vst = db()->prepare('SELECT * FROM ellsms_autoreply_variables WHERE user_id=? ORDER BY var_name');
 $vst->execute([$me['id']]);
@@ -95,9 +112,7 @@ $log = db()->query(
      WHERE {$logWhere} ORDER BY l.id DESC LIMIT 20"
 )->fetchAll();
 
-$panelUsers = is_admin() ? db()->query(
-    "SELECT u.id, u.username FROM ellsms_meta m JOIN user_ u ON u.id = m.user_id WHERE m.panel_access = 1 ORDER BY u.username"
-)->fetchAll() : [];
+$panelUsers = is_admin() ? backend_panel_access_users() : [];
 
 require __DIR__ . '/../app/views/header.php';
 ?>

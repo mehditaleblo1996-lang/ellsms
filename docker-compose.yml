@@ -19,15 +19,53 @@ services:
     ports:
       - "${APP_PORT:-8080}:80"
     environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_URL: ${APP_URL:-}
+      APP_VERSION: ${APP_VERSION:-}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+      SESSION_IDLE_TIMEOUT_SECONDS: ${SESSION_IDLE_TIMEOUT_SECONDS:-1800}
+      SESSION_ABSOLUTE_TIMEOUT_SECONDS: ${SESSION_ABSOLUTE_TIMEOUT_SECONDS:-43200}
+      RATE_LIMIT_LOGIN_MAX: ${RATE_LIMIT_LOGIN_MAX:-10}
+      RATE_LIMIT_LOGIN_WINDOW_SECONDS: ${RATE_LIMIT_LOGIN_WINDOW_SECONDS:-900}
+      RATE_LIMIT_2FA_VERIFY_MAX: ${RATE_LIMIT_2FA_VERIFY_MAX:-10}
+      RATE_LIMIT_2FA_VERIFY_WINDOW_SECONDS: ${RATE_LIMIT_2FA_VERIFY_WINDOW_SECONDS:-900}
+      RATE_LIMIT_2FA_RESEND_MAX: ${RATE_LIMIT_2FA_RESEND_MAX:-5}
+      RATE_LIMIT_2FA_RESEND_WINDOW_SECONDS: ${RATE_LIMIT_2FA_RESEND_WINDOW_SECONDS:-3600}
+      RATE_LIMIT_API_SEND_MAX: ${RATE_LIMIT_API_SEND_MAX:-30}
+      RATE_LIMIT_API_SEND_WINDOW_SECONDS: ${RATE_LIMIT_API_SEND_WINDOW_SECONDS:-300}
       BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
       BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
       BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
       BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
       BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
       API_BASE_URL: ${API_BASE_URL:-}
+      BACKEND_SERVICE_ID: ${BACKEND_SERVICE_ID:-}
+      BACKEND_SERVICE_SECRET: ${BACKEND_SERVICE_SECRET:-}
       ZARINPAL_MERCHANT_ID: ${ZARINPAL_MERCHANT_ID:-}
       ZARINPAL_CALLBACK_URL: ${ZARINPAL_CALLBACK_URL:-}
       ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-0}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Public API / webhooks (Phase 12) — OFF by default, see .env.example.
+      API_ENABLED: ${API_ENABLED:-0}
+      API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-60}
+      API_RATE_LIMIT_BURST: ${API_RATE_LIMIT_BURST:-15}
+      API_MAX_BODY_BYTES: ${API_MAX_BODY_BYTES:-262144}
+      API_MAX_BULK_ITEMS: ${API_MAX_BULK_ITEMS:-5000}
+      API_IDEMPOTENCY_TTL_HOURS: ${API_IDEMPOTENCY_TTL_HOURS:-48}
+      WEBHOOK_MASTER_KEY: ${WEBHOOK_MASTER_KEY:-}
+      WEBHOOK_TIMEOUT_SECONDS: ${WEBHOOK_TIMEOUT_SECONDS:-10}
+      WEBHOOK_MAX_ATTEMPTS: ${WEBHOOK_MAX_ATTEMPTS:-8}
+      WEBHOOK_MAX_RESPONSE_BYTES: ${WEBHOOK_MAX_RESPONSE_BYTES:-4096}
+      WEBHOOK_REQUIRE_HTTPS: ${WEBHOOK_REQUIRE_HTTPS:-1}
+      # Plans/subscriptions/quotas (Phase 13) — OFF by default, see .env.example.
+      BILLING_ENABLED: ${BILLING_ENABLED:-0}
+      DEFAULT_PLAN_CODE: ${DEFAULT_PLAN_CODE:-free}
+      SUBSCRIPTION_GRACE_DAYS: ${SUBSCRIPTION_GRACE_DAYS:-7}
+      SUBSCRIPTION_JOB_BATCH_SIZE: ${SUBSCRIPTION_JOB_BATCH_SIZE:-200}
+      USAGE_RESERVATION_TTL_MINUTES: ${USAGE_RESERVATION_TTL_MINUTES:-60}
+      BILLING_CURRENCY: ${BILLING_CURRENCY:-IRR}
     volumes:
       - ./:/var/www/html
     networks:
@@ -41,16 +79,72 @@ services:
     restart: unless-stopped
     command: php /var/www/html/cron/worker.php
     environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-8}
+      WORKER_JOB_LEASE_SECONDS: ${WORKER_JOB_LEASE_SECONDS:-300}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-5}
+      JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
+      JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-1800}
+      # Phase 13 — the worker enforces subscription state at execution time (a suspended
+      # organization's queued job must not keep sending), so it needs the same billing config.
+      BILLING_ENABLED: ${BILLING_ENABLED:-0}
+      DEFAULT_PLAN_CODE: ${DEFAULT_PLAN_CODE:-free}
+      SUBSCRIPTION_GRACE_DAYS: ${SUBSCRIPTION_GRACE_DAYS:-7}
+      SUBSCRIPTION_JOB_BATCH_SIZE: ${SUBSCRIPTION_JOB_BATCH_SIZE:-200}
+      USAGE_RESERVATION_TTL_MINUTES: ${USAGE_RESERVATION_TTL_MINUTES:-60}
+      BILLING_CURRENCY: ${BILLING_CURRENCY:-IRR}
       BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
       BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
       BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
       BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
       BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
       API_BASE_URL: ${API_BASE_URL:-}
+      BACKEND_SERVICE_ID: ${BACKEND_SERVICE_ID:-}
+      BACKEND_SERVICE_SECRET: ${BACKEND_SERVICE_SECRET:-}
     volumes:
       - ./:/var/www/html
     networks:
       - backend_net
+    # Give the worker time to finish its current pass and exit cleanly
+    # (see cron/worker.php's SIGTERM handling) before Docker sends SIGKILL.
+    stop_grace_period: 30s
+
+  # Phase 12, STEP 33 — deliberately its OWN container, never sharing worker's poll loop: a slow or
+  # unreachable customer webhook endpoint can only ever delay OTHER webhook deliveries this way,
+  # never a scheduled send/auto-reply/bulk-send pass. Also used by `make webhook-worker-once` for a
+  # single throwaway pass (safe to run alongside this persistent service — same atomic-claim
+  # guarantee as every other Phase 4-style claim query in this project).
+  webhook-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ellsms-webhook-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/webhook-worker.php
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-8}
+      JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
+      JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-1800}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      WEBHOOK_MASTER_KEY: ${WEBHOOK_MASTER_KEY:-}
+      WEBHOOK_TIMEOUT_SECONDS: ${WEBHOOK_TIMEOUT_SECONDS:-10}
+      WEBHOOK_MAX_ATTEMPTS: ${WEBHOOK_MAX_ATTEMPTS:-8}
+      WEBHOOK_MAX_RESPONSE_BYTES: ${WEBHOOK_MAX_RESPONSE_BYTES:-4096}
+      WEBHOOK_REQUIRE_HTTPS: ${WEBHOOK_REQUIRE_HTTPS:-1}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    stop_grace_period: 30s
 
 networks:
   backend_net:

@@ -15,95 +15,116 @@ $active = 'users';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
+    $id = (int)($_POST['id'] ?? 0);
 
     if ($do === 'grant') {
-        $st = db()->prepare('SELECT id FROM user_ WHERE username = ? AND deleted = 0');
-        $st->execute([trim($_POST['username'] ?? '')]);
-        $u = $st->fetch();
-        if (!$u) {
+        // Phase 8 (Invariant B): identity provider, not a direct user_ query.
+        $targetUserId = backend_find_user_id_by_username(trim($_POST['username'] ?? ''));
+        if (!$targetUserId) {
             flash('error', 'حسابی با این نام کاربری پیدا نشد.');
         } else {
             db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
                            VALUES (?,1,0,?)
                            ON DUPLICATE KEY UPDATE panel_access=1')
-               ->execute([$u['id'], setting('default_originator', '')]);
-            audit((int)$me['id'], 'user.grant_access', (string)$u['id']);
+               ->execute([$targetUserId, setting('default_originator', '')]);
+            audit((int)$me['id'], 'user.grant_access', (string)$targetUserId);
+            Logger::info('user.grant_access', ['actor_id' => $me['id'], 'target_id' => $targetUserId]);
             flash('success', 'دسترسی به ELLSMS داده شد.');
         }
-    }
-
-    $id = (int)($_POST['id'] ?? 0);
-
-    if ($do === 'revoke' && $id && $id !== (int)$me['id']) {
-        db()->prepare('UPDATE ellsms_meta SET panel_access=0, is_admin=0 WHERE user_id=?')->execute([$id]);
-        audit((int)$me['id'], 'user.revoke_access', "#{$id}");
-        flash('info', 'دسترسی به ELLSMS لغو شد.');
-    }
-
-    if ($do === 'toggle_admin' && $id && $id !== (int)$me['id']) {
-        db()->prepare('UPDATE ellsms_meta SET is_admin = 1 - is_admin WHERE user_id=?')->execute([$id]);
-        audit((int)$me['id'], 'user.toggle_admin', "#{$id}");
-        flash('info', 'نقش مدیر تغییر کرد.');
-    }
-
-    if ($do === 'toggle_2fa' && $id) {
-        db()->prepare('UPDATE ellsms_meta SET twofa_enabled = 1 - twofa_enabled WHERE user_id=?')->execute([$id]);
-        audit((int)$me['id'], 'user.toggle_2fa', "#{$id}");
-        flash('info', 'وضعیت ورود دومرحله‌ای تغییر کرد.');
-    }
-
-    if ($do === 'enable_2fa_all') {
+    } elseif ($do === 'enable_2fa_all') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    }
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save'], true)) {
+        /*
+         * Every action in this branch targets an EXISTING ELLSMS-managed
+         * account only — an ELLSMS admin is not automatically a global
+         * administrator of the backend platform
+         * (docs/security-review.md CRITICAL finding #2).
+         * resolve_ellsms_managed_user() (app/authorization.php) is the
+         * one gate all of them go through now instead of each having its
+         * own subtly different (or missing) check; "grant" and
+         * "create_account" are the sole, deliberate exceptions, since
+         * their entire purpose is bringing a not-yet-managed account in.
+         */
+        $target = resolve_ellsms_managed_user($id);
+        if (!$target) {
+            flash('error', 'این حساب در محدوده‌ی مدیریت ELLSMS نیست یا یافت نشد.');
+        } elseif (in_array($do, ['revoke', 'toggle_admin'], true) && !can_demote_or_revoke($me, $id)) {
+            flash('error', 'شما نمی‌توانید این عملیات را روی حساب خودتان انجام دهید.');
+        } elseif ($do === 'revoke') {
+            db()->prepare('UPDATE ellsms_meta SET panel_access=0, is_admin=0 WHERE user_id=?')->execute([$id]);
+            audit((int)$me['id'], 'user.revoke_access', "#{$id}");
+            Logger::info('user.revoke_access', ['actor_id' => $me['id'], 'target_id' => $id]);
+            flash('info', 'دسترسی به ELLSMS لغو شد.');
+        } elseif ($do === 'toggle_admin') {
+            db()->prepare('UPDATE ellsms_meta SET is_admin = 1 - is_admin WHERE user_id=?')->execute([$id]);
+            audit((int)$me['id'], 'user.toggle_admin', "#{$id}");
+            Logger::info('user.toggle_admin', ['actor_id' => $me['id'], 'target_id' => $id]);
+            flash('info', 'نقش مدیر تغییر کرد.');
+        } elseif ($do === 'toggle_2fa') {
+            db()->prepare('UPDATE ellsms_meta SET twofa_enabled = 1 - twofa_enabled WHERE user_id=?')->execute([$id]);
+            audit((int)$me['id'], 'user.toggle_2fa', "#{$id}");
+            flash('info', 'وضعیت ورود دومرحله‌ای تغییر کرد.');
+        } elseif ($do === 'originator') {
+            $newOriginator = normalize_originator($_POST['originator'] ?? '') ?? '';
+            db()->prepare('UPDATE ellsms_meta SET originator=? WHERE user_id=?')
+               ->execute([$newOriginator, $id]);
+            audit((int)$me['id'], 'user.originator_update', "#{$id}");
+            flash('success', 'خط ارسال به‌روزرسانی شد.');
+        } elseif ($do === 'credit') {
+            // Phase 3 (STEP 17): goes through the wallet ledger instead of
+            // a direct UPDATE currentcredit — every manual adjustment is
+            // now an auditable, idempotent ellsms_wallet_transactions row
+            // (type manual_credit/manual_debit), not just an audit-log
+            // line with no durable link to a specific balance change. A
+            // debit larger than the account's balance still clamps at
+            // zero (wallet_manual_adjustment()'s own docblock), matching
+            // the pre-Phase-3 GREATEST(0, ...) behavior exactly.
+            $amount = (int)($_POST['amount'] ?? 0);
+            $reason = trim($_POST['reason'] ?? '') ?: 'تنظیم دستی اعتبار توسط مدیر';
+            // A 10-second dedup window on the exact (target, amount,
+            // reason) tuple — enough to absorb an accidental double-
+            // submit (double-click, browser back-and-resubmit) without
+            // blocking a deliberate identical adjustment made later.
+            $idempotencyKey = 'user_credit:' . $id . ':' . $amount . ':' . sha1($reason) . ':' . (int)floor(time() / 10);
+            $adj = wallet_manual_adjustment($id, $amount, (int)$me['id'], $reason, $idempotencyKey);
+            audit((int)$me['id'], 'user.credit', "#{$id} " . ($amount >= 0 ? '+' : '') . $amount . ' — ' . $reason);
+            Logger::info('user.credit_adjusted', ['actor_id' => $me['id'], 'target_id' => $id, 'amount' => $amount, 'reason' => $reason]);
+            flash('success', 'اعتبار به میزان ' . to_persian_digits(number_format($amount)) . ' تغییر کرد.');
+        } elseif ($do === 'password') {
+            $p = $_POST['password'] ?? '';
+            if (strlen($p) < 6) {
+                flash('error', 'رمز عبور باید حداقل ۶ نویسه باشد.');
+            } else {
+                backend_update_user_password($id, backend_hash_password($p));
+                audit((int)$me['id'], 'user.password_reset', "#{$id}");
+                Logger::info('user.password_reset', ['actor_id' => $me['id'], 'target_id' => $id]);
+                flash('success', 'رمز عبور تغییر کرد. توجه: این رمز همه‌جا برای این حساب استفاده می‌شود، نه فقط در ELLSMS.');
+            }
+        } elseif ($do === 'kyc_save') {
+            try {
+                $idCardFile = kyc_store_upload('id_card_photo', $id);
+                $secondFile = kyc_store_upload('second_doc_photo', $id);
+                $fatherName = trim($_POST['father_name'] ?? '');
+                $address    = trim($_POST['address'] ?? '');
 
-    if ($do === 'originator' && $id) {
-        db()->prepare('UPDATE ellsms_meta SET originator=? WHERE user_id=?')
-           ->execute([trim($_POST['originator'] ?? ''), $id]);
-        flash('success', 'خط ارسال به‌روزرسانی شد.');
-    }
+                db()->prepare('INSERT IGNORE INTO ellsms_user_kyc (user_id) VALUES (?)')->execute([$id]);
 
-    if ($do === 'credit' && $id) {
-        $amount = (float)($_POST['amount'] ?? 0);
-        db()->prepare('UPDATE user_ SET currentcredit = GREATEST(0, currentcredit + ?) WHERE id=?')->execute([$amount, $id]);
-        audit((int)$me['id'], 'user.credit', "#{$id} " . ($amount >= 0 ? '+' : '') . $amount);
-        flash('success', 'اعتبار به میزان ' . to_persian_digits(number_format($amount)) . ' تغییر کرد.');
-    }
+                $sets = ['father_name = ?', 'address = ?'];
+                $params = [$fatherName, $address];
+                if ($idCardFile) { $sets[] = 'id_card_photo = ?'; $params[] = $idCardFile; }
+                if ($secondFile) { $sets[] = 'second_doc_photo = ?'; $params[] = $secondFile; }
+                $params[] = $id;
 
-    if ($do === 'password' && $id) {
-        $p = $_POST['password'] ?? '';
-        if (strlen($p) < 6) {
-            flash('error', 'رمز عبور باید حداقل ۶ نویسه باشد.');
-        } else {
-            db()->prepare('UPDATE user_ SET password=? WHERE id=?')->execute([backend_hash_password($p), $id]);
-            audit((int)$me['id'], 'user.password_reset', "#{$id}");
-            flash('success', 'رمز عبور تغییر کرد. توجه: این رمز همه‌جا برای این حساب استفاده می‌شود، نه فقط در ELLSMS.');
-        }
-    }
+                db()->prepare('UPDATE ellsms_user_kyc SET ' . implode(', ', $sets) . ' WHERE user_id = ?')
+                   ->execute($params);
 
-    if ($do === 'kyc_save' && $id) {
-        try {
-            $idCardFile = kyc_store_upload('id_card_photo', $id);
-            $secondFile = kyc_store_upload('second_doc_photo', $id);
-            $fatherName = trim($_POST['father_name'] ?? '');
-            $address    = trim($_POST['address'] ?? '');
-
-            db()->prepare('INSERT IGNORE INTO ellsms_user_kyc (user_id) VALUES (?)')->execute([$id]);
-
-            $sets = ['father_name = ?', 'address = ?'];
-            $params = [$fatherName, $address];
-            if ($idCardFile) { $sets[] = 'id_card_photo = ?'; $params[] = $idCardFile; }
-            if ($secondFile) { $sets[] = 'second_doc_photo = ?'; $params[] = $secondFile; }
-            $params[] = $id;
-
-            db()->prepare('UPDATE ellsms_user_kyc SET ' . implode(', ', $sets) . ' WHERE user_id = ?')
-               ->execute($params);
-
-            audit((int)$me['id'], 'user.kyc_save', "#{$id}");
-            flash('success', 'اطلاعات هویتی ذخیره شد.');
-        } catch (RuntimeException $e) {
-            flash('error', $e->getMessage());
+                audit((int)$me['id'], 'user.kyc_save', "#{$id}");
+                flash('success', 'اطلاعات هویتی ذخیره شد.');
+            } catch (RuntimeException $e) {
+                flash('error', $e->getMessage());
+            }
         }
     }
 
@@ -160,32 +181,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $editUser = null;
 $editKyc  = null;
 if (!empty($_GET['edit'])) {
-    $st = db()->prepare(
-        'SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.mobile,
-                u.currentcredit AS credit, u.active, u.deleted,
-                m.panel_access, m.is_admin, m.originator, m.twofa_enabled
-         FROM user_ u LEFT JOIN ellsms_meta m ON m.user_id = u.id WHERE u.id = ?'
-    );
-    $st->execute([(int)$_GET['edit']]);
-    $editUser = $st->fetch();
-
-    if ($editUser) {
+    // resolve_ellsms_managed_user() (app/authorization.php) — same gate
+    // every mutating action above uses. Previously this queried user_
+    // directly with no panel_access filter, so any id in the shared
+    // backend database could be loaded here regardless of whether it
+    // was ever granted ELLSMS access (docs/security-review.md CRITICAL
+    // finding #2).
+    $editUser = resolve_ellsms_managed_user((int)$_GET['edit']);
+    if (!$editUser) {
+        flash('error', 'این حساب در محدوده‌ی مدیریت ELLSMS نیست یا یافت نشد.');
+    } else {
         $kst = db()->prepare('SELECT * FROM ellsms_user_kyc WHERE user_id = ?');
         $kst->execute([$editUser['id']]);
         $editKyc = $kst->fetch() ?: ['father_name' => '', 'address' => '', 'id_card_photo' => null, 'second_doc_photo' => null];
     }
 }
 
-$panelUsers = db()->query(
-    "SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.currentcredit AS credit, u.active, u.deleted,
-            m.panel_access, m.is_admin, m.originator, m.twofa_enabled,
-            (SELECT COUNT(*) FROM outbound_message o WHERE o.sender_user_id = u.id) sent_count
-     FROM ellsms_meta m JOIN user_ u ON u.id = m.user_id
-     WHERE m.panel_access = 1
-     ORDER BY m.is_admin DESC, u.username"
+// Phase 8 (Invariant A/B): the ELLSMS-owned half (ellsms_meta) stays a direct query here; the
+// backend-owned half (user_ identity fields, outbound_message counts) is fetched in bulk through
+// the identity/message repositories and merged in PHP, instead of one query joining across the
+// ownership boundary.
+$metaRows = db()->query(
+    "SELECT m.user_id, m.panel_access, m.is_admin, m.originator, m.twofa_enabled
+     FROM ellsms_meta m WHERE m.panel_access = 1"
 )->fetchAll();
+$userIds = array_column($metaRows, 'user_id');
+$identities = backend_users_by_ids($userIds);
+$sentCounts = backend_outbound_sent_counts_for_users($userIds);
 
-$domains = db()->query('SELECT id, name FROM domain ORDER BY name')->fetchAll();
+$panelUsers = [];
+foreach ($metaRows as $meta) {
+    $identity = $identities[(int)$meta['user_id']] ?? null;
+    if (!$identity) {
+        continue; // an ellsms_meta row whose backend account vanished — not this listing's concern to guess at
+    }
+    $panelUsers[] = array_merge($identity, $meta, ['sent_count' => $sentCounts[(int)$meta['user_id']] ?? 0]);
+}
+usort($panelUsers, static fn($a, $b) => ((int)$b['is_admin'] <=> (int)$a['is_admin']) ?: ($a['username'] <=> $b['username']));
+
+$domains = backend_list_domains();
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -255,6 +289,9 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="back" value="1">
       <label>افزایش / کاهش اعتبار <input type="number" name="amount" value="1000" required>
         <div class="hint">برای کاهش، عدد منفی وارد کنید. اعتبار = بخش‌های پیامک.</div>
+      </label>
+      <label>دلیل (اختیاری) <input type="text" name="reason" maxlength="190" placeholder="مثلاً: جبران خطای ارسال">
+        <div class="hint">برای پیگیری در تاریخچه‌ی مالی ثبت می‌شود.</div>
       </label>
       <button class="btn btn-primary">اعمال</button>
     </form>

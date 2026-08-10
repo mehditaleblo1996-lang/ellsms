@@ -4,8 +4,19 @@ $me = require_login();
 $pageTitle = 'پیامک‌های زمان‌بندی‌شده';
 $active = 'schedules';
 
+// Phase 7: platform admins keep their existing unrestricted bypass; an ordinary org member needs
+// SCHEDULES_VIEW to see this page and SCHEDULES_MANAGE to cancel — both granted to every built-in
+// role by default today (app/rbac.php), so this is explicit fail-closed enforcement, not a new
+// restriction. The underlying SQL scope (own rows only for a non-admin) is unchanged by this phase.
+if (!is_admin()) {
+    require_permission(Permissions::SCHEDULES_VIEW);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    if (!is_admin()) {
+        require_permission(Permissions::SCHEDULES_MANAGE);
+    }
     $id = (int)($_POST['id'] ?? 0);
     $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
     if (($_POST['do'] ?? '') === 'cancel') {
@@ -17,9 +28,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $where = is_admin() ? '1=1' : 's.user_id = ' . (int)$me['id'];
-$rows = db()->query("SELECT s.*, u.username FROM ellsms_schedule s JOIN user_ u ON u.id = s.user_id
+$rows = db()->query("SELECT s.* FROM ellsms_schedule s
                      WHERE {$where} ORDER BY FIELD(s.status,'active','processing','done','cancelled'), s.run_at DESC
                      LIMIT 300")->fetchAll();
+$scheduleUsernames = backend_usernames_by_ids(array_column($rows, 'user_id'));
+foreach ($rows as &$r) {
+    $r['username'] = $scheduleUsernames[(int)$r['user_id']] ?? null;
+}
+unset($r);
 
 $statusFa = ['active' => 'فعال', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده'];
 $repeatFa = ['none' => 'یک‌بار', 'daily' => 'روزانه', 'weekly' => 'هفتگی', 'monthly' => 'ماهانه'];

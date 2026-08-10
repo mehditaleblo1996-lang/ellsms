@@ -46,6 +46,29 @@ function read_csv_rows(string $path): array {
     return $rows;
 }
 
+/**
+ * Uncompressed-size ceiling for any single xlsx member this reader will decompress into memory
+ * (Phase 10 / TD-033). ZIP compression on highly repetitive XML routinely exceeds 100-1000x, so
+ * the outer upload_max_filesize/post_max_size caps (10-24MB compressed, docker/Dockerfile) do
+ * essentially nothing to bound the DECOMPRESSED size a malicious file can expand to — the previous
+ * 20,000-row cap in public/p2p-send.php/smart-send.php was checked only AFTER the entire sheet had
+ * already been decompressed and parsed into a SimpleXML tree, so it could never actually prevent
+ * the memory/CPU spike it was meant to guard against. ZipArchive::statName() reports the
+ * UNCOMPRESSED size from the zip's own local file header WITHOUT decompressing anything, so this
+ * check runs before any decompression happens at all. ~64MB comfortably fits a real 20,000-row,
+ * few-column sheet (a few KB/row of XML) with wide margin, while rejecting a crafted
+ * few-KB-compressed / gigabytes-uncompressed bomb immediately.
+ */
+const MAX_XLSX_MEMBER_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
+
+function xlsx_assert_member_size_safe(ZipArchive $zip, string $name): void {
+    $stat = $zip->statName($name);
+    if ($stat !== false && (int)$stat['size'] > MAX_XLSX_MEMBER_UNCOMPRESSED_BYTES) {
+        Logger::warning('xlsx.oversized_member_rejected', ['member' => $name, 'uncompressed_bytes' => $stat['size']]);
+        throw new RuntimeException('فایل xlsx بیش از حد بزرگ است.');
+    }
+}
+
 function read_xlsx_rows(string $path): array {
     $zip = new ZipArchive();
     if ($zip->open($path) !== true) {
@@ -55,6 +78,7 @@ function read_xlsx_rows(string $path): array {
     // Shared strings table (most text cells reference this by index
     // instead of storing the text inline).
     $shared = [];
+    xlsx_assert_member_size_safe($zip, 'xl/sharedStrings.xml');
     $sharedXml = $zip->getFromName('xl/sharedStrings.xml');
     if ($sharedXml !== false) {
         $sx = @simplexml_load_string($sharedXml);
@@ -74,15 +98,20 @@ function read_xlsx_rows(string $path): array {
 
     // Find the first worksheet. Try the common default path first,
     // then fall back to whatever worksheets/*.xml exists.
-    $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
-    if ($sheetXml === false) {
+    $sheetName = $zip->statName('xl/worksheets/sheet1.xml') !== false ? 'xl/worksheets/sheet1.xml' : null;
+    if ($sheetName === null) {
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
             if (preg_match('#^xl/worksheets/sheet\d+\.xml$#', $name)) {
-                $sheetXml = $zip->getFromName($name);
+                $sheetName = $name;
                 break;
             }
         }
+    }
+    $sheetXml = false;
+    if ($sheetName !== null) {
+        xlsx_assert_member_size_safe($zip, $sheetName);
+        $sheetXml = $zip->getFromName($sheetName);
     }
     $zip->close();
 

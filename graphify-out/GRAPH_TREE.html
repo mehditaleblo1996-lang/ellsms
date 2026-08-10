@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>. — graphify tree viewer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      margin: 20px 0 0 24px;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: #1e3a56;
+    }
+    .controls {
+      margin: 20px 0 15px 24px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 8px 18px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s ease-in-out;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:active {
+      background: #004085;
+    }
+    #tree-container {
+      width: calc(100vw - 48px); /* Adjust for body margin/padding */
+      height: 85vh;
+      overflow: auto;
+      border-radius: 8px;
+      background: #fff;
+      margin-left: 24px;
+      margin-right: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: 1px solid #ddd;
+    }
+    svg {
+      background: #fff;
+      border-radius: 8px;
+      display: block; /* Important for D3 */
+    }
+    .node circle {
+      stroke-width: 2.5px;
+    }
+    .node text { /* Base style for the <text> container */
+      font: 13px 'Segoe UI', sans-serif;
+      paint-order: stroke fill; /* Ensures text is readable over lines */
+      stroke: #fff; /* White halo */
+      stroke-width: 3px; /* Halo thickness */
+      stroke-linejoin: round;
+      stroke-opacity: 0.85; /* Halo opacity */
+    }
+    .link {
+      fill: none;
+      stroke-opacity: 0.7;
+      stroke-width: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h1>. — Knowledge Graph</h1>
+  <div class="controls">
+    <button onclick="expandAll()">Expand All</button>
+    <button onclick="collapseAll()">Collapse All</button>
+    <button onclick="resetView()">Reset View</button>
+  </div>
+  <div id="tree-container">
+    <svg id="tree-svg" width="6000" height="8000"></svg>
+  </div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    const initialJsonData = {"name":".","total_count":158,"children":[{"name":".claude","total_count":54,"children":[{"name":"skills","total_count":54,"children":[{"name":"ui-ux-pro-max","total_count":54,"children":[{"name":"scripts","total_count":54,"children":[{"name":"core.py","total_count":19,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".fit()","total_count":1,"children":[]},{"name":".score()","total_count":1,"children":[]},{"name":".tokenize()","total_count":1,"children":[]},{"name":"_load_csv()","total_count":1,"children":[]},{"name":"_search_csv()","total_count":1,"children":[]},{"name":"Auto-detect the most relevant domain from query","total_count":1,"children":[]},{"name":"BM25","total_count":1,"children":[]},{"name":"BM25 ranking algorithm for text search","total_count":1,"children":[]},{"name":"Build BM25 index from documents","total_count":1,"children":[]},{"name":"Core search function using BM25","total_count":1,"children":[]},{"name":"detect_domain()","total_count":1,"children":[]},{"name":"Load CSV and return list of dicts","total_count":1,"children":[]},{"name":"Lowercase, split, remove punctuation, filter short words","total_count":1,"children":[]},{"name":"Main search function with auto-domain detection","total_count":1,"children":[]},{"name":"Score all documents against query","total_count":1,"children":[]},{"name":"Search stack-specific guidelines","total_count":1,"children":[]},{"name":"search()","total_count":1,"children":[]},{"name":"search_stack()","total_count":1,"children":[]}]},{"name":"design_system.py","total_count":33,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":"._apply_reasoning()","total_count":1,"children":[]},{"name":"._extract_results()","total_count":1,"children":[]},{"name":"._find_reasoning_rule()","total_count":1,"children":[]},{"name":"._load_reasoning()","total_count":1,"children":[]},{"name":"._multi_domain_search()","total_count":1,"children":[]},{"name":"._select_best_match()","total_count":1,"children":[]},{"name":".generate()","total_count":1,"children":[]},{"name":"_detect_page_type()","total_count":1,"children":[]},{"name":"_generate_intelligent_overrides()","total_count":1,"children":[]},{"name":"Apply reasoning rules to search results.","total_count":1,"children":[]},{"name":"DesignSystemGenerator","total_count":1,"children":[]},{"name":"Detect page type from context and search results.","total_count":1,"children":[]},{"name":"Execute searches across multiple domains.","total_count":1,"children":[]},{"name":"Extract results list from search result dict.","total_count":1,"children":[]},{"name":"Find matching reasoning rule for a category.","total_count":1,"children":[]},{"name":"Format a page-specific override file with intelligent AI-generated content.","total_count":1,"children":[]},{"name":"Format design system as ASCII box with emojis (MCP-style).","total_count":1,"children":[]},{"name":"Format design system as markdown.","total_count":1,"children":[]},{"name":"Format design system as MASTER.md with hierarchical override logic.","total_count":1,"children":[]},{"name":"format_ascii_box()","total_count":1,"children":[]},{"name":"format_markdown()","total_count":1,"children":[]},{"name":"format_master_md()","total_count":1,"children":[]},{"name":"format_page_override_md()","total_count":1,"children":[]},{"name":"Generate complete design system recommendation.","total_count":1,"children":[]},{"name":"Generate intelligent overrides based on page type using layered search.","total_count":1,"children":[]},{"name":"generate_design_system()","total_count":1,"children":[]},{"name":"Generates design system recommendations from aggregated searches.","total_count":1,"children":[]},{"name":"Load reasoning rules from CSV.","total_count":1,"children":[]},{"name":"Main entry point for design system generation.      Args:         query: Search","total_count":1,"children":[]},{"name":"Persist design system to design-system/<project>/ folder using Master + Override","total_count":1,"children":[]},{"name":"persist_design_system()","total_count":1,"children":[]},{"name":"Select best matching result based on priority keywords.","total_count":1,"children":[]}]},{"name":"search.py","total_count":2,"children":[{"name":"Format results for Claude consumption (token-optimized)","total_count":1,"children":[]},{"name":"format_output()","total_count":1,"children":[]}]}]}]}]}]},{"name":"app","total_count":71,"children":[{"name":"backend.php","total_count":15,"children":[{"name":"autoreply_matches()","total_count":1,"children":[]},{"name":"autoreply_process_one()","total_count":1,"children":[]},{"name":"autoreply_render()","total_count":1,"children":[]},{"name":"backend_api_send()","total_count":1,"children":[]},{"name":"backend_create_account()","total_count":1,"children":[]},{"name":"bulk_queue_job()","total_count":1,"children":[]},{"name":"bulk_send_one_item()","total_count":1,"children":[]},{"name":"describe_api_error()","total_count":1,"children":[]},{"name":"dispatch_message()","total_count":1,"children":[]},{"name":"render_bulk_template()","total_count":1,"children":[]},{"name":"run_autoreply_pass()","total_count":1,"children":[]},{"name":"run_bulk_send_pass()","total_count":1,"children":[]},{"name":"run_due_schedules()","total_count":1,"children":[]},{"name":"send_2fa_code()","total_count":1,"children":[]},{"name":"verify_2fa_code()","total_count":1,"children":[]}]},{"name":"bootstrap.php","total_count":36,"children":[{"name":"audit()","total_count":1,"children":[]},{"name":"backend_hash_password()","total_count":1,"children":[]},{"name":"backend_verify_password()","total_count":1,"children":[]},{"name":"csrf_check()","total_count":1,"children":[]},{"name":"csrf_field()","total_count":1,"children":[]},{"name":"csrf_token()","total_count":1,"children":[]},{"name":"current_user()","total_count":1,"children":[]},{"name":"db()","total_count":1,"children":[]},{"name":"detect_operator()","total_count":1,"children":[]},{"name":"e()","total_count":1,"children":[]},{"name":"ellsms_has_admin()","total_count":1,"children":[]},{"name":"env()","total_count":1,"children":[]},{"name":"filter_blacklist()","total_count":1,"children":[]},{"name":"flash()","total_count":1,"children":[]},{"name":"flashes()","total_count":1,"children":[]},{"name":"from_persian_digits()","total_count":1,"children":[]},{"name":"gregorian_to_jalali()","total_count":1,"children":[]},{"name":"is_admin()","total_count":1,"children":[]},{"name":"jalali_date_select()","total_count":1,"children":[]},{"name":"jalali_request_to_gregorian()","total_count":1,"children":[]},{"name":"jalali_to_gregorian()","total_count":1,"children":[]},{"name":"jdate()","total_count":1,"children":[]},{"name":"jdate_long()","total_count":1,"children":[]},{"name":"kyc_store_upload()","total_count":1,"children":[]},{"name":"normalize_msisdn()","total_count":1,"children":[]},{"name":"normalize_originator()","total_count":1,"children":[]},{"name":"parse_destinations()","total_count":1,"children":[]},{"name":"redirect()","total_count":1,"children":[]},{"name":"require_admin()","total_count":1,"children":[]},{"name":"require_login()","total_count":1,"children":[]},{"name":"set_setting()","total_count":1,"children":[]},{"name":"setting()","total_count":1,"children":[]},{"name":"sms_parts()","total_count":1,"children":[]},{"name":"time_post()","total_count":1,"children":[]},{"name":"time_select()","total_count":1,"children":[]},{"name":"to_persian_digits()","total_count":1,"children":[]}]},{"name":"telegram.php","total_count":4,"children":[{"name":"telegram_bot_token()","total_count":1,"children":[]},{"name":"telegram_chat_id()","total_count":1,"children":[]},{"name":"telegram_configured()","total_count":1,"children":[]},{"name":"telegram_send_message()","total_count":1,"children":[]}]},{"name":"views","total_count":4,"children":[{"name":"footer.php","total_count":1,"children":[]},{"name":"header.php","total_count":1,"children":[]},{"name":"public_footer.php","total_count":1,"children":[]},{"name":"public_header.php","total_count":1,"children":[]}]},{"name":"xlsx_reader.php","total_count":4,"children":[{"name":"read_csv_rows()","total_count":1,"children":[]},{"name":"read_spreadsheet_rows()","total_count":1,"children":[]},{"name":"read_xlsx_rows()","total_count":1,"children":[]},{"name":"xlsx_col_index()","total_count":1,"children":[]}]},{"name":"zarinpal.php","total_count":8,"children":[{"name":"zarinpal_base_url()","total_count":1,"children":[]},{"name":"zarinpal_call()","total_count":1,"children":[]},{"name":"zarinpal_callback_url()","total_count":1,"children":[]},{"name":"zarinpal_merchant_id()","total_count":1,"children":[]},{"name":"zarinpal_request()","total_count":1,"children":[]},{"name":"zarinpal_sandbox()","total_count":1,"children":[]},{"name":"zarinpal_start_pay_url()","total_count":1,"children":[]},{"name":"zarinpal_verify()","total_count":1,"children":[]}]}]},{"name":"cron","total_count":1,"children":[{"name":"worker.php","total_count":1,"children":[]}]},{"name":"deploy.sh","total_count":1,"children":[{"name":"deploy.sh script","total_count":1,"children":[]}]},{"name":"docker","total_count":1,"children":[{"name":"entrypoint.sh","total_count":1,"children":[{"name":"entrypoint.sh script","total_count":1,"children":[]}]}]},{"name":"public","total_count":30,"children":[{"name":"analytics.php","total_count":1,"children":[{"name":"analytics_bump()","total_count":1,"children":[]}]},{"name":"slides.php","total_count":1,"children":[{"name":"slide_store_upload()","total_count":1,"children":[]}]},{"name":"autoreply.php","total_count":1,"children":[]},{"name":"blacklist.php","total_count":1,"children":[]},{"name":"bootstrap-admin.php","total_count":1,"children":[]},{"name":"buy-credit.php","total_count":1,"children":[]},{"name":"contact.php","total_count":1,"children":[]},{"name":"contacts.php","total_count":1,"children":[]},{"name":"guide-admin.php","total_count":1,"children":[]},{"name":"guide.php","total_count":1,"children":[]},{"name":"inbox.php","total_count":1,"children":[]},{"name":"index.php","total_count":1,"children":[]},{"name":"kyc-photo.php","total_count":1,"children":[]},{"name":"landing.php","total_count":1,"children":[]},{"name":"login.php","total_count":1,"children":[]},{"name":"logout.php","total_count":1,"children":[]},{"name":"new-send.php","total_count":1,"children":[]},{"name":"number-categories.php","total_count":1,"children":[]},{"name":"numbers.php","total_count":1,"children":[]},{"name":"p2p-send.php","total_count":1,"children":[]},{"name":"pricing.php","total_count":1,"children":[]},{"name":"profile.php","total_count":1,"children":[]},{"name":"reports.php","total_count":1,"children":[]},{"name":"schedules.php","total_count":1,"children":[]},{"name":"send.php","total_count":1,"children":[]},{"name":"settings.php","total_count":1,"children":[]},{"name":"smart-send.php","total_count":1,"children":[]},{"name":"users.php","total_count":1,"children":[]},{"name":"verify-2fa.php","total_count":1,"children":[]},{"name":"zarinpal-callback.php","total_count":1,"children":[]}]}]};
+
+    function transformData(jsonData) {
+        // Helper function to recursively build the children structure
+        function processNode(node, parentL1StageName) {
+            let displayName = node.name;
+            // Append total_count if it exists and is not already in the name
+            if (node.total_count !== undefined) {
+                if (!/\(Total Count: \d+\)$/.test(displayName)) {
+                    displayName += ` (Total Count: ${node.total_count})`;
+                }
+            }
+
+            const newNode = { name: displayName };
+
+            if (parentL1StageName === "Root") {
+                 newNode.originalStageName = node.name;
+            } else {
+                newNode.originalStageName = parentL1StageName;
+            }
+
+            if (node.children && node.children.length > 0) {
+                const stageNameToPass = (parentL1StageName === "Root") ? node.name : parentL1StageName;
+                newNode.children = node.children.map(child => processNode(child, stageNameToPass));
+            }
+
+            return newNode;
+        }
+
+        let rootDisplayName = jsonData.name;
+        if (jsonData.total_count !== undefined && !/\(Total Count: \d+\)$/.test(rootDisplayName)) {
+            rootDisplayName += ` (Total Count: ${jsonData.total_count})`;
+        }
+
+        return {
+            name: rootDisplayName,
+            originalStageName: "Root",
+            children: (jsonData.children || []).map(child => processNode(child, "Root"))
+        };
+    }
+
+    const treeData = transformData(initialJsonData);
+
+    // Auto-populated phaseColors: every depth-1 child of the root gets
+    // a stable colour from a bigger palette so all top-level dirs are
+    // distinguishable.
+    const PALETTE = [
+      ["#3498DB","#2980B9","#AED6F1"], ["#2ECC71","#27AE60","#A9DFBF"],
+      ["#E74C3C","#C0392B","#F5B7B1"], ["#9B59B6","#8E44AD","#D7BDE2"],
+      ["#F39C12","#D68910","#FAD7A0"], ["#1ABC9C","#117864","#A2D9CE"],
+      ["#34495E","#1B2631","#ABB2B9"], ["#E67E22","#BA4A00","#F5CBA7"],
+      ["#16A085","#0E6655","#A2D9CE"], ["#D35400","#A04000","#EDBB99"],
+      ["#7F8C8D","#566573","#D5DBDB"], ["#C0392B","#7B241C","#F5B7B1"],
+      ["#2E86C1","#1B4F72","#A9CCE3"], ["#28B463","#196F3D","#A9DFBF"],
+      ["#AF7AC5","#6C3483","#D2B4DE"],
+    ];
+    const phaseColors = { "Root": { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+                          "Default": { fill: "#BDC3C7", stroke: "#95A5A6", collapsedFill: "#ECF0F1" } };
+    (initialJsonData.children || []).forEach((c, i) => {
+      const pal = PALETTE[i % PALETTE.length];
+      phaseColors[c.name] = { fill: pal[0], stroke: pal[1], collapsedFill: pal[2] };
+    });
+
+    const levelSpecificPalettes = {
+      0: { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+      2: { fill: "#6ab04c", stroke: "#508a38", collapsedFill: "#a3d391" },
+      3: { fill: "#f0932b", stroke: "#d0730f", collapsedFill: "#f6c07e" },
+      4: { fill: "#be2edd", stroke: "#a01cb3", collapsedFill: "#e08bf2" },
+      5: { fill: "#00a8ff", stroke: "#007ac1", collapsedFill: "#74d2ff" },
+      6: { fill: "#e55039", stroke: "#c23620", collapsedFill: "#f09a8d" },
+      default: { fill: "#747d8c", stroke: "#57606f", collapsedFill: "#a4b0be" }
+    };
+
+    const svgElement = d3.select("#tree-svg");
+    const initialSvgWidth = +svgElement.attr("width");
+    const initialSvgHeight = +svgElement.attr("height");
+    const margin = { top: 40, right: 120, bottom: 80, left: 450 };
+    let width = initialSvgWidth - margin.left - margin.right;
+    let height = initialSvgHeight - margin.top - margin.bottom;
+    const duration = 500;
+    let nodeCounter = 0;
+    const g = svgElement.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    const treemap = d3.tree().nodeSize([40, 0]);
+    let rootNode = d3.hierarchy(treeData, d => d.children);
+    rootNode.x0 = 0;
+    rootNode.y0 = 0;
+
+    if (rootNode.children) {
+      rootNode.children.forEach(d_child => {
+        if (d_child.children) { collapseBranch(d_child); }
+      });
+    }
+    updateTree(rootNode);
+
+    function collapseBranch(d) { if (d.children) { d._children = d.children; d._children.forEach(collapseBranch); d.children = null; } }
+    function expandBranch(d) { if (d._children) { d.children = d._children; d._children = null; } if (d.children) { d.children.forEach(expandBranch); } }
+    window.expandAll = () => { expandBranch(rootNode); updateTree(rootNode); };
+    window.collapseAll = () => { if (rootNode.children) { rootNode.children.forEach(collapseBranch); } updateTree(rootNode); };
+    window.resetView = () => { if (rootNode.children) { rootNode.children.forEach(d_child => { if (d_child.children || d_child._children) { collapseBranch(d_child); } }); } if (rootNode._children && !rootNode.children) { rootNode.children = rootNode._children; rootNode._children = null; } updateTree(rootNode); };
+
+    function updateTree(source) {
+      const treeLayoutData = treemap(rootNode);
+      let nodes = treeLayoutData.descendants();
+      let links = treeLayoutData.descendants().slice(1);
+
+      let minX = 0;
+      let maxX = 0;
+      if (nodes.length > 0) {
+        minX = d3.min(nodes, d => d.x);
+        maxX = d3.max(nodes, d => d.x);
+      }
+
+      let neededHeight = Math.max(initialSvgHeight, maxX - minX + margin.top + margin.bottom + 100);
+      svgElement.transition().duration(duration / 2).attr("height", neededHeight);
+      g.transition().duration(duration / 2).attr("transform", `translate(${margin.left},${margin.top - minX + 40})`);
+
+      nodes.forEach(d => { d.y = d.depth * 400; }); // Adjust horizontal separation if needed
+
+      const node = g.selectAll('g.node').data(nodes, d => d.id || (d.id = ++nodeCounter));
+      const nodeEnter = node.enter().append('g')
+        .attr('class', d => "node" + (d.children || d._children ? " node--internal" : " node--leaf") + (d._children ? " _children" : ""))
+        .attr('transform', d => `translate(${source.y0},${source.x0})`)
+        .on('click', (event, d) => { if (d.children) { d._children = d.children; d.children = null; } else if (d._children) { d.children = d._children; d._children = null; } updateTree(d); })
+        .style('cursor', d => (d.children || d._children) ? 'pointer' : 'default');
+
+      nodeEnter.append('circle').attr('r', 1e-6);
+
+      nodeEnter.append('text')
+        .attr('dy', '.35em')
+        .attr('x', d => d.children || d._children ? -14 : 14)
+        .attr('text-anchor', d => d.children || d._children ? 'end' : 'start')
+        .style("fill-opacity", 1e-6)
+        .call(wrapText, 380);
+
+      const nodeUpdate = nodeEnter.merge(node);
+      nodeUpdate.transition().duration(duration)
+        .attr('transform', d => `translate(${d.y},${d.x})`)
+        .attr('class', d => "node" + (d.children ? " node--internal" : " node--leaf") + (d._children ? " node--internal _children" : ""));
+
+      nodeUpdate.select('circle').attr('r', 8.5)
+        .style('fill', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            if (d._children) return palette.collapsedFill;
+            if (d.children) return palette.fill;
+            return "#fff";
+        })
+        .style('stroke', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            return palette.stroke;
+        });
+      nodeUpdate.select('text').style("fill-opacity", 1).call(wrapText, 380);
+
+      const nodeExit = node.exit().transition().duration(duration).attr('transform', d => `translate(${source.y},${source.x})`).remove();
+      nodeExit.select('circle').attr('r', 1e-6);
+      nodeExit.select('text').style('fill-opacity', 1e-6);
+
+      const link = g.selectAll('path.link').data(links, d => d.id);
+      const linkEnter = link.enter().insert('path', "g").attr('class', 'link').attr('d', d => { const o = { x: source.x0, y: source.y0 }; return diagonal(o, o); });
+
+      linkEnter.merge(link).transition().duration(duration).attr('d', d => diagonal(d, d.parent))
+        .style('stroke', d => {
+            const sourceNode = d.parent;
+            if (!sourceNode) return phaseColors.Default.stroke;
+            const l1AncestorName = sourceNode.data.originalStageName;
+            const colorPalette = phaseColors[l1AncestorName] || phaseColors.Default;
+            return colorPalette.stroke;
+        });
+      link.exit().transition().duration(duration).attr('d', d => { const o = { x: source.x, y: source.y }; return diagonal(o, o); }).remove();
+      nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+    }
+
+    function diagonal(s, d) { return `M ${s.y} ${s.x} C ${(s.y + d.y) / 2} ${s.x}, ${(s.y + d.y) / 2} ${d.x}, ${d.y} ${d.x}`; }
+
+    function wrapText(textElements, maxWidth) {
+        const textPartColors = {
+            name: '#343a40',
+            count: '#0056b3'
+        };
+        const countRegex = /(\s\(Total Count: \d+\))$/;
+
+        textElements.each(function () {
+            const textD3 = d3.select(this);
+            const originalNodeText = textD3.datum().data.name;
+            const x = parseFloat(textD3.attr("x") || 0);
+            const initialDy = textD3.attr("dy");
+            const textAnchor = textD3.attr("text-anchor");
+            const lineHeight = 1.1;
+
+            textD3.text(null);
+
+            let namePart = originalNodeText;
+            let countPartText = "";
+
+            const countMatch = originalNodeText.match(countRegex);
+            if (countMatch && originalNodeText.endsWith(countMatch[0])) {
+                namePart = originalNodeText.substring(0, originalNodeText.length - countMatch[0].length).trim();
+                countPartText = countMatch[0].trim();
+            }
+
+            const tokens = [];
+            namePart.split(/\s+/).filter(Boolean).forEach(word => {
+                tokens.push({ text: word, type: 'name' });
+            });
+            if (countPartText) {
+                tokens.push({ text: countPartText, type: 'count' });
+            }
+
+            if (tokens.length === 0 && originalNodeText) {
+                tokens.push({ text: originalNodeText, type: 'name' });
+            }
+
+            let currentTspan = textD3.append("tspan").attr("x", x).attr("dy", initialDy);
+            if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+
+            let lineTokens = [];
+
+            for (let i = 0; i < tokens.length; i++) {
+                const tokenObj = tokens[i];
+
+                lineTokens.push(tokenObj);
+                currentTspan.text(lineTokens.map(t => t.text).join(" "));
+
+                if (currentTspan.node().getComputedTextLength() > maxWidth && lineTokens.length > 1) {
+                    lineTokens.pop();
+
+                    currentTspan.text(null);
+                    lineTokens.forEach((prevToken, idx) => {
+                        currentTspan.append("tspan")
+                            .text((idx > 0 ? " " : "") + prevToken.text)
+                            .style("fill", textPartColors[prevToken.type] || textPartColors.name)
+                            .style("font-weight", prevToken.type === 'count' ? "bold" : "normal");
+                    });
+
+                    lineTokens = [tokenObj];
+                    currentTspan = textD3.append("tspan").attr("x", x).attr("dy", lineHeight + "em");
+                    if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+                }
+            }
+
+            currentTspan.text(null);
+            lineTokens.forEach((token, idx) => {
+                currentTspan.append("tspan")
+                    .text((idx > 0 ? " " : "") + token.text)
+                    .style("fill", textPartColors[token.type] || textPartColors.name)
+                    .style("font-weight", token.type === 'count' ? "bold" : "normal");
+            });
+
+            if (textD3.selectAll("tspan > tspan").empty() && textD3.select("tspan").text().length === 0 && originalNodeText) {
+                let t = textD3.select("tspan");
+                let displayText = originalNodeText;
+                t.text(displayText).style("fill", textPartColors.name);
+                if (t.node() && t.node().getComputedTextLength() > maxWidth && displayText.length > 20) {
+                    let estimatedChars = Math.floor(maxWidth / (t.node().getComputedTextLength()/displayText.length) );
+                    displayText = displayText.substring(0, Math.max(0, estimatedChars - 3)) + "...";
+                    t.text(displayText);
+                }
+            }
+        });
+    }
+  </script>
+</body>
+</html>

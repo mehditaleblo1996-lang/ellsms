@@ -2,7 +2,12 @@
 *.log
 .DS_Store
 node_modules/
+/vendor/
+/.phpunit.cache/
+composer.phar
 storage/kyc/*
 !storage/kyc/.gitkeep
+storage/benchmarks/*
+!storage/benchmarks/.gitkeep
 public/assets/img/slides/*
 !public/assets/img/slides/.gitkeep

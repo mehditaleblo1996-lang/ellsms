@@ -9,34 +9,52 @@ if (!ellsms_has_admin()) redirect('/bootstrap-admin.php');
 $error = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    $st = db()->prepare('SELECT id, password, mobile, active, deleted FROM user_ WHERE username = ?');
-    $st->execute([trim($_POST['username'] ?? '')]);
-    $u = $st->fetch();
+    $username = trim($_POST['username'] ?? '');
 
-    if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password($_POST['password'] ?? '', $u['password'])) {
-        usleep(400000);
-        $error = 'نام کاربری یا رمز عبور اشتباه است، یا حساب غیرفعال شده است.';
+    // Rate limit BEFORE touching the database for the real check, keyed
+    // on both IP and username (STEP 11 — neither alone is sufficient: an
+    // IP-only limit is defeated by NAT/shared networks, a username-only
+    // limit is defeated by spraying many accounts from one IP).
+    $loginMax    = rate_limit_config('RATE_LIMIT_LOGIN_MAX', 10);
+    $loginWindow = rate_limit_config('RATE_LIMIT_LOGIN_WINDOW_SECONDS', 900);
+    $ipOk        = rate_limit_hit(rate_limit_bucket('login', 'ip', client_ip()), $loginMax, $loginWindow);
+    $usernameOk  = $username === '' || rate_limit_hit(rate_limit_bucket('login', 'username', mb_strtolower($username)), $loginMax, $loginWindow);
+
+    if (!$ipOk || !$usernameOk) {
+        Logger::warning('auth.login.rate_limited', ['username' => $username, 'ip' => client_ip()]);
+        $error = 'تعداد تلاش‌های ورود بیش از حد مجاز بود. لطفاً چند دقیقه دیگر دوباره تلاش کنید.';
     } else {
-        $m = db()->prepare('SELECT panel_access, twofa_enabled FROM ellsms_meta WHERE user_id = ?');
-        $m->execute([$u['id']]);
-        $meta = $m->fetch();
-        if (!$meta || !$meta['panel_access']) {
-            $error = 'این حساب وجود دارد، اما دسترسی به پنل ELLSMS برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
-        } elseif ($meta['twofa_enabled']) {
-            [$ok, $info] = send_2fa_code((int)$u['id'], (string)$u['mobile']);
-            if (!$ok) {
-                $error = 'ارسال کد تأیید ممکن نشد: ' . $info;
+        // Phase 8 (Invariant B): identity provider, not a direct user_ query.
+        $u = backend_find_user_for_login($username);
+
+        if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password_and_upgrade((int)$u['id'], $_POST['password'] ?? '', $u['password'])) {
+            usleep(400000);
+            Logger::warning('auth.login.failed', ['username' => $username]);
+            $error = 'نام کاربری یا رمز عبور اشتباه است، یا حساب غیرفعال شده است.';
+        } else {
+            $m = db()->prepare('SELECT panel_access, twofa_enabled FROM ellsms_meta WHERE user_id = ?');
+            $m->execute([$u['id']]);
+            $meta = $m->fetch();
+            if (!$meta || !$meta['panel_access']) {
+                $error = 'این حساب وجود دارد، اما دسترسی به پنل ELLSMS برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
+            } elseif ($meta['twofa_enabled']) {
+                [$ok, $info] = send_2fa_code((int)$u['id'], (string)$u['mobile']);
+                if (!$ok) {
+                    $error = 'ارسال کد تأیید ممکن نشد: ' . $info;
+                } else {
+                    session_regenerate_id(true);
+                    $_SESSION['twofa_uid'] = $u['id'];
+                    $_SESSION['twofa_sent_at'] = time();
+                    redirect('/verify-2fa.php');
+                }
             } else {
                 session_regenerate_id(true);
-                $_SESSION['twofa_uid'] = $u['id'];
-                $_SESSION['twofa_sent_at'] = time();
-                redirect('/verify-2fa.php');
+                $_SESSION['uid'] = $u['id'];
+                session_mark_authenticated();
+                audit((int)$u['id'], 'login');
+                Logger::info('auth.login.success', ['user_id' => $u['id']]);
+                redirect('/index.php');
             }
-        } else {
-            session_regenerate_id(true);
-            $_SESSION['uid'] = $u['id'];
-            audit((int)$u['id'], 'login');
-            redirect('/index.php');
         }
     }
 }
@@ -63,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <button type="submit" class="btn btn-primary btn-block">ورود</button>
     </form>
-    <p class="login-foot">ELLSMS نسخه <span class="ltr"><?= ELLSMS_VERSION ?></span> · پنل هوشمند پیامک</p>
+    <p class="login-foot">ELLSMS نسخه <span class="ltr"><?= e(app_version()) ?></span> · پنل هوشمند پیامک<?php if (app_env() !== 'production'): ?> · <span class="ltr"><?= e(strtoupper(app_env())) ?></span><?php endif; ?></p>
   </main>
 </body>
 </html>

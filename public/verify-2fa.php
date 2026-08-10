@@ -6,9 +6,8 @@ if (current_user()) redirect('/index.php');
 $pendingId = $_SESSION['twofa_uid'] ?? null;
 if (!$pendingId) redirect('/login.php');
 
-$st = db()->prepare('SELECT id, username, mobile, active, deleted FROM user_ WHERE id = ?');
-$st->execute([$pendingId]);
-$u = $st->fetch();
+// Phase 8 (Invariant B): identity provider, not a direct user_ query.
+$u = backend_find_user_login_state_by_id((int)$pendingId);
 if (!$u || !$u['active'] || $u['deleted']) {
     unset($_SESSION['twofa_uid'], $_SESSION['twofa_sent_at']);
     redirect('/login.php');
@@ -19,7 +18,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
     if (($_POST['action'] ?? '') === 'resend') {
-        if (time() - (int)($_SESSION['twofa_sent_at'] ?? 0) < TWOFA_RESEND_COOLDOWN) {
+        $resendOk = rate_limit_hit(
+            rate_limit_bucket('2fa_resend', 'user', (string)$u['id']),
+            rate_limit_config('RATE_LIMIT_2FA_RESEND_MAX', 5),
+            rate_limit_config('RATE_LIMIT_2FA_RESEND_WINDOW_SECONDS', 3600)
+        );
+        if (!$resendOk) {
+            Logger::warning('auth.2fa.resend_rate_limited', ['user_id' => $u['id']]);
+            $error = 'تعداد درخواست‌های ارسال دوباره بیش از حد مجاز بود. کمی بعد دوباره تلاش کنید.';
+        } elseif (time() - (int)($_SESSION['twofa_sent_at'] ?? 0) < TWOFA_RESEND_COOLDOWN) {
             $error = 'کمی صبر کنید و دوباره تلاش کنید.';
         } else {
             [$ok, $info] = send_2fa_code((int)$u['id'], (string)$u['mobile']);
@@ -31,20 +38,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'ارسال دوباره‌ی کد ممکن نشد: ' . $info;
         }
     } else {
-        $attempts = (int)($_SESSION['twofa_attempts'] ?? 0);
-        if ($attempts >= 5) {
-            unset($_SESSION['twofa_uid'], $_SESSION['twofa_sent_at'], $_SESSION['twofa_attempts']);
-            $error = 'تعداد تلاش‌های مجاز تمام شد — دوباره وارد شوید.';
+        // Attempt exhaustion against ONE challenge is enforced durably
+        // inside verify_2fa_code() itself (a per-challenge counter on
+        // ellsms_2fa_codes, not $_SESSION['twofa_attempts']) — restarting
+        // this page, the session, or the browser can no longer reset it
+        // back to zero for an already-issued challenge
+        // (docs/security-review.md finding 7). The rate limit below adds
+        // the cross-challenge ceiling: it survives even a full login
+        // restart, which issues a brand-new challenge with its own fresh
+        // per-challenge counter.
+        $verifyOk = rate_limit_hit(
+            rate_limit_bucket('2fa_verify', 'user', (string)$u['id']),
+            rate_limit_config('RATE_LIMIT_2FA_VERIFY_MAX', 10),
+            rate_limit_config('RATE_LIMIT_2FA_VERIFY_WINDOW_SECONDS', 900)
+        );
+        if (!$verifyOk) {
+            Logger::warning('auth.2fa.verify_rate_limited', ['user_id' => $u['id']]);
+            $error = 'تعداد تلاش‌های مجاز بیش از حد بود. کمی بعد دوباره تلاش کنید.';
         } elseif (verify_2fa_code((int)$u['id'], $_POST['code'] ?? '')) {
-            unset($_SESSION['twofa_uid'], $_SESSION['twofa_sent_at'], $_SESSION['twofa_attempts']);
+            unset($_SESSION['twofa_uid'], $_SESSION['twofa_sent_at']);
             session_regenerate_id(true);
             $_SESSION['uid'] = $u['id'];
+            session_mark_authenticated();
             audit((int)$u['id'], 'login_2fa');
+            Logger::info('auth.2fa.success', ['user_id' => $u['id']]);
             redirect('/index.php');
         } else {
-            $_SESSION['twofa_attempts'] = $attempts + 1;
             usleep(400000);
-            $error = 'کد وارد‌شده درست نیست یا منقضی شده است.';
+            Logger::warning('auth.2fa.failed', ['user_id' => $u['id']]);
+            $error = 'کد وارد‌شده درست نیست، منقضی شده، یا تعداد تلاش‌های مجاز برای آن تمام شده — می‌توانید کد تازه درخواست کنید.';
         }
     }
 }

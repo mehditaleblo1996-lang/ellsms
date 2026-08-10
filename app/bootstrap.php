@@ -15,10 +15,155 @@ declare(strict_types=1);
 define('ELLSMS_VERSION', '3.0.0');
 define('APP_ROOT', dirname(__DIR__));
 
+require_once __DIR__ . '/maintenance.php';
+require_once __DIR__ . '/Support/Logger.php';
+require_once __DIR__ . '/Support/Metrics.php';
+require_once __DIR__ . '/Support/AppException.php';
+require_once __DIR__ . '/Support/ErrorHandler.php';
+require_once __DIR__ . '/Support/HealthCheck.php';
+// Phase 8 — backend service-boundary adapters (Invariant A/B): loaded before authorization.php/
+// wallet.php since both call into these. See docs/service-boundaries.md.
+require_once __DIR__ . '/Backend/identity.php';
+require_once __DIR__ . '/Backend/credit_projection.php';
+require_once __DIR__ . '/Backend/messages.php';
+require_once __DIR__ . '/Backend/ApiClient.php';
+require_once __DIR__ . '/authorization.php';
+require_once __DIR__ . '/rate_limit.php';
+require_once __DIR__ . '/wallet.php';
+require_once __DIR__ . '/jobqueue.php';
+require_once __DIR__ . '/tenant.php';
+require_once __DIR__ . '/rbac.php';
+// Phase 12 — public API/webhooks (docs/public-api.md, docs/webhooks.md). Loaded after
+// rbac.php/wallet.php/jobqueue.php since ApiKeys/Webhooks build on organization_status(),
+// db_transaction(), and the existing job-retry backoff math rather than duplicating any of it.
+require_once __DIR__ . '/Support/ApiScopes.php';
+require_once __DIR__ . '/Support/WebhookEvents.php';
+require_once __DIR__ . '/ApiKeys.php';
+require_once __DIR__ . '/Idempotency.php';
+require_once __DIR__ . '/Webhooks.php';
+// Phase 13 — plans/subscriptions/entitlements/quotas (docs/plans-and-entitlements.md). Loaded last
+// because Entitlements.php builds on Billing.php, which builds on tenant.php's organization model
+// and db_transaction(); nothing above depends on either of these two.
+require_once __DIR__ . '/Support/Entitlements.php';
+require_once __DIR__ . '/Support/Limits.php';
+require_once __DIR__ . '/Billing.php';
+require_once __DIR__ . '/Entitlements.php';
+// SMS pricing — admin-managed operators/providers/routes/prices and the one resolution pipeline
+// every send and every preview prices through (docs/sms-pricing.md). Loaded before the estimator
+// because the estimator composes it; it in turn only needs setting()/db()/Logger/Metrics, all above.
+require_once __DIR__ . '/Sms/Pricing.php';
+// Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
+// primitives above; loaded last because it composes all four and owns none of them.
+require_once __DIR__ . '/Cost/MessageCostEstimator.php';
+
 /* ---------- Environment ---------- */
 function env(string $key, ?string $default = null): ?string {
     $v = getenv($key);
     return ($v === false || $v === '') ? $default : $v;
+}
+
+/* ---------- App environment (APP_ENV / APP_DEBUG / APP_URL) ----------
+ * These govern how the app itself behaves (error visibility, the
+ * canonical base URL) rather than a specific integration, so — unlike
+ * most other config in this file — they are read from the environment
+ * only, never overridable from ellsms_settings.
+ */
+function app_env(): string {
+    return env('APP_ENV', 'production') ?? 'production';
+}
+
+/**
+ * Hard rule, not just a config default: debug output is NEVER shown
+ * when APP_ENV=production, even if APP_DEBUG=1 was also (mis)set —
+ * production must never use debug output, full stop, regardless of
+ * operator error. Every other environment name (local, staging, ...)
+ * honors APP_DEBUG normally.
+ */
+function app_debug(): bool {
+    $requested = env('APP_DEBUG', '0') === '1';
+    if ($requested && app_env() === 'production') {
+        static $warned = false;
+        if (!$warned) {
+            $warned = true; // log this contradiction once per process, not on every call
+            Logger::warning('app.debug_forced_off_in_production', [
+                'reason' => 'APP_DEBUG=1 is ignored whenever APP_ENV=production',
+            ]);
+        }
+        return false;
+    }
+    return $requested;
+}
+
+/** Canonical base URL with no trailing slash, or '' if not configured. */
+function app_url(): string {
+    return rtrim((string)env('APP_URL', ''), '/');
+}
+
+/**
+ * Deployed build identifier — operational metadata for logs, the health
+ * endpoints, and the panel footer. Falls back to the baked-in
+ * ELLSMS_VERSION constant when APP_VERSION isn't set, so nothing needs
+ * to change for installs that don't inject one; CI/CD can override it
+ * with a git SHA or release tag without a source change.
+ */
+function app_version(): string {
+    return env('APP_VERSION', ELLSMS_VERSION) ?? ELLSMS_VERSION;
+}
+
+// Registers the global exception/error/shutdown handlers (see
+// app/Support/ErrorHandler.php) as early as possible — before the first
+// DB connection attempt, so even a "can't reach MySQL" failure gets the
+// same safe/dev-aware treatment instead of a raw stack trace. Never
+// shows raw errors to a visitor unless explicitly opted into via
+// APP_DEBUG=1; always logs the real exception via Logger regardless.
+ErrorHandler::register();
+
+/**
+ * Phase 2 (STEP 14) — baseline security headers, applied to every page
+ * that loads this file (i.e. all of them). Deliberately a COMPATIBLE
+ * policy, not a maximally-strict one that would break the app: this
+ * project has no CDN dependency (everything is self-hosted, checked
+ * directly), but does use inline <script> blocks, inline
+ * onclick/onchange/oninput handlers, and inline style="" attributes
+ * widely — so script-src/style-src still allow 'unsafe-inline'. That's
+ * real, disclosed remaining debt (see docs/technical-debt.md), not an
+ * oversight; tightening it further means migrating those inline
+ * handlers to external/nonced scripts, a larger change than this step.
+ */
+function send_security_headers(): void {
+    if (headers_sent() || PHP_SAPI === 'cli') {
+        return;
+    }
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('X-Frame-Options: SAMEORIGIN'); // legacy fallback alongside frame-ancestors below for older browsers
+    header(
+        "Content-Security-Policy: default-src 'self'; " .
+        "script-src 'self' 'unsafe-inline'; " .
+        "style-src 'self' 'unsafe-inline'; " .
+        "img-src 'self' data:; " .
+        "font-src 'self'; " .
+        "object-src 'none'; " .
+        "base-uri 'self'; " .
+        "form-action 'self'; " .
+        "frame-ancestors 'self'"
+    );
+    // HSTS is inert over a plain HTTP response (browsers only ever honor
+    // it after already receiving it over HTTPS, per RFC 6797), so gating
+    // it on request_is_https() is a cleanliness choice, not a safety
+    // requirement — it would be harmless either way.
+    if (request_is_https()) {
+        header('Strict-Transport-Security: max-age=15552000; includeSubDomains');
+    }
+}
+send_security_headers();
+
+// STEP 22/23: only ever blocks actual HTTP requests -- a CLI script requiring this file (every
+// cron/*.php operational command in this phase, run BY the operator specifically to work during a
+// maintenance window) must never be blocked by its own maintenance flag. See app/maintenance.php's
+// docblock for the full per-surface policy and exemption list.
+if (PHP_SAPI !== 'cli' && maintenance_mode_active() && !maintenance_mode_current_script_exempt()) {
+    maintenance_mode_respond_and_exit();
 }
 
 /* ---------- Database (shared backend platform DB) ---------- */
@@ -38,6 +183,42 @@ function db(): PDO {
         ]);
     }
     return $pdo;
+}
+
+/**
+ * Run $work inside a database transaction: begins, commits if $work
+ * returns normally, rolls back and rethrows if it throws anything.
+ * $work receives the same PDO instance db() would return, so it rarely
+ * needs to call db() itself. Whatever $work returns is returned here.
+ *
+ * Safe to nest: if a db_transaction() call happens while one is already
+ * open (e.g. a function using it calls another function that also uses
+ * it), the inner call joins the existing transaction instead of trying
+ * to start a second one — PDO has no real nested-transaction support, so
+ * only the outermost call actually begins/commits/rolls back.
+ *
+ * This is infrastructure for later phases to adopt gradually — existing
+ * manual beginTransaction()/commit()/rollBack() blocks keep working
+ * unchanged; new or refactored code can call this instead.
+ */
+function db_transaction(callable $work) {
+    $db = db();
+    $ownsTransaction = !$db->inTransaction();
+    if ($ownsTransaction) {
+        $db->beginTransaction();
+    }
+    try {
+        $result = $work($db);
+        if ($ownsTransaction) {
+            $db->commit();
+        }
+        return $result;
+    } catch (\Throwable $e) {
+        if ($ownsTransaction) {
+            $db->rollBack();
+        }
+        throw $e;
+    }
 }
 
 /* ---------- ELLSMS settings (ellsms_settings key/value, cached) ---------- */
@@ -72,11 +253,182 @@ function backend_verify_password(string $plain, string $stored): bool {
     return hash_equals(backend_hash_password($plain), $stored);
 }
 
+/**
+ * Phase 2 — NOT a replacement for backend_verify_password(), which
+ * remains the sole authoritative check: user_.password can change on
+ * the backend platform's side at any time, independent of ELLSMS, so
+ * ELLSMS cannot unilaterally decide a different value is "correct."
+ * See docs/security-review.md finding 4 for why a full migration away
+ * from the legacy SHA-256 scheme requires coordinating with whoever
+ * operates the backend platform, and can't safely happen from this
+ * repository alone.
+ *
+ * This is supporting infrastructure only: after a successful legacy
+ * verification, it opportunistically records a modern Argon2id verifier
+ * for the user in ellsms_password_verifiers (db/migrations/2026_07_27_password_verifiers.sql).
+ * Nothing reads that table to grant access today — the point is purely
+ * to shrink the gap for a later, coordinated migration. Deliberately
+ * NOT called from the legacy URL send API (url_send.html), which
+ * authenticates on every single request — Argon2id is intentionally
+ * expensive, and re-hashing on a high-frequency API path would add
+ * real latency for no benefit login itself doesn't already get.
+ */
+function backend_verify_password_and_upgrade(int $userId, string $plain, string $storedLegacyHash): bool {
+    if (!backend_verify_password($plain, $storedLegacyHash)) {
+        return false;
+    }
+    try {
+        $algo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
+        $verifier = password_hash($plain, $algo);
+        if ($verifier !== false) {
+            db()->prepare(
+                'INSERT INTO ellsms_password_verifiers (user_id, verifier, algo) VALUES (?,?,?)
+                 ON DUPLICATE KEY UPDATE verifier = VALUES(verifier), algo = VALUES(algo)'
+            )->execute([$userId, $verifier, $algo === PASSWORD_ARGON2ID ? 'argon2id' : 'bcrypt']);
+        }
+    } catch (Throwable $e) {
+        // Best-effort — never let this block a legitimate login. Most
+        // likely cause: the migration hasn't been applied yet on this
+        // install (see db/migrations/README.md).
+        Logger::error('auth.password_verifier_upgrade_failed', ['user_id' => $userId, 'exception' => $e]);
+    }
+    return true;
+}
+
+/* ---------- Trusted proxy (Phase 10) ---------- */
+
+/**
+ * IP/CIDR allowlist of reverse proxies whose `X-Forwarded-*` headers are trusted — comma-separated,
+ * bare IPs and/or CIDR ranges (e.g. "10.0.0.0/8,172.20.0.5"). Empty (the default) means NO proxy is
+ * trusted: `X-Forwarded-For`/`X-Forwarded-Proto` are ignored entirely and the app falls back to the
+ * raw `REMOTE_ADDR` / actual TLS state — fail-closed, not fail-open. Before this existed, both
+ * headers were honored unconditionally from ANY client, which meant HTTPS detection (and therefore
+ * the session cookie's `secure` flag) and `client_ip()` (rate-limit bucketing) could be spoofed by
+ * anyone able to reach the app directly, trivially defeating IP-based rate limits on login/2FA.
+ * Any production deployment behind a reverse proxy (the documented topology — README Production
+ * notes) MUST set this explicitly to restore correct HTTPS detection and client-IP resolution; see
+ * docs/production-hardening.md.
+ */
+function trusted_proxy_ips(): array {
+    // Deliberately NOT statically cached (unlike setting()) — called at most once or twice per
+    // request, not a hot path, and staying uncached keeps it correctly testable across
+    // putenv()-varied cases within one PHPUnit process.
+    $raw = (string)env('TRUSTED_PROXY_IPS', '');
+    return array_values(array_filter(array_map('trim', explode(',', $raw)), static fn($v) => $v !== ''));
+}
+
+/** True if $ip falls inside $cidrOrIp — a bare IP compares exactly, "a.b.c.d/n" compares by prefix. IPv4/IPv6 both supported via inet_pton(). */
+function ip_in_cidr(string $ip, string $cidrOrIp): bool {
+    if (!str_contains($cidrOrIp, '/')) {
+        return $ip === $cidrOrIp;
+    }
+    [$subnet, $maskBitsRaw] = explode('/', $cidrOrIp, 2);
+    $ipBin = @inet_pton($ip);
+    $subnetBin = @inet_pton($subnet);
+    if ($ipBin === false || $subnetBin === false || strlen($ipBin) !== strlen($subnetBin)) {
+        return false;
+    }
+    $maskBits = (int)$maskBitsRaw;
+    $fullBytes = intdiv($maskBits, 8);
+    if ($fullBytes > 0 && substr($ipBin, 0, $fullBytes) !== substr($subnetBin, 0, $fullBytes)) {
+        return false;
+    }
+    $remainderBits = $maskBits % 8;
+    if ($remainderBits === 0) {
+        return true;
+    }
+    $mask = chr((0xFF << (8 - $remainderBits)) & 0xFF);
+    return (substr($ipBin, $fullBytes, 1) & $mask) === (substr($subnetBin, $fullBytes, 1) & $mask);
+}
+
+/** True only if the DIRECT connecting peer (REMOTE_ADDR — never a client-suppliable header) is a configured trusted proxy. */
+function request_from_trusted_proxy(): bool {
+    $peer = (string)($_SERVER['REMOTE_ADDR'] ?? '');
+    if ($peer === '') {
+        return false;
+    }
+    foreach (trusted_proxy_ips() as $cidrOrIp) {
+        if (ip_in_cidr($peer, $cidrOrIp)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* ---------- Session & Auth ---------- */
+
+/**
+ * True if the current request arrived over HTTPS — checks the actual connection first, then the
+ * standard reverse-proxy header, but ONLY when the direct peer is a configured trusted proxy
+ * (Phase 10) — otherwise a client could simply send `X-Forwarded-Proto: https` over a plain HTTP
+ * connection to influence the session cookie's `secure` flag.
+ */
+function request_is_https(): bool {
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        return true;
+    }
+    if (!request_from_trusted_proxy()) {
+        return false;
+    }
+    $proto = strtolower(trim(explode(',', (string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+    return $proto === 'https';
+}
+
+const SESSION_IDLE_TIMEOUT_SECONDS_DEFAULT     = 1800;  // 30 minutes
+const SESSION_ABSOLUTE_TIMEOUT_SECONDS_DEFAULT = 43200; // 12 hours
+
+function session_idle_timeout_seconds(): int {
+    return max(60, (int)(env('SESSION_IDLE_TIMEOUT_SECONDS', (string)SESSION_IDLE_TIMEOUT_SECONDS_DEFAULT)));
+}
+
+function session_absolute_timeout_seconds(): int {
+    return max(60, (int)(env('SESSION_ABSOLUTE_TIMEOUT_SECONDS', (string)SESSION_ABSOLUTE_TIMEOUT_SECONDS_DEFAULT)));
+}
+
+/**
+ * Mark the current session as freshly authenticated — resets the
+ * absolute-timeout clock to "now". Call once, right alongside
+ * session_regenerate_id() on a successful login/2FA/bootstrap-admin
+ * transition, so the absolute timeout is measured from the moment of
+ * authentication, not from whenever the pre-login session happened to
+ * start (e.g. an earlier anonymous visit to the public site).
+ */
+function session_mark_authenticated(): void {
+    $_SESSION['_created_at'] = time();
+}
+
 if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
-    session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax']);
+    // use_strict_mode rejects any session id the client presents that the
+    // server never generated (blocks session fixation via a pre-set
+    // cookie); secure is derived from the real request scheme rather than
+    // hardcoded, so local/dev HTTP access still works while production
+    // HTTPS gets the flag automatically.
+    ini_set('session.use_strict_mode', '1');
+    session_set_cookie_params([
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure'   => request_is_https(),
+    ]);
     session_name('ELLSMS_SESSION');
     session_start();
+
+    if (!empty($_SESSION['uid'])) {
+        $now          = time();
+        $lastActivity = (int)($_SESSION['_last_activity'] ?? $now);
+        $createdAt    = (int)($_SESSION['_created_at'] ?? $now);
+        // Missing keys default to "now" (not expired) so sessions that
+        // predate this feature aren't force-logged-out the moment it
+        // deploys — they simply start being tracked from here on.
+        if (($now - $lastActivity) > session_idle_timeout_seconds()
+            || ($now - $createdAt) > session_absolute_timeout_seconds()) {
+            $expiredUserId = (int)$_SESSION['uid'];
+            $_SESSION = [];
+            session_destroy();
+            session_start();
+            Logger::info('auth.session_expired', ['user_id' => $expiredUserId]);
+        }
+    }
+    $_SESSION['_last_activity'] = time();
 }
 
 /**
@@ -84,35 +436,61 @@ if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
  * with its `ellsms_meta` row (panel_access / is_admin / originator).
  */
 function current_user(): ?array {
-    static $user = false;
-    if ($user === false) {
-        $user = null;
-        if (!empty($_SESSION['uid'])) {
-            $st = db()->prepare(
-                'SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.email, u.mobile,
-                        u.active, u.deleted, u.currentcredit AS credit,
-                        m.panel_access, m.is_admin, m.originator
-                 FROM user_ u
-                 JOIN ellsms_meta m ON m.user_id = u.id
-                 WHERE u.id = ?'
-            );
-            $st->execute([$_SESSION['uid']]);
-            $row = $st->fetch();
-            if ($row && $row['active'] && !$row['deleted'] && $row['panel_access']) {
-                $row['role']      = $row['is_admin'] ? 'admin' : 'user';
-                $row['full_name'] = trim($row['first_name'] . ' ' . $row['last_name']);
-                $user = $row;
-            }
+    // Cache key is $_SESSION['uid'] itself, not a plain "resolved once" flag — mirrors
+    // current_organization()'s own (userId, selectedId) keyed cache in app/tenant.php, for the same
+    // reason: a plain resolve-once cache would permanently return whatever the FIRST caller within
+    // this PHP process resolved (including "no session yet" -> null), even after $_SESSION['uid']
+    // later changes to a real user — a real risk in any long-lived process sharing one PHP process
+    // across requests/simulated logins (PHPUnit test suites in particular), not just theoretical.
+    static $cacheKey = null;
+    static $cached = null;
+
+    $uid = !empty($_SESSION['uid']) ? (int)$_SESSION['uid'] : 0;
+    $key = 'uid:' . $uid;
+    if ($cacheKey === $key) {
+        return $cached;
+    }
+
+    $user = null;
+    if ($uid > 0) {
+        // Phase 8 (Invariant B): the raw `user_`/`ellsms_meta` read moved to
+        // backend_find_user_by_id() (app/Backend/identity.php) — this is the ONE place ELLSMS
+        // identity is read from, this function's own caching/session logic is unchanged.
+        $row = backend_find_user_by_id($uid);
+        if ($row && $row['active'] && !$row['deleted'] && $row['panel_access']) {
+            $row['role']      = $row['is_admin'] ? 'admin' : 'user';
+            $row['full_name'] = trim($row['first_name'] . ' ' . $row['last_name']);
+            $user = $row;
         }
     }
+
+    $cacheKey = $key;
+    $cached = $user;
     return $user;
 }
 
+/**
+ * Phase 6: attaches organization_id to the returned array from the session-bound
+ * current_organization() — called here, AFTER current_user() has already resolved and cached
+ * itself, deliberately not from inside current_user() directly (current_organization() itself
+ * calls current_user() to find the acting user, which would recurse infinitely if current_user()
+ * called it back before finishing its own resolution). Every page that already calls
+ * require_login() gets $me['organization_id'] for free from this point on — no per-page edits
+ * needed for the attachment itself, only for pages that must additionally ENFORCE an active
+ * organization (see require_organization()/require_active_organization(), app/tenant.php).
+ * Returns the array UNCHANGED (no 'organization_id' key at all) when no organization could be
+ * resolved — never a guessed/default id — so callers checking with isset()/??  fail closed exactly
+ * like every other missing-context case in this codebase.
+ */
 function require_login(): array {
     $u = current_user();
     if (!$u) {
         header('Location: /login.php');
         exit;
+    }
+    $org = current_organization();
+    if ($org) {
+        $u['organization_id'] = (int)$org['organization_id'];
     }
     return $u;
 }
@@ -416,8 +794,11 @@ const KYC_ALLOWED_MIME = [
 /**
  * Validate and store an uploaded KYC document from $_FILES[$field].
  * Returns the stored filename (to save in ellsms_user_kyc) on success,
- * null if no file was submitted, or throws a RuntimeException with a
+ * null if no file was submitted, or throws an AppException with a
  * Persian message on validation failure (caller shows it as a flash).
+ * AppException extends RuntimeException, so this is safe to display as-is
+ * even in production — unlike a bare/internal exception, see
+ * app/Support/AppException.php and app/Support/ErrorHandler.php.
  */
 function kyc_store_upload(string $field, int $userId): ?string {
     if (empty($_FILES[$field]) || $_FILES[$field]['error'] === UPLOAD_ERR_NO_FILE) {
@@ -425,10 +806,10 @@ function kyc_store_upload(string $field, int $userId): ?string {
     }
     $f = $_FILES[$field];
     if ($f['error'] !== UPLOAD_ERR_OK) {
-        throw new RuntimeException('بارگذاری فایل با خطا مواجه شد.');
+        throw new AppException('بارگذاری فایل با خطا مواجه شد.');
     }
     if ($f['size'] > KYC_MAX_BYTES) {
-        throw new RuntimeException('حجم فایل نباید بیشتر از ۸ مگابایت باشد.');
+        throw new AppException('حجم فایل نباید بیشتر از ۸ مگابایت باشد.');
     }
     $mime = function_exists('mime_content_type') ? (mime_content_type($f['tmp_name']) ?: '') : '';
     if ($mime === '') {
@@ -441,7 +822,7 @@ function kyc_store_upload(string $field, int $userId): ?string {
         $mime = $extToMime[$extGuess] ?? '';
     }
     if (!isset(KYC_ALLOWED_MIME[$mime])) {
-        throw new RuntimeException('فرمت فایل باید JPG، PNG، WEBP یا PDF باشد.');
+        throw new AppException('فرمت فایل باید JPG، PNG، WEBP یا PDF باشد.');
     }
     if (!is_dir(KYC_STORAGE_DIR)) {
         mkdir(KYC_STORAGE_DIR, 0750, true);
@@ -449,7 +830,7 @@ function kyc_store_upload(string $field, int $userId): ?string {
     $ext = KYC_ALLOWED_MIME[$mime];
     $name = 'u' . $userId . '_' . $field . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
     if (!move_uploaded_file($f['tmp_name'], KYC_STORAGE_DIR . '/' . $name)) {
-        throw new RuntimeException('ذخیره‌ی فایل ممکن نشد.');
+        throw new AppException('ذخیره‌ی فایل ممکن نشد.');
     }
     return $name;
 }
@@ -491,8 +872,27 @@ const OPERATOR_PREFIX_MAP = [
     '920' => 'رایتل', '921' => 'رایتل', '922' => 'رایتل',
 ];
 
-/** Best-effort operator name for a normalized Iranian mobile number (98912...). */
+/**
+ * Best-effort operator name for a normalized Iranian mobile number (98912...).
+ *
+ * Now resolves through the ADMIN-CONFIGURED operator/prefix catalog (app/Sms/Pricing.php) so the
+ * analytics breakdown and the pricing engine can never disagree about which carrier a number
+ * belongs to — an admin who corrects a reassigned block in one place has corrected it everywhere.
+ * OPERATOR_PREFIX_MAP above survives only as the fallback for an install whose pricing tables are
+ * not migrated yet, which is exactly the behavior that install had before.
+ */
 function detect_operator(string $normalizedMobile): string {
+    if (function_exists('sms_resolve_operator')) {
+        $resolved = sms_resolve_operator($normalizedMobile);
+        if ($resolved['operator_id'] !== null) {
+            return $resolved['operator_name'];
+        }
+        // A resolvable catalog that simply has no rule for this number is a genuine "unknown" —
+        // don't second-guess it with the stale constant below.
+        if (sms_pricing_prefix_rules() !== []) {
+            return 'سایر / نامشخص';
+        }
+    }
     if (!preg_match('/^98(9\d{2})\d{7}$/', $normalizedMobile, $m)) {
         return 'سایر / نامشخص';
     }

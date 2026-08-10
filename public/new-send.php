@@ -4,24 +4,35 @@ $me = require_login();
 $pageTitle = 'پنل جدید ارسال';
 $active = 'new_send';
 
-$myNumbers = [];
-if (!is_admin()) {
-    $nst = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
-    $nst->execute([$me['id']]);
-    $myNumbers = $nst->fetchAll();
-}
+// Phase 7: this page's whole purpose is composing and dispatching a message (direct/recurring/
+// gradual), so MESSAGES_SEND gates the page itself (Invariant C: server-side, not just a hidden
+// nav link) — granted to every built-in role by default today, so no current user loses access.
+// SCHEDULES_MANAGE additionally gates the recurring-send branch and CAMPAIGNS_MANAGE the
+// save-as-campaign checkbox specifically (STEP 14/15 — read/manage/send/schedule kept distinct).
+$rbacOrg = is_admin() ? null : require_permission(Permissions::MESSAGES_SEND);
 
-$groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE user_id=? AND group_name<>'' ORDER BY group_name");
-$groups->execute([$me['id']]);
+$myNumbers = user_assigned_numbers($me);
+
+// Phase 6 closure: same organization-or-legacy-fallback ownership shape as public/contacts.php.
+$myOrgId = $me['organization_id'] ?? null;
+$contactOwnership = '(organization_id = ? OR (organization_id IS NULL AND user_id = ?))';
+
+$groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE {$contactOwnership} AND group_name<>'' ORDER BY group_name");
+$groups->execute([$myOrgId, $me['id']]);
 $groups = array_column($groups->fetchAll(), 'group_name');
 
-$categories = db()->query(
+$categories = db()->prepare(
     "SELECT c.id, c.name, (SELECT COUNT(*) FROM ellsms_number_category_items i WHERE i.category_id = c.id) c
-     FROM ellsms_number_categories c ORDER BY c.name"
-)->fetchAll();
+     FROM ellsms_number_categories c WHERE (c.organization_id = ? OR (c.organization_id IS NULL AND ? IS NULL)) ORDER BY c.name"
+);
+$categories->execute([$myOrgId, $myOrgId]);
+$categories = $categories->fetchAll();
 
-$cst = db()->prepare('SELECT id, name, originator, content FROM ellsms_campaigns WHERE user_id=? ORDER BY name');
-$cst->execute([$me['id']]);
+// Phase 6 closure: organization-scoped so any org member sees the organization's saved campaigns,
+// not just their own (STEP 1) — falls back to the legacy user-only view for a not-yet-backfilled
+// row, same convention as every other resource in this migration.
+$cst = db()->prepare("SELECT id, name, originator, content FROM ellsms_campaigns WHERE (organization_id = ? OR (organization_id IS NULL AND user_id = ?)) ORDER BY name");
+$cst->execute([$myOrgId, $me['id']]);
 $campaigns = $cst->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -32,15 +43,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $notes      = trim($_POST['notes'] ?? '');
     $dests      = parse_destinations($_POST['destinations'] ?? '');
 
+    // RAW, pre-normalization tokens, kept alongside $dests solely so the cost preview can report
+    // what was filtered out and why. $dests is already normalized and deduplicated, so previewing
+    // it would truthfully report zero invalid and zero duplicates — accurate, but useless to a user
+    // asking why 10 pasted numbers became 7. The send path still uses $dests, untouched.
+    $rawDests = preg_split('/[\s,;،]+/u', (string)($_POST['destinations'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
     if (!empty($_POST['group'])) {
-        $st = db()->prepare('SELECT mobile FROM ellsms_contacts WHERE user_id=? AND group_name=?');
-        $st->execute([$me['id'], $_POST['group']]);
-        foreach ($st->fetchAll() as $c) { $n = normalize_msisdn($c['mobile']); if ($n) $dests[] = $n; }
+        $st = db()->prepare("SELECT mobile FROM ellsms_contacts WHERE {$contactOwnership} AND group_name=?");
+        $st->execute([$myOrgId, $me['id'], $_POST['group']]);
+        foreach ($st->fetchAll() as $c) { $rawDests[] = $c['mobile']; $n = normalize_msisdn($c['mobile']); if ($n) $dests[] = $n; }
     }
     if (!empty($_POST['category'])) {
-        $st = db()->prepare('SELECT mobile FROM ellsms_number_category_items WHERE category_id = ?');
-        $st->execute([(int)$_POST['category']]);
-        foreach ($st->fetchAll() as $c) $dests[] = $c['mobile'];
+        // Phase 6 closure: previously had NO ownership check — see public/send.php's identical fix
+        // for the full explanation of the IDOR this closes.
+        $st = db()->prepare(
+            "SELECT i.mobile FROM ellsms_number_category_items i
+             JOIN ellsms_number_categories c ON c.id = i.category_id
+             WHERE i.category_id = ? AND (c.organization_id = ? OR (c.organization_id IS NULL AND ? IS NULL))"
+        );
+        $st->execute([(int)$_POST['category'], $myOrgId, $myOrgId]);
+        foreach ($st->fetchAll() as $c) { $dests[] = $c['mobile']; $rawDests[] = $c['mobile']; }
     }
     $dests = array_values(array_unique($dests));
 
@@ -49,14 +72,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$dests, $blockedCount] = filter_blacklist((int)$me['id'], $dests);
     }
 
-    if (!empty($_POST['save_campaign']) && trim($_POST['campaign_name'] ?? '') !== '' && $content !== '') {
-        db()->prepare('INSERT INTO ellsms_campaigns (user_id, name, originator, content) VALUES (?,?,?,?)')
-           ->execute([$me['id'], trim($_POST['campaign_name']), $originator, $content]);
+    // Cost preview (read-only) — evaluated before ANY of the branches below, so no campaign is
+    // saved, no schedule is created, no bulk job is queued and no message is dispatched when the
+    // user is only asking what it would cost. Blacklist filtering has already been applied above
+    // when requested, so the estimator is handed the same recipient set the send would use; it is
+    // therefore told not to re-apply it.
+    if (($_POST['do'] ?? '') === 'preview') {
+        // The estimator applies the blacklist itself exactly when the user asked for it, so its
+        // reported blacklisted_count is genuine rather than reconstructed after the fact.
+        $costPreview = estimate_message_cost($me, $originator, $rawDests, $content, !empty($_POST['use_blacklist']));
+        cost_preview_record($costPreview, (int)($me['organization_id'] ?? 0), (int)$me['id'], 'web_new_send');
+        if (!$costPreview['ok']) {
+            // A pricing gap gets its own card rather than a one-line flash: STEP 44 requires the
+            // user to see input / priced / unpriced counts and the reason, not just "failed".
+            if (($costPreview['reason'] ?? '') === 'pricing_unavailable') {
+                $costPricingFailure = $costPreview;
+            } else {
+                flash('error', cost_preview_reason_message((string)$costPreview['reason']));
+            }
+            $costPreview = null;
+        }
+    } elseif (!empty($_POST['save_campaign']) && trim($_POST['campaign_name'] ?? '') !== '' && $content !== '') {
+        // CAMPAIGNS_MANAGE, distinct from MESSAGES_SEND above (STEP 14) — a role that may dispatch
+        // is not automatically allowed to persist a reusable template; skip the save (not the send)
+        // rather than denying the whole request, since the user's primary intent here is sending.
+        $campaignOrgId = (int)($me['organization_id'] ?? 0);
+        if ($rbacOrg !== null && !membership_has_permission($rbacOrg, Permissions::CAMPAIGNS_MANAGE)) {
+            flash('error', 'شما اجازه‌ی ذخیره‌ی کمپین را ندارید.');
+        } elseif ($campaignOrgId > 0 && !organization_has_entitlement($campaignOrgId, Entitlements::CAMPAIGNS)) {
+            // Phase 13 (STEP 14): same "skip the save, not the send" philosophy the RBAC branch
+            // above already uses — the user's primary intent here is sending, so a plan that lacks
+            // saved templates must not fail the whole request.
+            flash('error', 'ذخیره‌ی قالب کمپین در پلن فعلی سازمان شما موجود نیست — پیام ارسال شد ولی قالب ذخیره نشد.');
+        } else {
+            $slot = entitlement_with_resource_slot($campaignOrgId, Limits::CAMPAIGNS, static function (PDO $db) use ($me, $originator, $content) {
+                $db->prepare('INSERT INTO ellsms_campaigns (user_id, organization_id, name, originator, content) VALUES (?,?,?,?,?)')
+                   ->execute([$me['id'], $me['organization_id'] ?? null, trim($_POST['campaign_name']), $originator, $content]);
+                return true;
+            });
+            if (!$slot['ok']) {
+                flash('error', 'به سقف تعداد قالب‌های کمپین پلن فعلی رسیده‌اید — پیام ارسال شد ولی قالب ذخیره نشد.');
+            }
+        }
     }
 
     $blockedNote = $blockedCount ? ' (' . to_persian_digits((string)$blockedCount) . ' شماره از لیست سیاه حذف شد)' : '';
 
-    if (!$dests) {
+    if (($_POST['do'] ?? '') === 'preview') {
+        // Already handled above — a preview request must fall through the entire send chain below
+        // without dispatching, queueing, or scheduling anything (Invariant B). Without this branch
+        // execution would reach dispatch_message() and actually send.
+    } elseif (!$dests) {
         flash('error', 'شماره مقصد معتبری وجود ندارد.' . $blockedNote);
     } elseif ($content === '') {
         flash('error', 'متن پیام خالی است.');
@@ -65,6 +131,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($ok ? 'success' : 'error', $info . $blockedNote);
         audit((int)$me['id'], 'new_send.direct', count($dests) . ' dest, ok=' . (int)$ok);
         if ($ok) redirect('/reports.php');
+    } elseif ($mode === 'recurring' && $rbacOrg !== null && !membership_has_permission($rbacOrg, Permissions::SCHEDULES_MANAGE)) {
+        flash('error', 'شما اجازه‌ی زمان‌بندی ارسال را ندارید.');
+    } elseif ($mode === 'recurring' && !organization_has_entitlement((int)($me['organization_id'] ?? 0), Entitlements::SCHEDULES)) {
+        // Phase 13 (STEP 14): unlike the campaign-save branch above (a secondary side effect of a
+        // send), scheduling IS the request's entire intent here — so a plan without it fails the
+        // request outright rather than silently degrading to something the user didn't ask for.
+        flash('error', 'ارسال زمان‌بندی‌شده در پلن فعلی سازمان شما موجود نیست. برای استفاده، پلن خود را ارتقا دهید.');
     } elseif ($mode === 'recurring') {
         $gDate = jalali_request_to_gregorian('send_date');
         $time  = time_post('send_time');
@@ -74,12 +147,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$runAt || $runAt <= date('Y-m-d H:i:s')) {
             flash('error', 'زمان ارسال باید در آینده باشد.');
         } else {
-            db()->prepare('INSERT INTO ellsms_schedule (user_id, title, originator, destinations, content, run_at, repeat_type)
-                           VALUES (?,?,?,?,?,?,?)')
-               ->execute([$me['id'], $notes, $originator, json_encode($dests), $content, $runAt, $repeat]);
-            audit((int)$me['id'], 'new_send.recurring', count($dests) . ' dest @ ' . $runAt);
-            flash('success', 'زمان‌بندی شد برای ' . jdate($runAt) . $blockedNote);
-            redirect('/schedules.php');
+            $slot = entitlement_with_resource_slot((int)($me['organization_id'] ?? 0), Limits::ACTIVE_SCHEDULES, static function (PDO $db) use ($me, $notes, $originator, $dests, $content, $runAt, $repeat) {
+                $db->prepare('INSERT INTO ellsms_schedule (user_id, organization_id, title, originator, destinations, content, run_at, repeat_type)
+                              VALUES (?,?,?,?,?,?,?,?)')
+                   ->execute([$me['id'], $me['organization_id'] ?? null, $notes, $originator, json_encode($dests), $content, $runAt, $repeat]);
+                return true;
+            });
+            if (!$slot['ok']) {
+                flash('error', 'به سقف تعداد زمان‌بندی‌های فعال پلن فعلی رسیده‌اید (' . to_persian_digits((string)$slot['limit']) . ' مورد). زمان‌بندی‌های موجود دست‌نخورده باقی می‌مانند.');
+            } else {
+                audit((int)$me['id'], 'new_send.recurring', count($dests) . ' dest @ ' . $runAt);
+                flash('success', 'زمان‌بندی شد برای ' . jdate($runAt) . $blockedNote);
+                redirect('/schedules.php');
+            }
         }
     } elseif ($mode === 'gradual') {
         $throttleCount   = max(1, (int)($_POST['throttle_count'] ?? 10));
@@ -98,6 +178,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 require __DIR__ . '/../app/views/header.php';
+
+// Carries the original submission forward so confirming resubmits IDENTICAL inputs, which the
+// confirm path re-parses and re-prices server-side (Invariant I — these are inputs to re-validate,
+// never trusted values).
+if (!empty($costPricingFailure)) {
+    require __DIR__ . '/../app/views/cost_preview_unpriced.php';
+}
+if (isset($costPreview) && $costPreview) {
+    $previewFormFields = '';
+    foreach (['originator', 'destinations', 'content', 'notes', 'group', 'category', 'mode',
+              'repeat', 'throttle_count', 'throttle_minutes', 'use_blacklist'] as $field) {
+        if (isset($_POST[$field])) {
+            $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)$_POST[$field]) . '">';
+        }
+    }
+    foreach (['send_date_y','send_date_m','send_date_d','send_time_h','send_time_i'] as $field) {
+        if (isset($_POST[$field])) {
+            $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)$_POST[$field]) . '">';
+        }
+    }
+    require __DIR__ . '/../app/views/cost_preview.php';
+}
 ?>
 <form method="post" id="newSendForm">
 <?= csrf_field() ?>
@@ -271,7 +373,9 @@ require __DIR__ . '/../app/views/header.php';
       <div class="hint">مثال بالا: هر ۵ دقیقه، ۱۰ پیام ارسال می‌شود تا تمام شود.</div>
     </div>
 
-    <button type="submit" form="newSendForm" class="btn btn-primary btn-block">ارسال پیامک</button>
+    <button type="submit" form="newSendForm" name="do" value="preview" class="btn btn-primary btn-block">محاسبه‌ی هزینه و ادامه</button>
+    <button type="submit" form="newSendForm" name="do" value="confirm" class="btn btn-block" style="margin-top:8px">ارسال بدون پیش‌نمایش</button>
+    <div class="hint">«محاسبه‌ی هزینه» چیزی ارسال نمی‌کند و از اعتبار کسر نمی‌شود.</div>
   </div>
 </div>
 </form>

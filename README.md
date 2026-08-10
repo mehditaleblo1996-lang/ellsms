@@ -64,9 +64,15 @@ Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: 
 
 | Where | What |
 |---|---|
-| `.env` | `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default |
+| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default |
 | Panel → Settings (admin) | API base URL (overrides `.env`, stored in `ellsms_settings`), default sender line |
 | Panel → Users | Grant/revoke panel access, admin flag, per-user sender line, credit (writes to the shared `user_.currentcredit`) |
+
+All sensitive/runtime configuration is read from environment variables (`.env`, wired into each
+container via `docker-compose.yml`), with most integrations additionally overridable at runtime
+from Panel → Settings (stored in `ellsms_settings`, which wins over `.env` when both are set — see
+each integration's own section below for exactly which). No secret ever needs to be committed;
+`.env` is gitignored and `.env.example` contains placeholders only.
 
 Credits = SMS parts, stored directly on the shared `user_.currentcredit` column — so it reflects the same balance the backend platform itself would see. Admins send without a credit check.
 
@@ -171,11 +177,88 @@ The response is JSON: `{"status":"ok","reference_id":123456789,"error_code":null
 
 The `.html` extension is intentional, matching that same convention, not a typo — `public/sms/url_send.html` is real PHP, executed via an `AddHandler application/x-httpd-php .html` override that `docker/Dockerfile` scopes to just the `public/sms/` directory. **Because credentials travel as request parameters, always call this over HTTPS** (put the panel behind a TLS-terminating reverse proxy, per Production notes below) — anything else exposes the account password in transit and in plain server access logs.
 
+## Public API & webhooks
+
+Phase 12 adds a small, versioned, tenant-scoped REST API (`/api/v1/*`) for customer integrations —
+API keys, scopes, idempotent writes, and signed webhook delivery — completely separate from both
+the panel's web session and the internal backend-platform HMAC scheme above. **Disabled by default**
+(`API_ENABLED=0`) so every existing install is unaffected until an operator opts in. See
+`docs/public-api.md` and `docs/webhooks.md` for the full reference, and
+`docs/phase-12-final-report.md` for the acceptance-criteria record.
+
+## Plans, subscriptions & quotas
+
+Phase 13 adds a SaaS control plane — plans, subscriptions, per-organization entitlements and usage
+quotas, with a plan-aware public API. It is a third authorization layer that sits beside (never
+inside) RBAC and API scopes: an owner cannot bypass a plan limit, a paid plan grants no permission,
+and platform administration is never governed by any customer's plan.
+
+**Disabled by default** (`BILLING_ENABLED=0`): every entitlement passes, every limit is unlimited,
+and the quota subsystem writes no rows, so an existing install is completely unaffected until an
+operator opts in. Enablement requires running `make billing-backfill` first, which grandfathers every
+existing organization onto an unlimited `legacy` plan. See `docs/plans-and-entitlements.md`,
+`docs/billing-operations.md`, and `docs/phase-13-final-report.md`.
+
+## Developer Commands
+
+A `Makefile` wraps the commands below so a new developer doesn't need to read `app/`/`docker/` to
+get going — run `make help` for the full list with descriptions. Composer continues to own the
+PHPUnit-related commands (`composer test`); `make test` just delegates to it.
+
+| What | Command | Notes |
+|---|---|---|
+| Install test dependencies | `composer install` (or `make composer-install`) | Dev-only — see "Composer & dependencies" below |
+| Lint (PHP syntax check) | `make lint` | Checks every `.php` file under `app/`, `public/`, `cron/`, `tests/`; exits non-zero on any parse error |
+| Run tests | `make test` or `composer test` | Runs the PHPUnit suite from STEP 14 (`tests/Unit/`); both commands are equivalent, use whichever fits your workflow |
+| Lint + tests together | `make check` | Runs lint, then tests — stops at the first failure |
+| Build the Docker image | `make docker-build` | `docker compose build` |
+| Start the app (+ worker) | `make up` | `docker compose up -d` |
+| Stop | `make down` | `docker compose down` — stops containers, touches no data (ELLSMS has no DB volume of its own) |
+| App logs | `make logs` | Tails the `app` container |
+| Worker logs | `make worker-logs` | Tails the `worker` container — this is where scheduled/bulk/auto-reply activity shows up |
+| Run one worker pass | `make worker-once` | Runs `php cron/worker.php --once` in a throwaway container. Safe to run even while the persistent worker service (started by `make up`) is also running — Phase 4's atomic per-row claiming (`docs/job-queue-architecture.md`) makes concurrent workers safe by construction; running both is redundant/wasted work, not unsafe. The Docker worker service remains the one authoritative way the worker runs continuously; this is for one-off manual runs. |
+| Queue health | `make jobs-status` | Read-only status/lease/retry counts across bulk items, bulk jobs, schedules, auto-reply log — see `docs/job-queue-architecture.md` |
+| List stuck/expired-lease rows | `make jobs-recover` | Read-only — every row it lists is already self-healing on the next normal worker tick; this is for visibility |
+| Force-recover stuck rows | `make jobs-recover-force` | Clears expired leases immediately so the next tick reclaims them right away, instead of waiting on worker timing. Never touches a row whose lease is still valid |
+| Inspect the ELLSMS schema | `make db-schema-show` | Read-only — just prints `db/ellsms_extra.sql`, no DB connection made |
+| List ELLSMS tables in the live DB | `make db-tables` | Read-only `SHOW TABLES LIKE 'ellsms\_%'` — needs `.env` and a reachable database |
+| Apply the ELLSMS schema | `make db-schema-apply` | **Mutation.** Every statement in `db/ellsms_extra.sql` is `CREATE TABLE IF NOT EXISTS`/guarded `ALTER TABLE`/`ON DUPLICATE KEY UPDATE`, so it's safe to re-run — but it is a real write against the shared database. Never run automatically by any other command, by `make up`, or by container startup (`docker/entrypoint.sh` only ever touches the filesystem). Read `docs/database-audit.md` before adding anything to this file. |
+| Inspect Phase 2 migrations | `make db-migrations-show` | Read-only — prints every file under `db/migrations/`, no DB connection made |
+| Apply Phase 2 migrations | `make db-migrations-apply` | **Mutation.** Applies every `db/migrations/*.sql` file in order (2FA hardening, rate limiting, password-verifier infrastructure — see `db/migrations/README.md`). Same safety properties and the same "never automatic" rule as `db-schema-apply`. |
+
+### Composer & dependencies
+
+Composer is currently used **only** for development/testing dependencies (PHPUnit) —
+`require-dev` in `composer.json`, nothing in `require` beyond a PHP version floor. The production
+application itself does not require `vendor/` to exist or run; every page and the worker run on
+plain PHP with no autoloader dependency, exactly as before this was introduced. That would only
+change in a deliberate future phase, not silently.
+
+Test coverage today is deliberately narrow: pure, side-effect-free business logic that's safe to
+test without a database or the backend API — phone-number/originator normalization, SMS part
+costing, the Jalali calendar conversion, per-operator detection, auto-reply matching/templating,
+and `Logger`'s redaction rule. See `docs/technical-debt.md` for what's still untested and why (most
+of it needs either a test database or a mocked backend API, neither of which exists yet).
+
 ## Production notes
 
-- Put the panel behind HTTPS (Caddy/nginx reverse proxy in front of port 8080).
+- Put the panel behind HTTPS (Caddy/nginx reverse proxy in front of port 8080), **and set
+  `TRUSTED_PROXY_IPS`** to that proxy's address/CIDR (`.env`) — without it, HTTPS detection and
+  rate-limit IP resolution fall back to trusting only the direct connection (safe, but not what a
+  reverse-proxied deployment wants). See `docs/production-hardening.md`.
+- Before deploying: `make config-check`, then `make predeploy-check`. After deploying:
+  `make smoke-test URL=https://your-domain`. See `docs/production-hardening.md` for the full
+  checklist and `docs/phase-10-final-report.md` for the production-readiness decision (backend HMAC
+  verification is still PARTIAL — no verifier exists on the backend platform side of this
+  integration; do not treat request signing as an active control until one does).
 - The SHA-256 password hashing is a known weak point inherited from the backend platform's current placeholder implementation — track any migration to real hashing on that side and update `backend_hash_password()` / `backend_verify_password()` in `app/bootstrap.php` alongside it.
-- Back up the shared database the same way you already back up the backend platform's own data: `docker exec <db-container> mysqldump -u root -p <database> > backup.sql`. ELLSMS's own tables (`ellsms_*`) are included in that same dump — no separate backup needed.
+- Backup/restore/disaster-recovery is now built (Phase 11): `make backup`, `make restore
+  BACKUP=<id>`, `make restore-test BACKUP=<id>`, `make backup-status`, `make dr-drill`. Restore is
+  **CLI-only** — no web/admin restore button exists or should exist. See
+  `docs/backup-and-disaster-recovery.md` for the full reference (encryption, retention, RPO/RTO,
+  offsite guidance) and `docs/production-runbook.md` for the release deployment sequence and
+  migration rollback matrix. No backup schedule is installed automatically — see that doc's
+  scheduled-backup section before relying on this in production.
 
 ## A note on the shared infrastructure's real names
 

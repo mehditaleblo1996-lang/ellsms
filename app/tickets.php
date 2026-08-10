@@ -15,6 +15,16 @@
  * caller's job — public/tickets.php enforces it before calling in, the
  * same way app/backend.php's bulk_send_batch() trusts its caller rather
  * than re-checking permissions internally.
+ *
+ * Phase 6 tenant model — DELIBERATE policy, explicit not accidental: tickets are USER-PRIVATE, not
+ * organization-shared. A support ticket is a private conversation between one user and platform
+ * admins (ellsms_meta.is_admin — see app/authorization.php), not something an organization's other
+ * members should be able to browse. `organization_id` on ellsms_tickets is populated (for
+ * reporting/audit purposes, same descriptive-label role it plays on ellsms_wallet_accounts) but is
+ * NEVER read by any access-control check in this file or public/tickets.php — ownership is, and
+ * remains, strictly `user_id`. Do not "fix" this by widening ticket visibility to organization
+ * members; that would be a real behavior/privacy regression, not a bug fix. See
+ * docs/multi-tenancy-architecture.md's Tickets section.
  */
 
 require_once __DIR__ . '/bootstrap.php';
@@ -24,7 +34,7 @@ require_once __DIR__ . '/telegram.php';
 function ticket_notify_telegram(string $text): void {
     [$ok, $info] = telegram_send_message($text);
     if (!$ok) {
-        error_log('[ellsms tickets] telegram notify failed: ' . $info);
+        Logger::warning('ticket.telegram_notify.failed', ['info' => $info]);
     }
 }
 
@@ -34,22 +44,17 @@ function ticket_notify_telegram(string $text): void {
  * transaction commits — a notify failure must never roll back a saved
  * ticket). Returns the new ticket id.
  */
-function ticket_create(int $userId, string $username, string $subject, string $body): int {
-    $db = db();
-    $db->beginTransaction();
-    try {
-        $db->prepare('INSERT INTO ellsms_tickets (user_id, subject, status) VALUES (?, ?, ?)')
-           ->execute([$userId, $subject, 'open']);
+function ticket_create(int $userId, string $username, string $subject, string $body, ?int $organizationId = null): int {
+    $ticketId = db_transaction(function (PDO $db) use ($userId, $subject, $body, $organizationId): int {
+        $db->prepare('INSERT INTO ellsms_tickets (user_id, organization_id, subject, status) VALUES (?, ?, ?, ?)')
+           ->execute([$userId, $organizationId, $subject, 'open']);
         $ticketId = (int)$db->lastInsertId();
 
         $db->prepare('INSERT INTO ellsms_ticket_replies (ticket_id, user_id, is_admin_reply, body) VALUES (?, ?, 0, ?)')
            ->execute([$ticketId, $userId, $body]);
 
-        $db->commit();
-    } catch (Throwable $t) {
-        $db->rollBack();
-        throw $t;
-    }
+        return $ticketId;
+    });
 
     ticket_notify_telegram(
         "🎫 تیکت جدید #{$ticketId} از {$username}\nموضوع: {$subject}\n" . mb_strimwidth($body, 0, 500, '…')
@@ -90,22 +95,27 @@ function ticket_set_status(int $ticketId, string $status): void {
 
 /** One ticket, joined with the owner's username. Null if it doesn't exist. */
 function ticket_find(int $ticketId): ?array {
-    $st = db()->prepare(
-        'SELECT t.*, u.username FROM ellsms_tickets t JOIN user_ u ON u.id = t.user_id WHERE t.id = ?'
-    );
+    $st = db()->prepare('SELECT * FROM ellsms_tickets WHERE id = ?');
     $st->execute([$ticketId]);
     $row = $st->fetch();
-    return $row ?: null;
+    if (!$row) {
+        return null;
+    }
+    $row['username'] = backend_usernames_by_ids([$row['user_id']])[(int)$row['user_id']] ?? null;
+    return $row;
 }
 
 /** Every reply for a ticket, oldest first, joined with each author's username. */
 function ticket_replies(int $ticketId): array {
-    $st = db()->prepare(
-        'SELECT r.*, u.username FROM ellsms_ticket_replies r JOIN user_ u ON u.id = r.user_id
-         WHERE r.ticket_id = ? ORDER BY r.created_at ASC, r.id ASC'
-    );
+    $st = db()->prepare('SELECT * FROM ellsms_ticket_replies WHERE ticket_id = ? ORDER BY created_at ASC, id ASC');
     $st->execute([$ticketId]);
-    return $st->fetchAll();
+    $rows = $st->fetchAll();
+    $usernames = backend_usernames_by_ids(array_column($rows, 'user_id'));
+    foreach ($rows as &$r) {
+        $r['username'] = $usernames[(int)$r['user_id']] ?? null;
+    }
+    unset($r);
+    return $rows;
 }
 
 /**
@@ -135,10 +145,16 @@ function ticket_list(int $ownerUserId, string $statusFilter, int $page, int $per
     $per = max(1, $per);
     $off = max(0, ($page - 1) * $per);
     $st = $db->prepare(
-        "SELECT t.*, u.username FROM ellsms_tickets t JOIN user_ u ON u.id = t.user_id
+        "SELECT t.* FROM ellsms_tickets t
          {$W} ORDER BY t.updated_at DESC LIMIT {$per} OFFSET {$off}"
     );
     $st->execute($params);
+    $rows = $st->fetchAll();
+    $usernames = backend_usernames_by_ids(array_column($rows, 'user_id'));
+    foreach ($rows as &$r) {
+        $r['username'] = $usernames[(int)$r['user_id']] ?? null;
+    }
+    unset($r);
 
-    return [$st->fetchAll(), $total];
+    return [$rows, $total];
 }

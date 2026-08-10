@@ -5,7 +5,7 @@
 # mounts ./:/var/www/html) — whatever ownership the host directory has
 # wins over anything set at image build time.
 set -e
-mkdir -p /var/www/html/storage/kyc
+mkdir -p /var/www/html/storage/kyc /var/www/html/storage/logs
 chown -R www-data:www-data /var/www/html/storage 2>/dev/null || true
 chmod -R u+rwX,g+rwX /var/www/html/storage 2>/dev/null || true
 

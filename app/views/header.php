@@ -16,6 +16,25 @@ $nav = [
     'tickets'    => ['/tickets.php',     'پشتیبانی',        '🎫'],
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
 ];
+// Phase 12 — org-scoped integration nav (API keys/webhooks). Shown only when the current
+// organization membership actually carries the corresponding VIEW permission (owner/admin by
+// default, see app/rbac.php's role_permissions() — member does not) so an ordinary member never
+// sees a link that would just 403 on click; every OTHER nav item above is granted to every role by
+// default today, which is why none of them needed this same conditional treatment.
+$integrationNav = [];
+$navOrg = current_organization();
+if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
+    $integrationNav['api_keys'] = ['/api-keys.php', 'کلیدهای API', '🔑'];
+}
+if ($navOrg && membership_has_permission($navOrg, Permissions::WEBHOOKS_VIEW)) {
+    $integrationNav['webhooks'] = ['/webhooks.php', 'وب‌هوک‌ها', '🔗'];
+}
+// Phase 13 — the organization's own subscription/usage page. Shown to anyone with BILLING_VIEW
+// (owner/admin by default); BILLING_MANAGE additionally controls whether the actions on that page
+// are available, checked there rather than here.
+if ($navOrg && membership_has_permission($navOrg, Permissions::BILLING_VIEW)) {
+    $integrationNav['billing'] = ['/billing.php', 'اشتراک و مصرف', '📦'];
+}
 $adminNav = [
     'users'             => ['/users.php',             'کاربران',        '👤'],
     'analytics'         => ['/analytics.php',          'آمار تفصیلی',    '📊'],
@@ -23,7 +42,9 @@ $adminNav = [
     'number_categories' => ['/number-categories.php',  'دسته‌های شماره',  '🗂'],
     'slides'            => ['/slides.php',             'اسلایدر صفحه‌ی اصلی', '🖼'],
     'pricing'           => ['/pricing.php',            'بسته‌های قیمتی',  '🏷'],
+    'sms_pricing'       => ['/sms-pricing.php',        'تعرفه‌ی پیامک',   '💱'],
     'guide_admin'       => ['/guide-admin.php',        'راهنمای استفاده', '📘'],
+    'billing_admin'     => ['/billing-admin.php',       'مدیریت اشتراک‌ها', '📦'],
     'settings'          => ['/settings.php',            'تنظیمات',        '⚙'],
 ];
 ?><!doctype html>
@@ -49,6 +70,14 @@ $adminNav = [
           <span class="nav-icon"><?= $icon ?></span><?= $label ?>
         </a>
       <?php endforeach; ?>
+      <?php if ($integrationNav): ?>
+        <div class="nav-label">یکپارچه‌سازی</div>
+        <?php foreach ($integrationNav as $key => [$href, $label, $icon]): ?>
+          <a href="<?= $href ?>" class="nav-item<?= ($active ?? '') === $key ? ' is-active' : '' ?>">
+            <span class="nav-icon"><?= $icon ?></span><?= $label ?>
+          </a>
+        <?php endforeach; ?>
+      <?php endif; ?>
       <?php if ($me['role'] === 'admin'): ?>
         <div class="nav-label">مدیریت</div>
         <?php foreach ($adminNav as $key => [$href, $label, $icon]): ?>
@@ -58,7 +87,7 @@ $adminNav = [
         <?php endforeach; ?>
       <?php endif; ?>
     </nav>
-    <div class="sidebar-foot">ELLSMS v<?= ELLSMS_VERSION ?></div>
+    <div class="sidebar-foot">ELLSMS v<?= e(app_version()) ?><?php if (app_env() !== 'production'): ?> · <?= e(strtoupper(app_env())) ?><?php endif; ?></div>
   </aside>
 
   <div class="main">
@@ -76,7 +105,10 @@ $adminNav = [
         <a class="user-chip" href="/profile.php" title="حساب کاربری و رمز عبور">
           <?= e($me['full_name'] ?: $me['username']) ?><?= $me['role'] === 'admin' ? ' · مدیر' : '' ?>
         </a>
-        <a class="btn btn-ghost" href="/logout.php">خروج</a>
+        <form method="post" action="/logout.php" style="display:inline">
+          <?= csrf_field() ?>
+          <button type="submit" class="btn btn-ghost">خروج</button>
+        </form>
       </div>
     </header>
 

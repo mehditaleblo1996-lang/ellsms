@@ -4,6 +4,13 @@ $me = require_login();
 $pageTitle = 'گزارش ارسال';
 $active = 'reports';
 
+// Phase 7: platform admins keep their existing unrestricted bypass; an ordinary org member needs
+// REPORTS_VIEW — granted to every built-in role by default today (app/rbac.php), so this is
+// explicit fail-closed enforcement on top of already-universal access, not a new restriction.
+if (!is_admin()) {
+    require_permission(Permissions::REPORTS_VIEW);
+}
+
 /* ---------- Filters ---------- */
 $from   = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-6 day'));
 $to     = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
@@ -14,7 +21,25 @@ $userId = is_admin() ? (int)($_GET['user_id'] ?? 0) : (int)$me['id'];
 
 $where  = ['m.sent_at >= ?', 'm.sent_at < DATE_ADD(?, INTERVAL 1 DAY)'];
 $params = [$from, $to];
-if (!is_admin() || $userId) { $where[] = 'm.sender_user_id = ?'; $params[] = $userId ?: (int)$me['id']; }
+if (is_admin() && $userId) {
+    $where[] = 'm.sender_user_id = ?';
+    $params[] = $userId;
+} elseif (!is_admin()) {
+    // Phase 6, STEP 25: scoped to every member of the ACTIVE organization, not just $me — an
+    // organization may contain multiple users, and a report scoped to only "my own" sends would
+    // hide org-mates' outbound history from a member who should legitimately see it. Falls back to
+    // exactly the pre-Phase-6 single-user scope when there's no resolvable organization yet
+    // (pre-tenant-backfill) — outbound_message is backend-owned (no organization_id column to
+    // filter on directly, STEP 23), so this is expressed as "sender_user_id IN (org member ids)".
+    $orgId = $me['organization_id'] ?? null;
+    $memberIds = $orgId ? organization_member_user_ids((int)$orgId) : [];
+    if (!$memberIds) {
+        $memberIds = [(int)$me['id']];
+    }
+    $placeholders = implode(',', array_fill(0, count($memberIds), '?'));
+    $where[] = "m.sender_user_id IN ({$placeholders})";
+    array_push($params, ...$memberIds);
+}
 if ($status !== '' && in_array($status, ['pending','sent','send_failed','delivered','failed'], true)) {
     $where[] = 'm.status = ?'; $params[] = $status;
 }
@@ -23,21 +48,18 @@ if ($text !== '') { $where[] = 'm.content LIKE ?';     $params[] = '%' . $text .
 $W = implode(' AND ', $where);
 
 /* ---------- Summary ---------- */
-$sum = db()->prepare("SELECT COUNT(*) total,
-        SUM(status IN ('sent','delivered')) ok,
-        SUM(status IN ('send_failed','failed')) bad,
-        SUM(status = 'delivered') dlv
-      FROM outbound_message m WHERE {$W}");
-$sum->execute($params);
-$S = $sum->fetch();
+$S = backend_outbound_summary($W, $params);
 
 /* ---------- CSV export ---------- */
 if (isset($_GET['export'])) {
-    $st = db()->prepare("SELECT m.id, u.username, m.originator, m.destination, m.content,
-                                m.status, m.reference_id, m.error_code, m.sent_at, m.delivered_at
-                         FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
-                         WHERE {$W} ORDER BY m.id DESC LIMIT 100000");
-    $st->execute($params);
+    // Phase 13 (STEP 14): the report ITSELF is available on every plan (taking basic send history
+    // away would make the product unusable — see app/Support/Entitlements.php's docblock); the bulk
+    // CSV EXPORT is the plan-gated "advanced reporting" capability. Platform admins keep their
+    // existing unrestricted bypass (Invariant O).
+    if (!is_admin()) {
+        require_entitlement((int)($me['organization_id'] ?? 0), Entitlements::REPORTS_ADVANCED);
+    }
+    $st = backend_outbound_export_rows($W, $params, 100000);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="ellsms-report-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
@@ -54,12 +76,9 @@ $cnt  = (int)$S['total'];
 $pages = max(1, (int)ceil($cnt / $per));
 $off  = ($page - 1) * $per;
 
-$st = db()->prepare("SELECT m.*, u.username FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
-                     WHERE {$W} ORDER BY m.id DESC LIMIT {$per} OFFSET {$off}");
-$st->execute($params);
-$rows = $st->fetchAll();
+$rows = backend_outbound_rows($W, $params, $per, $off);
 
-$users = is_admin() ? db()->query('SELECT id, username FROM user_ WHERE deleted = 0 ORDER BY username')->fetchAll() : [];
+$users = is_admin() ? backend_list_users_summary() : [];
 
 $statusFa = ['sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','send_failed'=>'ناموفق','failed'=>'ناموفق','pending'=>'در انتظار'];
 $qs = fn(array $extra = []) => http_build_query(array_merge($_GET, $extra));

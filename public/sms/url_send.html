@@ -22,7 +22,9 @@
  * error_code is one of:
  *   -1 missing parameter, -2 authentication failed,
  *   -3 account has no ELLSMS panel access, -4 invalid destination,
- *   -5 insufficient credit, -6 send failed at the gateway
+ *   -5 insufficient credit, -6 send failed at the gateway,
+ *   -7 originator not permitted for this account (Phase 2),
+ *   -8 rate limited — HTTP 429, Retry-After header set (Phase 2)
  */
 
 require_once __DIR__ . '/../../app/bootstrap.php';
@@ -30,7 +32,8 @@ require_once __DIR__ . '/../../app/backend.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-function url_send_respond(bool $ok, ?int $referenceId, ?int $errorCode): never {
+function url_send_respond(bool $ok, ?int $referenceId, ?int $errorCode, int $httpStatus = 200): never {
+    http_response_code($httpStatus);
     echo json_encode([
         'status'       => $ok ? 'ok' : 'not ok',
         'reference_id' => $referenceId,
@@ -49,6 +52,20 @@ if ($username === '' || $password === '' || $originator === '' || $destination =
     url_send_respond(false, null, -1);
 }
 
+// Rate limit before any DB lookup, keyed on both IP and the claimed
+// username (STEP 11) — this endpoint is unauthenticated-by-session by
+// design (every request carries its own credentials), which otherwise
+// makes it the easiest brute-force/abuse surface in the app.
+$apiMax    = rate_limit_config('RATE_LIMIT_API_SEND_MAX', 30);
+$apiWindow = rate_limit_config('RATE_LIMIT_API_SEND_WINDOW_SECONDS', 300);
+$apiIpOk   = rate_limit_hit(rate_limit_bucket('api_send', 'ip', client_ip()), $apiMax, $apiWindow);
+$apiUserOk = rate_limit_hit(rate_limit_bucket('api_send', 'username', mb_strtolower($username)), $apiMax, $apiWindow);
+if (!$apiIpOk || !$apiUserOk) {
+    Logger::warning('api.url_send.rate_limited', ['username' => $username, 'ip' => client_ip()]);
+    header('Retry-After: ' . $apiWindow);
+    url_send_respond(false, null, -8, 429);
+}
+
 $st = db()->prepare('SELECT id, password, currentcredit AS credit, active, deleted FROM user_ WHERE username = ?');
 $st->execute([$username]);
 $u = $st->fetch();
@@ -58,7 +75,7 @@ if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password($password,
     url_send_respond(false, null, -2);
 }
 
-$m = db()->prepare('SELECT panel_access, is_admin FROM ellsms_meta WHERE user_id = ?');
+$m = db()->prepare('SELECT panel_access, is_admin, originator FROM ellsms_meta WHERE user_id = ?');
 $m->execute([$u['id']]);
 $meta = $m->fetch();
 if (!$meta || !$meta['panel_access']) {
@@ -70,12 +87,23 @@ if (!$dest) {
     url_send_respond(false, null, -4);
 }
 
-$user = ['id' => (int)$u['id'], 'credit' => (float)$u['credit'], 'role' => $meta['is_admin'] ? 'admin' : 'user'];
+$user = [
+    'id'         => (int)$u['id'],
+    'credit'     => (float)$u['credit'],
+    'role'       => $meta['is_admin'] ? 'admin' : 'user',
+    'originator' => $meta['originator'],
+];
 
 [$ok, $msg] = dispatch_message($user, $originator, [$dest], $content);
 
 if (!$ok) {
-    url_send_respond(false, null, str_contains($msg, 'اعتبار کافی نیست') ? -5 : -6);
+    $errorCode = -6;
+    if (str_contains($msg, 'اعتبار کافی نیست')) {
+        $errorCode = -5;
+    } elseif (str_contains($msg, 'این خط ارسال برای شما مجاز نیست')) {
+        $errorCode = -7;
+    }
+    url_send_respond(false, null, $errorCode);
 }
 
 $row = db()->prepare('SELECT id FROM outbound_message WHERE sender_user_id = ? AND destination = ? ORDER BY id DESC LIMIT 1');
