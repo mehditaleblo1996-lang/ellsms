@@ -175,6 +175,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Customer/organization profile (docs/customer-profile.md). Kept in its own branch rather than
+    // folded into the list above because these actions are scoped differently: the personal profile
+    // targets the USER being edited, while company/address/alerts target that user's ORGANIZATION.
+    if (in_array($do, ['profile_personal', 'profile_organization', 'profile_address', 'profile_notifications', 'profile_document_upload', 'profile_document_archive'], true)) {
+        $target = resolve_ellsms_managed_user($id);
+        if (!$target) {
+            flash('error', 'این حساب در محدوده‌ی مدیریت ELLSMS نیست یا یافت نشد.');
+        } else {
+            // The organization is resolved from the TARGET's own memberships, never from the request:
+            // accepting an organization_id here would let a crafted POST write another tenant's
+            // company profile through the admin page.
+            $targetOrganizationId = (int)($_POST['organization_id'] ?? 0);
+            $targetOrganizationId = $targetOrganizationId > 0 && can_access_organization($id, $targetOrganizationId)
+                ? $targetOrganizationId
+                : (int)(user_default_organization_id($id) ?? 0);
+
+            if ($do === 'profile_personal') {
+                $result = profile_user_save($id, [
+                    'father_name'          => $_POST['father_name'] ?? '',
+                    'national_code'        => $_POST['national_code'] ?? '',
+                    'birth_certificate_no' => $_POST['birth_certificate_no'] ?? '',
+                    'birth_date'           => profile_date_from_request('birth_date'),
+                    'gender'               => $_POST['gender'] ?? 'unspecified',
+                    'personal_address'     => $_POST['personal_address'] ?? '',
+                ], (int)$me['id']);
+                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'اطلاعات فردی ذخیره شد.' : profile_error_message((string)$result['reason']));
+            } elseif ($targetOrganizationId <= 0) {
+                flash('error', 'این کاربر عضو هیچ سازمانی نیست، بنابراین اطلاعات سازمانی قابل ثبت نیست.');
+            } elseif ($do === 'profile_organization') {
+                $result = profile_organization_save($targetOrganizationId, [
+                    'legal_name'                   => $_POST['legal_name'] ?? '',
+                    'company_type'                 => $_POST['company_type'] ?? 'unspecified',
+                    'registration_number'          => $_POST['registration_number'] ?? '',
+                    'national_id'                  => $_POST['national_id'] ?? '',
+                    'economic_code'                => $_POST['economic_code'] ?? '',
+                    'ceo_name'                     => $_POST['ceo_name'] ?? '',
+                    'ceo_father_name'              => $_POST['ceo_father_name'] ?? '',
+                    'ceo_national_code'            => $_POST['ceo_national_code'] ?? '',
+                    'ceo_birth_date'               => profile_date_from_request('ceo_birth_date'),
+                    'company_start_date'           => profile_date_from_request('company_start_date'),
+                    'company_expiry_date'          => profile_date_from_request('company_expiry_date'),
+                    'legal_representative_user_id' => $_POST['legal_representative_user_id'] ?? 0,
+                ], (int)$me['id']);
+                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'اطلاعات سازمان ذخیره شد.' : profile_error_message((string)$result['reason']));
+            } elseif ($do === 'profile_address') {
+                $result = profile_address_save($targetOrganizationId, $_POST, (int)$me['id']);
+                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'آدرس ذخیره شد.' : profile_error_message((string)$result['reason']));
+            } elseif ($do === 'profile_notifications') {
+                $result = profile_notifications_save($targetOrganizationId, $_POST, (int)$me['id']);
+                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'تنظیمات اعلان ذخیره شد.' : profile_error_message((string)$result['reason']));
+            } elseif ($do === 'profile_document_upload') {
+                $owner = ($_POST['owner'] ?? 'user') === 'organization' ? ['organization' => $targetOrganizationId] : ['user' => $id];
+                try {
+                    profile_document_store($owner, (string)($_POST['document_type'] ?? ''), 'document', (int)$me['id']);
+                    flash('success', 'مدرک بارگذاری شد.');
+                } catch (RuntimeException $e) {
+                    flash('error', $e->getMessage());
+                }
+            } elseif ($do === 'profile_document_archive') {
+                $owner = ($_POST['owner'] ?? 'user') === 'organization' ? ['organization' => $targetOrganizationId] : ['user' => $id];
+                $result = profile_document_archive($owner, (int)($_POST['document_id'] ?? 0), (int)$me['id']);
+                flash($result['ok'] ? 'info' : 'error', $result['ok'] ? 'مدرک بایگانی شد.' : 'مدرک یافت نشد.');
+            }
+        }
+        redirect('/users.php?edit=' . $id);
+    }
+
     redirect('/users.php' . (!empty($_POST['back']) ? '?edit=' . $id : ''));
 }
 
@@ -194,6 +261,19 @@ if (!empty($_GET['edit'])) {
         $kst = db()->prepare('SELECT * FROM ellsms_user_kyc WHERE user_id = ?');
         $kst->execute([$editUser['id']]);
         $editKyc = $kst->fetch() ?: ['father_name' => '', 'address' => '', 'id_card_photo' => null, 'second_doc_photo' => null];
+
+        // Customer/organization profile. The organization comes from the TARGET's memberships —
+        // this page never accepts one from the request (docs/customer-profile.md).
+        $editUserId = (int)$editUser['id'];
+        $editProfile = profile_user_get($editUserId);
+        $editUserDocuments = profile_documents_list(['user' => $editUserId]);
+        $editMemberships = user_organization_memberships($editUserId);
+        $editOrganizationId = (int)(user_default_organization_id($editUserId) ?? 0);
+        $editOrganization = $editOrganizationId > 0 ? organization_membership($editUserId, $editOrganizationId) : null;
+        $editOrgProfile = $editOrganizationId > 0 ? profile_organization_get($editOrganizationId) : null;
+        $editAddress = $editOrganizationId > 0 ? profile_address_get($editOrganizationId) : null;
+        $editNotifications = $editOrganizationId > 0 ? profile_notifications_get($editOrganizationId) : null;
+        $editOrgDocuments = $editOrganizationId > 0 ? profile_documents_list(['organization' => $editOrganizationId]) : [];
     }
 }
 
@@ -309,6 +389,162 @@ require __DIR__ . '/../app/views/header.php';
     </form>
   </div>
 </div>
+
+<div class="card">
+  <h2>اطلاعات فردی مشتری</h2>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_personal">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <div class="grid grid-2">
+      <label>نام پدر <input type="text" name="father_name" value="<?= e((string)$editProfile['father_name']) ?>" maxlength="120"></label>
+      <label>کد ملی <input type="text" name="national_code" class="ltr" value="<?= e((string)$editProfile['national_code']) ?>" maxlength="20"></label>
+      <label>شماره شناسنامه <input type="text" name="birth_certificate_no" class="ltr" value="<?= e((string)$editProfile['birth_certificate_no']) ?>" maxlength="30"></label>
+      <label>جنسیت
+        <select name="gender">
+          <?php foreach (PROFILE_GENDERS as $value => $label): ?>
+            <option value="<?= e($value) ?>"<?= ($editProfile['gender'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>تاریخ تولد <?= jalali_date_select('birth_date', $editProfile['birth_date'] ?? null) ?></label>
+      <label>آدرس شخصی <input type="text" name="personal_address" value="<?= e((string)($editProfile['personal_address'] ?? '')) ?>" maxlength="500"></label>
+    </div>
+    <button class="btn btn-primary btn-sm">ذخیره‌ی اطلاعات فردی</button>
+  </form>
+</div>
+
+<?php if ($editOrganizationId > 0): ?>
+<div class="card">
+  <h2>اطلاعات حقوقی سازمان — <?= e((string)($editOrganization['name'] ?? '')) ?></h2>
+  <?php if (count($editMemberships) > 1): ?>
+    <p class="hint">این کاربر عضو <?= to_persian_digits((string)count($editMemberships)) ?> سازمان است؛ اطلاعات زیر مربوط به سازمان پیش‌فرض اوست.</p>
+  <?php endif; ?>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_organization">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+    <div class="grid grid-2">
+      <label>نام حقوقی <input type="text" name="legal_name" value="<?= e((string)$editOrgProfile['legal_name']) ?>" maxlength="190"></label>
+      <label>نوع شرکت
+        <select name="company_type">
+          <?php foreach (PROFILE_COMPANY_TYPES as $value => $label): ?>
+            <option value="<?= e($value) ?>"<?= ($editOrgProfile['company_type'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>شماره ثبت <input type="text" name="registration_number" class="ltr" value="<?= e((string)$editOrgProfile['registration_number']) ?>" maxlength="40"></label>
+      <label>شناسه ملی شرکت <input type="text" name="national_id" class="ltr" value="<?= e((string)$editOrgProfile['national_id']) ?>" maxlength="20"></label>
+      <label>کد اقتصادی <input type="text" name="economic_code" class="ltr" value="<?= e((string)$editOrgProfile['economic_code']) ?>" maxlength="30"></label>
+      <label>مدیرعامل <input type="text" name="ceo_name" value="<?= e((string)$editOrgProfile['ceo_name']) ?>" maxlength="160"></label>
+      <label>نام پدر مدیرعامل <input type="text" name="ceo_father_name" value="<?= e((string)$editOrgProfile['ceo_father_name']) ?>" maxlength="120"></label>
+      <label>کد ملی مدیرعامل <input type="text" name="ceo_national_code" class="ltr" value="<?= e((string)$editOrgProfile['ceo_national_code']) ?>" maxlength="20"></label>
+      <label>تاریخ تولد مدیرعامل <?= jalali_date_select('ceo_birth_date', $editOrgProfile['ceo_birth_date'] ?? null) ?></label>
+      <label>تاریخ شروع فعالیت <?= jalali_date_select('company_start_date', $editOrgProfile['company_start_date'] ?? null) ?></label>
+      <label>تاریخ انقضا <?= jalali_date_select('company_expiry_date', $editOrgProfile['company_expiry_date'] ?? null, 10) ?></label>
+    </div>
+    <button class="btn btn-primary btn-sm">ذخیره‌ی اطلاعات سازمان</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>آدرس سازمان</h2>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_address">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+    <div class="grid grid-2">
+      <label>استان <input type="text" name="province" value="<?= e((string)$editAddress['province']) ?>" maxlength="60"></label>
+      <label>شهر <input type="text" name="city" value="<?= e((string)$editAddress['city']) ?>" maxlength="60"></label>
+      <label>خیابان <input type="text" name="street" value="<?= e((string)$editAddress['street']) ?>" maxlength="190"></label>
+      <label>کوچه <input type="text" name="alley" value="<?= e((string)$editAddress['alley']) ?>" maxlength="120"></label>
+      <label>پلاک <input type="text" name="building_no" class="ltr" value="<?= e((string)$editAddress['building_no']) ?>" maxlength="20"></label>
+      <label>واحد <input type="text" name="unit_no" class="ltr" value="<?= e((string)$editAddress['unit_no']) ?>" maxlength="20"></label>
+      <label>کد پستی <input type="text" name="postal_code" class="ltr" value="<?= e((string)$editAddress['postal_code']) ?>" maxlength="20"></label>
+      <label>توضیح آدرس <input type="text" name="address_text" value="<?= e((string)($editAddress['address_text'] ?? '')) ?>" maxlength="500"></label>
+    </div>
+    <button class="btn btn-primary btn-sm">ذخیره‌ی آدرس</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>تنظیمات اعتبار سازمان</h2>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_notifications">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+    <div class="grid grid-2">
+      <label><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $editNotifications['low_credit_alert_enabled'] ? ' checked' : '' ?>> هشدار اعتبار کم</label>
+      <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" value="<?= e((string)$editNotifications['low_credit_threshold']) ?>"></label>
+      <label><input type="checkbox" name="email_alert_enabled" value="1"<?= $editNotifications['email_alert_enabled'] ? ' checked' : '' ?>> اعلان ایمیلی</label>
+      <label><input type="checkbox" name="sms_alert_enabled" value="1"<?= $editNotifications['sms_alert_enabled'] ? ' checked' : '' ?>> اعلان پیامکی</label>
+      <label>ایمیل اعلان <input type="text" name="alert_email" class="ltr" value="<?= e((string)$editNotifications['alert_email']) ?>" maxlength="190"></label>
+      <label>موبایل اعلان <input type="text" name="alert_mobile" class="ltr" value="<?= e((string)$editNotifications['alert_mobile']) ?>" maxlength="20"></label>
+    </div>
+    <button class="btn btn-primary btn-sm">ذخیره‌ی تنظیمات</button>
+  </form>
+</div>
+<?php endif; ?>
+
+<?php
+$adminDocumentSections = [['owner' => 'user', 'title' => 'مدارک فردی', 'types' => PROFILE_USER_DOCUMENT_TYPES, 'documents' => $editUserDocuments]];
+if ($editOrganizationId > 0) {
+    $adminDocumentSections[] = ['owner' => 'organization', 'title' => 'مدارک سازمان', 'types' => PROFILE_ORGANIZATION_DOCUMENT_TYPES, 'documents' => $editOrgDocuments];
+}
+?>
+<?php foreach ($adminDocumentSections as $section): ?>
+<div class="card">
+  <h2><?= e($section['title']) ?></h2>
+  <div class="table-wrap">
+  <table>
+    <tr><th>نوع مدرک</th><th>وضعیت</th><th>تاریخ</th><th></th></tr>
+    <?php foreach ($section['documents'] as $document): ?>
+      <tr>
+        <td><?= e(profile_document_type_label((string)$document['document_type'])) ?></td>
+        <td><span class="badge badge-<?= $document['status'] === 'active' ? 'ok' : 'off' ?>"><?= $document['status'] === 'active' ? 'فعال' : 'بایگانی' ?></span></td>
+        <td><?= e(jdate((string)$document['created_at'])) ?></td>
+        <td>
+          <div class="toolbar" style="margin:0">
+            <a class="btn btn-sm" href="/profile-document.php?id=<?= (int)$document['id'] ?>" target="_blank" rel="noopener">مشاهده</a>
+            <?php if ($document['status'] === 'active'): ?>
+              <form method="post" style="margin:0">
+                <?= csrf_field() ?>
+                <input type="hidden" name="do" value="profile_document_archive">
+                <input type="hidden" name="id" value="<?= $editUserId ?>">
+                <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+                <input type="hidden" name="owner" value="<?= e($section['owner']) ?>">
+                <input type="hidden" name="document_id" value="<?= (int)$document['id'] ?>">
+                <button class="btn btn-sm">بایگانی</button>
+              </form>
+            <?php endif; ?>
+          </div>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$section['documents']): ?><tr><td colspan="4" class="empty">مدرکی ثبت نشده است.</td></tr><?php endif; ?>
+  </table>
+  </div>
+  <form method="post" enctype="multipart/form-data" class="toolbar" style="margin-top:10px">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_document_upload">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+    <input type="hidden" name="owner" value="<?= e($section['owner']) ?>">
+    <label>نوع مدرک
+      <select name="document_type">
+        <?php foreach ($section['types'] as $value => $label): ?>
+          <option value="<?= e($value) ?>"><?= e($label) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <label>فایل <input type="file" name="document" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label>
+    <button class="btn btn-primary btn-sm">بارگذاری</button>
+  </form>
+</div>
+<?php endforeach; ?>
 
 <div class="card">
   <h2>اطلاعات هویتی (KYC)</h2>

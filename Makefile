@@ -33,7 +33,8 @@
         webhook-prune-dry-run webhook-prune webhook-worker-once idempotency-prune-dry-run idempotency-prune \
         billing-backfill billing-backfill-dry-run billing-plans subscription-integrity-check \
         subscription-lifecycle subscription-lifecycle-dry-run usage-status usage-reconcile usage-reconcile-apply \
-        sms-pricing-integrity-check sms-pricing-status sms-pricing-status-json sms-price-simulate
+        sms-pricing-integrity-check sms-pricing-status sms-pricing-status-json sms-price-simulate \
+        profile-backfill profile-backfill-dry-run profile-integrity-check profile-status profile-status-json
 
 help:
 	@echo "ELLSMS developer commands"
@@ -159,6 +160,17 @@ help:
 	@echo "                            read-only: what one hypothetical message would cost and WHY --"
 	@echo "                            operator, provider, route, pricing rule id, unit price, total."
 	@echo "                            Sends nothing, reserves nothing, records nothing."
+	@echo ""
+	@echo "  make profile-backfill-dry-run  read-only: what the legacy ellsms_user_kyc -> profile"
+	@echo "                            migration would move (personal fields + identity documents)"
+	@echo "  make profile-backfill     MUTATION (additive/idempotent): moves them. COPIES document"
+	@echo "                            files -- storage/kyc is never modified, so legacy links keep working."
+	@echo "  make profile-integrity-check  read-only: document ownership/checksums/missing files,"
+	@echo "                            orphan profiles, invalid national/postal codes, legacy dependency."
+	@echo "                            Exits non-zero on critical findings; never auto-fixes identity data."
+	@echo "  make profile-status [ORG=<id>] [USER=<id>]  read-only: profile completeness, missing fields"
+	@echo "                            and document status. Never prints national codes or addresses."
+	@echo "  make profile-status-json  same, machine-readable"
 
 ## ---------- Lint ----------
 
@@ -720,3 +732,29 @@ sms-price-simulate:
 	docker compose run --rm worker php cron/sms-price-simulate.php --phone=$(PHONE) \
 	  $(if $(SENDER),--sender=$(SENDER)) $(if $(TYPE),--type=$(TYPE)) \
 	  $(if $(SEGMENTS),--segments=$(SEGMENTS)) $(if $(CONTENT),--content=$(CONTENT)) $(if $(AT),--at=$(AT))
+
+## ---------- Customer / organization profile (see docs/customer-profile.md) ----------
+
+# Read-only. Reports what the legacy ellsms_user_kyc -> profile migration would move.
+profile-backfill-dry-run:
+	docker compose run --rm worker php cron/profile-backfill.php
+
+# MUTATION (additive/idempotent). Moves legacy personal fields into ellsms_user_profiles and COPIES
+# legacy identity documents into the new document store. Never modifies or deletes anything under
+# storage/kyc, so public/kyc-photo.php keeps serving existing links. Safe to re-run.
+profile-backfill:
+	docker compose run --rm worker php cron/profile-backfill.php --apply
+
+# Read-only. Document ownership/checksums/missing files, orphan profiles, invalid identifiers,
+# and how many users still depend on the legacy read-through. Never auto-fixes identity or legal data.
+profile-integrity-check:
+	docker compose run --rm worker php cron/profile-integrity-check.php
+
+# Read-only support/ops view. Deliberately prints presence, never the value, of sensitive fields.
+profile-status:
+	docker compose run --rm worker php cron/profile-status.php \
+	  $(if $(ORG),--org=$(ORG)) $(if $(USER),--user=$(USER))
+
+profile-status-json:
+	docker compose run --rm worker php cron/profile-status.php --json \
+	  $(if $(ORG),--org=$(ORG)) $(if $(USER),--user=$(USER))

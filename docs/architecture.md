@@ -354,3 +354,26 @@ choke points. Cost preview and all reading stay available. The feature lives ent
 so the public API and the workers are structurally unaffected by it.
 
 See `docs/admin-impersonation.md`.
+
+## Customer / organization profile
+
+`app/Profile.php` owns the extended profile model, built on one rule: **personal identity belongs to
+the user, company and legal data belongs to the organization.** Company data keyed by `user_id` would
+make a second member of an organization unable to see the same company profile, and a user in two
+organizations unable to see two different ones — so every company read/write takes an
+`organization_id` and every personal one takes a `user_id`.
+
+Five ELLSMS-owned tables: `ellsms_user_profiles`, `ellsms_organization_profiles`,
+`ellsms_organization_addresses`, `ellsms_organization_notification_preferences`, and
+`ellsms_profile_documents`. The backend platform stays authoritative for identity (username, name,
+email, mobile, balance); none of it is copied and `app/Profile.php` contains no `user_` SQL at all.
+
+Documents live outside the web root with opaque random names, are validated by real content
+inspection, carry a database `CHECK` guaranteeing exactly one owner, and are reachable only through
+`public/profile-document.php`, which authorizes every read and 404s on refusal. Replacement archives
+rather than overwrites. Uploaded FILES are not part of the database backup — see TD-071.
+
+Editing reuses `settings.manage` rather than minting new permissions. Support impersonation may read
+a profile but never change one.
+
+See `docs/customer-profile.md`.

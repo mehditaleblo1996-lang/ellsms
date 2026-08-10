@@ -400,7 +400,24 @@ compares whole rows either side of a real backup → `DROP DATABASE` → restore
 `SubscriptionLegacySchemaUpgradeTest` additionally proves the upgrade path from a genuinely
 pre-TD-070 database. Details: `docs/td-070-restore-safety-closure.md`.
 
-## 25. Command reference
+## 25. Uploaded files are NOT in the database backup (TD-071)
+
+`make backup` is a `mysqldump`. It captures every ELLSMS table — including profile tables and
+document *metadata* — and nothing on the filesystem.
+
+**Not covered:** `storage/profile-documents/` (customer/organization profile documents) and
+`storage/kyc/` (legacy identity photos).
+
+Restoring a database without the matching filesystem leaves rows whose files are missing. That state
+is detectable rather than silent: downloads return 404, and `make profile-integrity-check` reports
+every affected document as CRITICAL, comparing each recorded sha256 against the file on disk.
+
+**Backing up `storage/` is an operational prerequisite** performed alongside the database backup — by
+the same filesystem/volume snapshot that protects the rest of the deployment. It is documented here
+rather than claimed as application behaviour because the application does not do it. See
+`docs/customer-profile.md` §9 and TD-071 in `docs/technical-debt.md`.
+
+## 26. Command reference
 
 See `make help` for the authoritative, always-current list. Summary: `backup`, `backup-verify`,
 `backup-prune-dry-run`/`backup-prune`, `backup-status`, `restore`, `restore-test`, `dr-drill`,

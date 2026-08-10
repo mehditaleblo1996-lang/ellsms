@@ -96,6 +96,13 @@ function impersonation_blocked_actions(): array {
         // Destructive data operations — recoverable only from a backup, so not a support action.
         'contacts.delete'      => 'حذف مخاطب در حالت پشتیبانی غیرفعال است.',
         'blacklist.delete'     => 'حذف از لیست سیاه در حالت پشتیبانی غیرفعال است.',
+
+        // Profile and identity documents (docs/customer-profile.md §Impersonation). VIEWING is the
+        // point of a support session and stays available; changing a customer's identity or legal
+        // record on their behalf is not something support should be able to do at all.
+        'profile.personal'     => 'ویرایش اطلاعات فردی در حالت پشتیبانی غیرفعال است.',
+        'profile.organization' => 'ویرایش اطلاعات سازمان در حالت پشتیبانی غیرفعال است.',
+        'profile.documents'    => 'بارگذاری یا حذف مدارک در حالت پشتیبانی غیرفعال است.',
     ];
 }
 

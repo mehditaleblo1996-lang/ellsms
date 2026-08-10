@@ -58,6 +58,10 @@ require_once __DIR__ . '/Sms/Pricing.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';
+// Customer/organization profile — personal profile, company legal profile, address, notification
+// preferences and private documents (docs/customer-profile.md). Loaded last: it composes tenant.php
+// (organization membership), rbac.php (settings.manage) and audit(), and owns none of them.
+require_once __DIR__ . '/Profile.php';
 
 /* ---------- Environment ---------- */
 function env(string $key, ?string $default = null): ?string {

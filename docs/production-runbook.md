@@ -262,6 +262,30 @@ ORDER BY id DESC LIMIT 200;
 
 Full reference: `docs/admin-impersonation.md`.
 
+## Enabling the customer/organization profile
+
+The migration is schema-only and safe to apply at any time; moving the legacy `ellsms_user_kyc` data
+is a separate, explicit, idempotent step:
+
+```bash
+make backup && make backup-status
+make db-migrations-apply                  # creates the five profile tables, changes no existing row
+make profile-backfill-dry-run             # review what would move
+make profile-backfill                     # move personal fields, COPY document files
+make profile-integrity-check              # expect zero CRITICAL findings
+```
+
+`make profile-backfill` never modifies or deletes anything under `storage/kyc` — document files are
+COPIED, so `public/kyc-photo.php` keeps serving existing links and the step is reversible by deleting
+the new rows.
+
+**Operational prerequisite:** uploaded document files are NOT in the database backup. Ensure
+`storage/` is covered by the same filesystem/volume backup that protects the rest of the deployment —
+see `docs/backup-and-disaster-recovery.md` §25 and TD-071.
+
+For support: `make profile-status ORG=<id>` shows completeness and what is missing, and deliberately
+never prints national codes, addresses or document contents.
+
 ## 9. Blue/green & rolling deployment compatibility (honest assessment — documentation only)
 
 This project implements neither blue/green nor rolling deployment infrastructure (explicitly out

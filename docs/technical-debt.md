@@ -388,6 +388,33 @@ one pricing engine used by both the Cost Preview and every send path. See `docs/
   financial history, so pruning it needs the same care as the wallet ledger — out of scope here, and
   deliberately not wired into `cron/db-cleanup.php`, which never touches financial rows.
 
+## Customer / organization profile (2026-08-12)
+
+Personal profile, company legal profile, address, low-credit alert settings and private profile
+documents. See `docs/customer-profile.md`.
+
+**Residual debt disclosed by this work, not fixed by it:**
+
+- **TD-071 — uploaded document FILES are not covered by Phase 11 backups.** `make backup` is a
+  `mysqldump`; it captures profile tables and document METADATA but not the files under
+  `storage/profile-documents/` or the pre-existing `storage/kyc/`. Restoring a database without the
+  corresponding filesystem produces rows whose files are gone — downloads 404 and
+  `make profile-integrity-check` reports each as CRITICAL. This is stated plainly in
+  `docs/customer-profile.md` §9 and `docs/backup-and-disaster-recovery.md` rather than claimed as
+  covered, and backing up `storage/` is documented as an operational prerequisite. Closing it means
+  extending `cron/backup.php` to archive+checksum the storage tree alongside the dump and teaching
+  `cron/restore.php` to unpack it — a self-contained change with its own DR test, deliberately not
+  bundled into a profile feature.
+- **The low-credit alert is stored but never sent.** The preference is owned and surfaced; no job
+  reads the threshold. A sender needs its own dedup/idempotency design (one alert per organization
+  per period, not one per worker tick), which is a feature, not a detail.
+- **`ellsms_user_kyc` is superseded but not dropped.** `father_name`/`address` and the two photo
+  slots are migrated by `make profile-backfill`, and a documented read-only fallback covers installs
+  that have not run it. The columns stay until the integrity check reports zero users depending on
+  the fallback; dropping them is a later, separate migration.
+- **No province/city catalog and no national-code checksum.** Both are validated free text /
+  shape-only. The product does not verify identity and does not claim to.
+
 ## How to use this register
 
 Each phase above is sized to become one `/make-plan` → `/do` cycle when the team is ready for it —

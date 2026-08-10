@@ -80,6 +80,12 @@ the result of an explicit entry.
 | Money & plan | `billing.subscription`, `billing.payment`, `wallet.adjust` |
 | Organization | `org.members`, `org.transfer_owner`, `org.delete` |
 | Destructive data | `contacts.delete`, `blacklist.delete` |
+| Profile & documents | `profile.personal`, `profile.organization`, `profile.documents` |
+
+Profile and document READS stay available — a support session exists to look at the customer's
+account, and that includes any document the target could normally see. It does **not** include the
+real actor's platform-admin document reach: while impersonating, an administrator sees exactly what
+the customer sees (`docs/customer-profile.md` §6).
 
 **Explicitly still allowed**, because they are the point of a support session: reading everything,
 navigating, **cost preview** (read-only), viewing campaigns/reports/billing/usage, adding and

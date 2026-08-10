@@ -216,6 +216,23 @@ asserts a member-level target is denied `members.manage`, `api_keys.manage`, `se
 `billing.manage` and `wallet.adjust` while a platform admin is behind the session — and still
 *granted* `campaigns.manage`, so the isolation is role fidelity rather than blanket denial.
 
+## 12c. Customer / organization profile
+
+`docs/customer-profile.md` adds a company/legal profile, address, alert settings and documents. It
+introduces **no new permissions**, deliberately.
+
+| Action | Gate |
+|---|---|
+| Edit own personal profile / personal documents | the user themselves — no permission involved |
+| View organization profile, address, alerts, documents | active membership |
+| Edit organization profile, address, alerts, documents | `settings.manage` (owner, admin — not member) |
+| Edit any customer's profile | platform admin, through `users.php` |
+
+`settings.manage` was chosen over a new `profile.manage` because it is already the
+organization-configuration permission, already held by exactly the roles that should hold this, and
+already in the role matrix — a new permission would have been granted to the same roles and added a
+second thing to keep in sync. The role matrix below is therefore unchanged.
+
 ## 13. Ticket / KYC policy — unchanged, explicitly
 
 Neither is touched by RBAC. Tickets remain strictly user-private (Phase 6's own explicit policy,
