@@ -276,6 +276,10 @@ repo:
   here — see `docs/production-hardening.md`)
 - HMAC secrets (`BACKEND_SERVICE_SECRET`) — same rotation procedure as documented in
   `docs/production-hardening.md` §2
+- **`SMS_GATEWAY_MASTER_KEY`** — the root key for the SMS gateway secret vault
+  (`docs/sms-gateway-connectors.md`). Back it up separately, and never alongside the database: the
+  ciphertexts it protects are *in* the database, so storing the key with them would defeat the
+  encryption entirely. See §26 for what happens on a restore without it.
 
 ## 17. Offsite backup guidance (documentation only — no vendor integration)
 
@@ -417,7 +421,31 @@ the same filesystem/volume snapshot that protects the rest of the deployment. It
 rather than claimed as application behaviour because the application does not do it. See
 `docs/customer-profile.md` §9 and TD-071 in `docs/technical-debt.md`.
 
-## 26. Command reference
+## 26. SMS gateway secrets after a restore (2026-08-11)
+
+`ellsms_sms_gateway_secrets` holds AES-256-GCM ciphertexts. The key is derived from
+`SMS_GATEWAY_MASTER_KEY`, which is **never stored in the database** and therefore **never in a
+backup**. That is deliberate: a key stored with its own ciphertext is not a key.
+
+Restoring the database onto a host without that exact key leaves every gateway credential
+undecryptable. The failure is loud rather than silent — each ciphertext carries a short fingerprint of
+the key that produced it, so:
+
+- `gateway_secrets_load()` **skips** a mismatched row and logs `gateway.secret.key_mismatch` rather
+  than returning garbage;
+- `make sms-gateway-integrity-check` reports it as **CRITICAL**, naming it as a restore/rotation
+  mismatch;
+- a gateway whose credential cannot be resolved fails to compile and therefore refuses to send,
+  rather than sending unauthenticated requests.
+
+**Recovery** is to restore the key, not the data: put the original `SMS_GATEWAY_MASTER_KEY` back and
+restart. If the key is genuinely lost, the credentials must be re-entered from the provider — they
+cannot be recovered from the backup, by design.
+
+A gateway that references its credentials through the environment-secret allowlist (as the migrated
+`legacy_rest` gateway does) is unaffected: nothing about it was ever encrypted into the database.
+
+## 27. Command reference
 
 See `make help` for the authoritative, always-current list. Summary: `backup`, `backup-verify`,
 `backup-prune-dry-run`/`backup-prune`, `backup-status`, `restore`, `restore-test`, `dr-drill`,

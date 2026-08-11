@@ -43,6 +43,7 @@ $adminNav = [
     'slides'            => ['/slides.php',             'اسلایدر صفحه‌ی اصلی', '🖼'],
     'pricing'           => ['/pricing.php',            'بسته‌های قیمتی',  '🏷'],
     'sms_pricing'       => ['/sms-pricing.php',        'تعرفه‌ی پیامک',   '💱'],
+    'sms_gateways'      => ['/sms-gateways.php',       'درگاه‌های پیامک', '🔌'],
     'guide_admin'       => ['/guide-admin.php',        'راهنمای استفاده', '📘'],
     'billing_admin'     => ['/billing-admin.php',       'مدیریت اشتراک‌ها', '📦'],
     'settings'          => ['/settings.php',            'تنظیمات',        '⚙'],

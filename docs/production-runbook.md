@@ -221,6 +221,43 @@ make sms-pricing-integrity-check           # 9. with the fallback off, gaps beco
 `make release-preflight` runs `sms-pricing-integrity-check` from here on, so a pricing
 misconfiguration blocks a release rather than surfacing as refused sends in production.
 
+## Enabling the SMS gateway connector transport
+
+This is the one change in the connector feature that can stop a production system from sending, so it
+is off by default and is switched on deliberately, after the request has been proven identical.
+
+```bash
+make backup && make backup-status              # 1. back up first
+make db-migrations-apply                       # 2. schema only -- sends are unaffected
+make sms-gateway-backfill-dry-run              # 3. review what the legacy gateway would look like
+make sms-gateway-backfill                      # 4. register it (copies NO credential into the DB)
+make sms-gateway-integrity-check               # 5. expect zero CRITICAL findings
+make sms-gateway-simulate TO=989121234567 SENDER=<line> COMPARE=1
+                                               # 6. MUST print IDENTICAL -- this is the gate
+# 7. assign the gateway to routes in Platform Admin -> درگاه‌های پیامک
+# 8. set SMS_GATEWAY_TRANSPORT=1 and restart the workers
+make sms-gateway-status                        # 9. confirm the transport reports ENABLED
+```
+
+Steps 1–7 change nothing about how messages are sent. Only step 8 does.
+
+Set `SMS_GATEWAY_MASTER_KEY` before storing any gateway credential in the database (step 7). It is
+**not** part of the database backup — see `docs/backup-and-disaster-recovery.md`.
+
+**Rollback:** set `SMS_GATEWAY_TRANSPORT=0` and restart the workers. Every send returns to the legacy
+REST client immediately; no configuration has to be undone and no data is touched.
+
+A route with no gateway keeps using the legacy client and logs
+`gateway.dispatch.falling_back_to_legacy`. `make sms-gateway-integrity-check` reports how many routes
+are still in that state, so a half-finished rollout is visible rather than assumed.
+
+Schedule delivery-status polling only if a gateway has a status connector configured (the migrated
+`legacy_rest` gateway has none — the existing integration has no delivery API):
+
+```cron
+*/5 * * * * cd /path/to/ellsms && make sms-status-poll >> /var/log/ellsms-status-poll.log 2>&1
+```
+
 Then schedule the lifecycle job — trials, grace windows, period rollovers, scheduled downgrades and
 cancellations, and stale-reservation release all depend on it:
 

@@ -325,8 +325,9 @@ Load-bearing properties:
 - **Fails closed.** An unpriceable recipient refuses the send rather than being charged a guessed
   rate — with one explicit, admin-visible, admin-disableable legacy fallback (1 credit/segment) that
   exists so applying the migration to an existing install cannot cause an outage.
-- **Configuring a provider changes no transport.** Gateway credentials remain entirely in
-  `app/Backend/ApiClient.php` + `BACKEND_*`; this catalog is pricing metadata only.
+- **Configuring a provider changes no transport.** This catalog is pricing metadata only; where a
+  message physically goes is decided by the gateway connector on the route (below), and provider
+  credentials never live in the pricing tables.
 - **Accepted prices are immutable.** Each acceptance writes `ellsms_sms_price_snapshots` rows (one
   per route/operator/rate group); settlement updates only the settled columns. Historical cost
   reporting reads snapshots and never recomputes from the current tariff tables, so an admin rate
@@ -334,6 +335,36 @@ Load-bearing properties:
   re-price.
 
 See `docs/sms-pricing.md`.
+
+## SMS gateway connectors
+
+`app/Sms/Gateway*.php` turns "which provider API do we call, and how" from code into configuration.
+An administrator defines an endpoint, its parameters, an authentication scheme and a mapping for
+reading the answer; `ellsms_sms_routes.gateway_id` says which gateway carries a route, so pricing and
+transport resolve from the same route decision.
+
+Two properties define the design:
+
+- **Configuration is data, never code.** No expression language, no scripting hook, no `eval()`, no
+  shell. A parameter value is one of seven bounded kinds; a response path is a restricted dot-path;
+  a success rule has three operators; an error mapping may only select from the finite `BackendError`
+  set. `make sms-gateway-integrity-check` tokenises the engine files and fails if a dynamic-execution
+  construct ever appears.
+- **Everything expensive happens once per `(gateway, config_version)` per process.** Reading five
+  tables, decrypting secrets, validating placeholders, compiling mappings — all at compile time. The
+  per-message path picks precompiled parameters out of memory and writes a socket. The performance
+  test asserts 1000 sends produce exactly one compile and one decrypt.
+
+Secrets live in their own AES-256-GCM vault keyed from `SMS_GATEWAY_MASTER_KEY`, which is never
+stored in the database and therefore never in a backup. Delivery status is polled, not webhooked, and
+terminal states are never downgraded.
+
+**The legacy REST client remains the default.** `SMS_GATEWAY_TRANSPORT=0` (the default) keeps every
+send on it; the migrated `legacy_rest` gateway reproduces its request byte for byte, which is
+asserted against a real socket in `tests/Integration/GatewayParityTest.php`. There is deliberately no
+smart routing, cheapest-gateway selection, health-based switching, or failover.
+
+See `docs/sms-gateway-connectors.md`.
 
 ## Support impersonation
 

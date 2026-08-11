@@ -34,6 +34,8 @@
         billing-backfill billing-backfill-dry-run billing-plans subscription-integrity-check \
         subscription-lifecycle subscription-lifecycle-dry-run usage-status usage-reconcile usage-reconcile-apply \
         sms-pricing-integrity-check sms-pricing-status sms-pricing-status-json sms-price-simulate \
+        sms-gateway-backfill-dry-run sms-gateway-backfill sms-gateway-integrity-check \
+        sms-gateway-status sms-gateway-status-json sms-gateway-simulate sms-status-poll \
         profile-backfill profile-backfill-dry-run profile-integrity-check profile-status profile-status-json
 
 help:
@@ -160,6 +162,25 @@ help:
 	@echo "                            read-only: what one hypothetical message would cost and WHY --"
 	@echo "                            operator, provider, route, pricing rule id, unit price, total."
 	@echo "                            Sends nothing, reserves nothing, records nothing."
+	@echo ""
+	@echo "  make sms-gateway-backfill-dry-run  read-only: what registering the CURRENT REST integration"
+	@echo "                            as a configured gateway would create -- see docs/sms-gateway-connectors.md"
+	@echo "  make sms-gateway-backfill  MUTATION: registers it. Idempotent; copies no credential into the"
+	@echo "                            database (HMAC keys stay in the environment). Routes nothing yet."
+	@echo "  make sms-gateway-integrity-check  read-only: gateways that do not compile, secrets encrypted"
+	@echo "                            with a different master key, endpoints production would refuse,"
+	@echo "                            routes pointing at a missing gateway. Exits non-zero on critical"
+	@echo "                            findings and NEVER auto-fixes a connector."
+	@echo "  make sms-gateway-status [GATEWAY=<code>]  read-only: the gateway configuration in effect,"
+	@echo "                            resolved through the engine itself. Never prints a secret VALUE."
+	@echo "  make sms-gateway-status-json  same, machine-readable"
+	@echo "  make sms-gateway-simulate TO=<msisdn> [GATEWAY=|SENDER=|TEXT=|COMPARE=1]"
+	@echo "                            read-only: the EXACT request a gateway would send, built by the real"
+	@echo "                            builder and NOT transmitted. COMPARE=1 also prints the legacy"
+	@echo "                            client's request and exits non-zero if the two bodies differ --"
+	@echo "                            run this before enabling SMS_GATEWAY_TRANSPORT."
+	@echo "  make sms-status-poll      one delivery-status polling pass against configured status"
+	@echo "                            connectors. Safe to run concurrently; each row is claimed atomically."
 	@echo ""
 	@echo "  make profile-backfill-dry-run  read-only: what the legacy ellsms_user_kyc -> profile"
 	@echo "                            migration would move (personal fields + identity documents)"
@@ -732,6 +753,52 @@ sms-price-simulate:
 	docker compose run --rm worker php cron/sms-price-simulate.php --phone=$(PHONE) \
 	  $(if $(SENDER),--sender=$(SENDER)) $(if $(TYPE),--type=$(TYPE)) \
 	  $(if $(SEGMENTS),--segments=$(SEGMENTS)) $(if $(CONTENT),--content=$(CONTENT)) $(if $(AT),--at=$(AT))
+
+## ---------- SMS gateway connectors (see docs/sms-gateway-connectors.md) ----------
+
+# Read-only. What registering the CURRENT REST integration as a configured gateway would create.
+sms-gateway-backfill-dry-run:
+	docker compose run --rm worker php cron/sms-gateway-backfill.php
+
+# MUTATION, idempotent. Registers the existing integration as the `legacy_rest` gateway using the
+# values transcribed from app/Backend/ApiClient.php -- it invents nothing. Copies NO credential into
+# the database: the HMAC keys stay in the environment and are referenced by name. Routes nothing yet;
+# enabling the new transport is a separate, explicit operator decision.
+sms-gateway-backfill:
+	docker compose run --rm worker php cron/sms-gateway-backfill.php --apply
+
+# Read-only. Gateways that do not compile, secrets encrypted under a different master key (the
+# signature of a restore onto the wrong host), endpoints production would refuse, routes pointing at
+# a missing gateway, messages stuck without a delivery state. Exits non-zero on CRITICAL findings.
+# NEVER auto-fixes: a tool that silently "corrected" a connector would change where customer messages
+# are sent.
+sms-gateway-integrity-check:
+	docker compose run --rm worker php cron/sms-gateway-integrity-check.php
+
+# Read-only. The gateway configuration in effect, resolved through gateway_compiled() itself rather
+# than a hand-maintained summary. Secret VALUES are never printed -- only which keys exist.
+sms-gateway-status:
+	docker compose run --rm worker php cron/sms-gateway-status.php $(if $(GATEWAY),--gateway=$(GATEWAY))
+
+sms-gateway-status-json:
+	docker compose run --rm worker php cron/sms-gateway-status.php --json $(if $(GATEWAY),--gateway=$(GATEWAY))
+
+# Read-only. Builds the EXACT request a gateway would send, with the same builder the send path uses,
+# and does not transmit it. COMPARE=1 also prints the legacy client's request for the same input and
+# exits non-zero if the two bodies differ -- this is the check to run before setting
+# SMS_GATEWAY_TRANSPORT=1.
+#   make sms-gateway-simulate TO=989121234567 SENDER=5000435800 COMPARE=1
+sms-gateway-simulate:
+	@if [ -z "$(TO)" ]; then echo "TO=<msisdn> is required, e.g. make sms-gateway-simulate TO=989121234567"; exit 2; fi
+	docker compose run --rm worker php cron/sms-gateway-simulate.php --to=$(TO) \
+	  $(if $(GATEWAY),--gateway=$(GATEWAY)) $(if $(SENDER),--sender=$(SENDER)) \
+	  $(if $(TEXT),--text=$(TEXT)) $(if $(COMPARE),--compare)
+
+# One bounded delivery-status polling pass. Schedule this like any other worker command; it is safe
+# to run concurrently with itself and with the send worker (each row is claimed with a
+# compare-and-swap).
+sms-status-poll:
+	docker compose run --rm worker php cron/sms-status-poll.php
 
 ## ---------- Customer / organization profile (see docs/customer-profile.md) ----------
 

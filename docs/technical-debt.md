@@ -415,6 +415,50 @@ documents. See `docs/customer-profile.md`.
 - **No province/city catalog and no national-code checksum.** Both are validated free text /
   shape-only. The product does not verify identity and does not claim to.
 
+### SMS gateway connectors (2026-08-11)
+
+- **TD-072 — gateway endpoint DNS rebinding. CLOSED 2026-08-11.** `gateway_endpoint_allowed()` now
+  returns the address it validated and `gateway_execute()` pins the connection to it via
+  `CURLOPT_RESOLVE`, so there is no second resolution to disagree with the first. TLS is unaffected:
+  the pin is a name-to-address override, not a URL rewrite, so certificate verification still runs
+  against the configured hostname. Coverage: `tests/Integration/GatewayEndpointSafetyTest.php` — 14
+  tests covering loopback/link-local/metadata/RFC1918/IPv6/IPv4-mapped destinations, non-HTTP schemes,
+  a hostname resolving to a prohibited address, unresolvable hosts, refusal at request time without
+  contacting the endpoint, redirect non-following, exact-hostname allowlist matching, and a
+  demonstration that this curl build honours the pin. Residual limitation is documented in
+  `docs/sms-gateway-connectors.md` §Endpoint safety: the pin is only as good as the resolution that
+  produced it, and a name that legitimately resolves to an attacker-controlled *public* address is
+  correctly allowed, because that is not rebinding.
+- **`SMS_GATEWAY_MASTER_KEY` is an operational prerequisite, not application behaviour.** The vault
+  key is deliberately outside the database and therefore outside `make backup`. Restoring without it
+  is detected and reported as CRITICAL rather than silently degrading, but the *carrying* of the key
+  between hosts is the operator's job. See `docs/backup-and-disaster-recovery.md` §26.
+- **Direct-send provider ids are now persisted (2026-08-11).** `ellsms_message_attempts` gained an
+  `accepted` status and the transport-identity columns, so a direct send, schedule or auto-reply can
+  be delivery-tracked exactly like a bulk item. `SMS_GATEWAY_DNS_CACHE_SECONDS` (default 30) bounds a
+  legitimate endpoint address change's propagation, the same shape as the config-version window.
+- **The legacy gateway has no delivery-status connector, because the existing integration has no
+  delivery API.** Delivery states for messages sent through it stay at whatever the send established.
+  The polling worker, the mapping, and the monotonicity guarantee all exist and are tested; they
+  simply have nothing to poll until a provider with a status API is configured.
+- **~~Batch mode uses the first destination's operator for parameter overrides.~~ FIXED 2026-08-11.**
+  The operator is now resolved per destination and the batch is partitioned by effective
+  configuration, so each recipient gets its own overrides. Grouping is by parameter-set signature
+  rather than operator identity, so a gateway with no operator overrides still sends one request for a
+  mixed batch and the legacy byte-parity is unaffected. Coverage:
+  `tests/Integration/GatewayOperatorPartitionTest.php`.
+- **Delivery status is polled, not received.** A provider webhook would be lower-latency, but needs a
+  public authenticated endpoint per gateway plus replay/ordering/spoofing handling. A receiver can be
+  added later without redesign: it would write through the same `gateway_status_record()` and inherit
+  the terminal-state guarantee.
+- **`SubscriptionEffectiveSlotConcurrencyTest` deadlocks intermittently** (roughly 1 run in 3 under
+  load) with `SQLSTATE[40001] ... Deadlock found`. Pre-existing, unrelated to the connector work, and
+  surfaced by running the full suite repeatedly against one container. The fix is a bounded deadlock
+  retry in `subscription_transition()`; noted here rather than fixed inside an unrelated feature.
+- **`DatabaseOperationalScriptsTest` requires an empty migration ledger.** `ellsms_schema_migrations`
+  is not transaction-isolated, so a second full-suite run against the same test container fails that
+  test until the ledger is cleared. A test-isolation quirk, not a product defect.
+
 ## How to use this register
 
 Each phase above is sized to become one `/make-plan` → `/do` cycle when the team is ready for it —

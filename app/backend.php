@@ -91,7 +91,95 @@ function dispatch_direct_send_dedup_key(int $userId, string $originator, array $
  * — retrying identical input against the same gateway is expected to fail identically). $ok=true is
  * always retryable=false (nothing to retry).
  */
-function dispatch_message_raw(array $user, string $originator, array $destinations, string $content, ?int $scheduleId = null): array {
+/**
+ * Translates a gateway_send() result into dispatch_message_raw()'s tuple.
+ *
+ * Deliberately mirrors the legacy branches one for one — same Persian messages, same retryable
+ * classification, same ellsms_message_attempts row on an unreachable gateway. A caller must not be
+ * able to tell which transport ran, because every one of them (schedules, bulk jobs, auto-reply, the
+ * legacy URL API) already depends on this exact shape.
+ *
+ * Returns one element MORE than the legacy branch: gateway metadata at index 7. Purely additive —
+ * PHP list-assignment ignores trailing elements, so no existing call site changes.
+ *
+ * $recordTransport controls whether each accepted destination gets an ellsms_message_attempts row
+ * carrying its provider message id. True for direct sends and schedules, which have no other durable
+ * ELLSMS-owned row to hold it; false for bulk items, which record the same identity on their own row
+ * (bulk_send_one_item()) and would otherwise be tracked twice by the status poller.
+ */
+function dispatch_gateway_result(array $user, string $originator, array $destinations, string $content, ?int $scheduleId, array $result, int $parts, int $total, bool $recordTransport = true): array {
+    $meta = [
+        'gateway_id'             => $result['gateway_id'] ?? null,
+        'gateway_config_version' => $result['gateway_config_version'] ?? null,
+        'provider_message_ids'   => $result['message_ids'] ?? [],
+    ];
+
+    if (!$result['ok'] && $result['sent'] === [] && $result['http'] === 0) {
+        // Never reached the gateway at all — recorded in ELLSMS's own attempts table, exactly as the
+        // legacy branch does (Invariant E: no fabricated rows in backend-owned tables).
+        Logger::error('sms.send.gateway_unreachable', [
+            'user_id' => $user['id'] ?? null, 'gateway_id' => $meta['gateway_id'],
+            'error_class' => $result['error_class'], 'destination_count' => $total,
+        ]);
+        $referenceType = $scheduleId !== null ? 'schedule' : 'direct_send';
+        $referenceId   = $scheduleId !== null ? (string)$scheduleId : dispatch_direct_send_dedup_key((int)($user['id'] ?? 0), $originator, $destinations, $content);
+        backend_record_message_attempt_failure(
+            isset($user['organization_id']) ? (int)$user['organization_id'] : null,
+            (int)($user['id'] ?? 0),
+            $referenceType,
+            $referenceId,
+            null,
+            Logger::currentRequestId(),
+            (string)$result['error_class'],
+            (string)$result['error']
+        );
+        return [false, describe_api_error(0, (string)$result['error']) . ' جزئیات در گزارش موجود است.', 0, $total, $parts, (bool)$result['retryable'], [], $meta];
+    }
+
+    $sentCount = count($result['sent']);
+    Logger::log($sentCount === $total ? 'info' : ($sentCount > 0 ? 'warning' : 'error'), 'sms.send.completed', [
+        'user_id' => $user['id'] ?? null, 'sent' => $sentCount, 'total' => $total,
+        'gateway_id' => $meta['gateway_id'], 'gateway_config_version' => $meta['gateway_config_version'],
+        'request_groups' => $result['groups'] ?? null,
+    ]);
+
+    // Record each accepted destination so its delivery status can be polled later. bulk_send_one_item()
+    // has its own durable row and records the same identity there instead, so a bulk item is never
+    // written twice — see the $recordTransport guard.
+    if ($recordTransport) {
+        $referenceType = $scheduleId !== null ? 'schedule' : 'direct_send';
+        $referenceId   = $scheduleId !== null ? (string)$scheduleId : dispatch_direct_send_dedup_key((int)($user['id'] ?? 0), $originator, $destinations, $content);
+        foreach ($result['sent'] as $destination) {
+            backend_record_gateway_send(
+                isset($user['organization_id']) ? (int)$user['organization_id'] : null,
+                (int)($user['id'] ?? 0),
+                $referenceType,
+                $referenceId,
+                $destination,
+                [
+                    'provider_message_id'    => $result['message_ids'][$destination] ?? '',
+                    'gateway_id'             => $meta['gateway_id'],
+                    'gateway_config_version' => $meta['gateway_config_version'],
+                    'route_id'               => $result['route_id'] ?? null,
+                    'operator_id'            => $result['operators'][$destination] ?? null,
+                    'request_id'             => Logger::currentRequestId(),
+                ]
+            );
+        }
+    }
+
+    if ($sentCount === $total) {
+        return [true, 'به ' . to_persian_digits((string)$total) . " شماره ارسال شد — {$parts} بخش برای هرکدام، مجموعاً " . to_persian_digits((string)($parts * $sentCount)) . ' بخش.', $sentCount, $total, $parts, false, $result['sent'], $meta];
+    }
+    if ($sentCount > 0) {
+        return [true, 'به ' . to_persian_digits((string)$sentCount) . ' از ' . to_persian_digits((string)$total) . ' شماره ارسال شد — برای مشاهده‌ی موارد ناموفق به گزارش مراجعه کنید.', $sentCount, $total, $parts, false, $result['sent'], $meta];
+    }
+    // Reached and rejected everything, or a non-transport failure: retryable comes from the classified
+    // error rather than being hardcoded, matching the legacy path's Phase 8 behaviour.
+    return [false, 'گیت‌وی همه‌ی مقصدها را رد کرد. جزئیات در گزارش موجود است.', 0, $total, $parts, (bool)$result['retryable'], [], $meta];
+}
+
+function dispatch_message_raw(array $user, string $originator, array $destinations, string $content, ?int $scheduleId = null, bool $recordTransport = true): array {
     Logger::info('sms.send.requested', [
         'user_id'       => $user['id'] ?? null,
         'message_count' => count($destinations),
@@ -120,6 +208,14 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
 
     $parts = sms_parts($content);
     $total = count($destinations);
+
+    // The configured-gateway path (docs/sms-gateway-connectors.md). Returns null when the gateway
+    // transport is switched off or no gateway is configured for this route, in which case the legacy
+    // client below runs exactly as it always has — this seam is additive, and the default is legacy.
+    $gatewayResult = gateway_send_for_dispatch($user, $originator, $destinations, $content);
+    if ($gatewayResult !== null) {
+        return dispatch_gateway_result($user, $originator, $destinations, $content, $scheduleId, $gatewayResult, $parts, $total, $recordTransport);
+    }
 
     $apiResult = backend_api_request('POST', '/api/messages/send', [
         'sender_user_id' => (int)$user['id'],
@@ -1419,7 +1515,15 @@ function bulk_send_one_item(PDO $db, array $item): bool {
     // double-charge (STEP 7/11) — wallet_commit_reservation()'s own
     // idempotency key makes a second commit attempt for the same item id
     // a safe no-op even if this function somehow ran twice for one item.
-    [$ok, $info, $sentCount, , $parts, $retryable] = dispatch_message_raw($user, $item['originator'], [$item['mobile']], $item['content']);
+    // The 8th element is gateway metadata, present only when the send went through a configured
+    // gateway (null on the legacy path). Recorded on the row below so delivery-status polling knows
+    // which gateway to ask, and so a delivery problem can be tied to the exact config version.
+    // $recordTransport = false: this row IS the durable record, and it stores the provider message id
+    // itself below. A second ellsms_message_attempts row would make the status poller track one
+    // message twice.
+    [$ok, $info, $sentCount, , $parts, $retryable, , $gatewayMeta] = array_pad(
+        dispatch_message_raw($user, $item['originator'], [$item['mobile']], $item['content'], null, false), 8, null
+    );
 
     if (!$isAdmin) {
         // The price FROZEN onto this row at acceptance (bulk_queue_job()) — never re-resolved here.
@@ -1444,8 +1548,22 @@ function bulk_send_one_item(PDO $db, array $item): bool {
     $attemptCount = (int)$item['attempt_count']; // already incremented by the claim above
 
     if ($ok) {
-        $db->prepare("UPDATE ellsms_bulk_items SET status='sent', error=NULL, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL WHERE id=?")
-           ->execute([$item['id']]);
+        // delivery_status starts at 'sent' — what the gateway ACCEPTING a message actually means. It
+        // is deliberately not 'delivered': only the status connector may claim delivery, and only
+        // from the provider's own answer.
+        $db->prepare(
+            "UPDATE ellsms_bulk_items
+             SET status='sent', error=NULL, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL,
+                 gateway_id = ?, gateway_config_version = ?, provider_message_id = ?,
+                 delivery_status = IF(? IS NULL, delivery_status, 'sent')
+             WHERE id=?"
+        )->execute([
+            $gatewayMeta['gateway_id'] ?? null,
+            $gatewayMeta['gateway_config_version'] ?? null,
+            $gatewayMeta['provider_message_ids'][$item['mobile']] ?? null,
+            $gatewayMeta['gateway_id'] ?? null,
+            $item['id'],
+        ]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET sent_rows = sent_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::info('job.completed', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId]);
         return true;

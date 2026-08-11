@@ -192,3 +192,60 @@ function backend_record_message_attempt_failure(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())'
     )->execute([$organizationId, $userId, $referenceType, $referenceId, $idempotencyKey, $backendRequestId, 'failed', $errorCode, mb_strimwidth($errorMessage, 0, 500, '…')]);
 }
+
+/**
+ * Records ONE ACCEPTED destination of a gateway send, with the transport identity needed to ask the
+ * provider about it later (docs/sms-gateway-connectors.md §Delivery status).
+ *
+ * The counterpart to the failure recorder above, in the same ELLSMS-owned table and for the same
+ * reason: with a configured gateway, the provider answers ELLSMS directly, so nothing else in this
+ * system holds the resulting provider message id. Without this row a direct send could never have its
+ * delivery status tracked — which is what made generic status tracking structurally incomplete rather
+ * than merely unimplemented.
+ *
+ * ONE ROW PER DESTINATION, because a provider message id identifies one message to one recipient.
+ *
+ * Recorded ONLY when the send actually went through a gateway AND the provider returned an id: a row
+ * with no provider id can never be polled, so writing one would add volume and answer nothing. The
+ * legacy transport therefore writes nothing here and its behaviour is completely unchanged.
+ *
+ * A duplicate (gateway, provider_message_id) is a NO-OP rather than an error: a retried worker pass
+ * that re-reports the same provider id must not create a second delivery record for one message.
+ */
+function backend_record_gateway_send(
+    ?int $organizationId,
+    int $userId,
+    string $referenceType,
+    string $referenceId,
+    string $destination,
+    array $transport
+): bool {
+    $providerMessageId = (string)($transport['provider_message_id'] ?? '');
+    $gatewayId = isset($transport['gateway_id']) ? (int)$transport['gateway_id'] : 0;
+    if ($providerMessageId === '' || $gatewayId === 0) {
+        return false;
+    }
+
+    $statement = db()->prepare(
+        "INSERT INTO ellsms_message_attempts
+            (organization_id, user_id, reference_type, reference_id, backend_request_id, status,
+             error_code, gateway_id, gateway_config_version, route_id, operator_id, destination,
+             provider_message_id, delivery_status, delivery_attempts, attempted_at, completed_at, provider_slot)
+         VALUES (?,?,?,?,?, 'accepted', '', ?,?,?,?,?,?, 'sent', 0, NOW(), NOW(), ?)
+         ON DUPLICATE KEY UPDATE id = id"
+    );
+    $statement->execute([
+        $organizationId, $userId, $referenceType, $referenceId,
+        $transport['request_id'] ?? null,
+        $gatewayId,
+        isset($transport['gateway_config_version']) ? (int)$transport['gateway_config_version'] : null,
+        isset($transport['route_id']) ? (int)$transport['route_id'] : null,
+        isset($transport['operator_id']) ? (int)$transport['operator_id'] : null,
+        mb_strimwidth($destination, 0, 32, ''),
+        $providerMessageId,
+        // delivery_status starts at 'sent' — what the gateway ACCEPTING a message actually means.
+        // Only the status connector may claim delivery, and only from the provider's own answer.
+        $gatewayId . ':' . $providerMessageId,
+    ]);
+    return $statement->rowCount() > 0;
+}

@@ -680,3 +680,60 @@ is insufficient should restrict who holds `ellsms_meta.is_admin`.
 
 Coverage: `tests/Integration/ImpersonationTest.php` (35 tests) and
 `tests/Integration/ImpersonationHttpTest.php` (15 tests, real server, real sessions).
+
+## 17. Admin-configurable SMS gateway connectors (added 2026-08-11)
+
+Not a finding — a review of a capability deliberately added this cycle. A platform administrator can
+now define, in the database, which HTTP API sends the product's SMS. That is a large amount of power
+by design, so it is worth stating exactly what bounds it.
+
+**The threat that shapes the design:** admin-supplied configuration reaching an evaluator. The
+mitigation is that no evaluator exists. There is no expression language, no scripting hook, no
+`eval()`, no `create_function()`, no callable named by configuration, and no shell. A parameter value
+is one of seven bounded kinds (literal, allowlisted variable, `{{variable}}` template, secret
+reference, allowlisted environment variable, timestamp, UUID); a response path is a restricted
+dot-path with no wildcards or filters; a success rule has exactly three operators; an error mapping
+may only select from the finite `BackendError` set, so configuration cannot decide that a permanent
+failure should be retried forever.
+
+| Control | Mechanism |
+|---|---|
+| Only platform admins may configure | `require_admin()` on `/sms-gateways.php`; every mutation is a CSRF-checked POST behind the same guard |
+| Support impersonation | denied twice — the page is unreachable because `$_SESSION['uid']` is the (non-admin) target, plus explicit `gateway.config` / `gateway.secret` deny-list entries |
+| Configuration cannot become code | tokenised static scan in `make sms-gateway-integrity-check`; unknown template variables are a hard compile failure |
+| Credentials at rest | AES-256-GCM with an HKDF-derived key from `SMS_GATEWAY_MASTER_KEY`, a vault separate from API-key hashes, webhook secrets, and the backend HMAC secret |
+| Credentials in transit through the UI | write-only: never rendered back into a form, never printed by any operational command, fixed-width mask in previews (fixed-width so it cannot leak length) |
+| Credentials in logs | only "a secret changed" is recorded — never a value, never a length; request/response bodies are never logged |
+| Credentials in backups | the master key is never stored in the database; a restore without it fails loudly via a stored key fingerprint rather than decrypting to garbage |
+| Environment disclosure | environment-secret references are allowlisted (`BACKEND_SERVICE_ID`, `BACKEND_SERVICE_SECRET`), so a connector cannot be used to dump arbitrary variables |
+| SSRF / DNS rebinding | production requires HTTPS and rejects loopback/link-local/unique-local/private/reserved destinations (IPv4, IPv6 and IPv4-mapped) before connecting, then **pins the connection to the validated address**; every resolved address must pass, an unresolvable host is refused, redirects are never followed, and the internal-host allowlist matches exact hostnames only |
+| Pasted `curl` commands | parsed as text and never executed; credentials found in the paste are deliberately dropped, and `--insecure` is ignored |
+| TLS | verification is not offered as a switch in the UI |
+| Customer influence | none — a customer cannot select, name, or influence a gateway through any API or page |
+
+**Residual risks, stated plainly.**
+
+1. ~~**No DNS pinning.**~~ **Closed 2026-08-11 (TD-072).** The endpoint check now returns the address
+   it validated and the connection is pinned to it (`CURLOPT_RESOLVE`), so there is no second name
+   resolution that could disagree with the first. TLS still verifies against the configured hostname —
+   the pin is a name-to-address override, not a URL rewrite, so hostname verification was never traded
+   away for it. What remains is not a gap but a boundary: a name that legitimately resolves to a public
+   address the attacker also controls is allowed, because that is an ordinary public host rather than
+   rebinding.
+2. **An administrator can point sends at a host of their choosing.** That is the feature. The control
+   is not prevention but attribution and reversibility: every change is audited with a version
+   number in `ellsms_sms_gateway_config_audit`, and `SMS_GATEWAY_TRANSPORT=0` returns every send to
+   the legacy client immediately.
+3. **Message content necessarily reaches the configured provider.** Nothing here redacts it; that is
+   inherent to sending an SMS.
+
+**Per-recipient isolation (added 2026-08-11).** A batch is partitioned by effective configuration
+before it is sent, so one recipient's operator overrides can never be applied to another's message.
+The grouping key is a hash of the parameter DESCRIPTORS, and a secret contributes its key name rather
+than its value — a grouping key is safe to log.
+
+Coverage: `tests/Integration/GatewaySecurityTest.php` (20 tests),
+`tests/Integration/GatewayEndpointSafetyTest.php` (14 tests, real socket),
+`tests/Integration/GatewayAdminHttpTest.php` (7 tests, real server, real sessions),
+`tests/Integration/GatewayOperatorPartitionTest.php` (8 tests, real socket),
+`tests/Integration/GatewayParityTest.php` (5 tests, real socket).

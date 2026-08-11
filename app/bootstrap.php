@@ -55,6 +55,16 @@ require_once __DIR__ . '/Entitlements.php';
 // every send and every preview prices through (docs/sms-pricing.md). Loaded before the estimator
 // because the estimator composes it; it in turn only needs setting()/db()/Logger/Metrics, all above.
 require_once __DIR__ . '/Sms/Pricing.php';
+// SMS gateway connectors — admin-configurable provider send/status APIs
+// (docs/sms-gateway-connectors.md). Strict load order: the secret vault first (the connector engine
+// resolves secret-backed parameters at compile time), then the safety engine that validates and
+// compiles admin configuration, then the versioned cache that owns compilation, then the transport
+// that consumes a compiled connector. Each layer depends only on the ones above it.
+require_once __DIR__ . '/Sms/GatewaySecrets.php';
+require_once __DIR__ . '/Sms/GatewayConnector.php';
+require_once __DIR__ . '/Sms/GatewayCache.php';
+require_once __DIR__ . '/Sms/GatewayTransport.php';
+require_once __DIR__ . '/Sms/GatewayStatus.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';

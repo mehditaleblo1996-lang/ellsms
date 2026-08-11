@@ -83,6 +83,15 @@ function impersonation_blocked_actions(): array {
         'webhook.write'        => 'تغییر تنظیمات وب‌هوک در حالت پشتیبانی غیرفعال است.',
         'webhook.rotate'       => 'چرخش کلید وب‌هوک در حالت پشتیبانی غیرفعال است.',
 
+        // SMS gateway connectors (docs/sms-gateway-connectors.md). require_admin() already keeps the
+        // page itself unreachable during a support session — $_SESSION['uid'] is the TARGET, and the
+        // target is not a platform admin. These entries exist as defence in depth for the one case
+        // that guard cannot cover on its own: a support session opened against an account that is
+        // itself an admin. A gateway edit redirects every tenant's traffic, which is the last thing
+        // that should be reachable while acting as somebody else.
+        'gateway.config'       => 'تغییر پیکربندی درگاه در حالت پشتیبانی غیرفعال است.',
+        'gateway.secret'       => 'تغییر کلید محرمانه‌ی درگاه در حالت پشتیبانی غیرفعال است.',
+
         // Money and plan (STEP 27).
         'billing.subscription' => 'تغییر اشتراک در حالت پشتیبانی غیرفعال است.',
         'billing.payment'      => 'ثبت پرداخت در حالت پشتیبانی غیرفعال است.',

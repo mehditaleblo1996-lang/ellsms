@@ -337,7 +337,11 @@ function sms_pricing_route_for_sender(string $sender, string $messageType): ?arr
         }
         try {
             $db = db();
+            // r.gateway_id rides along on the SAME cached lookup the price resolution already does:
+            // which gateway carries a route is route configuration, and fetching it separately would
+            // add a per-send query to a path that deliberately has none.
             $select = "SELECT r.id AS route_id, r.code AS route_code, r.name AS route_name, r.message_type,
+                              r.gateway_id,
                               p.id AS provider_id, p.code AS provider_code, p.name AS provider_name
                        FROM ellsms_sms_routes r
                        JOIN ellsms_sms_providers p ON p.id = r.provider_id AND p.status = 'active'";
@@ -481,6 +485,7 @@ function sms_pricing_resolution(array $route, array $operator, string $messageTy
         'provider_code'   => (string)($route['provider_code'] ?? ''),
         'route_id'        => isset($route['route_id']) ? (int)$route['route_id'] : null,
         'route_code'      => (string)($route['route_code'] ?? ''),
+        'gateway_id'      => isset($route['gateway_id']) ? (int)$route['gateway_id'] : null,
         'message_type'    => $messageType,
         'unit_price'      => $unit,
         'currency'        => $currency,
@@ -503,6 +508,7 @@ function sms_pricing_failure(string $reason, array $operator, ?array $route, str
         'provider_code'   => (string)($route['provider_code'] ?? ''),
         'route_id'        => isset($route['route_id']) ? (int)$route['route_id'] : null,
         'route_code'      => (string)($route['route_code'] ?? ''),
+        'gateway_id'      => isset($route['gateway_id']) ? (int)$route['gateway_id'] : null,
         'message_type'    => $messageType,
         'unit_price'      => 0,
         'currency'        => SMS_PRICING_CURRENCY,

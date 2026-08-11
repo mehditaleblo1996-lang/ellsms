@@ -102,6 +102,13 @@ stored here and never will be — they stay in the existing secure integration l
 message transport at all**: every message still goes out through the same backend API it did before.
 This feature configures what a send *costs*, not how it travels.
 
+**Since 2026-08-11** *how* it travels is configurable too, but by a separate mechanism:
+`ellsms_sms_routes.gateway_id` names an SMS gateway connector
+(`docs/sms-gateway-connectors.md`), and provider credentials live in that feature's own encrypted
+vault — still never in the pricing tables. The two share the route deliberately, so a message can
+never be priced on one route and sent on another. Pricing still resolves identically whether or not
+a route has a gateway.
+
 `ellsms_sms_routes` is a `(provider, message_type)` lane that tariffs hang off. A route belongs to
 exactly one provider, its `code` is unique within that provider, and an ACTIVE route under an
 ARCHIVED provider is unusable for new price resolution (the integrity check reports these).
