@@ -252,13 +252,23 @@ function gateway_compile(int $gatewayId): ?array {
                 // A status connector has no configurable success rule: "2xx with a parseable body"
                 // is the only sensible reading of a delivery-status answer, and giving an admin a
                 // knob here would let a poll that failed be treated as a delivery report.
-                'success'       => gateway_success_rule_compile(null),
+                // ADDITIVE ONLY: the base rule (2xx + parseable JSON) is forced, and configuration
+                // can add conditions but never relax them. A knob able to weaken this would let a
+                // failed poll be read as a delivery report.
+                'success'       => gateway_status_success_rule_compile(gateway_json($status['success_rule_json'] ?? null)),
                 'response'      => gateway_response_mapping_compile(gateway_json($status['response_mapping_json'])),
+                // How to read a MULTI-MESSAGE answer: where the per-message items are, and which key
+                // inside an item carries the id and the state.
+                'items'         => gateway_status_items_mapping_compile(gateway_json($status['response_mapping_json'])),
                 'statuses'      => gateway_status_mapping_compile(gateway_json($status['status_mapping_json'])),
                 'poll_initial_delay_seconds' => (int)$status['poll_initial_delay_seconds'],
                 'poll_max_attempts' => (int)$status['poll_max_attempts'],
                 'poll_max_age_seconds' => (int)$status['poll_max_age_seconds'],
                 'parameters'    => $parameters['status'],
+                // Whether this connector can ask about many messages at once, decided from the
+                // COMPILED parameters rather than from a flag an admin could set inconsistently with
+                // the request it actually builds.
+                'batch'         => gateway_status_batch_capability($parameters['status']),
             ],
         ];
 
@@ -301,6 +311,93 @@ function gateway_response_mapping_compile(?array $mapping): array {
         $compiled[$field] = $path === '' ? [] : gateway_path_compile($path);
     }
     return $compiled;
+}
+
+/**
+ * Compiles a STATUS success rule that can only ever be stricter than the base one.
+ *
+ * The HTTP range and the JSON requirement are hard-coded rather than read from configuration, so an
+ * admin adding `errorModel.errorCode == 0` narrows what counts as success and cannot widen it. A
+ * status connector that answers 500, or answers 200 with unparseable text, is a failed poll no matter
+ * what the configuration says.
+ */
+function gateway_status_success_rule_compile(?array $mapping): array {
+    $compiled = gateway_success_rule_compile([
+        'http' => ['min' => 200, 'max' => 299],
+        'require_json' => true,
+        'rules' => $mapping['rules'] ?? [],
+    ]);
+    // Restated defensively: gateway_success_rule_compile() reads these from its argument, and a future
+    // edit that started forwarding the admin's own `http`/`require_json` would silently reopen the
+    // exact hole this function exists to close.
+    $compiled['http_min'] = 200;
+    $compiled['http_max'] = 299;
+    $compiled['require_json'] = true;
+    return $compiled;
+}
+
+/**
+ * Compiles the per-item paths for a multi-message status answer.
+ *
+ *   {"items_path": "states", "id_path": "id", "status_path": "state", "delivered_at_path": "..."}
+ *
+ * `items_path` empty means the connector answers about one message at a time and the top-level
+ * `provider_status` path applies instead — so an existing single-message connector keeps working
+ * without configuration changes.
+ */
+function gateway_status_items_mapping_compile(?array $mapping): array {
+    $itemsPath = (string)($mapping['items_path'] ?? '');
+    if ($itemsPath === '') {
+        return ['items_path' => [], 'id_key' => '', 'status_key' => '', 'delivered_at_key' => ''];
+    }
+    return [
+        'items_path'       => gateway_path_compile($itemsPath),
+        'id_key'           => (string)($mapping['id_path'] ?? 'id'),
+        'status_key'       => (string)($mapping['status_path'] ?? 'status'),
+        'delivered_at_key' => (string)($mapping['delivered_at_path'] ?? ''),
+    ];
+}
+
+/**
+ * Whether a compiled status parameter set can carry MANY messages in one request.
+ *
+ * True only when some parameter reads `provider_message_ids` AND none reads a per-message variable.
+ * Both halves matter: without the first there is nowhere to put the extra ids, and without the second
+ * a batched request would carry one message's `recipient`/`provider_message_id` while claiming to ask
+ * about several — the exact "first row's context for the whole batch" mistake this must not make.
+ *
+ * Derived from the parameters themselves, so a connector cannot be marked batchable while building a
+ * single-message request.
+ */
+function gateway_status_batch_capability(array $statusParameters): array {
+    $usesPlural = false;
+    $usesPerMessage = false;
+
+    foreach ($statusParameters as $scope => $bucket) {
+        // Gateway scope is a flat list; route/operator scopes are keyed by id.
+        $lists = $scope === 'gateway' ? [$bucket] : array_values($bucket);
+        foreach ($lists as $parameters) {
+            foreach ($parameters as $parameter) {
+                $names = $parameter['value_type'] === 'variable'
+                    ? [$parameter['value']]
+                    : ($parameter['value_type'] === 'template' ? $parameter['placeholders'] : []);
+                foreach ($names as $name) {
+                    if ($name === 'provider_message_ids') {
+                        $usesPlural = true;
+                    } elseif (in_array($name, GATEWAY_PER_MESSAGE_STATUS_VARIABLES, true)) {
+                        $usesPerMessage = true;
+                    }
+                }
+            }
+        }
+    }
+
+    return [
+        'supported' => $usesPlural && !$usesPerMessage,
+        'reason'    => $usesPlural
+            ? ($usesPerMessage ? 'per_message_variable_present' : '')
+            : 'no_provider_message_ids_parameter',
+    ];
 }
 
 /**

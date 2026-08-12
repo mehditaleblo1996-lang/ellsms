@@ -39,10 +39,29 @@ const GATEWAY_SEND_VARIABLES = [
     'organization_id', 'operator_code', 'route_code', 'gateway_code', 'timestamp', 'sender_user_id',
 ];
 
-/** Variables a STATUS connector may reference. */
+/**
+ * Variables a STATUS connector may reference. A SEPARATE catalog from the send one, deliberately:
+ * merging them into one permissive list would let a send template read `provider_message_id` (which
+ * does not exist yet when a message is sent) and a status template read `message` (which the status
+ * request has no business carrying).
+ *
+ * `provider_message_ids` is STATUS-ONLY and PLURAL — it holds every id in the current compatible
+ * status batch, which is what a provider that accepts many ids per lookup needs.
+ */
 const GATEWAY_STATUS_VARIABLES = [
-    'provider_message_id', 'request_id', 'sender', 'recipient', 'operator_code',
-    'route_code', 'gateway_code', 'timestamp',
+    'provider_message_id', 'provider_message_ids', 'request_id', 'sender', 'recipient',
+    'operator_code', 'route_code', 'gateway_code', 'timestamp',
+];
+
+/**
+ * STATUS variables whose value belongs to ONE message.
+ *
+ * A batched status request carries many messages but one value per parameter, so a connector that
+ * reads any of these cannot be batched — each row must get its own request. `provider_message_ids` is
+ * pointedly NOT in this list: it is the variable that makes batching possible.
+ */
+const GATEWAY_PER_MESSAGE_STATUS_VARIABLES = [
+    'provider_message_id', 'recipient', 'sender', 'operator_code', 'route_code',
 ];
 
 function gateway_variable_catalog(string $connector): array {
@@ -380,6 +399,126 @@ function gateway_parameter_set_signature(array $merged): array {
     return ['signature' => hash('sha256', implode("\x1e", $parts)), 'per_recipient' => $perRecipient];
 }
 
+/* ==========================================================================
+   Long numeric identifiers, without float
+   ========================================================================== */
+
+/**
+ * A validated decimal integer that must be serialized as a JSON NUMBER, carried as a string.
+ *
+ * Provider message ids are routinely 19 digits (`7310136179845801812`). PHP's float has 53 bits of
+ * mantissa, so any arithmetic or `(float)` round-trip silently rewrites the last few digits — and a
+ * status lookup for a message id that is off by three at the end simply returns nothing, which looks
+ * exactly like "the provider has no record", not like data corruption. So the value NEVER becomes a
+ * number in PHP: it stays a canonical decimal string from the database to the wire, and only the JSON
+ * encoder emits it as an unquoted numeric token.
+ */
+final class GatewayJsonNumber
+{
+    public function __construct(public readonly string $decimal) {}
+    public function __toString(): string { return $this->decimal; }
+}
+
+/**
+ * Validates one canonical decimal token, or returns null.
+ *
+ * Deliberately strict, because the result is emitted into JSON as raw, unquoted text: digits only, no
+ * sign, no decimal point, no exponent, no whitespace, no leading zeros (except `0` itself). That
+ * strictness is also what makes raw emission safe — a token that matches this can contain nothing but
+ * digits, so it cannot break out of the number position it is written into.
+ *
+ * Anything wider than a signed 64-bit integer is REJECTED rather than emitted: every JSON consumer
+ * this could reach parses numbers as int64 at best, so emitting a wider value would produce a token
+ * the far side silently mangles — the same precision loss, moved one hop away where it is harder to
+ * see.
+ */
+function gateway_decimal_token(mixed $value): ?string {
+    if ($value instanceof GatewayJsonNumber) {
+        return $value->decimal;
+    }
+    if (is_int($value)) {
+        return (string)$value;
+    }
+    if (!is_string($value)) {
+        return null;   // never accept a float: by the time it is one, precision is already gone
+    }
+    if (preg_match('/^(0|[1-9][0-9]*)$/', $value) !== 1) {
+        return null;
+    }
+    // String comparison rather than a numeric one, so the check itself never converts.
+    $max = (string)PHP_INT_MAX;
+    if (strlen($value) > strlen($max) || (strlen($value) === strlen($max) && strcmp($value, $max) > 0)) {
+        return null;
+    }
+    return $value;
+}
+
+/**
+ * Splits a comma-separated context value into validated decimal tokens.
+ *
+ * An item that is not a canonical decimal is DROPPED, not coerced: a malformed id cannot be looked up
+ * anyway, and quietly turning `12.5` into `12` would ask the provider about a different message.
+ *
+ * @return list<GatewayJsonNumber>
+ */
+function gateway_integer_list(string $raw): array {
+    $out = [];
+    foreach (gateway_split_list($raw) as $item) {
+        $token = gateway_decimal_token($item);
+        if ($token === null) {
+            Logger::warning('gateway.parameter.integer_list_item_rejected', ['length' => strlen($item)]);
+            continue;
+        }
+        $out[] = new GatewayJsonNumber($token);
+    }
+    return $out;
+}
+
+/**
+ * JSON-encodes a request body, emitting GatewayJsonNumber values as unquoted numeric tokens.
+ *
+ * json_encode() has no way to say "this string is a number", and the alternatives are all worse:
+ * casting loses precision above 2^53, and JSON_NUMERIC_CHECK would reinterpret every numeric-looking
+ * STRING in the body (a phone number, a national id, an OTP with a leading zero) as a number.
+ *
+ * So: encode with unique placeholders, then substitute the raw tokens. Safe because every token has
+ * already passed gateway_decimal_token() and therefore contains nothing but digits — there is no
+ * string that can escape the position it is written into. The placeholder carries random bytes so it
+ * cannot collide with real content.
+ */
+function gateway_json_encode_body(array $body): string {
+    $tokens = [];
+    $prepared = gateway_json_prepare($body, $tokens);
+
+    $encoded = json_encode($prepared, JSON_UNESCAPED_UNICODE);
+    if ($encoded === false) {
+        return '{}';
+    }
+    if ($tokens === []) {
+        return $encoded;
+    }
+    // The placeholder is encoded as a JSON string, so the quotes around it are replaced too — which is
+    // precisely what turns "123" into 123.
+    return strtr($encoded, $tokens);
+}
+
+/** Replaces GatewayJsonNumber values with placeholders, recording the substitutions. */
+function gateway_json_prepare(mixed $value, array &$tokens): mixed {
+    if ($value instanceof GatewayJsonNumber) {
+        $placeholder = '@@n' . bin2hex(random_bytes(8)) . '@@';
+        $tokens['"' . $placeholder . '"'] = $value->decimal;
+        return $placeholder;
+    }
+    if (is_array($value)) {
+        $out = [];
+        foreach ($value as $key => $item) {
+            $out[$key] = gateway_json_prepare($item, $tokens);
+        }
+        return $out;
+    }
+    return $value;
+}
+
 /**
  * Resolves one compiled parameter against a request context.
  *
@@ -409,6 +548,9 @@ function gateway_parameter_resolve(array $parameter, array $context): mixed {
         // line is all digits and as a string otherwise. Reproducing that exactly is what makes the
         // migrated gateway's request byte-identical to the one it replaces.
         'numeric' => ctype_digit((string)$raw) ? (int)$raw : (string)$raw,
+        // A JSON array of NUMBERS built from canonical decimal strings — never through float, so a
+        // 19-digit provider message id survives intact. One id still yields a one-element ARRAY.
+        'integer_list' => gateway_integer_list((string)$raw),
         default   => is_scalar($raw) ? (string)$raw : '',
     };
 }

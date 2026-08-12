@@ -536,9 +536,23 @@ require __DIR__ . '/../app/views/header.php';
         <textarea name="batch_mapping_json" rows="3" class="ltr" style="width:100%"><?= e((string)($connectorRow['batch_mapping_json'] ?? '')) ?></textarea>
       </label>
     <?php else: ?>
-      <label style="display:block">نگاشت پاسخ (JSON)
-        <textarea name="response_mapping_json" rows="3" class="ltr" style="width:100%"><?= e((string)($connectorRow['response_mapping_json'] ?? '')) ?></textarea>
+      <label style="display:block">شرط موفقیت پاسخ (JSON — فقط شرط‌های اضافی)
+        <textarea name="success_rule_json" rows="3" class="ltr" style="width:100%" placeholder='{"rules":[{"path":"errorModel.errorCode","operator":"equals","values":[0]}]}'><?= e((string)($connectorRow['success_rule_json'] ?? '')) ?></textarea>
       </label>
+      <p class="muted">
+        شرط پایه (وضعیت HTTP در بازه‌ی ۲xx و بدنه‌ی JSON معتبر) همیشه اعمال می‌شود و قابل تغییر نیست؛
+        این مقدار فقط شرط‌های سخت‌گیرانه‌تر اضافه می‌کند. برای نمونه، خطای سطح ارائه‌دهنده در بدنه‌ی پاسخ:
+        <span class="ltr">errorModel.errorCode = 0</span>. اگر این شرط برقرار نباشد، هیچ وضعیتی از پاسخ خوانده نمی‌شود.
+      </p>
+      <label style="display:block">نگاشت پاسخ (JSON)
+        <textarea name="response_mapping_json" rows="4" class="ltr" style="width:100%" placeholder='{"items_path":"states","id_path":"id","status_path":"state"}'><?= e((string)($connectorRow['response_mapping_json'] ?? '')) ?></textarea>
+      </label>
+      <p class="muted">
+        برای پاسخ گروهی، <span class="ltr">items_path</span> محل آرایه‌ی نتایج، <span class="ltr">id_path</span> کلید
+        شناسه‌ی پیام و <span class="ltr">status_path</span> کلید وضعیت را مشخص می‌کند. تطبیق هر نتیجه با پیام اصلی
+        بر اساس شناسه انجام می‌شود، نه ترتیب آرایه؛ بنابراین ترتیب پاسخ ارائه‌دهنده اهمیتی ندارد.
+        اگر <span class="ltr">items_path</span> خالی بماند، کانکتور تک‌پیامی در نظر گرفته می‌شود.
+      </p>
       <label style="display:block">نگاشت وضعیت تحویل (JSON)
         <textarea name="status_mapping_json" rows="3" class="ltr" style="width:100%"><?= e((string)($connectorRow['status_mapping_json'] ?? '')) ?></textarea>
       </label>
@@ -612,7 +626,7 @@ require __DIR__ . '/../app/views/header.php';
     <?= csrf_field() ?><input type="hidden" name="do" value="parameter_save">
     <input type="hidden" name="gateway_id" value="<?= $gatewayId ?>"><input type="hidden" name="tab" value="parameters">
     <label>کانکتور
-      <select name="connector"><option value="send">ارسال</option><option value="status">وضعیت</option></select>
+      <select name="connector" id="param-connector"><option value="send">ارسال</option><option value="status">وضعیت</option></select>
     </label>
     <label>محل
       <select name="location"><option value="body">body</option><option value="query">query</option><option value="header">header</option></select>
@@ -633,17 +647,21 @@ require __DIR__ . '/../app/views/header.php';
     </label>
     <label>نام <input type="text" name="param_key" class="ltr" required></label>
     <label>نوع مقدار
-      <select name="value_type">
+      <select name="value_type" id="param-value-type">
         <option value="static">ثابت</option><option value="variable">متغیر</option><option value="template">قالب</option>
         <option value="secret">کلید محرمانه</option><option value="env_secret">متغیر محیطی مجاز</option>
         <option value="timestamp">زمان</option><option value="uuid">شناسه‌ی یکتا</option>
       </select>
     </label>
-    <label>مقدار <input type="text" name="value" class="ltr"></label>
+    <label>مقدار
+      <input type="text" name="value" id="param-value" class="ltr" list="param-variable-options">
+      <datalist id="param-variable-options"></datalist>
+    </label>
     <label>نوع داده
-      <select name="data_type">
+      <select name="data_type" id="param-data-type">
         <option value="string">string</option><option value="integer">integer</option><option value="numeric">numeric</option>
-        <option value="string_list">string_list</option><option value="boolean">boolean</option><option value="json">json</option><option value="null">null</option>
+        <option value="string_list">string_list</option><option value="integer_list">integer_list</option>
+        <option value="boolean">boolean</option><option value="json">json</option><option value="null">null</option>
       </select>
     </label>
     <label>ترتیب <input type="number" name="sort_order" class="ltr" value="100" size="4"></label>
@@ -651,7 +669,59 @@ require __DIR__ . '/../app/views/header.php';
   </form>
   <p class="muted">متغیرهای مجاز ارسال: <span class="ltr"><?= e(implode(', ', GATEWAY_SEND_VARIABLES)) ?></span></p>
   <p class="muted">متغیرهای مجاز وضعیت: <span class="ltr"><?= e(implode(', ', GATEWAY_STATUS_VARIABLES)) ?></span></p>
+  <p class="muted">
+    برای استعلام گروهی وضعیت، پارامتری با متغیر <span class="ltr">provider_message_ids</span> و نوع داده‌ی
+    <span class="ltr">integer_list</span> تعریف کنید؛ خروجی آن آرایه‌ای از اعداد است
+    (<span class="ltr">[7310136179845801812, 776846774851635393]</span>) و شناسه‌های بلند بدون از دست رفتن دقت ارسال می‌شوند.
+    برای یک پیام هم آرایه‌ی تک‌عضوی تولید می‌شود، نه عدد تنها.
+  </p>
 </div>
+
+<script>
+// A CONVENIENCE, never the enforcement: the variable catalogs below are rendered from the same PHP
+// constants the compiler validates against, and every value is re-validated server-side through
+// gateway_parameter_compile() before it is stored. This only spares an admin a round trip.
+(function () {
+  var catalogs = <?= json_encode(['send' => GATEWAY_SEND_VARIABLES, 'status' => GATEWAY_STATUS_VARIABLES]) ?>;
+  // Variables whose natural serialization is a list rather than a scalar.
+  var listTypes = { provider_message_ids: 'integer_list', recipients: 'string_list' };
+
+  var connector = document.getElementById('param-connector');
+  var valueType = document.getElementById('param-value-type');
+  var value     = document.getElementById('param-value');
+  var dataType  = document.getElementById('param-data-type');
+  var options   = document.getElementById('param-variable-options');
+  if (!connector || !valueType || !value || !dataType || !options) { return; }
+
+  function refresh() {
+    var names = catalogs[connector.value] || [];
+    options.innerHTML = '';
+    if (valueType.value === 'variable') {
+      names.forEach(function (name) {
+        var option = document.createElement('option');
+        option.value = name;
+        options.appendChild(option);
+      });
+    }
+    // A variable that belongs to the OTHER connector is a guaranteed save failure; clearing it is
+    // friendlier than letting the admin submit and read a Persian error.
+    if (valueType.value === 'variable' && value.value && names.indexOf(value.value) === -1) {
+      value.value = '';
+    }
+  }
+
+  function suggestDataType() {
+    if (valueType.value !== 'variable') { return; }
+    var suggested = listTypes[value.value];
+    if (suggested) { dataType.value = suggested; }
+  }
+
+  connector.addEventListener('change', refresh);
+  valueType.addEventListener('change', refresh);
+  value.addEventListener('change', suggestDataType);
+  refresh();
+})();
+</script>
 
 <?php elseif ($tab === 'operators'): ?>
 <div class="card">

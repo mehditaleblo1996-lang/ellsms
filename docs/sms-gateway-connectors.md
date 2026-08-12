@@ -173,6 +173,81 @@ state stays whatever the send established.
 `cron/sms-status-poll.php` runs one bounded pass: it claims due rows, groups them by gateway (so each
 connector compiles at most once for the pass), and asks each gateway about its own messages.
 
+### Batched status lookups
+
+A provider that accepts many message ids per lookup is served by one parameter:
+
+| | |
+|---|---|
+| name | `referenceids` (whatever the provider calls it) |
+| value type | `variable` |
+| value | `provider_message_ids` |
+| data type | `integer_list` |
+
+`provider_message_ids` is a STATUS-ONLY variable holding every id in the current compatible batch.
+With `integer_list` the request carries them as JSON **numbers**:
+
+```json
+{"username": "…", "password": "…",
+ "referenceids": [7310136179845801812, 776846774851635393, 3717114266477167711]}
+```
+
+**One id still produces a one-element array**, never a bare scalar and never a quoted string — a
+provider that expects a list rejects both.
+
+**Long ids never touch a float.** Provider message ids are routinely 19 digits; PHP's float carries 53
+bits of mantissa, so `7310136179845801812` becomes `7310136179845801800` the moment it passes through
+one — and a status lookup for an id that is off by three at the end returns nothing, which reads
+exactly like "the provider has no record of this message". Ids therefore stay canonical decimal
+**strings** from the database to the wire, and only the JSON encoder emits them as unquoted numeric
+tokens (validated digits-only, so raw emission is safe). Anything wider than a signed 64-bit integer
+is rejected rather than emitted, because the far side would mangle it anyway.
+
+Responses are decoded with `JSON_BIGINT_AS_STRING` for the same reason, so `{"id": 7310136179845801812}`
+arrives as a string and correlates exactly.
+
+**A connector is batch-capable only if it reads `provider_message_ids` and reads no per-message
+variable** (`provider_message_id`, `recipient`, `sender`, `operator_code`, `route_code`). Both halves
+matter: without the first there is nowhere to put the extra ids, and without the second a batched
+request would carry one message's recipient while claiming to ask about several. Derived from the
+compiled parameters, so a connector cannot be marked batchable while building a single-message request.
+
+Grouping never crosses a gateway, a config version, or a route/operator override set, and each request
+is capped at `SMS_GATEWAY_STATUS_REQUEST_MAX` ids (default 50) so one request cannot grow unbounded.
+
+### Reading a batched answer
+
+```json
+{"items_path": "states", "id_path": "id", "status_path": "state"}
+```
+
+**Correlation is by id, never by array position.** A provider may answer in any order, omit an id it
+has no record of, repeat one, or include one nobody asked about — and position-based correlation turns
+every one of those into a delivery state written onto the wrong message, silently.
+
+| situation | behaviour |
+|---|---|
+| reordered items | correct; order is irrelevant |
+| id missing from the answer | row keeps its state, attempt counted, retried a bounded number of times, then abandoned. Never given a neighbour's status |
+| id repeated with different states | the id is dropped entirely — picking first or last would look identical to a correct answer |
+| id nobody requested | counted as a diagnostic and ignored; it cannot reach any row, because the write loop iterates over the *requested* rows |
+
+A status connector may also carry extra success **conditions** — typically the provider's own error
+field:
+
+```json
+{"rules": [{"path": "errorModel.errorCode", "operator": "equals", "values": [0]}]}
+```
+
+These are **strictly additive**. The base rule (HTTP 2xx *and* a parseable JSON body) is applied in
+code and is not configurable, so configuration can make success harder to achieve and never easier —
+which is what makes exposing it safe at all. When the rule fails, the whole poll is a failure and no
+`states` are read, so a provider-level error can never be mistaken for delivery data.
+
+**Status credentials belong in the vault.** `username`/`password` should be `value_type = secret`
+pointing at stored keys (`status_username`, `status_password`), not static values. This closure does
+not migrate existing static values automatically; an operator moves them.
+
 **Two sources, one poller.** A bulk send carries its provider id on its own `ellsms_bulk_items` row; a
 direct send, schedule or auto-reply carries it on an `ellsms_message_attempts` row (below). Both are
 polled by the same code, so the two cannot drift into different delivery-tracking behaviours.
@@ -403,6 +478,7 @@ instant.
 | `SMS_GATEWAY_MASTER_KEY` | *(unset)* | HKDF root for the secret vault; min 32 chars. Never back this up with the database. |
 | `SMS_GATEWAY_VERSION_CHECK_SECONDS` | `30` | how often a worker re-checks config versions |
 | `SMS_GATEWAY_STATUS_BATCH` | `100` | rows claimed per delivery-status pass |
+| `SMS_GATEWAY_STATUS_REQUEST_MAX` | `50` | maximum provider message ids in ONE status request |
 | `SMS_GATEWAY_INTERNAL_HOSTS` | *(empty)* | comma-separated **exact hostnames** exempt from the address rules |
 | `SMS_GATEWAY_ENFORCE_ADDRESS_RULES` | `0` | `1` applies the production address rules outside production |
 | `SMS_GATEWAY_DNS_CACHE_SECONDS` | `30` | how long a VALIDATED resolution is reused within a process |

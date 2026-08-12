@@ -437,6 +437,12 @@ documents. See `docs/customer-profile.md`.
   `accepted` status and the transport-identity columns, so a direct send, schedule or auto-reply can
   be delivery-tracked exactly like a bulk item. `SMS_GATEWAY_DNS_CACHE_SECONDS` (default 30) bounds a
   legitimate endpoint address change's propagation, the same shape as the config-version window.
+- **Long provider message ids are string-only by construction (2026-08-11).** Ids stay canonical
+  decimal strings end to end and are emitted as JSON numbers by a dedicated encoder; requests decode
+  with `JSON_BIGINT_AS_STRING`. Any future code that casts one to int or float silently corrupts it —
+  `tests/Unit/GatewayNumericListTest.php` asserts the corrupted form never appears. Ids wider than a
+  signed 64-bit integer are rejected rather than emitted, since downstream JSON parsers would mangle
+  them anyway; if a provider ever issues wider ids this becomes a real limitation.
 - **The legacy gateway has no delivery-status connector, because the existing integration has no
   delivery API.** Delivery states for messages sent through it stay at whatever the send established.
   The polling worker, the mapping, and the monotonicity guarantee all exist and are tested; they

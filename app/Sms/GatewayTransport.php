@@ -39,7 +39,7 @@ function gateway_build_request(array $connector, string $connectorKind, array $c
         // The preview mirrors the real request exactly, except that secret-derived values are masked.
         // Building both from the SAME resolution is what makes a dry run trustworthy — a separately
         // constructed preview could disagree with what is actually sent.
-        $shown = $parameter['is_secret'] ? gateway_mask_secret((string)$value) : $value;
+        $shown = $parameter['is_secret'] ? gateway_mask_secret((string)$value) : gateway_preview_value($value);
 
         switch ($parameter['location']) {
             case 'header':
@@ -60,9 +60,11 @@ function gateway_build_request(array $connector, string $connectorKind, array $c
     $encodedBody = null;
     $method = $section['method'];
     if ($method !== 'GET' && $body !== []) {
+        // gateway_json_encode_body(), not json_encode(): it is the only encoder that can emit a
+        // validated 19-digit provider id as a JSON NUMBER without ever putting it through a float.
         $encodedBody = $section['content_type'] === 'application/json'
-            ? (json_encode($body, JSON_UNESCAPED_UNICODE) ?: '{}')
-            : http_build_query($body);
+            ? gateway_json_encode_body($body)
+            : http_build_query(gateway_form_values($body));
     }
 
     // Auth is applied AFTER the body is encoded, because a signing scheme hashes the bytes actually
@@ -104,6 +106,28 @@ function gateway_build_request(array $connector, string $connectorKind, array $c
             'body'     => $preview['body'],
         ],
     ];
+}
+
+/** Renders a resolved value for a dry-run preview, so a numeric list is legible rather than "Array". */
+function gateway_preview_value(mixed $value): mixed {
+    if ($value instanceof GatewayJsonNumber) {
+        return $value->decimal;
+    }
+    if (is_array($value)) {
+        return array_map('gateway_preview_value', $value);
+    }
+    return $value;
+}
+
+/** Flattens GatewayJsonNumber values for form encoding, where everything is a string anyway. */
+function gateway_form_values(array $body): array {
+    $out = [];
+    foreach ($body as $key => $value) {
+        $out[$key] = $value instanceof GatewayJsonNumber
+            ? $value->decimal
+            : (is_array($value) ? array_map(static fn($v) => $v instanceof GatewayJsonNumber ? $v->decimal : $v, $value) : $value);
+    }
+    return $out;
 }
 
 /**
@@ -178,8 +202,22 @@ function gateway_send_context(array $input): array {
 }
 
 function gateway_status_context(array $input): array {
+    // The plural form is comma-joined for the same reason `recipients` is: a context value is a flat
+    // string map, and the `integer_list` / `string_list` data types are what turn one back into a real
+    // JSON array. A comma can never appear inside a validated decimal id, so the join is lossless.
+    $ids = $input['provider_message_ids'] ?? [];
+    if (!is_array($ids)) {
+        $ids = [];
+    }
+    if ($ids === [] && ($input['provider_message_id'] ?? '') !== '') {
+        // A single-message poll still populates the plural variable, so one id yields a ONE-ELEMENT
+        // array rather than a bare scalar — the shape a batch provider requires either way.
+        $ids = [(string)$input['provider_message_id']];
+    }
+
     return [
-        'provider_message_id' => (string)($input['provider_message_id'] ?? ''),
+        'provider_message_id'  => (string)($input['provider_message_id'] ?? ($ids[0] ?? '')),
+        'provider_message_ids' => implode(',', array_map('strval', $ids)),
         'request_id'          => (string)($input['request_id'] ?? Logger::currentRequestId()),
         'sender'              => (string)($input['sender'] ?? ''),
         'recipient'           => (string)($input['recipient'] ?? ''),
@@ -262,7 +300,12 @@ function gateway_execute(array $connector, string $connectorKind, array $request
                 'error_class' => $errorClass, 'request_id' => $requestId, 'raw' => ''];
     }
 
-    $decoded = json_decode((string)$raw, true);
+    // JSON_BIGINT_AS_STRING is a HARD requirement, not a nicety: a provider that answers with
+    // {"id": 7310136179845801812} would otherwise be decoded into a float and come back as
+    // 7310136179845801800 — three digits different, correlating to nothing, and indistinguishable from
+    // "the provider has no record of this message". Big integers arrive here as strings, which is
+    // exactly the form the internal ids are already in.
+    $decoded = json_decode((string)$raw, true, 512, JSON_BIGINT_AS_STRING);
     $bodyIsJson = json_last_error() === JSON_ERROR_NONE;
     $success = gateway_success_rule_evaluate($section['success'], $http, $decoded, $bodyIsJson);
 
