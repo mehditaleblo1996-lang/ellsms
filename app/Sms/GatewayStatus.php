@@ -57,7 +57,7 @@ function gateway_status_poll_pass(): array {
     $due = $db->prepare(
         "SELECT 'bulk_item' AS source, bi.id, bi.gateway_id, bi.provider_message_id, bi.mobile AS destination,
                 bi.delivery_status, bi.delivery_attempts, bi.created_at, bi.delivery_checked_at,
-                NULL AS route_id, NULL AS operator_id, bj.originator AS sender
+                bi.route_id, bi.operator_id, bj.originator AS sender
          FROM ellsms_bulk_items bi
          JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
          WHERE bi.status = 'sent'
@@ -286,9 +286,10 @@ function gateway_status_poll_group(array $connector, array $group, array $rows):
             continue;
         }
 
-        $canonical = gateway_status_map($status['statuses'], $states['by_id'][$id]['status']);
+        $rawProviderStatus = $states['by_id'][$id]['status'];
+        $canonical = gateway_status_map($status['statuses'], $rawProviderStatus);
         $deliveredAt = gateway_status_delivered_at_value($status, $states['by_id'][$id], $canonical);
-        if (gateway_status_record((string)$row['source'], (int)$row['id'], $row['delivery_status'], $canonical, $deliveredAt)) {
+        if (gateway_status_record((string)$row['source'], (int)$row['id'], $row['delivery_status'], $canonical, $deliveredAt, $rawProviderStatus)) {
             $outcome['updated']++;
             if (gateway_state_is_terminal($canonical)) {
                 $outcome['terminal']++;
@@ -468,32 +469,75 @@ function gateway_status_table(string $source): string {
 /**
  * Writes a new delivery state, refusing any transition that would lose information.
  *
- * @return bool whether the state actually changed
+ * RAW PROVIDER STATUS IS DIAGNOSTIC, NOT CANONICAL. `$providerStatus` is the provider's own token
+ * ("2", "DELIVRD", …) exactly as received, stored so an operator can tell "the provider said 2 and
+ * we mapped it to delivered" apart from "the provider said something we have no mapping for". It is
+ * recorded even when the canonical transition is REFUSED — that is precisely the case where the
+ * operator needs to see what the provider actually said in order to fix a mapping — but it can never
+ * change `delivery_status`, so monotonicity is unaffected either way.
+ *
+ * @param ?string $providerStatus the provider's raw token, or null when the response carried none.
+ * @return bool whether the canonical delivery state actually changed
  */
-function gateway_status_record(string $source, int $rowId, ?string $current, string $next, ?string $deliveredAt): bool {
+function gateway_status_record(string $source, int $rowId, ?string $current, string $next, ?string $deliveredAt, ?string $providerStatus = null): bool {
+    $table = gateway_status_table($source);
+
     if (!gateway_status_may_transition($current, $next)) {
+        // Refused transition, but the raw token is still worth keeping: a row stuck at `unknown`
+        // because of a missing mapping is only debuggable if the unmapped token was preserved.
+        gateway_status_record_provider_status($table, $rowId, $providerStatus);
         Logger::info('gateway.status.transition_refused', [
             'source' => $source, 'row_id' => $rowId, 'current' => $current, 'rejected' => $next,
         ]);
         return false;
     }
     if ($current === $next) {
+        gateway_status_record_provider_status($table, $rowId, $providerStatus);
         return false;
     }
     // The WHERE clause repeats the terminal-state guard in SQL, so two workers racing to write
     // different states cannot produce a downgrade even if both passed the PHP check.
-    $table = gateway_status_table($source);
+    //
+    // provider_status rides along in the same UPDATE rather than in a second statement, so the raw
+    // token and the canonical state it produced are always written together or not at all — a row
+    // can never show a token that did not produce its current status. COALESCE keeps a previously
+    // recorded token when this particular response carried none.
     $update = db()->prepare(
         "UPDATE {$table}
-         SET delivery_status = ?, delivered_at = COALESCE(?, delivered_at)
+         SET delivery_status = ?, delivered_at = COALESCE(?, delivered_at), provider_status = COALESCE(?, provider_status)
          WHERE id = ?
            AND (delivery_status IS NULL OR delivery_status NOT IN ('delivered','failed','rejected','expired'))"
     );
-    $update->execute([$next, $deliveredAt, $rowId]);
+    $update->execute([$next, $deliveredAt, gateway_status_provider_token($providerStatus), $rowId]);
     if ($update->rowCount() === 0) {
         return false;
     }
     Logger::info('gateway.status.updated', ['source' => $source, 'row_id' => $rowId, 'from' => $current, 'to' => $next]);
     Metrics::increment('gateway_delivery_status', 1, ['state' => $next]);
     return true;
+}
+
+/**
+ * Stores the raw provider token on a row whose canonical state is NOT changing.
+ *
+ * Separate from the main UPDATE because that one carries a terminal-state guard this must not have:
+ * a `delivered` row re-reporting "2" should still record the token, and the guard would drop it.
+ */
+function gateway_status_record_provider_status(string $table, int $rowId, ?string $providerStatus): void {
+    $token = gateway_status_provider_token($providerStatus);
+    if ($token === null) {
+        return;
+    }
+    db()->prepare("UPDATE {$table} SET provider_status = ? WHERE id = ?")->execute([$token, $rowId]);
+}
+
+/** A provider token trimmed to what the column holds, or null when there is nothing worth storing. */
+function gateway_status_provider_token(?string $providerStatus): ?string {
+    if ($providerStatus === null) {
+        return null;
+    }
+    $token = trim($providerStatus);
+    // Bounded to the column width (VARCHAR(60)) rather than trusted: the value is provider-supplied,
+    // and a pathological response must not turn into a truncation error that fails the whole pass.
+    return $token === '' ? null : mb_strimwidth($token, 0, 60, '');
 }

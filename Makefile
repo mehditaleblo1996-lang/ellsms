@@ -12,7 +12,7 @@
 #
 # Run `make help` (or just `make`) to list all commands.
 
-.PHONY: help lint test test-integration check \
+.PHONY: help lint font-check test test-integration check \
         docker-build up down logs worker-logs worker-once \
         composer-install db-schema-show db-tables db-schema-apply \
         db-migrations-show db-migrations-status db-migrations-apply \
@@ -36,12 +36,14 @@
         sms-pricing-integrity-check sms-pricing-status sms-pricing-status-json sms-price-simulate \
         sms-gateway-backfill-dry-run sms-gateway-backfill sms-gateway-integrity-check \
         sms-gateway-status sms-gateway-status-json sms-gateway-simulate sms-status-poll \
+        sms-status-worker-status sms-status-worker-status-json sms-status-worker-logs sms-status-worker-once \
         profile-backfill profile-backfill-dry-run profile-integrity-check profile-status profile-status-json
 
 help:
 	@echo "ELLSMS developer commands"
 	@echo ""
 	@echo "  make lint             PHP syntax check every .php file (fails on any parse error)"
+	@echo "  make font-check       Verify every declared webfont exists, is valid WOFF2, and is self-hosted"
 	@echo "  make test             Run the PHPUnit unit suite (delegates to 'composer test')"
 	@echo "  make test-integration Run tests/Integration against a real disposable MySQL DB"
 	@echo "                        (needs ELLSMS_TEST_DB_HOST — see this target in the Makefile; skipped"
@@ -181,6 +183,11 @@ help:
 	@echo "                            run this before enabling SMS_GATEWAY_TRANSPORT."
 	@echo "  make sms-status-poll      one delivery-status polling pass against configured status"
 	@echo "                            connectors. Safe to run concurrently; each row is claimed atomically."
+	@echo "  make sms-status-worker-status  read-only: is delivery polling configured/running, how many"
+	@echo "                            rows are waiting, oldest due age, rows stuck at 'unknown'"
+	@echo "  make sms-status-worker-status-json  same, machine-readable"
+	@echo "  make sms-status-worker-logs    tail the persistent status-worker container's logs"
+	@echo "  make sms-status-worker-once    one pass in a throwaway container (safe alongside the service)"
 	@echo ""
 	@echo "  make profile-backfill-dry-run  read-only: what the legacy ellsms_user_kyc -> profile"
 	@echo "                            migration would move (personal fields + identity documents)"
@@ -212,6 +219,14 @@ lint:
 		echo "Lint FAILED — see errors above."; \
 		exit 1; \
 	fi
+
+## ---------- Fonts ----------
+
+# Verifies every @font-face in fonts.css resolves to a real, self-hosted WOFF2.
+# A missing font is otherwise invisible: pages still return 200 and the UI just
+# silently falls back to Tahoma.
+font-check:
+	@php cron/font-assets-check.php
 
 ## ---------- Tests ----------
 
@@ -799,6 +814,22 @@ sms-gateway-simulate:
 # compare-and-swap).
 sms-status-poll:
 	docker compose run --rm worker php cron/sms-status-poll.php
+
+# Read-only health view of delivery-status polling. Reports on the WORK (due rows, oldest age,
+# recent checks), not on the process -- whether the container is alive is `docker compose ps`.
+sms-status-worker-status:
+	docker compose run --rm worker php cron/sms-status-worker-status.php
+
+sms-status-worker-status-json:
+	docker compose run --rm worker php cron/sms-status-worker-status.php --json
+
+sms-status-worker-logs:
+	docker compose logs -f status-worker
+
+# One pass in a throwaway container. Safe to run even while the persistent status-worker service is
+# running -- gateway_status_claim()'s compare-and-swap makes concurrent pollers safe.
+sms-status-worker-once:
+	docker compose run --rm status-worker php cron/sms-status-worker.php --once
 
 ## ---------- Customer / organization profile (see docs/customer-profile.md) ----------
 

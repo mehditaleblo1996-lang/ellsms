@@ -147,6 +147,59 @@ services:
       - backend_net
     stop_grace_period: 30s
 
+  # Delivery-status polling. Its OWN container for the same reason webhook-worker is: a provider
+  # whose status API hangs must only ever delay other STATUS polls, never a scheduled send, an
+  # auto-reply, or a bulk-send pass.
+  #
+  # This service is what makes delivery status update without an operator typing
+  # `php cron/sms-status-poll.php` — that command still exists for a one-off pass and is safe to run
+  # alongside this service (gateway_status_claim()'s compare-and-swap makes concurrent pollers safe,
+  # exactly like every other claim in this project).
+  status-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ellsms-status-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/sms-status-worker.php
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      # How often to LOOK for due rows. Whether a row is actually due stays entirely with the
+      # connector's own poll_initial_delay_seconds / poll_max_attempts / poll_max_age_seconds — this
+      # interval never overrides them (see cron/sms-status-worker.php).
+      SMS_GATEWAY_STATUS_WORKER_INTERVAL_SECONDS: ${SMS_GATEWAY_STATUS_WORKER_INTERVAL_SECONDS:-15}
+      SMS_GATEWAY_STATUS_BATCH: ${SMS_GATEWAY_STATUS_BATCH:-100}
+      SMS_GATEWAY_STATUS_REQUEST_MAX: ${SMS_GATEWAY_STATUS_REQUEST_MAX:-50}
+      # The poller talks to providers through the same transport the send path uses, so it needs the
+      # same transport switch — with SMS_GATEWAY_TRANSPORT unset it would never reach a gateway.
+      SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      API_BASE_URL: ${API_BASE_URL:-}
+      BACKEND_SERVICE_ID: ${BACKEND_SERVICE_ID:-}
+      BACKEND_SERVICE_SECRET: ${BACKEND_SERVICE_SECRET:-}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    # Health is "this worker's runtime is alive", deliberately NOT "the provider answers": a provider
+    # outage must not mark the container unhealthy and have an orchestrator restart it in a loop —
+    # the worker surviving provider failures is the whole point of its failure isolation.
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    # Enough time to finish the current bounded pass and exit cleanly (SIGTERM handling in
+    # cron/sms-status-worker.php) rather than being SIGKILLed mid-poll.
+    stop_grace_period: 30s
+
 networks:
   backend_net:
     external: true

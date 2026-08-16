@@ -457,10 +457,21 @@ documents. See `docs/customer-profile.md`.
   public authenticated endpoint per gateway plus replay/ordering/spoofing handling. A receiver can be
   added later without redesign: it would write through the same `gateway_status_record()` and inherit
   the terminal-state guarantee.
-- **`SubscriptionEffectiveSlotConcurrencyTest` deadlocks intermittently** (roughly 1 run in 3 under
-  load) with `SQLSTATE[40001] ... Deadlock found`. Pre-existing, unrelated to the connector work, and
-  surfaced by running the full suite repeatedly against one container. The fix is a bounded deadlock
-  retry in `subscription_transition()`; noted here rather than fixed inside an unrelated feature.
+- **`SubscriptionEffectiveSlotConcurrencyTest::testTwoProcessesCancellingConcurrentlyReleaseTheSlotExactlyOnce`
+  deadlocks with `SQLSTATE[40001] ... Deadlock found`.** Pre-existing and unrelated to any gateway,
+  status-worker or reporting work.
+
+  *Trigger isolated 2026-08-15:* not load and not randomness — a **cold database**. It fails
+  essentially every time on a freshly created schema and passes once the same container has been
+  warmed by a prior run. That is why `make test-integration` (which recreates the database) shows it
+  as a consistent single failure while a re-run of the same filter immediately afterwards passes.
+
+  Verified in both directions against unmodified `main`: original code + fresh DB → fails; changed
+  code + warm DB → passes. Anyone bisecting this must hold the database state constant, or they will
+  misattribute it to whatever they happen to be working on.
+
+  The fix remains a bounded deadlock retry in `subscription_transition()`; noted here rather than
+  fixed inside an unrelated feature.
 - **`DatabaseOperationalScriptsTest` requires an empty migration ledger.** `ellsms_schema_migrations`
   is not transaction-isolated, so a second full-suite run against the same test container fails that
   test until the ledger is cleared. A test-isolation quirk, not a product defect.

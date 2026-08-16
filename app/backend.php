@@ -112,6 +112,11 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         'gateway_id'             => $result['gateway_id'] ?? null,
         'gateway_config_version' => $result['gateway_config_version'] ?? null,
         'provider_message_ids'   => $result['message_ids'] ?? [],
+        // Route/operator as ACTUALLY resolved for this send. Bulk items persist these onto their own
+        // row (bulk_send_one_item()) so a later report can describe what happened rather than
+        // re-resolving today's sender configuration, which may have changed since.
+        'route_id'               => $result['route_id'] ?? null,
+        'operators'              => $result['operators'] ?? [],
     ];
 
     if (!$result['ok'] && $result['sent'] === [] && $result['http'] === 0) {
@@ -1555,12 +1560,15 @@ function bulk_send_one_item(PDO $db, array $item): bool {
             "UPDATE ellsms_bulk_items
              SET status='sent', error=NULL, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL,
                  gateway_id = ?, gateway_config_version = ?, provider_message_id = ?,
+                 route_id = ?, operator_id = ?,
                  delivery_status = IF(? IS NULL, delivery_status, 'sent')
              WHERE id=?"
         )->execute([
             $gatewayMeta['gateway_id'] ?? null,
             $gatewayMeta['gateway_config_version'] ?? null,
             $gatewayMeta['provider_message_ids'][$item['mobile']] ?? null,
+            $gatewayMeta['route_id'] ?? null,
+            $gatewayMeta['operators'][$item['mobile']] ?? null,
             $gatewayMeta['gateway_id'] ?? null,
             $item['id'],
         ]);
