@@ -83,7 +83,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
 <div class="card" style="border:2px solid #c0392b">
   <h2>کلید API ساخته شد — <?= e($revealedSecret['label']) ?></h2>
   <p style="color:#c0392b;font-weight:bold">این مقدار فقط همین یک‌بار نمایش داده می‌شود. آن را همین حالا در جای امنی ذخیره کنید — پس از ترک این صفحه دیگر قابل بازیابی نیست.</p>
-  <p class="ltr" style="direction:ltr;text-align:left;background:#f6f7f9;padding:12px;border-radius:8px;word-break:break-all;font-family:monospace">
+  <p class="api-key" style="background:#f6f7f9;padding:12px;border-radius:8px">
     <?= e($revealedSecret['raw_key']) ?>
   </p>
 </div>

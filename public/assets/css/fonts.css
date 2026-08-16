@@ -1,0 +1,65 @@
+/* ELLSMS — تایپوگرافی محلی (self-hosted)
+   ------------------------------------------------------------------
+   THE SINGLE AUTHORITATIVE @font-face SOURCE. Nothing else in this project may
+   declare a webfont.
+
+   WHY THIS FILE EXISTS. style.css previously pulled Vazirmatn from a public
+   webfont service at runtime. That made every page render dependent on an
+   external host: a blocked or slow provider degraded the whole panel, and each
+   page view leaked a request to a third party. The font is now served from this
+   application's own static assets and nothing is fetched off-host.
+
+   ONE FAMILY, REAL WEIGHTS. Each declaration below points at its OWN file. The
+   browser is never told that one file is several weights — that would make it
+   synthesise (smear) the missing ones, which is exactly what "do not fake
+   weights" forbids. Weights 400/500/600/700/800 are the five the UI actually
+   uses; see the weight audit in docs/font-integration.md.
+
+   FALLBACK IS DELIBERATE, NOT INCIDENTAL. Tahoma ships with Windows and covers
+   Persian; Arial and the generic sans-serif follow. If every @font-face below
+   fails to load, the panel stays fully readable in Persian — degraded, never
+   broken.
+
+   font-display: swap — text paints immediately in the fallback and is repainted
+   when Vazirmatn arrives. A delivery report must never be invisible while a
+   font downloads. */
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/assets/fonts/Vazirmatn-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/assets/fonts/Vazirmatn-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/assets/fonts/Vazirmatn-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/assets/fonts/Vazirmatn-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/assets/fonts/Vazirmatn-ExtraBold.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}

@@ -5,7 +5,11 @@
    (اعتبار، کد) به‌صورت لاتین و چپ‌به‌راست ایزوله می‌مانند تا خوانا و
    کپی‌پذیر بمانند. */
 
-@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&display=swap');
+/* Self-hosted Vazirmatn. This was previously an external webfont import; the
+   font is now served from this application's own assets, so the panel has no
+   runtime dependency on any third-party font service. All @font-face rules live
+   in fonts.css and nowhere else. */
+@import url('/assets/css/fonts.css');
 
 :root {
   --indigo: #4a32e8;
@@ -20,8 +24,34 @@
   --warn:   #b45309;  --warn-bg: #fdf3e3;
   --err:    #c0223a;  --err-bg:  #fdeaee;
   --grad: linear-gradient(120deg, var(--indigo), var(--blue));
-  --font: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
-  --mono: 'Vazirmatn', ui-monospace, "SF Mono", Consolas, monospace;
+  /* --font-ui is THE default typeface of the panel. Everything that renders
+     prose, labels, buttons, tables and form controls resolves to this. Tahoma
+     is the first fallback because it ships with Windows and covers Persian, so
+     a failed font load degrades to something readable rather than to a Latin
+     face that cannot draw Persian at all. */
+  --font-ui: 'Vazirmatn', 'Segoe UI', Tahoma, Arial, sans-serif;
+
+  /* --font-mono is for DIAGNOSTIC values only: provider_message_id, API keys,
+     hashes, request IDs, JSON. These need fixed-width digits so a 19-digit
+     reference can be read and compared character by character. Vazirmatn is
+     deliberately NOT in this stack — it is proportional, and listing it first
+     (as this variable previously did) meant "monospace" values were never
+     actually monospaced. */
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+
+  /* --font-num is for DISPLAY numerals: dashboard stat values, price amounts,
+     chart labels. These are branded headline numbers, not diagnostic strings —
+     they want the UI face, kept LTR and tabular so digits align in a column.
+     This is what the old --mono was actually being used for at those sites, so
+     they keep their exact current appearance. */
+  --font-num: var(--font-ui);
+
+  /* Legacy aliases, kept so existing call sites work without renaming unrelated
+     CSS. --mono maps to --font-num (its historical behaviour: Vazirmatn first)
+     rather than to --font-mono, so repointing diagnostics to a true monospace
+     does not silently restyle the dashboard's headline numbers. */
+  --font: var(--font-ui);
+  --mono: var(--font-num);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -41,13 +71,70 @@ a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
+/* GLOBAL TYPOGRAPHY FLOOR.
+   Form controls are the reason this block exists: browsers do NOT inherit
+   font-family into <input>, <select>, <textarea>, <button> or <option> from
+   body — the UA stylesheet substitutes a system face — so without naming them
+   explicitly the panel's inputs would silently render in a different font from
+   everything around them. <option> is listed because Windows in particular
+   styles dropdown items from the UA sheet rather than from the <select>.
+   Declared once here rather than repeated per component. */
+html,
+body,
+button,
+input,
+select,
+textarea,
+option,
+optgroup,
+table,
+th,
+td,
+a,
+label,
+legend,
+fieldset,
+dialog,
+[role="dialog"] {
+  font-family: var(--font-ui);
+}
+
 /* Latin/Western digits (phone numbers, raw amounts) stay LTR & isolated
    so they don't get visually reversed inside RTL text. */
 .ltr, .msisdn, .num, code.kbd {
   direction: ltr;
   unicode-bidi: isolate;
-  font-family: var(--mono);
+  font-family: var(--font-num);
   font-variant-numeric: tabular-nums;
+}
+
+/* DIAGNOSTIC VALUES — genuinely fixed-width.
+   provider_message_id, API keys, hashes, request IDs, gateway/route codes and
+   JSON are read character by character and compared against a provider's
+   dashboard, so every glyph must occupy the same width. A 19-digit reference
+   such as 4473621976262727360 is only checkable by eye when its digits line up.
+   These values are strings, never numbers: word-break keeps a long reference
+   inside its table cell instead of widening the row, and tabular-nums stops a
+   proportional '1' from making two equal-length IDs look different lengths.
+   CSS affects presentation only — the underlying value is never altered.
+
+   Placed AFTER the .ltr/.msisdn rule above on purpose: an element carrying both
+   (e.g. class="ltr provider-ref") must resolve to the monospace face, and these
+   selectors tie on specificity, so source order decides. code.kbd is the one
+   deliberate exception — it is a keyboard hint in running prose, not a value to
+   transcribe — and it keeps the UI face via its higher specificity above. */
+.mono, code, kbd, samp, pre,
+.provider-ref, .api-key, .hash, .request-id,
+input.mono, textarea.mono, input.provider-ref, textarea.api-key {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+}
+.provider-ref, .api-key, .hash, .request-id {
+  word-break: break-all;
+  user-select: all;
 }
 
 /* ---------- Shell ---------- */
