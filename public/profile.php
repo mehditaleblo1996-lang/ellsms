@@ -1,13 +1,14 @@
 <?php
 /**
  * ELLSMS — the user's own account page: password, personal profile, and (for members of an
- * organization) the company profile, address, low-credit alerts and documents
- * (docs/customer-profile.md).
+ * organization) the company profile, address, low-credit alerts, documents, KYC status/submission
+ * and allowed-IP management (docs/customer-profile.md, docs/profile-kyc.md).
  *
  * EDIT POLICY, enforced server-side on every branch below:
  *   - personal profile and personal documents: always the user's own, no permission needed;
- *   - company profile / address / alerts / organization documents: `settings.manage` only, i.e.
- *     owner and admin — an ordinary member READS them and cannot change the company's legal record.
+ *   - company profile / address / alerts / organization documents / account type / allowed IPs / KYC
+ *     submission: `settings.manage` only, i.e. owner and admin — an ordinary member READS them and
+ *     cannot change the company's legal record or trigger a KYC submission on the organization's behalf.
  *
  * The organization shown is the ACTIVE one (current_organization()). A user who belongs to two
  * organizations sees the company profile of whichever is active and never a merge of the two.
@@ -30,11 +31,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $impersonationAction = [
         'password'              => 'account.password',
         'profile_personal'      => 'profile.personal',
+        'account_type'          => 'profile.organization',
         'profile_organization'  => 'profile.organization',
         'profile_address'       => 'profile.organization',
         'profile_notifications' => 'profile.organization',
         'document_upload'       => 'profile.documents',
         'document_archive'      => 'profile.documents',
+        'kyc_submit'            => 'profile.organization',
+        'allowed_ip_create'     => 'profile.organization',
+        'allowed_ip_delete'     => 'profile.organization',
+        'allowed_ip_toggle'     => 'profile.organization',
     ][$do] ?? null;
     if ($impersonationAction !== null && impersonation_guard_post($impersonationAction)) {
         redirect('/profile.php');
@@ -42,7 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Every organization-scoped branch needs the same two things: an active organization and
     // settings.manage. Checked once, here, rather than repeated (and eventually forgotten) below.
-    $organizationScoped = in_array($do, ['profile_organization', 'profile_address', 'profile_notifications'], true)
+    $organizationScoped = in_array($do, [
+        'account_type', 'profile_organization', 'profile_address', 'profile_notifications',
+        'kyc_submit', 'allowed_ip_create', 'allowed_ip_delete', 'allowed_ip_toggle',
+    ], true)
         || ($do === 'document_upload' && ($_POST['owner'] ?? '') === 'organization')
         || ($do === 'document_archive' && ($_POST['owner'] ?? '') === 'organization');
     if ($organizationScoped && !($organizationId > 0 && $canManageOrganization)) {
@@ -81,8 +90,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($result['ok'] ? 'success' : 'error', $result['ok']
             ? 'اطلاعات فردی ذخیره شد.'
             : profile_error_message((string)$result['reason']));
+    } elseif ($do === 'account_type') {
+        // A STANDALONE action, deliberately: switching حقیقی/حقوقی is a metadata decision the owner/
+        // admin should be able to make without re-submitting the entire company form, and it must
+        // NEVER blank out the other fields already on file (§13 — no silent data loss; the dormant
+        // side's data and documents simply stay stored and unused until switched back).
+        $current = profile_organization_get($organizationId);
+        $current['account_type'] = $_POST['account_type'] ?? $current['account_type'];
+        $result = profile_organization_save($organizationId, $current, (int)$me['id']);
+        flash($result['ok'] ? 'success' : 'error', $result['ok']
+            ? 'نوع حساب به‌روزرسانی شد.'
+            : profile_error_message((string)$result['reason']));
     } elseif ($do === 'profile_organization') {
         $result = profile_organization_save($organizationId, [
+            'account_type'                 => $_POST['account_type'] ?? 'individual',
             'legal_name'                   => $_POST['legal_name'] ?? '',
             'company_type'                 => $_POST['company_type'] ?? 'unspecified',
             'registration_number'          => $_POST['registration_number'] ?? '',
@@ -92,12 +113,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'ceo_father_name'              => $_POST['ceo_father_name'] ?? '',
             'ceo_national_code'            => $_POST['ceo_national_code'] ?? '',
             'ceo_birth_date'               => profile_date_from_request('ceo_birth_date'),
+            'ceo_birth_city'               => $_POST['ceo_birth_city'] ?? '',
+            'ceo_mobile'                   => $_POST['ceo_mobile'] ?? '',
+            'ceo_email'                    => $_POST['ceo_email'] ?? '',
             'company_start_date'           => profile_date_from_request('company_start_date'),
             'company_expiry_date'          => profile_date_from_request('company_expiry_date'),
             'legal_representative_user_id' => $_POST['legal_representative_user_id'] ?? 0,
         ], (int)$me['id']);
         flash($result['ok'] ? 'success' : 'error', $result['ok']
-            ? 'اطلاعات سازمان ذخیره شد.'
+            ? 'اطلاعات ذخیره شد.'
             : profile_error_message((string)$result['reason']));
     } elseif ($do === 'profile_address') {
         $result = profile_address_save($organizationId, $_POST, (int)$me['id']);
@@ -125,6 +149,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             : ['user' => (int)$me['id']];
         $result = profile_document_archive($owner, (int)($_POST['document_id'] ?? 0), (int)$me['id']);
         flash($result['ok'] ? 'info' : 'error', $result['ok'] ? 'مدرک بایگانی شد.' : 'مدرک یافت نشد.');
+    } elseif ($do === 'kyc_submit') {
+        $accountType = profile_organization_get($organizationId)['account_type'] ?? 'individual';
+        $result = kyc_submit(
+            $organizationId, (int)$me['id'], $accountType,
+            profile_user_get((int)$me['id']), profile_organization_get($organizationId), profile_address_get($organizationId)
+        );
+        if ($result['ok']) {
+            flash('success', 'درخواست احراز هویت ارسال شد.');
+        } elseif (($result['reason'] ?? '') === 'incomplete') {
+            flash('error', 'برای ارسال، ابتدا موارد زیر را تکمیل کنید: ' . implode('، ', $result['missing']));
+        } else {
+            flash('error', 'در وضعیت فعلی امکان ارسال درخواست وجود ندارد.');
+        }
+    } elseif ($do === 'allowed_ip_create') {
+        $result = allowed_ip_create($organizationId, (string)($_POST['ip_or_cidr'] ?? ''), (string)($_POST['label'] ?? ''), (int)$me['id']);
+        flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'آدرس اضافه شد.' : allowed_ip_error_message((string)$result['reason']));
+    } elseif ($do === 'allowed_ip_delete') {
+        $result = allowed_ip_delete($organizationId, (int)($_POST['id'] ?? 0), (int)$me['id']);
+        flash($result['ok'] ? 'info' : 'error', $result['ok'] ? 'آدرس حذف شد.' : allowed_ip_error_message((string)$result['reason']));
+    } elseif ($do === 'allowed_ip_toggle') {
+        $result = allowed_ip_toggle($organizationId, (int)($_POST['id'] ?? 0), (int)$me['id']);
+        flash($result['ok'] ? 'info' : 'error', $result['ok'] ? 'وضعیت به‌روزرسانی شد.' : allowed_ip_error_message((string)$result['reason']));
     }
 
     redirect('/profile.php');
@@ -132,13 +178,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $userProfile   = profile_user_get((int)$me['id']);
 $userDocuments = profile_documents_list(['user' => (int)$me['id']]);
-$userScore     = profile_user_completeness($userProfile);
 
 $organizationProfile = $organizationId > 0 ? profile_organization_get($organizationId) : null;
 $address             = $organizationId > 0 ? profile_address_get($organizationId) : null;
 $notifications       = $organizationId > 0 ? profile_notifications_get($organizationId) : null;
 $organizationDocuments = $organizationId > 0 ? profile_documents_list(['organization' => $organizationId]) : [];
-$organizationScore   = $organizationId > 0 ? profile_organization_completeness($organizationProfile, $address) : null;
+$allowedIps          = $organizationId > 0 ? allowed_ip_list($organizationId) : [];
+$accountType         = $organizationProfile['account_type'] ?? 'individual';
+// §13 — "no silent data loss": an organization that already has company/representative data on file
+// (e.g. from before an account_type switch, or set directly by an admin) keeps that section visible
+// even while account_type reads 'individual' — hiding a section never hides the DATA behind it, only
+// the default layout for an organization that has never touched it.
+$hasLegalData        = $organizationId > 0 && (
+    (string)($organizationProfile['legal_name'] ?? '') !== ''
+    || (string)($organizationProfile['national_id'] ?? '') !== ''
+    || (string)($organizationProfile['ceo_name'] ?? '') !== ''
+);
+$score               = $organizationId > 0
+    ? profile_account_completeness($accountType, $userProfile, $organizationProfile, $address)
+    : profile_user_completeness($userProfile);
+$kycRequest          = $organizationId > 0 ? kyc_request_get($organizationId) : null;
+$kycEligibility      = $organizationId > 0
+    ? kyc_can_submit($organizationId, (int)$me['id'], $accountType, $userProfile, $organizationProfile, $address)
+    : ['ok' => false, 'missing' => []];
+$kycBadgeClass = [
+    'draft' => 'badge-off', 'rejected' => 'badge-off',
+    'submitted' => 'badge-pending', 'under_review' => 'badge-pending', 'needs_correction' => 'badge-pending',
+    'approved' => 'badge-ok',
+][$kycRequest['status'] ?? 'draft'] ?? 'badge-off';
 
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'profile.personal';
@@ -155,12 +222,63 @@ $profileReadOnly = is_impersonating();
     <tr><th>نام و نام خانوادگی</th><td><?= e(trim((string)$me['first_name'] . ' ' . (string)$me['last_name'])) ?: '—' ?></td></tr>
     <tr><th>موبایل</th><td class="msisdn"><?= e((string)$me['mobile']) ?: '—' ?></td></tr>
     <tr><th>ایمیل</th><td class="ltr"><?= e((string)$me['email']) ?: '—' ?></td></tr>
+    <?php if ($organizationId > 0): ?>
+    <tr><th>تکمیل پروفایل</th><td><?= to_persian_digits((string)$score['percent']) ?>٪<?php if ($score['missing']): ?> <span class="hint" style="display:inline">— تکمیل‌نشده: <?= e(implode('، ', $score['missing'])) ?></span><?php endif; ?></td></tr>
+    <?php endif; ?>
   </table>
   </div>
 </div>
 
+<?php if ($organizationId > 0): ?>
 <div class="card">
-  <h2>اطلاعات فردی <span class="hint" style="display:inline">— تکمیل‌شده: <?= to_persian_digits((string)$userScore['percent']) ?>٪</span></h2>
+  <h2>وضعیت احراز هویت (KYC)
+    <span class="badge <?= e($kycBadgeClass) ?>" style="margin-inline-start:8px"><?= e(kyc_status_label((string)$kycRequest['status'])) ?></span>
+  </h2>
+  <?php if (in_array($kycRequest['status'], ['needs_correction', 'rejected'], true) && (string)$kycRequest['review_note'] !== ''): ?>
+    <div class="flash flash-error">یادداشت بازبین: <?= e((string)$kycRequest['review_note']) ?></div>
+  <?php endif; ?>
+  <?php if ($canManageOrganization && in_array($kycRequest['status'], ['draft', 'needs_correction', 'rejected'], true)): ?>
+    <?php if (!$kycEligibility['ok']): ?>
+      <p class="hint">پیش از ارسال باید تکمیل شود: <?= e(implode('، ', $kycEligibility['missing'])) ?></p>
+    <?php endif; ?>
+    <form method="post" style="margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="kyc_submit">
+      <button class="btn btn-primary btn-sm" <?= ($kycEligibility['ok'] && !$profileReadOnly) ? '' : 'disabled' ?>>ارسال درخواست احراز هویت</button>
+    </form>
+  <?php elseif (in_array($kycRequest['status'], ['submitted', 'under_review'], true)): ?>
+    <p class="hint">درخواست شما ثبت شده و در انتظار بررسی است.</p>
+  <?php elseif ($kycRequest['status'] === 'approved'): ?>
+    <p class="hint">احراز هویت این سازمان تأیید شده است.</p>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<?php if ($organizationId > 0): ?>
+<div class="card">
+  <h2>نوع حساب</h2>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="account_type">
+    <div class="toolbar">
+      <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
+        <label style="display:inline-flex;align-items:center;gap:6px">
+          <input type="radio" name="account_type" value="<?= e($value) ?>"<?= $accountType === $value ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>>
+          <?= e($label) ?>
+        </label>
+      <?php endforeach; ?>
+    </div>
+    <?php if ($canManageOrganization && !$profileReadOnly): ?>
+      <button class="btn btn-sm" style="margin-top:8px">اعمال نوع حساب</button>
+    <?php endif; ?>
+  </form>
+  <p class="hint">تغییر نوع حساب اطلاعات و مدارک بخش دیگر را حذف نمی‌کند؛ فقط بخش‌های نمایش‌داده‌شده را تغییر می‌دهد.</p>
+</div>
+<?php endif; ?>
+
+<?php if ($accountType !== 'legal' || $organizationId === 0): ?>
+<div class="card">
+  <h2>اطلاعات فردی</h2>
   <?php if (!empty($userProfile['from_legacy_kyc'])): ?>
     <div class="flash flash-info">بخشی از این اطلاعات از بخش «اطلاعات هویتی» قبلی خوانده شده است و با نخستین ذخیره‌سازی به‌روزرسانی می‌شود.</div>
   <?php endif; ?>
@@ -185,27 +303,42 @@ $profileReadOnly = is_impersonating();
       <button class="btn btn-primary">ذخیره‌ی اطلاعات فردی</button>
     <?php endif; ?>
   </form>
-  <?php if ($userScore['missing']): ?>
-    <p class="hint">تکمیل‌نشده: <?= e(implode('، ', $userScore['missing'])) ?></p>
-  <?php endif; ?>
 </div>
+<?php endif; ?>
 
-<?php if ($organizationId > 0): ?>
+<?php if ($organizationId > 0 && ($accountType === 'legal' || $hasLegalData)): ?>
 <div class="card">
-  <h2>اطلاعات سازمان — <?= e((string)$organization['name']) ?>
-    <span class="hint" style="display:inline">— تکمیل‌شده: <?= to_persian_digits((string)$organizationScore['percent']) ?>٪</span>
-  </h2>
+  <h2>اطلاعات نماینده</h2>
   <?php if (!$canManageOrganization): ?>
     <p class="hint">شما به این اطلاعات دسترسی مشاهده دارید؛ ویرایش آن‌ها نیازمند دسترسی مدیریت تنظیمات سازمان است.</p>
   <?php endif; ?>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_organization">
+    <input type="hidden" name="account_type" value="legal">
+    <div class="grid grid-2">
+      <label>نام و نام خانوادگی نماینده <input type="text" name="ceo_name" value="<?= e((string)$organizationProfile['ceo_name']) ?>" maxlength="160" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label>نام پدر <input type="text" name="ceo_father_name" value="<?= e((string)$organizationProfile['ceo_father_name']) ?>" maxlength="120" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label>کد ملی <input type="text" name="ceo_national_code" class="ltr" value="<?= e((string)$organizationProfile['ceo_national_code']) ?>" maxlength="20" placeholder="۱۰ رقم" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label>تاریخ تولد <?= jalali_date_select('ceo_birth_date', $organizationProfile['ceo_birth_date'] ?? null) ?></label>
+      <label>شهر تولد <input type="text" name="ceo_birth_city" value="<?= e((string)$organizationProfile['ceo_birth_city']) ?>" maxlength="60" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label>موبایل <input type="text" name="ceo_mobile" class="ltr" value="<?= e((string)$organizationProfile['ceo_mobile']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label>ایمیل <input type="text" name="ceo_email" class="ltr" value="<?= e((string)$organizationProfile['ceo_email']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label>کاربر مرتبط (اختیاری)
+        <select name="legal_representative_user_id" <?= $canManageOrganization ? '' : 'disabled' ?>>
+          <option value="0">—</option>
+          <option value="<?= (int)$me['id'] ?>"<?= (int)($organizationProfile['legal_representative_user_id'] ?? 0) === (int)$me['id'] ? ' selected' : '' ?>><?= e((string)$me['username']) ?></option>
+        </select>
+      </label>
+    </div>
+    <div class="hr" style="margin:16px 0"></div>
+    <h3 style="margin-top:0">اطلاعات شرکت</h3>
     <div class="grid grid-2">
       <label>نام حقوقی <input type="text" name="legal_name" value="<?= e((string)$organizationProfile['legal_name']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
       <label>نوع شرکت
         <select name="company_type" <?= $canManageOrganization ? '' : 'disabled' ?>>
           <?php foreach (PROFILE_COMPANY_TYPES as $value => $label): ?>
+            <?php if ($value === 'unspecified') continue; ?>
             <option value="<?= e($value) ?>"<?= ($organizationProfile['company_type'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
           <?php endforeach; ?>
         </select>
@@ -213,24 +346,19 @@ $profileReadOnly = is_impersonating();
       <label>شماره ثبت <input type="text" name="registration_number" class="ltr" value="<?= e((string)$organizationProfile['registration_number']) ?>" maxlength="40" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
       <label>شناسه ملی شرکت <input type="text" name="national_id" class="ltr" value="<?= e((string)$organizationProfile['national_id']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
       <label>کد اقتصادی <input type="text" name="economic_code" class="ltr" value="<?= e((string)$organizationProfile['economic_code']) ?>" maxlength="30" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>مدیرعامل <input type="text" name="ceo_name" value="<?= e((string)$organizationProfile['ceo_name']) ?>" maxlength="160" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>نام پدر مدیرعامل <input type="text" name="ceo_father_name" value="<?= e((string)$organizationProfile['ceo_father_name']) ?>" maxlength="120" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>کد ملی مدیرعامل <input type="text" name="ceo_national_code" class="ltr" value="<?= e((string)$organizationProfile['ceo_national_code']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>تاریخ تولد مدیرعامل <?= jalali_date_select('ceo_birth_date', $organizationProfile['ceo_birth_date'] ?? null) ?></label>
       <label>تاریخ شروع فعالیت <?= jalali_date_select('company_start_date', $organizationProfile['company_start_date'] ?? null) ?></label>
       <label>تاریخ انقضا <?= jalali_date_select('company_expiry_date', $organizationProfile['company_expiry_date'] ?? null, 10) ?></label>
     </div>
     <?php if ($canManageOrganization && !$profileReadOnly): ?>
-      <button class="btn btn-primary">ذخیره‌ی اطلاعات سازمان</button>
+      <button class="btn btn-primary" style="margin-top:12px">ذخیره‌ی اطلاعات نماینده و شرکت</button>
     <?php endif; ?>
   </form>
-  <?php if ($organizationScore['missing']): ?>
-    <p class="hint">تکمیل‌نشده: <?= e(implode('، ', $organizationScore['missing'])) ?></p>
-  <?php endif; ?>
 </div>
+<?php endif; ?>
 
+<?php if ($organizationId > 0): ?>
 <div class="card">
-  <h2>آدرس سازمان</h2>
+  <h2><?= $accountType === 'legal' ? 'آدرس شرکت' : 'آدرس و تماس' ?></h2>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_address">
@@ -251,47 +379,35 @@ $profileReadOnly = is_impersonating();
     <?php endif; ?>
   </form>
 </div>
-
-<div class="card">
-  <h2>تنظیمات اعلان اعتبار</h2>
-  <p class="hint">آستانه بر حسب «واحد اعتبار» است و فقط یک تنظیم است؛ موجودی کیف پول را تغییر نمی‌دهد.</p>
-  <form method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="profile_notifications">
-    <div class="grid grid-2">
-      <label><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $notifications['low_credit_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> هشدار اعتبار کم فعال باشد</label>
-      <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" value="<?= e((string)$notifications['low_credit_threshold']) ?>" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label><input type="checkbox" name="email_alert_enabled" value="1"<?= $notifications['email_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> اعلان ایمیلی</label>
-      <label><input type="checkbox" name="sms_alert_enabled" value="1"<?= $notifications['sms_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> اعلان پیامکی</label>
-      <label>ایمیل اعلان <input type="text" name="alert_email" class="ltr" value="<?= e((string)$notifications['alert_email']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>موبایل اعلان <input type="text" name="alert_mobile" class="ltr" value="<?= e((string)$notifications['alert_mobile']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-    </div>
-    <?php if ($canManageOrganization && !$profileReadOnly): ?>
-      <button class="btn btn-primary">ذخیره‌ی تنظیمات</button>
-    <?php endif; ?>
-  </form>
-</div>
 <?php endif; ?>
 
 <?php
 // Both document sections share one presentation; only the owner and the permitted type list differ.
-$documentSections = [
-    ['owner' => 'user', 'title' => 'مدارک فردی', 'types' => PROFILE_USER_DOCUMENT_TYPES, 'documents' => $userDocuments, 'editable' => !$profileReadOnly],
-];
-if ($organizationId > 0) {
-    $documentSections[] = ['owner' => 'organization', 'title' => 'مدارک سازمان', 'types' => PROFILE_ORGANIZATION_DOCUMENT_TYPES, 'documents' => $organizationDocuments, 'editable' => $canManageOrganization && !$profileReadOnly];
+// Per-document KYC review status is shown alongside the archive/upload controls (§9/§15).
+$documentSections = $accountType === 'legal'
+    ? [['owner' => 'organization', 'title' => 'مدارک احراز هویت', 'types' => PROFILE_ORGANIZATION_DOCUMENT_TYPES, 'documents' => $organizationDocuments, 'editable' => $canManageOrganization && !$profileReadOnly]]
+    : [['owner' => 'user', 'title' => 'مدارک احراز هویت', 'types' => PROFILE_USER_DOCUMENT_TYPES, 'documents' => $userDocuments, 'editable' => !$profileReadOnly]];
+if ($organizationId === 0) {
+    $documentSections = [['owner' => 'user', 'title' => 'مدارک احراز هویت', 'types' => PROFILE_USER_DOCUMENT_TYPES, 'documents' => $userDocuments, 'editable' => !$profileReadOnly]];
 }
+$reviewBadgeClass = ['pending' => 'badge-pending', 'approved' => 'badge-ok', 'rejected' => 'badge-off'];
 ?>
 <?php foreach ($documentSections as $section): ?>
 <div class="card">
   <h2><?= e($section['title']) ?></h2>
   <div class="table-wrap">
   <table>
-    <tr><th>نوع مدرک</th><th>وضعیت</th><th>تاریخ بارگذاری</th><th></th></tr>
+    <tr><th>نوع مدرک</th><th>وضعیت</th><th>بررسی</th><th>تاریخ بارگذاری</th><th></th></tr>
     <?php foreach ($section['documents'] as $document): ?>
       <tr>
         <td><?= e(profile_document_type_label((string)$document['document_type'])) ?></td>
         <td><span class="badge badge-<?= $document['status'] === 'active' ? 'ok' : 'off' ?>"><?= $document['status'] === 'active' ? 'فعال' : 'بایگانی' ?></span></td>
+        <td>
+          <span class="badge <?= e($reviewBadgeClass[$document['review_status']] ?? 'badge-pending') ?>"><?= e(kyc_document_review_status_label((string)$document['review_status'])) ?></span>
+          <?php if ($document['review_status'] === 'rejected' && (string)$document['review_note'] !== ''): ?>
+            <div class="hint"><?= e((string)$document['review_note']) ?></div>
+          <?php endif; ?>
+        </td>
         <td><?= e(jdate((string)$document['created_at'])) ?></td>
         <td>
           <div class="toolbar" style="margin:0">
@@ -309,7 +425,7 @@ if ($organizationId > 0) {
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$section['documents']): ?><tr><td colspan="4" class="empty">هنوز مدرکی بارگذاری نشده است.</td></tr><?php endif; ?>
+    <?php if (!$section['documents']): ?><tr><td colspan="5" class="empty">هنوز مدرکی بارگذاری نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
   <?php if ($section['editable']): ?>
@@ -327,13 +443,14 @@ if ($organizationId > 0) {
       <label>فایل <input type="file" name="document" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label>
       <button class="btn btn-primary btn-sm">بارگذاری</button>
     </form>
-    <p class="hint">فرمت‌های مجاز: JPG، PNG، WEBP، PDF — حداکثر ۸ مگابایت. بارگذاری مدرک جدید از همین نوع، نسخه‌ی قبلی را بایگانی می‌کند.</p>
+    <p class="hint">فرمت‌های مجاز: JPG، PNG، WEBP، PDF — حداکثر ۸ مگابایت. بارگذاری مدرک جدید از همین نوع، نسخه‌ی قبلی را بایگانی و وضعیت بررسی را به «در انتظار بررسی» بازمی‌گرداند.</p>
   <?php endif; ?>
 </div>
 <?php endforeach; ?>
 
 <div class="card">
-  <h2>تغییر رمز عبور</h2>
+  <h2>امنیت و اعلان‌ها</h2>
+  <h3 style="margin-top:0">تغییر رمز عبور</h3>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="password">
@@ -346,5 +463,71 @@ if ($organizationId > 0) {
       <button class="btn btn-primary">تغییر رمز عبور</button>
     <?php endif; ?>
   </form>
+
+  <?php if ($organizationId > 0): ?>
+  <div class="hr" style="margin:16px 0"></div>
+  <h3>هشدار اعتبار کم</h3>
+  <p class="hint">آستانه بر حسب «واحد اعتبار» است و فقط یک تنظیم است؛ موجودی کیف پول را تغییر نمی‌دهد.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_notifications">
+    <div class="grid grid-2">
+      <label><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $notifications['low_credit_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> هشدار اعتبار کم فعال باشد</label>
+      <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" value="<?= e((string)$notifications['low_credit_threshold']) ?>" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label><input type="checkbox" name="email_alert_enabled" value="1"<?= $notifications['email_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> اعلان ایمیلی</label>
+      <label><input type="checkbox" name="sms_alert_enabled" value="1"<?= $notifications['sms_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> اعلان پیامکی</label>
+      <label>ایمیل اعلان <input type="text" name="alert_email" class="ltr" value="<?= e((string)$notifications['alert_email']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+      <label>موبایل اعلان <input type="text" name="alert_mobile" class="ltr" value="<?= e((string)$notifications['alert_mobile']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+    </div>
+    <?php if ($canManageOrganization && !$profileReadOnly): ?>
+      <button class="btn btn-primary">ذخیره‌ی تنظیمات</button>
+    <?php endif; ?>
+  </form>
+
+  <div class="hr" style="margin:16px 0"></div>
+  <h3>آدرس‌های IP مجاز</h3>
+  <p class="hint">این فهرست فقط برای ثبت و مدیریت است؛ اعمال محدودیت ورود بر اساس IP در حال حاضر در این نسخه فعال نیست (docs/profile-kyc.md).</p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>آدرس / محدوده</th><th>برچسب</th><th>وضعیت</th><th>تاریخ ثبت</th><th></th></tr>
+    <?php foreach ($allowedIps as $ip): ?>
+      <tr>
+        <td class="ltr"><?= e((string)$ip['ip_or_cidr']) ?></td>
+        <td><?= e((string)$ip['label']) ?: '—' ?></td>
+        <td><span class="badge <?= $ip['status'] === 'active' ? 'badge-ok' : 'badge-off' ?>"><?= $ip['status'] === 'active' ? 'فعال' : 'غیرفعال' ?></span></td>
+        <td><?= e(jdate((string)$ip['created_at'])) ?></td>
+        <td>
+          <?php if ($canManageOrganization && !$profileReadOnly): ?>
+          <div class="toolbar" style="margin:0">
+            <form method="post" style="margin:0">
+              <?= csrf_field() ?>
+              <input type="hidden" name="do" value="allowed_ip_toggle">
+              <input type="hidden" name="id" value="<?= (int)$ip['id'] ?>">
+              <button class="btn btn-sm"><?= $ip['status'] === 'active' ? 'غیرفعال‌سازی' : 'فعال‌سازی' ?></button>
+            </form>
+            <form method="post" style="margin:0" onsubmit="return confirm('این آدرس حذف شود؟');">
+              <?= csrf_field() ?>
+              <input type="hidden" name="do" value="allowed_ip_delete">
+              <input type="hidden" name="id" value="<?= (int)$ip['id'] ?>">
+              <button class="btn btn-sm">حذف</button>
+            </form>
+          </div>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$allowedIps): ?><tr><td colspan="5" class="empty">آدرسی ثبت نشده است.</td></tr><?php endif; ?>
+  </table>
+  </div>
+  <?php if ($canManageOrganization && !$profileReadOnly): ?>
+    <form method="post" class="toolbar" style="margin-top:10px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="allowed_ip_create">
+      <label>آدرس IP یا CIDR <input type="text" name="ip_or_cidr" class="ltr" placeholder="203.0.113.10 یا 203.0.113.0/24" required></label>
+      <label>برچسب <input type="text" name="label" maxlength="120" placeholder="مثلاً دفتر مرکزی"></label>
+      <button class="btn btn-primary btn-sm">افزودن</button>
+    </form>
+  <?php endif; ?>
+  <?php endif; ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

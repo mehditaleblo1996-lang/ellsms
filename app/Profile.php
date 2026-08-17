@@ -30,14 +30,46 @@ declare(strict_types=1);
    Catalogs (STEP 7/15/32)
    ========================================================================== */
 
-/** Company types. `unspecified` is a real, storable value — not every organization is a company. */
-const PROFILE_COMPANY_TYPES = [
-    'legal_entity'        => 'شخص حقوقی',
-    'individual_business' => 'کسب‌وکار انفرادی',
-    'government'          => 'دولتی / عمومی',
-    'other'               => 'سایر',
-    'unspecified'         => 'نامشخص',
+/**
+ * Account type — durable, organization-profile-level (never a scattered per-feature flag). Every
+ * organization has exactly one: حقیقی (individual) or حقوقی (legal). Existing organizations backfill
+ * to 'individual' unless their existing data already looks like a company (db/migrations/
+ * 2026_08_17_kyc_workflow.sql), so no production organization is silently reclassified as legal.
+ */
+const PROFILE_ACCOUNT_TYPES = [
+    'individual' => 'حقیقی',
+    'legal'      => 'حقوقی',
 ];
+
+function profile_account_type_label(string $type): string {
+    return PROFILE_ACCOUNT_TYPES[$type] ?? PROFILE_ACCOUNT_TYPES['individual'];
+}
+
+/**
+ * Company types — ONE centralized catalog (§5 of the KYC phase brief: "Do not hard-code display
+ * labels in multiple places"). The original five values (`legal_entity` … `unspecified`) predate this
+ * phase and are kept exactly as-is for backward compatibility with rows already saved against them;
+ * the Iranian legal-entity types below are ADDITIVE, widened into the same database ENUM by
+ * db/migrations/2026_08_17_kyc_workflow.sql so no existing row's value ever needs rewriting.
+ * `unspecified` remains the default — not every organization is a company.
+ */
+const PROFILE_COMPANY_TYPES = [
+    'legal_entity'         => 'شخص حقوقی',
+    'individual_business'  => 'کسب‌وکار انفرادی',
+    'government'           => 'دولتی / عمومی',
+    'private_joint_stock'  => 'سهامی خاص',
+    'public_joint_stock'   => 'سهامی عام',
+    'limited_liability'    => 'مسئولیت محدود',
+    'cooperative'          => 'تعاونی',
+    'institution'          => 'مؤسسه',
+    'governmental'         => 'دولتی',
+    'other'                => 'سایر',
+    'unspecified'          => 'نامشخص',
+];
+
+function profile_company_type_label(string $type): string {
+    return PROFILE_COMPANY_TYPES[$type] ?? $type;
+}
 
 const PROFILE_GENDERS = [
     'male'        => 'مرد',
@@ -51,17 +83,28 @@ const PROFILE_GENDERS = [
  * the wrong audience.
  */
 const PROFILE_USER_DOCUMENT_TYPES = [
-    'national_card'      => 'کارت ملی',
-    'birth_certificate'  => 'شناسنامه',
+    'national_card'               => 'کارت ملی',
+    'birth_certificate'           => 'شناسنامه',
+    'selfie_with_national_card'   => 'سلفی با کارت ملی',
+    'address_proof'               => 'مدرک آدرس محل سکونت',
 ];
 
 const PROFILE_ORGANIZATION_DOCUMENT_TYPES = [
-    'incorporation_notice'   => 'آگهی تأسیس',
-    'latest_changes_notice'  => 'آگهی آخرین تغییرات',
-    'registration_document'  => 'سند ثبت شرکت',
-    'introduction_letter'    => 'معرفی‌نامه',
-    'postal_certificate'     => 'تأییدیه کد پستی',
+    'incorporation_notice'         => 'آگهی تأسیس',
+    'latest_changes_notice'        => 'آگهی آخرین تغییرات',
+    'registration_document'        => 'سند ثبت شرکت',
+    'introduction_letter'          => 'معرفی‌نامه',
+    'postal_certificate'           => 'تأییدیه کد پستی',
+    'representative_national_card' => 'کارت ملی نماینده قانونی',
 ];
+
+/**
+ * The MINIMUM document set §16 requires before a KYC request may be submitted, by account type.
+ * Deliberately a small, product-defined subset of the full catalogs above — every catalog entry is
+ * always uploadable, but only these are BLOCKING for submission (app/Kyc.php's kyc_can_submit()).
+ */
+const PROFILE_REQUIRED_DOCUMENTS_INDIVIDUAL = ['national_card', 'selfie_with_national_card'];
+const PROFILE_REQUIRED_DOCUMENTS_LEGAL = ['incorporation_notice', 'representative_national_card'];
 
 /**
  * Fields a LEGAL ENTITY is expected to provide, used only by the completeness figure and the
@@ -261,9 +304,11 @@ function profile_user_save(int $userId, array $input, int $actorUserId): array {
 
 function profile_organization_get(int $organizationId): array {
     $empty = [
-        'organization_id' => $organizationId, 'legal_name' => '', 'company_type' => 'unspecified',
+        'organization_id' => $organizationId, 'account_type' => 'individual',
+        'legal_name' => '', 'company_type' => 'unspecified',
         'registration_number' => '', 'national_id' => '', 'economic_code' => '', 'ceo_name' => '',
         'ceo_father_name' => '', 'ceo_national_code' => '', 'ceo_birth_date' => null,
+        'ceo_birth_city' => '', 'ceo_mobile' => '', 'ceo_email' => '',
         'company_start_date' => null, 'company_expiry_date' => null, 'legal_representative_user_id' => null,
     ];
     if ($organizationId <= 0) {
@@ -283,8 +328,30 @@ function profile_organization_save(int $organizationId, array $input, int $actor
     if ($organizationId <= 0) {
         return ['ok' => false, 'reason' => 'invalid_organization'];
     }
+
+    // §13 — "no silent data loss": a caller that supplies only SOME fields (the account_type toggle
+    // on the profile page is exactly this — it deliberately sends nothing else) must never blank out
+    // whatever is already on file. Any key ABSENT from $input falls back to the current row; a key
+    // PRESENT with an empty string is still a real, explicit clear (a form field the user emptied on
+    // purpose). The array union operator does exactly this: left operand wins per-key, right operand
+    // only fills gaps — never overwrites a key $input already set, even to ''.
+    $previous = profile_organization_get($organizationId);
+    $input = $input + $previous;
+
     $companyType = in_array($input['company_type'] ?? '', array_keys(PROFILE_COMPANY_TYPES), true)
         ? $input['company_type'] : 'unspecified';
+
+    // account_type is DURABLE and organization-scoped (§1 of the KYC phase brief) — changing it here
+    // is a metadata switch only; §13's "no silent data loss" rule is enforced by never deleting the
+    // dormant side's rows, never by refusing the switch itself.
+    $accountType = in_array($input['account_type'] ?? '', array_keys(PROFILE_ACCOUNT_TYPES), true)
+        ? $input['account_type'] : ($previous['account_type'] ?? 'individual');
+    $accountTypeChanged = $accountType !== ($previous['account_type'] ?? 'individual');
+
+    $ceoEmailRaw = profile_clean_text((string)($input['ceo_email'] ?? ''), 190);
+    if ($ceoEmailRaw !== '' && !filter_var($ceoEmailRaw, FILTER_VALIDATE_EMAIL)) {
+        return ['ok' => false, 'reason' => 'invalid_ceo_email'];
+    }
 
     $startDate  = $input['company_start_date'] ?? null;
     $expiryDate = $input['company_expiry_date'] ?? null;
@@ -309,20 +376,24 @@ function profile_organization_save(int $organizationId, array $input, int $actor
 
     db()->prepare(
         'INSERT INTO ellsms_organization_profiles
-           (organization_id, legal_name, company_type, registration_number, national_id, economic_code,
-            ceo_name, ceo_father_name, ceo_national_code, ceo_birth_date, company_start_date,
-            company_expiry_date, legal_representative_user_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+           (organization_id, account_type, legal_name, company_type, registration_number, national_id, economic_code,
+            ceo_name, ceo_father_name, ceo_national_code, ceo_birth_date, ceo_birth_city, ceo_mobile, ceo_email,
+            company_start_date, company_expiry_date, legal_representative_user_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE
+           account_type = VALUES(account_type),
            legal_name = VALUES(legal_name), company_type = VALUES(company_type),
            registration_number = VALUES(registration_number), national_id = VALUES(national_id),
            economic_code = VALUES(economic_code), ceo_name = VALUES(ceo_name),
            ceo_father_name = VALUES(ceo_father_name), ceo_national_code = VALUES(ceo_national_code),
-           ceo_birth_date = VALUES(ceo_birth_date), company_start_date = VALUES(company_start_date),
+           ceo_birth_date = VALUES(ceo_birth_date), ceo_birth_city = VALUES(ceo_birth_city),
+           ceo_mobile = VALUES(ceo_mobile), ceo_email = VALUES(ceo_email),
+           company_start_date = VALUES(company_start_date),
            company_expiry_date = VALUES(company_expiry_date),
            legal_representative_user_id = VALUES(legal_representative_user_id)'
     )->execute([
         $organizationId,
+        $accountType,
         profile_clean_text((string)($input['legal_name'] ?? ''), 190),
         $companyType,
         profile_normalize_digits((string)($input['registration_number'] ?? '')),
@@ -332,13 +403,21 @@ function profile_organization_save(int $organizationId, array $input, int $actor
         profile_clean_text((string)($input['ceo_father_name'] ?? ''), 120),
         $ceoNationalCode,
         $input['ceo_birth_date'] ?? null,
+        profile_clean_text((string)($input['ceo_birth_city'] ?? ''), 60),
+        profile_normalize_digits((string)($input['ceo_mobile'] ?? '')),
+        $ceoEmailRaw,
         $startDate,
         $expiryDate,
         $representativeId > 0 ? $representativeId : null,
     ]);
 
-    audit($actorUserId, 'profile.organization_update', "org={$organizationId} type={$companyType}");
-    Logger::info('profile.organization_updated', ['organization_id' => $organizationId, 'actor_user_id' => $actorUserId]);
+    if ($accountTypeChanged) {
+        // A dedicated event (§19), separate from the generic profile.organization_update line, so an
+        // auditor can find every account-type switch without grepping every field-level change.
+        audit($actorUserId, 'profile.account_type_changed', "org={$organizationId} from={$previous['account_type']} to={$accountType}");
+    }
+    audit($actorUserId, 'profile.updated', "org={$organizationId} type={$companyType} account_type={$accountType}");
+    Logger::info('profile.organization_updated', ['organization_id' => $organizationId, 'actor_user_id' => $actorUserId, 'account_type' => $accountType]);
     return ['ok' => true];
 }
 
@@ -685,6 +764,7 @@ function profile_error_message(string $reason): string {
         'invalid_organization'        => 'سازمان فعالی برای این عملیات وجود ندارد.',
         'invalid_national_code'       => 'کد ملی باید دقیقاً ۱۰ رقم باشد.',
         'invalid_ceo_national_code'   => 'کد ملی مدیرعامل باید دقیقاً ۱۰ رقم باشد.',
+        'invalid_ceo_email'           => 'ایمیل نماینده معتبر نیست.',
         'invalid_postal_code'         => 'کد پستی باید دقیقاً ۱۰ رقم باشد.',
         'invalid_threshold'           => 'آستانه‌ی اعتبار نامعتبر است.',
         'invalid_email'               => 'ایمیل اعلان معتبر نیست.',
@@ -741,5 +821,36 @@ function profile_organization_completeness(array $profile, array $address): arra
         $missing[] = 'شهر';
     }
     $total = count($required) + 2;
+    return ['percent' => (int)round((($total - count($missing)) / $total) * 100), 'missing' => $missing];
+}
+
+/**
+ * The single, centralized profile-completion figure shown at the top of the profile page (§14 of the
+ * KYC phase brief) — "تکمیل پروفایل: NN٪". Deterministic and testable: which underlying score it
+ * reports depends only on account_type, never on which fields happen to be filled in.
+ *
+ * individual -> personal identity fields (profile_user_completeness) plus the organization's address,
+ * since §3's individual field set explicitly includes address/contact information.
+ * legal -> the existing company completeness score, which already folds the address in.
+ *
+ * Optional fields (landline, fax, customer_code, alley/plaque beyond what's already scored) are
+ * deliberately NOT counted — §3/§4's "do not unnecessarily require optional fields."
+ *
+ * @return array{percent:int, missing:list<string>}
+ */
+function profile_account_completeness(string $accountType, array $userProfile, array $organizationProfile, array $address): array {
+    if ($accountType === 'legal') {
+        return profile_organization_completeness($organizationProfile, $address);
+    }
+
+    $personal = profile_user_completeness($userProfile);
+    $addressLabels = ['postal_code' => 'کد پستی', 'city' => 'شهر'];
+    $missing = $personal['missing'];
+    foreach ($addressLabels as $field => $label) {
+        if (($address[$field] ?? '') === '') {
+            $missing[] = $label;
+        }
+    }
+    $total = 4 /* profile_user_completeness's own field count */ + count($addressLabels);
     return ['percent' => (int)round((($total - count($missing)) / $total) * 100), 'missing' => $missing];
 }
