@@ -40,6 +40,15 @@ CREATE TABLE outbound_message (
   sent_at         DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Minimal stand-in so backend_list_domains() (app/Backend/identity.php, read by public/users.php's
+-- account-creation dropdown) is callable — only the two columns that function actually selects, same
+-- minimal-reproduction approach as every other table in this file.
+DROP TABLE IF EXISTS domain;
+CREATE TABLE domain (
+  id   BIGINT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(190) NOT NULL DEFAULT ''
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 DROP TABLE IF EXISTS inbound_message;
 -- Column is `received_at`, matching the real shared schema (docs/database-audit.md) that
 -- app/Backend/messages.php and public/inbox.php actually query (`DATE(received_at)`,

@@ -264,6 +264,37 @@ merge-safe (no-silent-data-loss) contract `profile_organization_save()` already 
 زیرمجموعه" (a sub-organization hierarchy) was deliberately NOT added — no such hierarchy exists
 anywhere in ELLSMS, and inventing one is a different, much larger feature than a display field.
 
+## 15b. Account-type user management fix (2026-08-19)
+
+**Root cause of "the account-type selector silently doesn't render for some existing users":**
+`public/users.php`'s `create_account` and `grant` flows granted `ellsms_meta` panel access without
+ever creating an organization membership. `current_organization()` (`app/tenant.php`) has always
+correctly returned `null` for a user with zero memberships — it never guesses — so
+`public/profile.php`'s `if ($organizationId > 0)` gate (unchanged) correctly, but silently, hid the
+account-type card and everything else organization-scoped, with no explanation to the user or admin.
+
+**Fix, not a workaround:** `ensure_user_has_organization($userId, $name)` (`app/tenant.php`) creates
+exactly one default organization for a user **only** when they have zero memberships — the same
+unambiguous case `cron/tenant-backfill.php` already treats safely — protected by a per-user
+`GET_LOCK` so a retried/duplicated request can never create a second organization. Both
+`create_account` and `grant` now call it (wrapped in `db_transaction()` together with the
+`ellsms_meta` write for `create_account`); a user with 2+ memberships is never touched or guessed at.
+
+**Where each requirement lives:**
+
+| Requirement | Where |
+|---|---|
+| نوع حساب selector on create | `public/users.php`'s "ساخت حساب تازه" form; defaults to `individual` |
+| Selector on edit, admin can change it | `public/users.php`'s "نوع حساب" card (`do=account_type`) |
+| Repair path for a zero-organization legacy user | `public/users.php`'s "ساخت سازمان پیش‌فرض برای این کاربر" button (`do=ensure_organization`), or bulk via `make tenant-backfill` |
+| نوع حساب column, no N+1 | `public/users.php`'s user list — two bulk queries total regardless of list size |
+| profile.php clear empty-state (not silent hide, not a false "individual") | Zero memberships → self-repair card linking to `organizations.php`; 2+ memberships and none selected → "select an organization" card. Never conflated. |
+
+`user_primary_organization_id_for_display($userId)` is a SEPARATE, admin-display-only resolver (the
+user's oldest membership) so a multi-organization user's admin edit screen shows real data instead of
+a blank page — it is never used for behavioral resolution, which stays on the existing strict
+`user_default_organization_id()` (null for anything but exactly one membership).
+
 ## 16. Known limitations / follow-up
 
 - **Allowed-IP enforcement is not implemented** (§10) — management only, by design, until a safe

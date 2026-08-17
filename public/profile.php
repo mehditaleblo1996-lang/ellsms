@@ -222,6 +222,17 @@ $kycBadgeClass = [
 ][$kycRequest['status'] ?? 'draft'] ?? 'badge-off';
 $reviewBadgeClass = ['pending' => 'badge-pending', 'approved' => 'badge-ok', 'rejected' => 'badge-off'];
 
+// $organizationId === 0 is NOT necessarily "this is an individual account with nothing to show" —
+// current_organization() (app/tenant.php) deliberately returns null for two very different reasons,
+// and conflating them into a silently-empty page is exactly the bug this distinguishes:
+//   - zero memberships: the account was never given an organization (historically true for every
+//     user brought in through public/users.php's create_account/grant flows before they called
+//     ensure_user_has_organization() — see docs/profile-kyc.md). Unambiguous, safely self-repairable.
+//   - 2+ memberships and none selected: not malformed at all, just needs the existing organization
+//     switcher (public/organizations.php) to pick one for this session.
+// Computed only in this branch — a single extra query, and only for the page that actually needs it.
+$myMemberships = $organizationId === 0 ? user_organization_memberships((int)$me['id']) : [];
+
 // Active-document lookup by type, for the document tile grid below — only the CURRENTLY active
 // version of each type is tiled (a document's full replace history stays reachable through
 // public/kyc-review.php for an admin; this self-service view only needs "what do I have right now").
@@ -254,13 +265,41 @@ $profileReadOnly = is_impersonating();
     <div class="segmented" role="radiogroup" aria-label="نوع حساب">
       <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
         <input type="radio" id="account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"
-               <?= $accountType === $value ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>
+               <?= $accountType === $value ? ' checked' : '' ?> <?= ($canManageOrganization && !$profileReadOnly) ? '' : 'disabled' ?>
                onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit();">
         <label for="account_type_<?= e($value) ?>"><?= e($label) ?></label>
       <?php endforeach; ?>
     </div>
     <noscript><button class="btn btn-sm" style="margin-inline-start:10px">اعمال</button></noscript>
   </form>
+</div>
+<?php elseif ($myMemberships === []): ?>
+<div class="card">
+  <h2>نوع حساب</h2>
+  <div class="flash flash-error">
+    این حساب هنوز به هیچ سازمانی متصل نیست، بنابراین نوع حساب (حقیقی/حقوقی) و بخش‌های وابسته به آن
+    (اطلاعات شرکت، آدرس، مدارک، احراز هویت) قابل نمایش نیستند. این وضعیت داده‌ی شما را از بین نمی‌برد —
+    فقط باید یک سازمان پیش‌فرض برای حساب شما ساخته شود.
+  </div>
+  <?php if (!$profileReadOnly): ?>
+    <form method="post" action="/organizations.php" style="margin-top:10px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="create">
+      <input type="hidden" name="name" value="<?= e(trim((string)$me['first_name'] . ' ' . (string)$me['last_name']) ?: (string)$me['username']) ?>">
+      <button class="btn btn-primary btn-sm">ساخت سازمان برای حساب من</button>
+    </form>
+  <?php else: ?>
+    <p class="hint">در حالت پشتیبانی این عملیات غیرفعال است.</p>
+  <?php endif; ?>
+  <p class="hint">در صورت تداوم این وضعیت، با پشتیبانی تماس بگیرید تا سازمان حساب شما بررسی و بازسازی شود.</p>
+</div>
+<?php else: ?>
+<div class="card">
+  <h2>نوع حساب</h2>
+  <div class="flash flash-info">
+    حساب شما عضو <?= to_persian_digits((string)count($myMemberships)) ?> سازمان است و هیچ‌کدام برای این نشست انتخاب نشده — نوع حساب و بخش‌های وابسته به آن مربوط به یک سازمان مشخص هستند.
+  </div>
+  <a class="btn btn-primary btn-sm" style="margin-top:10px" href="/organizations.php">انتخاب سازمان فعال</a>
 </div>
 <?php endif; ?>
 

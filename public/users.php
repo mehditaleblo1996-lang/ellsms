@@ -29,13 +29,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                ->execute([$targetUserId, setting('default_originator', '')]);
             audit((int)$me['id'], 'user.grant_access', (string)$targetUserId);
             Logger::info('user.grant_access', ['actor_id' => $me['id'], 'target_id' => $targetUserId]);
+            // Every ELLSMS-managed account needs a valid organization context (docs/profile-kyc.md)
+            // — an account brought in through "grant" (as opposed to "create_account", which makes a
+            // brand-new backend user) may be years old and still never have one. Zero-cost when it
+            // already does: ensure_user_has_organization() only acts on the genuinely empty case.
+            $identity = backend_users_by_ids([$targetUserId])[$targetUserId] ?? null;
+            $displayName = $identity ? (trim($identity['first_name'] . ' ' . $identity['last_name']) ?: $identity['username']) : ('user#' . $targetUserId);
+            $orgResult = ensure_user_has_organization($targetUserId, $displayName . "'s Workspace");
+            if ($orgResult['created']) {
+                audit((int)$me['id'], 'user.organization_ensured', "#{$targetUserId} org=#{$orgResult['organization_id']}");
+            }
             flash('success', 'دسترسی به ELLSMS داده شد.');
         }
     } elseif ($do === 'enable_2fa_all') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save', 'ensure_organization', 'account_type'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -125,6 +135,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (RuntimeException $e) {
                 flash('error', $e->getMessage());
             }
+        } elseif ($do === 'ensure_organization') {
+            // Admin repair path for requirement §6 — safe ONLY because ensure_user_has_organization()
+            // itself refuses to act on anyone who already has a membership (ambiguous or not); this
+            // button can never reassign a user to an existing/arbitrary organization.
+            $displayName = trim($target['first_name'] . ' ' . $target['last_name']) ?: $target['username'];
+            $orgResult = ensure_user_has_organization($id, $displayName . "'s Workspace");
+            if ($orgResult['ok'] && $orgResult['created']) {
+                audit((int)$me['id'], 'user.organization_ensured', "#{$id} org=#{$orgResult['organization_id']}");
+                flash('success', 'سازمان پیش‌فرض برای این کاربر ساخته شد.');
+            } elseif ($orgResult['ok'] && !$orgResult['created']) {
+                flash('info', 'این کاربر از قبل سازمان دارد؛ تغییری اعمال نشد.');
+            } else {
+                flash('error', 'ساخت سازمان پیش‌فرض ممکن نشد. دوباره تلاش کنید.');
+            }
+        } elseif ($do === 'account_type') {
+            // Mirrors public/profile.php's own standalone account_type action exactly: resolve the
+            // CURRENT full profile row and overlay only account_type, so profile_organization_save()'s
+            // merge-safe contract can never blank any other field on this organization (§13 — no
+            // silent data loss).
+            $targetOrganizationId = (int)($_POST['organization_id'] ?? 0);
+            $targetOrganizationId = $targetOrganizationId > 0 && can_access_organization($id, $targetOrganizationId)
+                ? $targetOrganizationId
+                : (user_primary_organization_id_for_display($id) ?? 0);
+            if ($targetOrganizationId <= 0) {
+                flash('error', 'این کاربر عضو هیچ سازمانی نیست — ابتدا سازمان پیش‌فرض را بسازید.');
+            } else {
+                $current = profile_organization_get($targetOrganizationId);
+                $current['account_type'] = $_POST['account_type'] ?? $current['account_type'];
+                $result = profile_organization_save($targetOrganizationId, $current, (int)$me['id']);
+                flash($result['ok'] ? 'success' : 'error', $result['ok']
+                    ? 'نوع حساب به‌روزرسانی شد.'
+                    : profile_error_message((string)$result['reason']));
+            }
         }
     }
 
@@ -139,6 +182,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $domainId   = (int)($_POST['domain_id'] ?? 0);
         $gender     = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
         $dailyLimit = max(1, (int)($_POST['daily_limit'] ?? 1000));
+        // نوع حساب — defaults safely to 'individual' for anything missing/unrecognized, matching
+        // db/migrations/2026_08_17_kyc_workflow.sql's own backfill default; never trusts a raw string.
+        $accountType = in_array($_POST['account_type'] ?? '', array_keys(PROFILE_ACCOUNT_TYPES), true)
+            ? $_POST['account_type'] : 'individual';
 
         if ($username === '' || strlen($password) < 6 || $firstName === '' || $lastName === ''
             || $email === '' || !$mobile || strlen($nationalId) !== 10 || !$domainId) {
@@ -162,13 +209,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
 
             if ($ok && $created && !empty($created['id'])) {
-                db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
-                               VALUES (?,1,0,?)
-                               ON DUPLICATE KEY UPDATE panel_access=1')
-                   ->execute([$created['id'], setting('default_originator', '')]);
+                $newUserId = (int)$created['id'];
+                // Everything ELLSMS itself owns for this brand-new user — panel access, its default
+                // organization, and that organization's account_type — is written as one local
+                // transaction (backend_create_account() above already made its own, separate,
+                // external call to the shared backend and cannot be folded into this one; see
+                // app/backend.php's own docblock on that boundary). ensure_user_has_organization() is
+                // lock-protected and idempotent on its own, so a retried/duplicated POST here still
+                // never creates a second organization for the same user_id.
+                db_transaction(function () use ($newUserId, $username, $firstName, $lastName, $accountType, $me): void {
+                    db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
+                                   VALUES (?,1,0,?)
+                                   ON DUPLICATE KEY UPDATE panel_access=1')
+                       ->execute([$newUserId, setting('default_originator', '')]);
+
+                    $displayName = trim($firstName . ' ' . $lastName) ?: $username;
+                    $orgResult = ensure_user_has_organization($newUserId, $displayName . "'s Workspace");
+                    if ($orgResult['ok'] && $orgResult['organization_id']) {
+                        profile_organization_save($orgResult['organization_id'], ['account_type' => $accountType], (int)$me['id']);
+                    }
+                });
                 audit((int)$me['id'], 'user.create_account', $username);
                 flash('success', 'حساب «' . $username . '» ساخته شد و دسترسی ELLSMS نیز فعال شد.');
-                redirect('/users.php?edit=' . (int)$created['id']);
+                redirect('/users.php?edit=' . $newUserId);
             } else {
                 flash('error', 'ساخت حساب ناموفق بود: ' . $info);
             }
@@ -268,7 +331,17 @@ if (!empty($_GET['edit'])) {
         $editProfile = profile_user_get($editUserId);
         $editUserDocuments = profile_documents_list(['user' => $editUserId]);
         $editMemberships = user_organization_memberships($editUserId);
-        $editOrganizationId = (int)(user_default_organization_id($editUserId) ?? 0);
+        // user_default_organization_id() deliberately returns null for anything but EXACTLY one
+        // membership (it feeds behavioral resolution elsewhere, e.g. legal-representative linking,
+        // where guessing among several would be wrong). This admin screen instead falls back to
+        // user_primary_organization_id_for_display() for a multi-organization user — display only,
+        // never written anywhere without the admin explicitly choosing that organization_id — so the
+        // page shows real data instead of silently omitting every organization-scoped card. Root
+        // cause of the originally-reported bug: a user with ZERO memberships (created via the
+        // create_account/grant flows before they called ensure_user_has_organization()) resolved to
+        // organization_id 0 here exactly like this, and every card below was skipped without
+        // explanation — see the "no organization" branch further down for that case specifically.
+        $editOrganizationId = (int)(user_default_organization_id($editUserId) ?? user_primary_organization_id_for_display($editUserId) ?? 0);
         $editOrganization = $editOrganizationId > 0 ? organization_membership($editUserId, $editOrganizationId) : null;
         $editOrgProfile = $editOrganizationId > 0 ? profile_organization_get($editOrganizationId) : null;
         $editAddress = $editOrganizationId > 0 ? profile_address_get($editOrganizationId) : null;
@@ -289,13 +362,54 @@ $userIds = array_column($metaRows, 'user_id');
 $identities = backend_users_by_ids($userIds);
 $sentCounts = backend_outbound_sent_counts_for_users($userIds);
 
+// نوع حساب per row — TWO bulk queries total for the whole list, never one per user (STEP: no N+1).
+// A user with more than one organization shows the account_type of their oldest membership (display
+// only, same deterministic rule as user_primary_organization_id_for_display()); a user with zero
+// memberships shows as "بدون سازمان" — itself a useful signal, not an error swallowed silently.
+$accountTypeByUser = [];
+if ($userIds) {
+    $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+    $orgByUser = [];
+    $membershipRows = db()->prepare(
+        "SELECT user_id, organization_id FROM ellsms_organization_memberships
+         WHERE status = 'active' AND user_id IN ({$placeholders}) ORDER BY id"
+    );
+    $membershipRows->execute($userIds);
+    foreach ($membershipRows->fetchAll() as $row) {
+        $uid = (int)$row['user_id'];
+        if (!isset($orgByUser[$uid])) { // first (oldest) membership only, per user
+            $orgByUser[$uid] = (int)$row['organization_id'];
+        }
+    }
+    if ($orgByUser) {
+        $orgIds = array_values(array_unique($orgByUser));
+        $orgPlaceholders = implode(',', array_fill(0, count($orgIds), '?'));
+        $profileRows = db()->prepare(
+            "SELECT organization_id, account_type FROM ellsms_organization_profiles WHERE organization_id IN ({$orgPlaceholders})"
+        );
+        $profileRows->execute($orgIds);
+        $typeByOrg = [];
+        foreach ($profileRows->fetchAll() as $row) {
+            $typeByOrg[(int)$row['organization_id']] = (string)$row['account_type'];
+        }
+        foreach ($orgByUser as $uid => $organizationId) {
+            // No ellsms_organization_profiles row yet is exactly PROFILE_ACCOUNT_TYPES's own default
+            // ('individual') — the same fallback profile_organization_get() already applies.
+            $accountTypeByUser[$uid] = $typeByOrg[$organizationId] ?? 'individual';
+        }
+    }
+}
+
 $panelUsers = [];
 foreach ($metaRows as $meta) {
     $identity = $identities[(int)$meta['user_id']] ?? null;
     if (!$identity) {
         continue; // an ellsms_meta row whose backend account vanished — not this listing's concern to guess at
     }
-    $panelUsers[] = array_merge($identity, $meta, ['sent_count' => $sentCounts[(int)$meta['user_id']] ?? 0]);
+    $panelUsers[] = array_merge($identity, $meta, [
+        'sent_count' => $sentCounts[(int)$meta['user_id']] ?? 0,
+        'account_type' => $accountTypeByUser[(int)$meta['user_id']] ?? null,
+    ]);
 }
 usort($panelUsers, static fn($a, $b) => ((int)$b['is_admin'] <=> (int)$a['is_admin']) ?: ($a['username'] <=> $b['username']));
 
@@ -414,7 +528,45 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 </div>
 
-<?php if ($editOrganizationId > 0): ?>
+<?php if ($editOrganizationId === 0): ?>
+<div class="card">
+  <h2>سازمان</h2>
+  <div class="flash flash-error">
+    این کاربر به هیچ سازمانی متصل نیست، بنابراین نوع حساب (حقیقی/حقوقی)، اطلاعات شرکت، آدرس و مدارک سازمانی قابل نمایش یا ثبت نیستند.
+    این وضعیت معمولاً برای حساب‌های قدیمی‌تر از فعال‌سازی خودکار سازمان رخ می‌دهد و با یک کلیک قابل رفع است.
+  </div>
+  <form method="post" style="margin-top:10px">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="ensure_organization">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="back" value="1">
+    <button class="btn btn-primary btn-sm">ساخت سازمان پیش‌فرض برای این کاربر</button>
+  </form>
+  <p class="hint">این عملیات فقط وقتی کاربر عضو هیچ سازمانی نباشد اثر می‌کند؛ هرگز کاربر را به سازمان دیگری متصل نمی‌کند.</p>
+</div>
+<?php else: ?>
+<div class="card">
+  <h2>نوع حساب</h2>
+  <?php if (count($editMemberships) > 1): ?>
+    <p class="hint">این کاربر عضو <?= to_persian_digits((string)count($editMemberships)) ?> سازمان است؛ نوع حساب زیر مربوط به سازمان «<?= e((string)($editOrganization['name'] ?? '')) ?>» (سازمان نمایش‌داده‌شده) است.</p>
+  <?php endif; ?>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="account_type">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+    <input type="hidden" name="back" value="1">
+    <div class="segmented" role="radiogroup" aria-label="نوع حساب">
+      <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
+        <input type="radio" id="edit_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= ($editOrgProfile['account_type'] ?? 'individual') === $value ? ' checked' : '' ?>>
+        <label for="edit_account_type_<?= e($value) ?>"><?= e($label) ?></label>
+      <?php endforeach; ?>
+    </div>
+    <button class="btn btn-sm" style="margin-top:10px">اعمال نوع حساب</button>
+  </form>
+  <p class="hint">تغییر نوع حساب اطلاعات و مدارک بخش دیگر را حذف نمی‌کند؛ فقط بخش نمایش‌داده‌شده در پروفایل مشتری را تغییر می‌دهد.</p>
+</div>
+
 <div class="card">
   <h2>اطلاعات حقوقی سازمان — <?= e((string)($editOrganization['name'] ?? '')) ?></h2>
   <?php if (count($editMemberships) > 1): ?>
@@ -610,6 +762,14 @@ if ($editOrganizationId > 0) {
       </label>
       <label>سقف ارسال روزانه <input type="number" name="daily_limit" value="1000" min="1"></label>
     </div>
+    <label>نوع حساب
+      <span class="segmented" role="radiogroup" aria-label="نوع حساب" style="margin-top:6px">
+        <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
+          <input type="radio" id="new_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= $value === 'individual' ? ' checked' : '' ?>>
+          <label for="new_account_type_<?= e($value) ?>"><?= e($label) ?></label>
+        <?php endforeach; ?>
+      </span>
+    </label>
     <button class="btn btn-primary">ساخت حساب</button>
   </form>
   <p class="hint">پس از ساخت، دسترسی ELLSMS به‌طور خودکار فعال می‌شود و می‌توانید بلافاصله اعتبار، شماره، و اطلاعات هویتی برای آن تنظیم کنید. کد کاربری (code) به‌صورت خودکار و یکتا تولید می‌شود.</p>
@@ -636,12 +796,19 @@ if ($editOrganizationId > 0) {
   </form>
   <div class="table-wrap">
   <table>
-    <tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>خط</th><th>اعتبار</th><th>ارسال‌شده</th><th>۲مرحله‌ای</th><th>وضعیت</th><th></th></tr>
+    <tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>نوع حساب</th><th>خط</th><th>اعتبار</th><th>ارسال‌شده</th><th>۲مرحله‌ای</th><th>وضعیت</th><th></th></tr>
     <?php foreach ($panelUsers as $u): ?>
       <tr>
         <td><?= e($u['username']) ?></td>
         <td><?= e(trim($u['first_name'] . ' ' . $u['last_name'])) ?></td>
         <td><span class="badge badge-<?= $u['is_admin'] ? 'admin' : 'user' ?>"><?= $u['is_admin'] ? 'مدیر' : 'کاربر' ?></span></td>
+        <td>
+          <?php if ($u['account_type'] === null): ?>
+            <span class="badge badge-off" title="این کاربر عضو هیچ سازمانی نیست">بدون سازمان</span>
+          <?php else: ?>
+            <span class="badge badge-<?= $u['account_type'] === 'legal' ? 'admin' : 'user' ?>"><?= e(profile_account_type_label($u['account_type'])) ?></span>
+          <?php endif; ?>
+        </td>
         <td class="msisdn"><?= e((string)$u['originator']) ?></td>
         <td class="num"><?= to_persian_digits(number_format((float)$u['credit'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$u['sent_count'])) ?></td>
@@ -660,7 +827,7 @@ if ($editOrganizationId > 0) {
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$panelUsers): ?><tr><td colspan="9" class="empty">هنوز حسابی وجود ندارد — از بالا دسترسی بدهید.</td></tr><?php endif; ?>
+    <?php if (!$panelUsers): ?><tr><td colspan="10" class="empty">هنوز حسابی وجود ندارد — از بالا دسترسی بدهید.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>

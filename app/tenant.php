@@ -259,6 +259,88 @@ function create_organization(int $creatorUserId, string $name): array {
     });
 }
 
+/**
+ * Guarantees $userId has at least one active organization membership — creating exactly ONE default
+ * organization (with $userId as its 'owner') if, and only if, they currently have none.
+ *
+ * This is the fix for the root cause behind "an admin-managed user's profile page silently has no
+ * organization card": public/users.php's create_account and grant flows historically granted
+ * ellsms_meta panel access without ever creating a membership, so current_organization() (which
+ * NEVER guesses — see its own docblock) correctly returned null for them. Every caller that brings a
+ * user into ELLSMS management now calls this immediately afterward.
+ *
+ * NEVER touches a user who already has one or more memberships — a multi-organization user is left
+ * exactly as they are; this only fills in the genuinely unambiguous "zero" case, matching
+ * cron/tenant-backfill.php's own "one organization per existing user" strategy (STEP 4/9) for legacy
+ * accounts. An ambiguous case is never guessed at here or anywhere else.
+ *
+ * Concurrency: a per-user GET_LOCK (the same advisory-lock primitive cron/backup.php and
+ * cron/subscription-lifecycle.php already use for singleton work) protects the read-then-create
+ * against two overlapping callers (a double-submitted form, a retried request) both creating a
+ * duplicate organization for the same brand-new user — the second caller simply observes the first's
+ * row once it acquires the lock, and returns created=false.
+ *
+ * @return array{ok:bool, created:bool, organization_id:?int, reason?:string}
+ */
+function ensure_user_has_organization(int $userId, string $organizationName): array {
+    if ($userId <= 0) {
+        return ['ok' => false, 'created' => false, 'organization_id' => null, 'reason' => 'invalid_user'];
+    }
+
+    $existing = user_organization_memberships($userId);
+    if ($existing !== []) {
+        return [
+            'ok' => true, 'created' => false,
+            'organization_id' => count($existing) === 1 ? (int)$existing[0]['organization_id'] : null,
+        ];
+    }
+
+    $db = db();
+    $lockName = 'ellsms_ensure_org:' . $userId;
+    $lockSt = $db->prepare('SELECT GET_LOCK(?, 5) AS got');
+    $lockSt->execute([$lockName]);
+    $gotLock = (bool)($lockSt->fetch()['got'] ?? false);
+    if (!$gotLock) {
+        Logger::error('tenant.ensure_organization_lock_timeout', ['user_id' => $userId]);
+        return ['ok' => false, 'created' => false, 'organization_id' => null, 'reason' => 'lock_timeout'];
+    }
+    try {
+        // Re-check now that we hold the lock — a concurrent caller may have just created one.
+        $existing = user_organization_memberships($userId);
+        if ($existing !== []) {
+            return [
+                'ok' => true, 'created' => false,
+                'organization_id' => count($existing) === 1 ? (int)$existing[0]['organization_id'] : null,
+            ];
+        }
+        $result = create_organization($userId, $organizationName);
+        if (!$result['ok']) {
+            return ['ok' => false, 'created' => false, 'organization_id' => null, 'reason' => $result['reason'] ?? 'create_failed'];
+        }
+        return ['ok' => true, 'created' => true, 'organization_id' => (int)$result['organization_id']];
+    } finally {
+        $db->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
+    }
+}
+
+/**
+ * For ADMIN-SCREEN DISPLAY ONLY — never for behavioral/authoritative resolution (that stays
+ * user_default_organization_id(), which deliberately returns null for anything but exactly one
+ * membership). An admin editing a multi-organization user's page needs to see SOMETHING rather than
+ * a page that silently omits every organization-scoped card; this picks the user's oldest membership
+ * deterministically (never a "best guess" at which one is "right") so the admin view is stable
+ * across reloads, and the caller is expected to show a plain "this user belongs to N organizations"
+ * notice alongside it rather than imply it is their only one.
+ */
+function user_primary_organization_id_for_display(int $userId): ?int {
+    $memberships = user_organization_memberships($userId);
+    if ($memberships === []) {
+        return null;
+    }
+    usort($memberships, static fn(array $a, array $b): int => (int)$a['membership_id'] <=> (int)$b['membership_id']);
+    return (int)$memberships[0]['organization_id'];
+}
+
 function organization_slugify(string $name): string {
     $slug = mb_strtolower(trim($name));
     $slug = preg_replace('/[^\p{L}\p{N}]+/u', '-', $slug) ?? 'org';
