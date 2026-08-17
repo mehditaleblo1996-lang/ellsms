@@ -76,6 +76,10 @@ require_once __DIR__ . '/Reports/MessageDetail.php';
 // preferences and private documents (docs/customer-profile.md). Loaded last: it composes tenant.php
 // (organization membership), rbac.php (settings.manage) and audit(), and owns none of them.
 require_once __DIR__ . '/Profile.php';
+// KYC review workflow — state machine, per-document review, submission eligibility, feature gating
+// (docs/profile-kyc.md). Composes Profile.php (document storage/catalogs) and audit(); owns neither.
+require_once __DIR__ . '/Kyc.php';
+require_once __DIR__ . '/AllowedIps.php';
 
 /* ---------- Environment ---------- */
 function env(string $key, ?string $default = null): ?string {
