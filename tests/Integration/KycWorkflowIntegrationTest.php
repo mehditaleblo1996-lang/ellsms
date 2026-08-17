@@ -103,6 +103,54 @@ final class KycWorkflowIntegrationTest extends IntegrationTestCase
         $this->assertSame('رضا', \profile_user_get($this->ownerId)['father_name']);
     }
 
+    /** The profile-UI-completion fields (§9 migration) must survive an account_type switch exactly
+     *  like every pre-existing field — no second, forgotten write path that skips the merge-safe
+     *  contract profile_organization_save()/profile_user_save() otherwise guarantee. */
+    public function testProfileUiCompletionFieldsSurviveAccountTypeSwitch(): void
+    {
+        \profile_organization_save($this->organizationId, [
+            'account_type' => 'legal', 'legal_name' => 'شرکت آزمایشی',
+            'ceo_name' => 'علی', 'ceo_last_name' => 'محمدی', 'ceo_birth_certificate_no' => '55501',
+            'landline_phone' => '02188990011', 'fax_number' => '02188990022', 'customer_code' => 'CUST-9001',
+        ], $this->ownerId);
+        \profile_user_save($this->ownerId, [
+            'father_name' => 'رضا', 'national_id_expiry_at' => '2030-05-01',
+        ], $this->ownerId);
+
+        \profile_organization_save($this->organizationId, ['account_type' => 'individual'], $this->ownerId);
+
+        $orgProfile = \profile_organization_get($this->organizationId);
+        $this->assertSame('individual', $orgProfile['account_type']);
+        $this->assertSame('علی', $orgProfile['ceo_name']);
+        $this->assertSame('محمدی', $orgProfile['ceo_last_name']);
+        $this->assertSame('55501', $orgProfile['ceo_birth_certificate_no']);
+        $this->assertSame('02188990011', $orgProfile['landline_phone']);
+        $this->assertSame('02188990022', $orgProfile['fax_number']);
+        $this->assertSame('CUST-9001', $orgProfile['customer_code']);
+        $this->assertSame('2030-05-01', \profile_user_get($this->ownerId)['national_id_expiry_at']);
+    }
+
+    /** Every new field round-trips through save/get untouched — the basic persistence contract every
+     *  reference-screen field needs before it can appear anywhere in the UI. */
+    public function testNewFieldsPersist(): void
+    {
+        $userResult = \profile_user_save($this->ownerId, ['national_id_expiry_at' => '2031-01-15'], $this->ownerId);
+        $this->assertTrue($userResult['ok']);
+        $this->assertSame('2031-01-15', \profile_user_get($this->ownerId)['national_id_expiry_at']);
+
+        $orgResult = \profile_organization_save($this->organizationId, [
+            'ceo_last_name' => 'رضایی', 'ceo_birth_certificate_no' => '112233',
+            'landline_phone' => '02133445566', 'fax_number' => '02133445577', 'customer_code' => 'CUST-42',
+        ], $this->ownerId);
+        $this->assertTrue($orgResult['ok']);
+        $orgProfile = \profile_organization_get($this->organizationId);
+        $this->assertSame('رضایی', $orgProfile['ceo_last_name']);
+        $this->assertSame('112233', $orgProfile['ceo_birth_certificate_no']);
+        $this->assertSame('02133445566', $orgProfile['landline_phone']);
+        $this->assertSame('02133445577', $orgProfile['fax_number']);
+        $this->assertSame('CUST-42', $orgProfile['customer_code']);
+    }
+
     /* ---------- State machine ---------- */
 
     public function testFreshOrganizationStartsInDraft(): void

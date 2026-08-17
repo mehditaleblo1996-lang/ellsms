@@ -116,11 +116,20 @@ if ($detailId > 0):
           <h2>اطلاعات پروفایل</h2>
           <?php if ($accountType === 'legal'): ?>
             <div class="table-wrap"><table>
-              <tr><th>مدیرعامل/نماینده</th><td><?= e((string)$orgProfile['ceo_name']) ?: '—' ?></td></tr>
+              <tr><th>نام و نام خانوادگی مدیرعامل</th><td><?= e(trim((string)$orgProfile['ceo_name'] . ' ' . (string)$orgProfile['ceo_last_name'])) ?: '—' ?></td></tr>
+              <tr><th>نام پدر مدیرعامل</th><td><?= e((string)$orgProfile['ceo_father_name']) ?: '—' ?></td></tr>
               <tr><th>کد ملی نماینده</th><td class="ltr"><?= e((string)$orgProfile['ceo_national_code']) ?: '—' ?></td></tr>
+              <tr><th>شماره شناسنامه نماینده</th><td class="ltr"><?= e((string)$orgProfile['ceo_birth_certificate_no']) ?: '—' ?></td></tr>
+              <tr><th>تاریخ تولد نماینده</th><td><?= $orgProfile['ceo_birth_date'] ? e(jdate((string)$orgProfile['ceo_birth_date'])) : '—' ?></td></tr>
+              <tr><th>شهر تولد نماینده</th><td><?= e((string)$orgProfile['ceo_birth_city']) ?: '—' ?></td></tr>
               <tr><th>موبایل نماینده</th><td class="ltr"><?= e((string)$orgProfile['ceo_mobile']) ?: '—' ?></td></tr>
+              <tr><th>ایمیل نماینده</th><td class="ltr"><?= e((string)$orgProfile['ceo_email']) ?: '—' ?></td></tr>
               <tr><th>شناسه ملی شرکت</th><td class="ltr"><?= e((string)$orgProfile['national_id']) ?: '—' ?></td></tr>
               <tr><th>شماره ثبت</th><td class="ltr"><?= e((string)$orgProfile['registration_number']) ?: '—' ?></td></tr>
+              <tr><th>کد اقتصادی</th><td class="ltr"><?= e((string)$orgProfile['economic_code']) ?: '—' ?></td></tr>
+              <tr><th>نوع شرکت</th><td><?= e(profile_company_type_label((string)$orgProfile['company_type'])) ?></td></tr>
+              <tr><th>کد مشتری</th><td class="ltr"><?= e((string)$orgProfile['customer_code']) ?: '—' ?></td></tr>
+              <tr><th>شماره ثابت / فکس</th><td class="ltr"><?= e((string)$orgProfile['landline_phone']) ?: '—' ?> / <?= e((string)$orgProfile['fax_number']) ?: '—' ?></td></tr>
               <tr><th>آدرس</th><td><?= e(trim((string)$address['province'] . ' ' . (string)$address['city'] . ' ' . (string)$address['street'])) ?: '—' ?></td></tr>
               <tr><th>کد پستی</th><td class="ltr"><?= e((string)$address['postal_code']) ?: '—' ?></td></tr>
             </table></div>
@@ -129,6 +138,8 @@ if ($detailId > 0):
               <tr><th>نام پدر</th><td><?= e((string)($ownerProfile['father_name'] ?? '')) ?: '—' ?></td></tr>
               <tr><th>کد ملی</th><td class="ltr"><?= e((string)($ownerProfile['national_code'] ?? '')) ?: '—' ?></td></tr>
               <tr><th>شماره شناسنامه</th><td class="ltr"><?= e((string)($ownerProfile['birth_certificate_no'] ?? '')) ?: '—' ?></td></tr>
+              <tr><th>تاریخ تولد</th><td><?= !empty($ownerProfile['birth_date']) ? e(jdate((string)$ownerProfile['birth_date'])) : '—' ?></td></tr>
+              <tr><th>تاریخ انقضای کارت ملی</th><td><?= !empty($ownerProfile['national_id_expiry_at']) ? e(jdate((string)$ownerProfile['national_id_expiry_at'])) : '—' ?></td></tr>
               <tr><th>آدرس</th><td><?= e(trim((string)$address['province'] . ' ' . (string)$address['city'] . ' ' . (string)$address['street'])) ?: '—' ?></td></tr>
               <tr><th>کد پستی</th><td class="ltr"><?= e((string)$address['postal_code']) ?: '—' ?></td></tr>
             </table></div>
@@ -145,35 +156,49 @@ if ($detailId > 0):
         ?>
         <div class="card">
           <h2><?= e($section['title']) ?></h2>
-          <div class="table-wrap">
-          <table>
-            <tr><th>نوع مدرک</th><th>وضعیت فایل</th><th>بررسی</th><th>تاریخ بارگذاری</th><th></th></tr>
-            <?php foreach ($section['documents'] as $document): ?>
-              <tr>
-                <td><?= e(profile_document_type_label((string)$document['document_type'])) ?></td>
-                <td><span class="badge badge-<?= $document['status'] === 'active' ? 'ok' : 'off' ?>"><?= $document['status'] === 'active' ? 'فعال' : 'بایگانی' ?></span></td>
-                <td><span class="badge <?= e($reviewBadgeClass[$document['review_status']] ?? 'badge-pending') ?>"><?= e(kyc_document_review_status_label((string)$document['review_status'])) ?></span></td>
-                <td><?= e(jdate((string)$document['created_at'])) ?></td>
-                <td>
-                  <div class="toolbar" style="margin:0">
-                    <a class="btn btn-sm" href="/profile-document.php?id=<?= (int)$document['id'] ?>" target="_blank" rel="noopener">مشاهده</a>
-                    <?php if ($document['status'] === 'active'): ?>
-                    <form method="post" style="margin:0;display:inline-flex;gap:6px;align-items:center">
-                      <?= csrf_field() ?>
-                      <input type="hidden" name="do" value="document_review">
-                      <input type="hidden" name="organization_id" value="<?= (int)$detailId ?>">
-                      <input type="hidden" name="document_id" value="<?= (int)$document['id'] ?>">
-                      <input type="hidden" name="owner_user_id" value="<?= (int)$section['owner_user_id'] ?>">
-                      <input type="text" name="review_note" placeholder="یادداشت (اختیاری)" style="width:140px">
-                      <button class="btn btn-sm" name="review_status" value="approved">تأیید</button>
-                      <button class="btn btn-sm" name="review_status" value="rejected">رد</button>
-                    </form>
-                    <?php endif; ?>
+          <div class="doc-grid">
+            <?php foreach ($section['documents'] as $document):
+                $docIsImage = str_starts_with((string)$document['mime_type'], 'image/');
+                $docReviewStatus = (string)$document['review_status'];
+            ?>
+              <div class="doc-tile">
+                <div class="doc-tile-thumb">
+                  <?php if ($docIsImage): ?>
+                    <img src="/profile-document.php?id=<?= (int)$document['id'] ?>" alt="<?= e(profile_document_type_label((string)$document['document_type'])) ?>" loading="lazy">
+                  <?php else: ?>
+                    <span class="doc-tile-icon">📄</span>
+                  <?php endif; ?>
+                </div>
+                <div class="doc-tile-body">
+                  <div class="doc-tile-title"><?= e(profile_document_type_label((string)$document['document_type'])) ?></div>
+                  <div>
+                    <span class="badge <?= $document['status'] === 'active' ? 'badge-ok' : 'badge-off' ?>"><?= $document['status'] === 'active' ? 'فعال' : 'بایگانی' ?></span>
+                    <span class="badge <?= e($reviewBadgeClass[$docReviewStatus] ?? 'badge-pending') ?>"><?= e(kyc_document_review_status_label($docReviewStatus)) ?></span>
                   </div>
-                </td>
-              </tr>
+                  <div class="hint"><?= e(jdate((string)$document['created_at'])) ?></div>
+                  <?php if ($docReviewStatus !== 'pending' && (string)$document['review_note'] !== ''): ?>
+                    <div class="doc-tile-note"><?= e((string)$document['review_note']) ?></div>
+                  <?php endif; ?>
+                  <a class="btn btn-sm" href="/profile-document.php?id=<?= (int)$document['id'] ?>" target="_blank" rel="noopener">مشاهده فایل</a>
+                </div>
+                <?php if ($document['status'] === 'active'): ?>
+                <div class="doc-tile-foot">
+                  <form method="post" style="display:flex;flex-direction:column;gap:8px">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="do" value="document_review">
+                    <input type="hidden" name="organization_id" value="<?= (int)$detailId ?>">
+                    <input type="hidden" name="document_id" value="<?= (int)$document['id'] ?>">
+                    <input type="hidden" name="owner_user_id" value="<?= (int)$section['owner_user_id'] ?>">
+                    <input type="text" name="review_note" placeholder="یادداشت بررسی (اختیاری)">
+                    <span class="toolbar" style="margin:0">
+                      <button class="btn btn-sm btn-primary" name="review_status" value="approved">تأیید مدرک</button>
+                      <button class="btn btn-sm btn-danger" name="review_status" value="rejected">رد مدرک</button>
+                    </span>
+                  </form>
+                </div>
+                <?php endif; ?>
+              </div>
             <?php endforeach; ?>
-          </table>
           </div>
         </div>
         <?php endforeach; ?>

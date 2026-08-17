@@ -224,7 +224,7 @@ function profile_mask_identifier(string $value): string {
 function profile_user_get(int $userId): array {
     $empty = [
         'user_id' => $userId, 'father_name' => '', 'national_code' => '', 'birth_certificate_no' => '',
-        'birth_date' => null, 'gender' => 'unspecified', 'personal_address' => null,
+        'birth_date' => null, 'national_id_expiry_at' => null, 'gender' => 'unspecified', 'personal_address' => null,
     ];
     if ($userId <= 0) {
         return $empty;
@@ -262,6 +262,12 @@ function profile_user_save(int $userId, array $input, int $actorUserId): array {
     if ($userId <= 0) {
         return ['ok' => false, 'reason' => 'invalid_user'];
     }
+
+    // Same merge-safe contract as profile_organization_save(): a key ABSENT from $input falls back to
+    // whatever is already on file, so a caller that only touches some fields can never blank the rest.
+    $previous = profile_user_get($userId);
+    $input = $input + $previous;
+
     $gender = in_array($input['gender'] ?? '', array_keys(PROFILE_GENDERS), true) ? $input['gender'] : 'unspecified';
     $nationalCodeRaw = (string)($input['national_code'] ?? '');
     $nationalCode = profile_normalize_national_code($nationalCodeRaw);
@@ -270,25 +276,27 @@ function profile_user_save(int $userId, array $input, int $actorUserId): array {
     }
 
     $values = [
-        'father_name'          => profile_clean_text((string)($input['father_name'] ?? ''), 120),
-        'national_code'        => $nationalCode,
-        'birth_certificate_no' => profile_normalize_digits((string)($input['birth_certificate_no'] ?? '')),
-        'birth_date'           => $input['birth_date'] ?? null,
-        'gender'               => $gender,
-        'personal_address'     => profile_clean_text((string)($input['personal_address'] ?? ''), 500),
+        'father_name'           => profile_clean_text((string)($input['father_name'] ?? ''), 120),
+        'national_code'         => $nationalCode,
+        'birth_certificate_no'  => profile_normalize_digits((string)($input['birth_certificate_no'] ?? '')),
+        'birth_date'            => $input['birth_date'] ?? null,
+        'national_id_expiry_at' => $input['national_id_expiry_at'] ?? null,
+        'gender'                => $gender,
+        'personal_address'      => profile_clean_text((string)($input['personal_address'] ?? ''), 500),
     ];
 
     db()->prepare(
         'INSERT INTO ellsms_user_profiles
-           (user_id, father_name, national_code, birth_certificate_no, birth_date, gender, personal_address)
-         VALUES (?,?,?,?,?,?,?)
+           (user_id, father_name, national_code, birth_certificate_no, birth_date, national_id_expiry_at, gender, personal_address)
+         VALUES (?,?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE
            father_name = VALUES(father_name), national_code = VALUES(national_code),
            birth_certificate_no = VALUES(birth_certificate_no), birth_date = VALUES(birth_date),
+           national_id_expiry_at = VALUES(national_id_expiry_at),
            gender = VALUES(gender), personal_address = VALUES(personal_address)'
     )->execute([
         $userId, $values['father_name'], $values['national_code'], $values['birth_certificate_no'],
-        $values['birth_date'], $values['gender'], $values['personal_address'],
+        $values['birth_date'], $values['national_id_expiry_at'], $values['gender'], $values['personal_address'],
     ]);
 
     // The national code is MASKED in the audit detail: the trail must record that identity data
@@ -306,9 +314,10 @@ function profile_organization_get(int $organizationId): array {
     $empty = [
         'organization_id' => $organizationId, 'account_type' => 'individual',
         'legal_name' => '', 'company_type' => 'unspecified',
-        'registration_number' => '', 'national_id' => '', 'economic_code' => '', 'ceo_name' => '',
-        'ceo_father_name' => '', 'ceo_national_code' => '', 'ceo_birth_date' => null,
+        'registration_number' => '', 'national_id' => '', 'economic_code' => '', 'ceo_name' => '', 'ceo_last_name' => '',
+        'ceo_father_name' => '', 'ceo_national_code' => '', 'ceo_birth_certificate_no' => '', 'ceo_birth_date' => null,
         'ceo_birth_city' => '', 'ceo_mobile' => '', 'ceo_email' => '',
+        'landline_phone' => '', 'fax_number' => '', 'customer_code' => '',
         'company_start_date' => null, 'company_expiry_date' => null, 'legal_representative_user_id' => null,
     ];
     if ($organizationId <= 0) {
@@ -377,17 +386,21 @@ function profile_organization_save(int $organizationId, array $input, int $actor
     db()->prepare(
         'INSERT INTO ellsms_organization_profiles
            (organization_id, account_type, legal_name, company_type, registration_number, national_id, economic_code,
-            ceo_name, ceo_father_name, ceo_national_code, ceo_birth_date, ceo_birth_city, ceo_mobile, ceo_email,
+            ceo_name, ceo_last_name, ceo_father_name, ceo_national_code, ceo_birth_certificate_no, ceo_birth_date,
+            ceo_birth_city, ceo_mobile, ceo_email, landline_phone, fax_number, customer_code,
             company_start_date, company_expiry_date, legal_representative_user_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE
            account_type = VALUES(account_type),
            legal_name = VALUES(legal_name), company_type = VALUES(company_type),
            registration_number = VALUES(registration_number), national_id = VALUES(national_id),
-           economic_code = VALUES(economic_code), ceo_name = VALUES(ceo_name),
+           economic_code = VALUES(economic_code), ceo_name = VALUES(ceo_name), ceo_last_name = VALUES(ceo_last_name),
            ceo_father_name = VALUES(ceo_father_name), ceo_national_code = VALUES(ceo_national_code),
+           ceo_birth_certificate_no = VALUES(ceo_birth_certificate_no),
            ceo_birth_date = VALUES(ceo_birth_date), ceo_birth_city = VALUES(ceo_birth_city),
            ceo_mobile = VALUES(ceo_mobile), ceo_email = VALUES(ceo_email),
+           landline_phone = VALUES(landline_phone), fax_number = VALUES(fax_number),
+           customer_code = VALUES(customer_code),
            company_start_date = VALUES(company_start_date),
            company_expiry_date = VALUES(company_expiry_date),
            legal_representative_user_id = VALUES(legal_representative_user_id)'
@@ -400,12 +413,17 @@ function profile_organization_save(int $organizationId, array $input, int $actor
         profile_normalize_digits((string)($input['national_id'] ?? '')),
         profile_normalize_digits((string)($input['economic_code'] ?? '')),
         profile_clean_text((string)($input['ceo_name'] ?? ''), 160),
+        profile_clean_text((string)($input['ceo_last_name'] ?? ''), 120),
         profile_clean_text((string)($input['ceo_father_name'] ?? ''), 120),
         $ceoNationalCode,
+        profile_normalize_digits((string)($input['ceo_birth_certificate_no'] ?? '')),
         $input['ceo_birth_date'] ?? null,
         profile_clean_text((string)($input['ceo_birth_city'] ?? ''), 60),
         profile_normalize_digits((string)($input['ceo_mobile'] ?? '')),
         $ceoEmailRaw,
+        profile_normalize_digits((string)($input['landline_phone'] ?? '')),
+        profile_normalize_digits((string)($input['fax_number'] ?? '')),
+        profile_clean_text((string)($input['customer_code'] ?? ''), 40),
         $startDate,
         $expiryDate,
         $representativeId > 0 ? $representativeId : null,
