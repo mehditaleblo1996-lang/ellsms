@@ -11,3 +11,7 @@ storage/benchmarks/*
 !storage/benchmarks/.gitkeep
 public/assets/img/slides/*
 !public/assets/img/slides/.gitkeep
+
+# Claude Code local-only
+.claude/settings.local.json
+.claude/worktrees/
