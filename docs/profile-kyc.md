@@ -243,6 +243,27 @@ No new public API surface. `/api/v1/*` endpoints are untouched by this phase —
 guidance ("do not expose national ID, document storage keys, document contents, reviewer-only notes")
 is satisfied by not adding any of this to the API at all rather than adding it and then filtering it.
 
+## 15a. UI completion pass (2026-08-18)
+
+`public/profile.php` was reworked to match the reference profile/KYC screens structurally, without
+touching the data-ownership model in §1–§4: a segmented حقیقی/حقوقی switcher; a read-only account-info
+summary card (deliberately never a second edit path for a field already editable elsewhere — the
+prior layout's "confusing overlap between personal profile and KYC information" was exactly that); a
+KYC status card with submit/review timestamps; one section for individual profile fields, one combined
+company+representative section for legal accounts; a restyled address card; and a document **tile
+grid** (thumbnail preview through the existing protected download endpoint, per-document review
+status/note, a styled upload/replace control) replacing the old table+raw-file-input layout.
+`public/kyc-review.php` got the same tile treatment for consistency; its review workflow is unchanged.
+
+Five fields the reference screens expect had no column anywhere and were added additively
+(`db/migrations/2026_08_18_profile_ui_completion.sql`): `national_id_expiry_at` (user),
+`landline_phone`/`fax_number`/`customer_code`/`ceo_birth_certificate_no`/`ceo_last_name`
+(organization). `ceo_last_name` is additive next to the pre-existing `ceo_name` rather than a rename,
+so nothing that already reads `ceo_name` needed to change. `profile_user_save()` gained the same
+merge-safe (no-silent-data-loss) contract `profile_organization_save()` already had. "حداکثر تعداد
+زیرمجموعه" (a sub-organization hierarchy) was deliberately NOT added — no such hierarchy exists
+anywhere in ELLSMS, and inventing one is a different, much larger feature than a display field.
+
 ## 16. Known limitations / follow-up
 
 - **Allowed-IP enforcement is not implemented** (§10) — management only, by design, until a safe

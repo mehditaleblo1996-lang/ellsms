@@ -322,6 +322,76 @@ tr:hover td { background: #f9f9ff; }
 .msg-preview { max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty { color: var(--muted); text-align: center; padding: 34px 0; }
 
+/* ---------- Profile / KYC — account-type switcher ---------- */
+.segmented {
+  display: inline-flex; background: var(--canvas); border: 1px solid var(--line);
+  border-radius: 12px; padding: 4px; gap: 4px;
+}
+.segmented input[type=radio] { position: absolute; opacity: 0; width: 0; height: 0; }
+.segmented label {
+  margin: 0; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 22px; border-radius: 9px; font-size: 14px; font-weight: 700; color: var(--muted);
+  cursor: pointer; transition: background .15s ease, color .15s ease; user-select: none;
+}
+.segmented input[type=radio]:checked + label { background: #fff; color: var(--indigo); box-shadow: 0 1px 2px rgba(11,16,35,.08); }
+.segmented input[type=radio]:disabled + label { cursor: default; opacity: .6; }
+.segmented input[type=radio]:focus-visible + label { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* ---------- Profile — read-only / central-system fields ---------- */
+.field-readonly { position: relative; }
+.field-readonly input,
+input[type=text][readonly], input[type=text]:disabled,
+select:disabled { background: var(--canvas); color: var(--muted); cursor: not-allowed; }
+.field-source { font-weight: 400; color: var(--muted); font-size: 11px; margin-inline-start: 6px; }
+
+/* ---------- Profile — summary/overview strip ---------- */
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.summary-item { background: var(--canvas); border: 1px solid var(--line); border-radius: 11px; padding: 12px 14px; }
+.summary-item .summary-label { font-size: 11.5px; color: var(--muted); font-weight: 700; }
+.summary-item .summary-value { font-size: 15px; font-weight: 700; margin-top: 4px; word-break: break-word; }
+.summary-item .summary-value.ltr { direction: ltr; unicode-bidi: isolate; display: block; text-align: right; }
+
+/* ---------- Profile — sub-sections within one card ---------- */
+.subsection { margin-bottom: 22px; }
+.subsection:last-child { margin-bottom: 0; }
+.subsection-title {
+  font-size: 13.5px; font-weight: 800; color: var(--indigo); margin: 0 0 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.subsection-title::before { content: ""; width: 4px; height: 14px; border-radius: 3px; background: var(--grad); display: inline-block; }
+
+/* ---------- KYC document tiles ---------- */
+.doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.doc-tile {
+  border: 1px solid var(--line); border-radius: 13px; overflow: hidden; background: #fff;
+  display: flex; flex-direction: column; transition: box-shadow .15s ease;
+}
+.doc-tile:hover { box-shadow: 0 6px 18px rgba(11,16,35,.06); }
+.doc-tile-thumb {
+  height: 128px; background: var(--canvas); display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid var(--line); overflow: hidden; position: relative;
+}
+.doc-tile-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.doc-tile-icon { font-size: 34px; opacity: .35; }
+.doc-tile-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.doc-tile-title { font-size: 13.5px; font-weight: 700; }
+.doc-tile-note { font-size: 12px; color: var(--err); background: var(--err-bg); border-radius: 8px; padding: 6px 9px; }
+.doc-tile-foot { padding: 10px 14px; border-top: 1px solid var(--line); background: var(--canvas); }
+.doc-tile-foot form { display: flex; align-items: center; gap: 8px; margin: 0; }
+
+/* A styled stand-in for the raw file input: the native <input type=file> is visually hidden and its
+   label takes over as a normal-looking button, with the chosen filename echoed beside it via a tiny
+   inline script (no upload/validation behavior changes — purely cosmetic). */
+.file-picker { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.file-picker input[type=file] {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap;
+}
+.file-picker-btn {
+  flex: 0 0 auto; border: 1px dashed var(--line); border-radius: 8px; background: var(--tint);
+  color: var(--indigo); font-size: 12px; font-weight: 700; padding: 7px 12px; cursor: pointer; white-space: nowrap;
+}
+.file-picker-name { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 @media (max-width: 900px) {
   .menu-toggle { display: flex; }
 
@@ -369,6 +439,9 @@ tr:hover td { background: #f9f9ff; }
   .stat .stat-value { font-size: 22px; }
   .toolbar { flex-direction: column; align-items: stretch; }
   .toolbar > * { width: 100%; }
+  .doc-grid, .summary-grid { grid-template-columns: 1fr; }
+  .segmented { display: flex; }
+  .segmented label { flex: 1; }
 }
 
 /* ---------- Marketing landing page ---------- */
