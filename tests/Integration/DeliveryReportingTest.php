@@ -241,6 +241,117 @@ final class DeliveryReportingTest extends IntegrationTestCase
             'the DB keeps the canonical English enum value — only the display is translated');
     }
 
+    /* ================= canonical status presenter (REPORTING STATUS + SEND MODAL) ================= */
+
+    public function testCanonicalStatusPrefersDeliveryStatusOverSendStatus(): void {
+        $canonical = report_canonical_status('delivered', 'sent');
+        $this->assertSame('delivered', $canonical['status']);
+        $this->assertSame('تحویل شده', $canonical['label']);
+        $this->assertSame('delivered', $canonical['class']);
+    }
+
+    public function testCanonicalStatusFallsBackToSendStatusWhenNoDeliveryLifecycleExists(): void {
+        // A legacy row with no delivery_status at all (never went through a gateway attempt).
+        $canonical = report_canonical_status(null, 'sent');
+        $this->assertSame('sent', $canonical['status']);
+        $this->assertSame('ارسال شده', $canonical['label']);
+    }
+
+    public function testCanonicalStatusMapsEachRequiredOutcome(): void {
+        $this->assertSame('تحویل شده', report_canonical_status('delivered', null)['label']);
+        $this->assertSame('ناموفق', report_canonical_status('failed', null)['label']);
+        $this->assertSame('ارسال شده', report_canonical_status('sent', null)['label']);
+        $this->assertSame('در انتظار', report_canonical_status('pending', null)['label']);
+        $this->assertSame('نامشخص', report_canonical_status(null, null)['label']);
+    }
+
+    public function testCanonicalStatusTreatsSendFailedFallbackAsFailed(): void {
+        // outbound_message uses 'send_failed'; the canonical presenter must not show it as unknown.
+        $canonical = report_canonical_status(null, 'send_failed');
+        $this->assertSame('failed', $canonical['status']);
+        $this->assertSame('ناموفق', $canonical['label']);
+    }
+
+    public function testCanonicalStatusNeverDowngradesANewerDeliveryStatusToTheOlderSendStatus(): void {
+        // The outbound row still says 'sent' (transport succeeded) but the poller has since confirmed
+        // delivery — the canonical presenter must reflect the newer delivery_status, not the send status.
+        $canonical = report_canonical_status('delivered', 'sent');
+        $this->assertSame('delivered', $canonical['status'], 'transport success must never mask a newer delivery confirmation');
+    }
+
+    public function testALegacyRowWithNoDeliveryStatusGetsASafeFallbackPresentationOnly(): void {
+        $attemptId = $this->makeAttempt(['delivery_status' => null]);
+        $row = report_attempt_by_id($attemptId, null);
+        $this->assertNull($row['delivery_status']);
+
+        $canonical = report_canonical_status($row['delivery_status'], 'sent');
+        $this->assertSame('sent', $canonical['status'], 'a legacy row must fall back to the send status, never fabricate delivery');
+        $this->assertSame('unknown', report_canonical_status(null, null)['class'], 'and with nothing at all it is presented as unknown, not "pending"');
+    }
+
+    /* ================= same-message-same-status across pages ================= */
+
+    public function testTheSameMessageRendersTheSameCanonicalStatusEverywhereItAppears(): void {
+        $userId = $this->makeUser();
+        $dest = '989350000001';
+        $this->makeOutbound($userId, $dest, 'sent');
+        $this->makeAttempt(['user_id' => $userId, 'destination' => $dest, 'delivery_status' => 'delivered']);
+
+        $delivery = report_delivery_lookup_by_destination([['destination' => $dest]], null, $userId);
+        $attempt = $delivery[$dest] ?? null;
+        $this->assertNotNull($attempt, 'the newest accepted attempt for this destination must be found');
+
+        // Dashboard/report-list/detail all resolve status through the exact same call.
+        $listStatus = report_canonical_status($attempt['delivery_status'] ?? null, 'sent');
+        $detailStatus = report_canonical_status($attempt['delivery_status'] ?? null, 'sent');
+        $this->assertSame($listStatus, $detailStatus);
+        $this->assertSame('delivered', $listStatus['status'], 'the poller-confirmed delivery must win over the outbound row\'s "sent"');
+    }
+
+    public function testProviderStatusPresentDoesNotOverrideANewerDeliveryStatus(): void {
+        // provider_status carries the raw gateway token; delivery_status is the already-mapped,
+        // authoritative lifecycle value. The canonical presenter must use the latter.
+        $attemptId = $this->makeAttempt(['delivery_status' => 'delivered', 'provider_status' => 'DLVRD']);
+        $row = report_attempt_by_id($attemptId, null);
+
+        $canonical = report_canonical_status($row['delivery_status'], 'sent');
+        $this->assertSame('delivered', $canonical['status']);
+        $this->assertSame('DLVRD', $row['provider_status'], 'the raw token is preserved but never drives the canonical status');
+    }
+
+    /* ================= summary totals (A2/A3 — dashboard & report-list counters) ================= */
+
+    public function testCanonicalStatusTotalsCountEachMessageInExactlyOneCategory(): void {
+        $userId = $this->makeUser();
+        $this->makeOutbound($userId, '989350000010', 'sent');    // no attempt -> falls back to 'sent' -> ok
+        $this->makeOutbound($userId, '989350000011', 'sent');    // attempt says delivered -> delivered + ok
+        $this->makeAttempt(['user_id' => $userId, 'destination' => '989350000011', 'delivery_status' => 'delivered']);
+        $this->makeOutbound($userId, '989350000012', 'send_failed'); // no attempt -> failed
+        $this->makeOutbound($userId, '989350000013', 'pending');     // no attempt -> pending
+
+        $totals = report_canonical_status_totals('sender_user_id = ' . (int)$userId, [], null, $userId);
+
+        $this->assertSame(4, $totals['total']);
+        $this->assertSame(2, $totals['ok'], 'one plain "sent" plus the delivered one both count as ok');
+        $this->assertSame(1, $totals['delivered']);
+        $this->assertSame(1, $totals['failed']);
+        $this->assertSame(1, $totals['pending']);
+    }
+
+    public function testCanonicalStatusTotalsAgreeWithPerRowCanonicalStatusForTheSameData(): void {
+        $userId = $this->makeUser();
+        $dest = '989350000020';
+        $this->makeOutbound($userId, $dest, 'sent');
+        $this->makeAttempt(['user_id' => $userId, 'destination' => $dest, 'delivery_status' => 'delivered']);
+
+        $totals = report_canonical_status_totals('sender_user_id = ' . (int)$userId, [], null, $userId);
+        $this->assertSame(1, $totals['delivered'], 'the summary total must count this row exactly as the list row would render it');
+
+        $delivery = report_delivery_lookup_by_destination([['destination' => $dest]], null, $userId);
+        $rowStatus = report_canonical_status($delivery[$dest]['delivery_status'] ?? null, 'sent');
+        $this->assertSame('delivered', $rowStatus['status']);
+    }
+
     /* ================= tenant isolation (B18) ================= */
 
     public function testAnAttemptFromAnotherOrganizationIsNotReachableByChangingTheIdInTheUrl(): void {
@@ -328,6 +439,14 @@ final class DeliveryReportingTest extends IntegrationTestCase
             $row['operator_id'], $row['destination'], $row['provider_message_id'], $row['provider_status'],
             $row['delivery_status'], $row['delivery_checked_at'], $row['delivery_attempts'], $row['delivered_at'],
         ]);
+        return (int)db()->lastInsertId();
+    }
+
+    private function makeOutbound(int $userId, string $destination, string $status): int {
+        db()->prepare(
+            "INSERT INTO outbound_message (sender_user_id, originator, destination, content, status, sent_at)
+             VALUES (?, '5000', ?, 'x', ?, NOW())"
+        )->execute([$userId, $destination, $status]);
         return (int)db()->lastInsertId();
     }
 

@@ -128,8 +128,9 @@ require __DIR__ . '/../app/views/header.php';
         <th>نوع درخواست</th><td><?= e(report_reference_type_label($attempt['reference_type'])) ?></td></tr>
     <tr><th>گیرنده</th><td class="msisdn"><?= e((string)($attempt['destination'] ?? $dash)) ?></td>
         <th>وضعیت</th>
-        <td><span class="badge badge-<?= e(report_delivery_status_class($attempt['delivery_status'])) ?>">
-              <?= e(report_delivery_status_label($attempt['delivery_status'])) ?></span></td></tr>
+        <?php $attemptStatus = report_canonical_status($attempt['delivery_status']); ?>
+        <td><span class="badge badge-<?= e($attemptStatus['class']) ?>">
+              <?= e($attemptStatus['label']) ?></span></td></tr>
     <tr><th>تعداد پارت</th>
         <td class="num"><?= $segments['source'] === 'unavailable' ? $dash : to_persian_digits((string)$segments['parts']) ?>
           <?php if ($segments['source'] === 'snapshot'): ?>
@@ -242,8 +243,9 @@ require __DIR__ . '/../app/views/header.php';
         <td class="msisdn"><?= e((string)$item['mobile']) ?></td>
         <td><?= e($names['operators'][(int)($item['operator_id'] ?? 0)] ?? $dash) ?></td>
         <td class="provider-ref"><?= e((string)($item['provider_message_id'] ?? $dash)) ?></td>
-        <td><span class="badge badge-<?= e(report_delivery_status_class($item['delivery_status'])) ?>">
-              <?= e(report_delivery_status_label($item['delivery_status'])) ?></span></td>
+        <?php $itemStatus = report_canonical_status($item['delivery_status']); ?>
+        <td><span class="badge badge-<?= e($itemStatus['class']) ?>">
+              <?= e($itemStatus['label']) ?></span></td>
         <td class="num"><?= to_persian_digits((string)(int)($item['delivery_attempts'] ?? 0)) ?></td>
         <td class="num"><?= $time($item['delivery_checked_at'] ?? null) ?></td>
         <td class="num"><?= !empty($item['delivered_at']) ? $time($item['delivered_at']) : $dash ?></td>

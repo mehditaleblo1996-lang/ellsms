@@ -14,8 +14,10 @@
 $f = $costPricingFailure['pricing_failure'] ?? ['priced_count' => 0, 'unpriced_count' => 0, 'reasons' => []];
 $r = $costPricingFailure['recipients'] ?? [];
 ?>
+<div class="modal-overlay is-open" id="sendUnpricedOverlay" role="dialog" aria-modal="true" aria-labelledby="sendUnpricedTitle">
+<div class="modal-dialog">
 <div class="card" style="border:2px solid #c0392b">
-  <h2>ارسال ممکن نیست — تعرفه‌ی بخشی از گیرندگان مشخص نیست</h2>
+  <h2 id="sendUnpricedTitle">ارسال ممکن نیست — تعرفه‌ی بخشی از گیرندگان مشخص نیست</h2>
 
   <div class="table-wrap">
   <table>
@@ -46,4 +48,25 @@ $r = $costPricingFailure['recipients'] ?? [];
     تا زمانی که هزینه‌ی همه‌ی گیرندگان مشخص نباشد، این ارسال انجام نمی‌شود و هیچ مبلغی از اعتبار شما کسر نمی‌شود.
     برای رفع مشکل، از مدیر سامانه بخواهید برای مسیر ارسال این خط، تعرفه‌ی اپراتور یا تعرفه‌ی پیش‌فرض مسیر را تعریف کند.
   </p>
+
+  <div class="toolbar" style="margin-top:12px">
+    <button type="button" class="btn" id="sendUnpricedClose">متوجه شدم — ویرایش</button>
+  </div>
 </div>
+</div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('sendUnpricedOverlay');
+  var close   = document.getElementById('sendUnpricedClose');
+  if (!overlay) return;
+  function hide() { overlay.classList.remove('is-open'); }
+  if (close) close.addEventListener('click', hide);
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) hide();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') hide();
+  });
+})();
+</script>

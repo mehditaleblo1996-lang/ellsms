@@ -13,9 +13,16 @@ $scopeW = $me['role'] === 'admin' ? '1=1' : 'sender_user_id = ' . (int)$me['id']
 
 $q = fn(string $sql) => (int)db()->query($sql)->fetch()['c'];
 
-$todaySent   = backend_outbound_count("status IN ('sent','delivered') AND DATE(sent_at)=CURDATE(){$scope}");
-$todayFailed = backend_outbound_count("status IN ('send_failed','failed') AND DATE(sent_at)=CURDATE(){$scope}");
-$totalSent   = backend_outbound_count("status IN ('sent','delivered'){$scope}");
+// Same canonical status resolution reports.php uses (report_canonical_status_totals()) — a message
+// the poller has since confirmed delivered must count the same way here as it does on the report list.
+$dashOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
+$dashUserId = !is_admin() && !$dashOrgId ? (int)$me['id'] : null;
+
+$todayTotals = report_canonical_status_totals("DATE(sent_at)=CURDATE() AND {$scopeW}", [], $dashOrgId, $dashUserId);
+$todaySent   = $todayTotals['ok'];
+$todayFailed = $todayTotals['failed'];
+$totalTotals = report_canonical_status_totals($scopeW, [], $dashOrgId, $dashUserId);
+$totalSent   = $totalTotals['ok'];
 $pendingSch  = $q("SELECT COUNT(*) c FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']));
 $inboxToday  = $me['role'] === 'admin' ? backend_inbound_today_count() : null;
 
@@ -31,6 +38,7 @@ $weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','
 
 /* Recent messages */
 $recent = backend_outbound_rows($scopeW, [], 8);
+$recentDeliveryByDest = report_delivery_lookup_by_destination($recent, $dashOrgId, $dashUserId);
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -67,13 +75,16 @@ require __DIR__ . '/../app/views/header.php';
   <div class="table-wrap">
   <table>
     <tr><th>#</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>گیرنده</th><th>متن پیام</th><th>وضعیت</th><th>زمان</th></tr>
-    <?php foreach ($recent as $m): ?>
+    <?php foreach ($recent as $m):
+      $d = $recentDeliveryByDest[(string)$m['destination']] ?? null;
+      $canonical = report_canonical_status($d['delivery_status'] ?? null, (string)$m['status']);
+    ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$m['id']) ?></td>
         <?php if (is_admin()): ?><td><?= e($m['username']) ?></td><?php endif; ?>
         <td class="msisdn"><?= e($m['destination']) ?></td>
         <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e(mb_strimwidth($m['content'], 0, 60, '…')) ?></td>
-        <td><span class="badge badge-<?= e($m['status']) ?>"><?= e(['sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','send_failed'=>'ناموفق','failed'=>'ناموفق','pending'=>'در انتظار'][$m['status']] ?? $m['status']) ?></span></td>
+        <td><span class="badge badge-<?= e($canonical['class']) ?>"><?= e($canonical['label']) ?></span></td>
         <td class="num"><?= jdate($m['sent_at']) ?></td>
       </tr>
     <?php endforeach; ?>

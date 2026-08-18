@@ -172,8 +172,15 @@ if (!empty($costPricingFailure)) {
 }
 if (isset($costPreview) && $costPreview) {
     $previewFormFields = '';
-    foreach (['originator', 'destinations', 'content', 'group', 'category', 'mode'] as $field) {
+    foreach (['originator', 'destinations', 'content', 'group', 'category', 'mode', 'repeat'] as $field) {
         $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)($_POST[$field] ?? '')) . '">';
+    }
+    // The schedule date/time fields (mode=later) must survive the round trip too, or confirming a
+    // scheduled send after previewing it silently loses the date the user picked.
+    foreach (['send_date_y', 'send_date_m', 'send_date_d', 'send_time_h', 'send_time_i'] as $field) {
+        if (isset($_POST[$field])) {
+            $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)$_POST[$field]) . '">';
+        }
     }
     require __DIR__ . '/../app/views/cost_preview.php';
 }

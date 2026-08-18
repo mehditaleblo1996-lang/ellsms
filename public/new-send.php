@@ -240,7 +240,7 @@ if (isset($costPreview) && $costPreview) {
       <div class="hint" id="counterHint" style="margin-bottom:10px">۰ نویسه · ۰ بخش</div>
 
       <label>متن پیام *
-        <textarea name="content" id="contentField" required oninput="onContentInput()"></textarea>
+        <textarea name="content" id="contentField" required oninput="onContentInput()"><?= e($_POST['content'] ?? '') ?></textarea>
       </label>
 
       <div class="toolbar" style="margin-bottom:12px">
@@ -327,7 +327,7 @@ if (isset($costPreview) && $costPreview) {
     <?php endif; ?>
 
     <label>شماره‌ها (هر شماره در یک خط، یا جدا‌شده با ویرگول/فاصله)
-      <textarea name="destinations" id="destField" form="newSendForm" oninput="onDestInput()" placeholder="0912...&#10;0935..."></textarea>
+      <textarea name="destinations" id="destField" form="newSendForm" oninput="onDestInput()" placeholder="0912...&#10;0935..."><?= e($_POST['destinations'] ?? '') ?></textarea>
     </label>
 
     <div class="form-row">
@@ -343,8 +343,9 @@ if (isset($costPreview) && $costPreview) {
   <div class="card">
     <h2>تنظیمات ارسال</h2>
 
+    <?php $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? $_POST['mode'] : 'direct'; ?>
     <label style="display:flex;align-items:center;gap:8px">
-      <input type="radio" name="mode_ui" value="direct" checked onchange="setMode('direct')" style="width:auto;margin:0">
+      <input type="radio" name="mode_ui" value="direct" <?= $postedMode === 'direct' ? 'checked' : '' ?> onchange="setMode('direct')" style="width:auto;margin:0">
       ارسال مستقیم
     </label>
     <div id="directPanel" class="card" style="margin:8px 0 16px">
@@ -352,7 +353,7 @@ if (isset($costPreview) && $costPreview) {
     </div>
 
     <label style="display:flex;align-items:center;gap:8px">
-      <input type="radio" name="mode_ui" value="recurring" onchange="setMode('recurring')" style="width:auto;margin:0">
+      <input type="radio" name="mode_ui" value="recurring" <?= $postedMode === 'recurring' ? 'checked' : '' ?> onchange="setMode('recurring')" style="width:auto;margin:0">
       ارسال دوره‌ای
     </label>
     <div id="recurringPanel" class="card" style="margin:8px 0 16px;display:none">
@@ -369,7 +370,7 @@ if (isset($costPreview) && $costPreview) {
     </div>
 
     <label style="display:flex;align-items:center;gap:8px">
-      <input type="radio" name="mode_ui" value="gradual" onchange="setMode('gradual')" style="width:auto;margin:0">
+      <input type="radio" name="mode_ui" value="gradual" <?= $postedMode === 'gradual' ? 'checked' : '' ?> onchange="setMode('gradual')" style="width:auto;margin:0">
       ارسال تدریجی
     </label>
     <div id="gradualPanel" class="card" style="margin:8px 0 16px;display:none">
@@ -516,7 +517,8 @@ document.getElementById('campaignSelect').addEventListener('change', function ()
 });
 <?php endif; ?>
 
-setMode('direct');
+setMode('<?= e($postedMode) ?>');
 splitDest();
+onContentInput();
 </script>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

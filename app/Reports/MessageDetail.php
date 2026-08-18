@@ -31,13 +31,21 @@
 
 declare(strict_types=1);
 
-/** Canonical delivery states → Persian display labels. The DB enum values themselves never change. */
+/**
+ * Canonical delivery states → Persian display labels. The DB enum values themselves never change.
+ *
+ * 'pending' is not a value of ellsms_message_attempts.delivery_status (that ENUM has no such state —
+ * a row simply has no delivery_status yet until the poller reaches it); it is produced by
+ * report_canonical_status()'s fallback to a not-yet-sent outbound_message.status, and is handled here
+ * so that fallback path renders through the exact same label table as everything else.
+ */
 function report_delivery_status_label(?string $status): string {
     return match ($status) {
         'accepted'  => 'پذیرفته شده',
         'queued'    => 'در صف',
         'sent'      => 'ارسال شده',
         'delivered' => 'تحویل شده',
+        'pending'   => 'در انتظار',
         'failed'    => 'ناموفق',
         'rejected'  => 'رد شده',
         'expired'   => 'منقضی',
@@ -46,14 +54,177 @@ function report_delivery_status_label(?string $status): string {
     };
 }
 
-/** A CSS badge class per canonical state, so failure reads as failure at a glance. */
+/**
+ * A CSS badge class per canonical state (docs/reporting-status-and-send-modal.md), so failure reads
+ * as failure and "sent" is never visually confused with "delivered" at a glance. `default` is
+ * 'unknown' — deliberately NOT 'pending': a status this function has never heard of (a legacy row,
+ * a value from before this catalog existed) is genuinely unknown, not "waiting," and showing it in
+ * amber ("در انتظار") would be a false promise that something is still in progress.
+ */
 function report_delivery_status_class(?string $status): string {
     return match ($status) {
         'delivered'                      => 'delivered',
         'failed', 'rejected', 'expired'  => 'failed',
         'sent', 'accepted', 'queued'     => 'sent',
-        default                          => 'pending',
+        'pending'                        => 'pending',
+        default                          => 'unknown',
     };
+}
+
+/**
+ * THE single canonical UI-facing status for one message (docs/reporting-status-and-send-modal.md) —
+ * every page in this codebase that shows a message's status (dashboard, reports list, report detail,
+ * CSV export) must resolve it through this function, never re-derive its own mapping.
+ *
+ * Resolution order, and why:
+ *   1. $deliveryStatus, whenever it is present and non-empty. This is
+ *      ellsms_message_attempts/ellsms_bulk_items.delivery_status — maintained by the status poller
+ *      from what the PROVIDER actually confirmed. It is authoritative over a raw transport status
+ *      even when the transport status looks "newer" (a message can be transport-"sent" for a long
+ *      time before the provider confirms delivery, or reports it failed) — a send succeeding at the
+ *      HTTP/transport layer is never treated as delivery.
+ *   2. $fallbackSendStatus, mapped into the SAME canonical vocabulary, ONLY when there is no delivery
+ *      lifecycle value at all — a legacy row from before delivery tracking existed, or a send that
+ *      never went through a gateway with tracked status polling. This is presentation-only: it does
+ *      not write anything back, and a historical row's actual stored values are never touched.
+ *
+ * @return array{status:string, label:string, class:string}
+ */
+function report_canonical_status(?string $deliveryStatus, ?string $fallbackSendStatus = null): array {
+    $status = ($deliveryStatus !== null && $deliveryStatus !== '') ? $deliveryStatus : null;
+    if ($status === null) {
+        $status = match ($fallbackSendStatus) {
+            'delivered'              => 'delivered',
+            'sent'                   => 'sent',
+            'failed', 'send_failed'  => 'failed',
+            'pending'                => 'pending',
+            default                  => 'unknown',
+        };
+    }
+    return [
+        'status' => $status,
+        'label'  => report_delivery_status_label($status),
+        'class'  => report_delivery_status_class($status),
+    ];
+}
+
+/**
+ * The delivery-lifecycle attempt matching each of $outboundRows, keyed by destination — ONE bounded
+ * query for the whole page (B20 — no N+1), extracted so the dashboard's recent-messages widget and
+ * the reports list use the EXACT same correlation logic rather than two copies that could drift.
+ *
+ * CORRELATION IS BY DESTINATION, not by id: outbound_message (backend-owned) and
+ * ellsms_message_attempts (ELLSMS-owned) share no foreign key (Phase 8, Invariant E), so destination
+ * is what the rest of this reporting layer already uses to line the two up. The newest matching
+ * 'accepted' attempt per destination wins — the same rule reports.php's list has used since the
+ * delivery-reporting phase.
+ *
+ * @param list<array<string,mixed>> $outboundRows  rows with at least a 'destination' key
+ * @return array<string,array<string,mixed>>  destination => attempt row
+ */
+function report_delivery_lookup_by_destination(array $outboundRows, ?int $organizationId, ?int $userId): array {
+    if ($outboundRows === []) {
+        return [];
+    }
+    $dests = array_values(array_unique(array_map(static fn(array $r): string => (string)$r['destination'], $outboundRows)));
+    $placeholders = implode(',', array_fill(0, count($dests), '?'));
+    $params = $dests;
+
+    $scopeSql = '';
+    if ($organizationId !== null && $organizationId > 0) {
+        $scopeSql = ' AND ma.organization_id = ?';
+        $params[] = $organizationId;
+    } elseif ($userId !== null && $userId > 0) {
+        $scopeSql = ' AND ma.user_id = ?';
+        $params[] = $userId;
+    }
+
+    $out = [];
+    try {
+        $st = db()->prepare(
+            "SELECT ma.id, ma.destination, ma.provider_message_id, ma.provider_status, ma.delivery_status,
+                    ma.delivery_attempts, ma.delivery_checked_at, ma.delivered_at, ma.operator_id,
+                    ma.reference_type, ma.attempted_at
+             FROM ellsms_message_attempts ma
+             WHERE ma.destination IN ({$placeholders}){$scopeSql}
+               AND ma.status = 'accepted'
+             ORDER BY ma.id DESC"
+        );
+        $st->execute($params);
+        foreach ($st->fetchAll() as $a) {
+            // First (newest) attempt per destination wins — one row per outbound message; every
+            // individual attempt is enumerated on the detail page instead.
+            $out[(string)$a['destination']] ??= $a;
+        }
+    } catch (Throwable $t) {
+        // Reporting must degrade, never fail: an install whose gateway migrations have not run yet
+        // still gets the original (transport-status-only) list.
+        Logger::warning('reports.delivery_enrichment_failed', ['exception' => $t]);
+    }
+    return $out;
+}
+
+/**
+ * Canonical-status TOTALS for the summary cards (§3 — "Summary card correctness"): total / ok
+ * (sent-or-delivered) / delivered / failed, counted from the SAME per-row resolution
+ * report_canonical_status() performs — never a second, raw-status-only aggregate that could disagree
+ * with the list of rows displayed right below it.
+ *
+ * Streamed in bounded chunks of 500 (the exact chunk size reports.php's own CSV export already uses)
+ * rather than loaded into memory at once or counted with one scalar-subquery-per-row: a chunk's
+ * destinations are resolved with ONE query via report_delivery_lookup_by_destination(), so an
+ * N-row date range costs O(N/500) queries, not O(N) and not one huge in-memory array.
+ *
+ * @return array{total:int, ok:int, delivered:int, failed:int, pending:int}
+ */
+function report_canonical_status_totals(string $outboundWhereSql, array $params, ?int $organizationId, ?int $userId): array {
+    $totals = ['total' => 0, 'ok' => 0, 'delivered' => 0, 'failed' => 0, 'pending' => 0];
+
+    $st = db()->prepare("SELECT id, destination, status FROM outbound_message m WHERE {$outboundWhereSql} ORDER BY m.id DESC");
+    $st->execute($params);
+
+    $chunk = [];
+    $tally = function (array $rows) use (&$totals, $organizationId, $userId): void {
+        if ($rows === []) {
+            return;
+        }
+        $delivery = report_delivery_lookup_by_destination($rows, $organizationId, $userId);
+        foreach ($rows as $r) {
+            $attempt = $delivery[(string)$r['destination']] ?? null;
+            $canonical = report_canonical_status($attempt['delivery_status'] ?? null, (string)$r['status']);
+            $totals['total']++;
+            switch ($canonical['status']) {
+                case 'delivered':
+                    $totals['delivered']++;
+                    $totals['ok']++;
+                    break;
+                case 'sent':
+                case 'accepted':
+                case 'queued':
+                    $totals['ok']++;
+                    break;
+                case 'failed':
+                case 'rejected':
+                case 'expired':
+                    $totals['failed']++;
+                    break;
+                case 'pending':
+                    $totals['pending']++;
+                    break;
+            }
+        }
+    };
+
+    while ($r = $st->fetch()) {
+        $chunk[] = $r;
+        if (count($chunk) >= 500) {
+            $tally($chunk);
+            $chunk = [];
+        }
+    }
+    $tally($chunk);
+
+    return $totals;
 }
 
 /** Internal reference types → Persian labels for "نوع درخواست". */

@@ -47,8 +47,14 @@ if ($dest !== '') { $where[] = 'm.destination LIKE ?'; $params[] = '%' . preg_re
 if ($text !== '') { $where[] = 'm.content LIKE ?';     $params[] = '%' . $text . '%'; }
 $W = implode(' AND ', $where);
 
-/* ---------- Summary ---------- */
-$S = backend_outbound_summary($W, $params);
+/* ---------- Summary ----------
+ * Counted from the SAME canonical status resolution as the list rows and CSV export
+ * (report_canonical_status()), never a second raw-status-only aggregate that could disagree with
+ * what the rows below actually show.
+ */
+$reportOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
+$reportUserId = !is_admin() && !$reportOrgId ? (int)$me['id'] : null;
+$S = report_canonical_status_totals($W, $params, $reportOrgId, $reportUserId);
 
 /* ---------- CSV export ---------- */
 if (isset($_GET['export'])) {
@@ -70,34 +76,19 @@ if (isset($_GET['export'])) {
     // Delivery lifecycle is looked up in BOUNDED CHUNKS as rows stream, so a 100k-row export neither
     // issues 100k queries nor loads every attempt into memory at once.
     $buffer = [];
-    $flush = static function (array $batch) use ($out): void {
+    $flush = static function (array $batch) use ($out, $reportOrgId, $reportUserId): void {
         if ($batch === []) {
             return;
         }
-        $dests = array_values(array_unique(array_map(static fn(array $r): string => (string)$r['destination'], $batch)));
-        $delivery = [];
-        try {
-            $ph = implode(',', array_fill(0, count($dests), '?'));
-            $q = db()->prepare(
-                "SELECT destination, provider_message_id, provider_status, delivery_status,
-                        delivery_attempts, delivery_checked_at, delivered_at
-                 FROM ellsms_message_attempts
-                 WHERE destination IN ({$ph}) AND status = 'accepted' ORDER BY id DESC"
-            );
-            $q->execute($dests);
-            foreach ($q->fetchAll() as $a) {
-                $delivery[(string)$a['destination']] ??= $a;
-            }
-        } catch (Throwable) {
-            // Export still succeeds without the lifecycle columns rather than failing outright.
-        }
+        $delivery = report_delivery_lookup_by_destination($batch, $reportOrgId, $reportUserId);
 
         foreach ($batch as $r) {
             $d = $delivery[(string)$r['destination']] ?? null;
+            $canonical = report_canonical_status($d['delivery_status'] ?? null, (string)$r['status']);
             fputcsv($out, [
                 $r['id'], $r['username'], $r['originator'], $r['destination'], $r['content'],
                 sms_parts((string)$r['content']),
-                $d !== null && !empty($d['delivery_status']) ? (string)$d['delivery_status'] : (string)$r['status'],
+                $canonical['status'],
                 $r['reference_id'],
                 // B28/B9: a 19-digit provider reference is written with a leading tab so Excel keeps
                 // it as TEXT. Without this the cell becomes 4.47362E+18 and the reference is lost.
@@ -142,46 +133,7 @@ $rows = backend_outbound_rows($W, $params, $per, $off);
  * share no id, so destination and send date are what correlate them. A row with no gateway attempt
  * (the legacy transport) simply gets no extra columns, exactly as before.
  */
-$deliveryByDest = [];
-if ($rows) {
-    $dests = array_values(array_unique(array_map(static fn(array $r): string => (string)$r['destination'], $rows)));
-    $placeholders = implode(',', array_fill(0, count($dests), '?'));
-    $attemptParams = $dests;
-
-    $scopeSql = '';
-    if (!is_admin()) {
-        $orgId = (int)($me['organization_id'] ?? 0);
-        if ($orgId) {
-            $scopeSql = ' AND ma.organization_id = ?';
-            $attemptParams[] = $orgId;
-        } else {
-            $scopeSql = ' AND ma.user_id = ?';
-            $attemptParams[] = (int)$me['id'];
-        }
-    }
-
-    try {
-        $st = db()->prepare(
-            "SELECT ma.id, ma.destination, ma.provider_message_id, ma.provider_status, ma.delivery_status,
-                    ma.delivery_attempts, ma.delivery_checked_at, ma.delivered_at, ma.operator_id,
-                    ma.reference_type, ma.attempted_at
-             FROM ellsms_message_attempts ma
-             WHERE ma.destination IN ({$placeholders}){$scopeSql}
-               AND ma.status = 'accepted'
-             ORDER BY ma.id DESC"
-        );
-        $st->execute($attemptParams);
-        foreach ($st->fetchAll() as $a) {
-            // First (newest) attempt per destination wins — the list shows one row per outbound
-            // message, and the detail page is where every individual attempt is enumerated.
-            $deliveryByDest[(string)$a['destination']] ??= $a;
-        }
-    } catch (Throwable $t) {
-        // Reporting must degrade, never fail: an install whose gateway migrations have not run yet
-        // still gets the original list.
-        Logger::warning('reports.delivery_enrichment_failed', ['exception' => $t]);
-    }
-}
+$deliveryByDest = report_delivery_lookup_by_destination($rows, $reportOrgId, $reportUserId);
 
 // Operator names for the whole page in ONE query (B20 — no N+1).
 $operatorNames = [];
@@ -198,8 +150,8 @@ require __DIR__ . '/../app/views/header.php';
 <div class="grid grid-4">
   <div class="stat"><div class="stat-label">تعداد پیام‌ها</div><div class="stat-value"><?= to_persian_digits(number_format($cnt)) ?></div></div>
   <div class="stat"><div class="stat-label">ارسال‌شده / تحویل‌شده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['ok'])) ?></div></div>
-  <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['bad'])) ?></div></div>
-  <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['dlv'])) ?></div></div>
+  <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['failed'])) ?></div></div>
+  <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['delivered'])) ?></div></div>
 </div>
 
 <div class="card" style="margin-top:22px">
@@ -240,13 +192,9 @@ require __DIR__ . '/../app/views/header.php';
       // The gateway attempt for this destination, when the send went through a configured gateway.
       // Its delivery_status is the AUTHORITATIVE one — it is what the status poller maintains.
       $d = $deliveryByDest[(string)$m['destination']] ?? null;
-      $status = $d !== null && !empty($d['delivery_status']) ? (string)$d['delivery_status'] : (string)$m['status'];
-      $statusLabel = $d !== null && !empty($d['delivery_status'])
-          ? report_delivery_status_label($status)
-          : ($statusFa[$status] ?? $status);
-      $statusClass = $d !== null && !empty($d['delivery_status'])
-          ? report_delivery_status_class($status)
-          : $status;
+      $canonical = report_canonical_status($d['delivery_status'] ?? null, (string)$m['status']);
+      $statusLabel = $canonical['label'];
+      $statusClass = $canonical['class'];
       // Part count from the SAME engine pricing and cost preview use — never a second algorithm.
       $parts = sms_parts((string)$m['content']);
     ?>

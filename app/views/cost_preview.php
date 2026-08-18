@@ -32,11 +32,37 @@ foreach ($groups as $g) {
     $operatorLabels[$g['operator']] = $g['operator_name'] !== '' ? $g['operator_name'] : $g['operator'];
 }
 ?>
+<div class="modal-overlay is-open" id="sendConfirmOverlay" role="dialog" aria-modal="true" aria-labelledby="sendConfirmTitle">
+<div class="modal-dialog">
 <div class="card" style="border:2px solid <?= $canSend ? '#2d7a4f' : '#c0392b' ?>">
-  <h2>خلاصه‌ی ارسال — پیش از تأیید</h2>
+  <h2 id="sendConfirmTitle">خلاصه‌ی ارسال — پیش از تأیید</h2>
 
+  <?php
+    // Sender + schedule are shown from the SAME request's already-validated inputs — display only,
+    // never re-decided here. The confirm submit re-parses and re-validates every one of them again.
+    $previewMode = (string)($_POST['mode'] ?? 'now');
+    $previewIsScheduled = in_array($previewMode, ['later', 'recurring'], true);
+    $previewScheduleAt = null;
+    if ($previewIsScheduled) {
+        $pgDate = jalali_request_to_gregorian('send_date');
+        $ptime  = time_post('send_time');
+        if ($pgDate && $ptime) {
+            $previewScheduleAt = jdate("{$pgDate} {$ptime}:00");
+        }
+    }
+  ?>
   <div class="table-wrap">
   <table>
+    <tr><th>فرستنده</th><td class="ltr"><?= e((string)($cp['originator'] ?? '')) ?></td></tr>
+    <tr><th>زمان ارسال</th><td>
+      <?php if (!$previewIsScheduled): ?>
+        ارسال فوری
+      <?php elseif ($previewScheduleAt !== null): ?>
+        زمان‌بندی‌شده — <?= e($previewScheduleAt) ?>
+      <?php else: ?>
+        زمان‌بندی‌شده
+      <?php endif; ?>
+    </td></tr>
     <tr><th>گیرندگان واردشده</th><td class="num"><?= to_persian_digits(number_format((int)$cp['recipients']['input_count'])) ?></td></tr>
     <?php if (($cp['recipients']['invalid_count'] ?? 0) > 0): ?>
       <tr><th>شماره‌ی نامعتبر (حذف شد)</th><td class="num"><?= to_persian_digits(number_format((int)$cp['recipients']['invalid_count'])) ?></td></tr>
@@ -195,18 +221,50 @@ foreach ($groups as $g) {
     اگر در این فاصله اعتبار یا سهمیه‌ی شما تغییر کند، ارسال با پیام مناسب متوقف می‌شود و کسری انجام نمی‌گیرد.
   </p>
 
-  <form method="post" style="margin-top:12px">
+  <form method="post" style="margin-top:12px" id="sendConfirmForm">
     <?= csrf_field() ?>
     <?= $previewFormFields ?>
     <input type="hidden" name="previewed_cost" value="<?= $estimatedCost ?>">
     <input type="hidden" name="previewed_at" value="<?= time() ?>">
     <div class="toolbar">
       <?php if ($canSend): ?>
-        <button class="btn btn-primary" name="do" value="confirm">تأیید و ارسال</button>
+        <button class="btn btn-primary" name="do" value="confirm" id="sendConfirmSubmit">تأیید و ارسال</button>
       <?php else: ?>
         <button class="btn" disabled>ارسال ممکن نیست</button>
       <?php endif; ?>
-      <a class="btn" href="">ویرایش</a>
+      <button type="button" class="btn" id="sendConfirmCancel">انصراف / ویرایش</button>
     </div>
   </form>
 </div>
+</div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('sendConfirmOverlay');
+  var cancel  = document.getElementById('sendConfirmCancel');
+  var form    = document.getElementById('sendConfirmForm');
+  var submit  = document.getElementById('sendConfirmSubmit');
+  if (!overlay) return;
+
+  // Closing only hides the overlay — the underlying send form, still filled in, is already
+  // rendered on this same page beneath it. No navigation, no data loss.
+  function close() { overlay.classList.remove('is-open'); }
+
+  if (cancel) cancel.addEventListener('click', close);
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') close();
+  });
+
+  // Backend remains authoritative for the actual send; this only stops a second click/Enter from
+  // firing a second POST while the first is still in flight.
+  if (form && submit) {
+    form.addEventListener('submit', function () {
+      submit.disabled = true;
+      submit.textContent = 'در حال ارسال…';
+    });
+  }
+})();
+</script>
