@@ -31,6 +31,11 @@ function gateway_version_check_seconds(): int {
     return max(0, (int)(env('SMS_GATEWAY_VERSION_CHECK_SECONDS', '30') ?? '30'));
 }
 
+/** Whether the mock/sandbox SMS gateway may be selected. OFF by default. */
+function gateway_mock_enabled(): bool {
+    return (string)env('ELLSMS_MOCK_GATEWAY_ENABLED', '0') === '1';
+}
+
 /**
  * Instrumentation. Process-local counters the performance tests assert on and `make sms-gateway-status`
  * can display. Never contains a secret, an endpoint, or anything unbounded.
@@ -223,6 +228,7 @@ function gateway_compile(int $gatewayId): ?array {
             'gateway_id'     => (int)$gateway['id'],
             'gateway_code'   => (string)$gateway['code'],
             'config_version' => (int)$gateway['config_version'],
+            'is_mock'        => (bool)$gateway['is_mock'],
             'send_mode'      => (string)$gateway['send_mode'],
             'send_enabled'   => (bool)$gateway['send_enabled'],
             'status_enabled' => (bool)$gateway['status_enabled'] && $status !== null,
@@ -450,6 +456,9 @@ function gateway_for_route(?array $route): array {
     if (!$connector['send_enabled']) {
         return ['ok' => false, 'reason' => 'gateway_send_disabled'];
     }
+    if ($connector['is_mock'] && !gateway_mock_enabled()) {
+        return ['ok' => false, 'reason' => 'mock_gateway_disabled'];
+    }
     return ['ok' => true, 'connector' => $connector];
 }
 
@@ -462,7 +471,8 @@ function gateway_default_id(): int {
         return (int)$cached;
     }
     try {
-        $id = (int)(db()->query("SELECT id FROM ellsms_sms_gateways WHERE default_slot = 1 AND status = 'active' LIMIT 1")->fetchColumn() ?: 0);
+        $mockFilter = gateway_mock_enabled() ? '' : ' AND is_mock = 0';
+        $id = (int)(db()->query("SELECT id FROM ellsms_sms_gateways WHERE default_slot = 1 AND status = 'active'{$mockFilter} LIMIT 1")->fetchColumn() ?: 0);
     } catch (Throwable) {
         $id = 0;
     }

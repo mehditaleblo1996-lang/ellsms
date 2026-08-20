@@ -24,6 +24,7 @@ services:
       APP_URL: ${APP_URL:-}
       APP_VERSION: ${APP_VERSION:-}
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
       SESSION_IDLE_TIMEOUT_SECONDS: ${SESSION_IDLE_TIMEOUT_SECONDS:-1800}
       SESSION_ABSOLUTE_TIMEOUT_SECONDS: ${SESSION_ABSOLUTE_TIMEOUT_SECONDS:-43200}
@@ -88,6 +89,7 @@ services:
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-5}
       JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
       JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-1800}
+      ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       # Phase 13 — the worker enforces subscription state at execution time (a suspended
       # organization's queued job must not keep sending), so it needs the same billing config.
       BILLING_ENABLED: ${BILLING_ENABLED:-0}
@@ -166,6 +168,7 @@ services:
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-5}
       JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
       JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-1800}
+      ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       IMPORT_CHUNK_SIZE: ${IMPORT_CHUNK_SIZE:-5000}
       DB_INSERT_BATCH: ${DB_INSERT_BATCH:-1000}
       IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-2000000}
@@ -209,6 +212,7 @@ services:
       # The poller talks to providers through the same transport the send path uses, so it needs the
       # same transport switch — with SMS_GATEWAY_TRANSPORT unset it would never reach a gateway.
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
       BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
       BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
@@ -233,6 +237,25 @@ services:
     # Enough time to finish the current bounded pass and exit cleanly (SIGTERM handling in
     # cron/sms-status-worker.php) rather than being SIGKILLed mid-poll.
     stop_grace_period: 30s
+
+  # Fake/Sandbox SMS gateway for development and load testing.
+  # No external egress: it only answers the /send and /status endpoints.
+  # It is reachable from other ELLSMS containers as http://ellsms-mock-sms-gateway:8080.
+  mock-sms-gateway:
+    build:
+      context: .
+      dockerfile: mock/Dockerfile
+    container_name: ellsms-mock-sms-gateway
+    restart: unless-stopped
+    ports:
+      - "${MOCK_SMS_PORT:-18080}:8080"
+    environment:
+      MOCK_SMS_SEED: ${MOCK_SMS_SEED:-12345}
+      MOCK_SMS_MODE: ${MOCK_SMS_MODE:-success}
+      MOCK_SMS_LATENCY_MS: ${MOCK_SMS_LATENCY_MS:-0}
+    networks:
+      - backend_net
+    stop_grace_period: 5s
 
 networks:
   backend_net:
