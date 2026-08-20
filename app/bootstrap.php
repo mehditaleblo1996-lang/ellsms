@@ -80,6 +80,10 @@ require_once __DIR__ . '/Profile.php';
 // (docs/profile-kyc.md). Composes Profile.php (document storage/catalogs) and audit(); owns neither.
 require_once __DIR__ . '/Kyc.php';
 require_once __DIR__ . '/AllowedIps.php';
+// Large-scale SMS import pipeline (docs/large-import-architecture.md). Loaded last because it
+// composes the file reader, pricing, wallet, quota, and bulk job primitives above.
+require_once __DIR__ . '/import_reader.php';
+require_once __DIR__ . '/import.php';
 
 /* ---------- Environment ---------- */
 function env(string $key, ?string $default = null): ?string {
