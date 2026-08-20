@@ -35,7 +35,8 @@ class GatewayConfigException extends AppException {}
  * which is how a provider ends up receiving a message addressed to nobody.
  */
 const GATEWAY_SEND_VARIABLES = [
-    'sender', 'recipient', 'recipients', 'message', 'message_type', 'request_id',
+    'sender', 'recipient', 'recipients', 'recipients_array', 'senders_array', 'messages_array',
+    'message', 'message_type', 'request_id',
     'organization_id', 'operator_code', 'route_code', 'gateway_code', 'timestamp', 'sender_user_id',
 ];
 
@@ -475,6 +476,38 @@ function gateway_integer_list(string $raw): array {
 }
 
 /**
+ * Builds a numeric array from an array context value or a comma-separated string.
+ *
+ * Each element is an int when it is all digits, otherwise a string — the same
+ * numeric-when-numeric rule the scalar `numeric` data type uses.
+ *
+ * @return list<int|string>
+ */
+function gateway_numeric_array(mixed $raw): array {
+    $items = is_array($raw) ? array_values(array_map('strval', $raw)) : gateway_split_list((string)$raw);
+    return array_values(array_map(static fn(string $item): int|string => ctype_digit($item) ? (int)$item : $item, $items));
+}
+
+/**
+ * Builds an array of canonical decimal tokens from an array context value.
+ *
+ * @return list<GatewayJsonNumber>
+ */
+function gateway_integer_array(mixed $raw): array {
+    $out = [];
+    $items = is_array($raw) ? array_values(array_map('strval', $raw)) : gateway_split_list((string)$raw);
+    foreach ($items as $item) {
+        $token = gateway_decimal_token($item);
+        if ($token === null) {
+            Logger::warning('gateway.parameter.integer_array_item_rejected', ['length' => strlen($item)]);
+            continue;
+        }
+        $out[] = new GatewayJsonNumber($token);
+    }
+    return $out;
+}
+
+/**
  * JSON-encodes a request body, emitting GatewayJsonNumber values as unquoted numeric tokens.
  *
  * json_encode() has no way to say "this string is a number", and the alternatives are all worse:
@@ -544,13 +577,17 @@ function gateway_parameter_resolve(array $parameter, array $context): mixed {
         // many destinations per request universally want a list here, and a string "a,b" would be
         // silently accepted by most of them as a single malformed destination.
         'string_list' => gateway_split_list((string)$raw),
+        // Native string arrays for array-capable context variables (e.g. recipients_array).
+        'string_array' => is_array($raw) ? array_values(array_map('strval', $raw)) : gateway_split_list((string)$raw),
         // Numeric-when-numeric: the existing integration sends `originator` as a JSON number when the
         // line is all digits and as a string otherwise. Reproducing that exactly is what makes the
         // migrated gateway's request byte-identical to the one it replaces.
         'numeric' => ctype_digit((string)$raw) ? (int)$raw : (string)$raw,
+        'numeric_array' => gateway_numeric_array($raw),
         // A JSON array of NUMBERS built from canonical decimal strings — never through float, so a
         // 19-digit provider message id survives intact. One id still yields a one-element ARRAY.
         'integer_list' => gateway_integer_list((string)$raw),
+        'integer_array' => gateway_integer_array($raw),
         default   => is_scalar($raw) ? (string)$raw : '',
     };
 }

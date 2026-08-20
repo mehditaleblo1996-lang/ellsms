@@ -411,12 +411,18 @@ function gateway_batch_mapping_compile(?array $mapping): ?array {
     if ($mapping === null) {
         return null;
     }
+    $mode = (string)($mapping['correlation_mode'] ?? 'row');
+    if (!in_array($mode, ['row', 'position'], true)) {
+        $mode = 'row';
+    }
     return [
+        'correlation_mode' => $mode,
         'rows_path'        => gateway_path_compile((string)($mapping['rows_path'] ?? '')),
         'destination_key'  => (string)($mapping['destination_key'] ?? 'destination'),
         'status_key'       => (string)($mapping['status_key'] ?? 'status'),
         'success_values'   => array_map('strval', (array)($mapping['success_values'] ?? ['sent'])),
         'message_id_key'   => (string)($mapping['message_id_key'] ?? ''),
+        'provider_ids_path'=> gateway_path_compile((string)($mapping['provider_ids_path'] ?? '')),
     ];
 }
 

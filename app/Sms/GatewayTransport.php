@@ -181,12 +181,18 @@ function gateway_parameter_signature(array $connector, string $connectorKind, ?i
  * passes a richer array later.
  */
 function gateway_send_context(array $input): array {
-    $recipients = $input['recipients'] ?? [];
+    $recipients = is_array($input['recipients'] ?? null) ? array_values(array_map('strval', $input['recipients'])) : [];
+    $sender = (string)($input['sender'] ?? '');
+    $message = (string)($input['message'] ?? '');
+    $count = count($recipients);
     return [
-        'sender'          => (string)($input['sender'] ?? ''),
+        'sender'          => $sender,
         'recipient'       => (string)($input['recipient'] ?? ($recipients[0] ?? '')),
-        'recipients'      => is_array($recipients) ? implode(',', $recipients) : '',
-        'message'         => (string)($input['message'] ?? ''),
+        'recipients'      => implode(',', $recipients),
+        'recipients_array'=> $recipients,
+        'senders_array'   => $count > 0 ? array_fill(0, $count, $sender) : [],
+        'messages_array'  => $count > 0 ? array_fill(0, $count, $message) : [],
+        'message'         => $message,
         'message_type'    => (string)($input['message_type'] ?? ''),
         // Defaults to the ambient request id, exactly as the legacy client does — a send that
         // carried no correlation id would be untraceable across the boundary, and an EMPTY header is
@@ -598,6 +604,10 @@ function gateway_resolve_recipient_operator(string $destination): array {
  */
 function gateway_read_send_response(array $connector, array $response, array $groupDestinations): array {
     if ($connector['send_mode'] === 'batch' && $connector['send']['batch'] !== null) {
+        $batch = $connector['send']['batch'];
+        if ($batch['correlation_mode'] === 'position') {
+            return gateway_extract_positional_result($connector['send'], $response['data'], $groupDestinations);
+        }
         $batch = gateway_extract_batch_result($connector['send'], $response['data']);
         // Restricted to THIS group's destinations: a provider echoing back something else must not be
         // able to mark a destination as sent that this request never carried.
@@ -616,6 +626,42 @@ function gateway_read_send_response(array $connector, array $response, array $gr
     $messageId = gateway_extract_message_id($connector['send'], $response['data']);
     $ids = $messageId === null ? [] : array_fill_keys($groupDestinations, $messageId);
     return [$groupDestinations, $ids];
+}
+
+/**
+ * Positional batch correlation: response[N] maps to request[N].
+ *
+ * Fail-closed: if the provider id count does not match the request destination
+ * count, no destination is marked accepted and a correlation failure is logged.
+ */
+function gateway_extract_positional_result(array $section, mixed $decoded, array $groupDestinations): array {
+    $batch = $section['batch'] ?? null;
+    if ($batch === null || $batch['provider_ids_path'] === []) {
+        return [[], []];
+    }
+    $ids = gateway_path_extract($batch['provider_ids_path'], $decoded);
+    if (!is_array($ids)) {
+        Logger::warning('gateway.correlation.positional_not_array', ['destinations' => count($groupDestinations)]);
+        return [[], []];
+    }
+    if (count($ids) !== count($groupDestinations)) {
+        Logger::warning('gateway.correlation.positional_count_mismatch', [
+            'expected' => count($groupDestinations), 'actual' => count($ids),
+        ]);
+        Metrics::increment('gateway.correlation_failure', 1, ['reason' => 'count_mismatch']);
+        return [[], []];
+    }
+    $messageIds = [];
+    foreach ($groupDestinations as $index => $destination) {
+        $id = $ids[$index] ?? null;
+        if (!is_scalar($id) || (string)$id === '') {
+            Logger::warning('gateway.correlation.positional_empty_id', ['index' => $index]);
+            Metrics::increment('gateway.correlation_failure', 1, ['reason' => 'empty_id']);
+            return [[], []];
+        }
+        $messageIds[$destination] = (string)$id;
+    }
+    return [$groupDestinations, $messageIds];
 }
 
 /* ==========================================================================
