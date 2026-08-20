@@ -126,6 +126,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', 'شماره مقصد معتبری وجود ندارد.' . $blockedNote);
     } elseif ($content === '') {
         flash('error', 'متن پیام خالی است.');
+    } elseif (in_array($mode, ['direct', 'gradual'], true) && count($dests) > import_sync_max_recipients()) {
+        // Large recipient list: write to a temporary CSV and use the async import pipeline
+        // instead of building a giant PHP array / synchronous bulk job.
+        $storageKey = 'imports/' . date('Ymd') . '/' . bin2hex(random_bytes(16)) . '.csv';
+        $path = import_storage_path($storageKey);
+        $destDir = dirname($path);
+        if (!is_dir($destDir) && !mkdir($destDir, 0750, true) && !is_dir($destDir)) {
+            flash('error', 'امکان ساخت مسیر ذخیره‌سازی وجود ندارد.');
+        } else {
+            $fh = fopen($path, 'w');
+            foreach ($dests as $d) {
+                fputcsv($fh, [$d, $content]);
+            }
+            fclose($fh);
+
+            $title = $mode === 'gradual' ? ($notes ?: 'ارسال تدریجی') : ($notes ?: 'ارسال دسته‌ای');
+            $throttleCount = $mode === 'gradual' ? max(1, (int)($_POST['throttle_count'] ?? 10)) : null;
+            $throttleMinutes = $mode === 'gradual' ? max(1, (int)($_POST['throttle_minutes'] ?? 5)) : null;
+            $created = import_create_job($me, $mode === 'gradual' ? 'gradual' : 'p2p', $originator, $title, $storageKey, $throttleCount, $throttleMinutes);
+            if ($created['ok']) {
+                audit((int)$me['id'], 'new_send.' . $mode . '.large', count($dests) . ' dest');
+                redirect('/import.php?id=' . $created['job_id']);
+            } else {
+                import_delete_storage($storageKey);
+                flash('error', $created['error']);
+            }
+        }
     } elseif ($mode === 'direct') {
         [$ok, $info] = dispatch_message($me, $originator, $dests, $content);
         flash($ok ? 'success' : 'error', $info . $blockedNote);

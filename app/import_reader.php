@@ -254,7 +254,7 @@ function csv_read_row_range(string $path, int $firstRow, int $lastRow): array {
             break;
         }
 
-        $rows[] = ['mobile' => $mobile, 'content' => $content, 'row_no' => $rowNo];
+        $rows[] = ['mobile' => $mobile, 'content' => $content, 'row_no' => $rowNo, 'cells' => $row];
     }
 
     fclose($fh);
@@ -316,7 +316,7 @@ function xlsx_read_row_range(string $path, int $firstRow, int $lastRow): array {
         }
         $headerSkipped = true;
 
-        $rows[] = ['mobile' => $mobile, 'content' => $content, 'row_no' => $rowNo];
+        $rows[] = ['mobile' => $mobile, 'content' => $content, 'row_no' => $rowNo, 'cells' => $cells];
     }
 
     $reader->close();
@@ -350,7 +350,7 @@ function csv_read_chunks(string $path, int $chunkSize): Generator {
         }
         $headerSkipped = true;
 
-        $buffer[] = ['mobile' => $mobile ?? '', 'content' => $content, 'row_no' => $rowNo];
+        $buffer[] = ['mobile' => $mobile ?? '', 'content' => $content, 'row_no' => $rowNo, 'cells' => $row];
         if (count($buffer) >= $chunkSize) {
             yield $buffer;
             $buffer = [];
@@ -426,7 +426,7 @@ function xlsx_read_chunks(string $path, int $chunkSize): Generator {
         }
         $headerSkipped = true;
 
-        $buffer[] = ['mobile' => $mobile ?? '', 'content' => $content, 'row_no' => $rowNo];
+        $buffer[] = ['mobile' => $mobile ?? '', 'content' => $content, 'row_no' => $rowNo, 'cells' => $cells];
         if (count($buffer) >= $chunkSize) {
             yield $buffer;
             $buffer = [];

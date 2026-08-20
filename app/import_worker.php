@@ -114,6 +114,11 @@ function import_job_analyze_pass(array $job): void {
     $jobId = (int)$job['id'];
     $userId = (int)$job['user_id'];
     $applyBlacklist = true;
+    $template = !empty($job['template']) ? (string)$job['template'] : null;
+    $variableHeaders = !empty($job['variable_headers']) ? json_decode((string)$job['variable_headers'], true) : null;
+    if (!is_array($variableHeaders)) {
+        $variableHeaders = null;
+    }
 
     $dedupeIns = $db->prepare(
         'INSERT IGNORE INTO ellsms_import_dedupe (import_job_id, mobile, content_fingerprint, content, segments)
@@ -149,17 +154,32 @@ function import_job_analyze_pass(array $job): void {
         $candidates = [];
         foreach ($rows as $row) {
             $chunkCounters['processed']++;
-            if ($row['mobile'] === null || $row['mobile'] === '' || $row['content'] === '') {
+
+            if ($variableHeaders !== null) {
+                $vars = [];
+                foreach ($variableHeaders as $i => $h) {
+                    $vars[$h] = trim((string)($row['cells'][$i + 2] ?? ''));
+                }
+                $rowTemplate = trim((string)($row['cells'][1] ?? ''));
+                $content = trim(render_bulk_template($rowTemplate, $vars));
+            } elseif ($template !== null) {
+                $content = trim(render_bulk_template($template, []));
+            } else {
+                $content = $row['content'];
+            }
+
+            $mobile = $row['mobile'];
+            if ($mobile === null || $mobile === '' || $content === '') {
                 $chunkCounters['invalid']++;
                 continue;
             }
-            $fingerprint = hash('sha256', $row['content']);
+            $fingerprint = hash('sha256', $content);
             $key = $row['mobile'] . "\0" . $fingerprint;
             if (isset($candidates[$key])) {
                 $chunkCounters['duplicate']++;
                 continue;
             }
-            $candidates[$key] = ['mobile' => $row['mobile'], 'content' => $row['content'], 'fingerprint' => $fingerprint];
+            $candidates[$key] = ['mobile' => $mobile, 'content' => $content, 'fingerprint' => $fingerprint];
         }
 
         // Blacklist filter (per mobile, applied after within-chunk dedupe).

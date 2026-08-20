@@ -47,43 +47,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($originator === '') {
             flash('error', 'خط ارسال معتبر نیست.');
-        } elseif (empty($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
-            flash('error', 'فایل را انتخاب کنید.');
-        } elseif ($_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-            flash('error', 'بارگذاری فایل با خطا مواجه شد.');
         } else {
-            try {
-                $rows = read_spreadsheet_rows($_FILES['file']['tmp_name'], $_FILES['file']['name']);
-                if (count($rows) > 20000) {
-                    flash('error', 'حداکثر ۲۰٬۰۰۰ ردیف در هر فایل پشتیبانی می‌شود.');
+            $upload = import_validate_upload($_FILES['file'] ?? []);
+            if (!$upload['ok']) {
+                flash('error', $upload['error']);
+            } else {
+                $stored = import_store_upload($_FILES['file']);
+                if (!$stored['ok']) {
+                    flash('error', $stored['error']);
                 } else {
-                    // If the first row's column A isn't a valid mobile number, treat it as a header row and skip it.
-                    if ($rows && !normalize_msisdn($rows[0][0] ?? '')) {
-                        array_shift($rows);
-                    }
-
-                    $items = [];
-                    $skipped = 0;
-                    foreach ($rows as $row) {
-                        $mobile  = normalize_msisdn($row[0] ?? '');
-                        $content = trim($row[1] ?? '');
-                        if ($mobile && $content !== '') {
-                            $items[] = ['mobile' => $mobile, 'content' => $content];
+                    $storageKey = $stored['storage_key'];
+                    $countResult = import_count_rows($storageKey);
+                    if (!$countResult['ok']) {
+                        import_delete_storage($storageKey);
+                        flash('error', $countResult['error']);
+                    } elseif ($countResult['count'] > import_max_rows()) {
+                        import_delete_storage($storageKey);
+                        flash('error', 'تعداد ردیف‌های فایل از سقف مجاز بیشتر است.');
+                    } elseif ($countResult['count'] > import_sync_max_recipients()) {
+                        // Large file: async import pipeline.
+                        $created = import_create_job($me, 'p2p', $originator, $title, $storageKey);
+                        if ($created['ok']) {
+                            audit((int)$me['id'], 'p2p.upload.large', "{$title}: " . $countResult['count'] . ' rows');
+                            redirect('/import.php?id=' . $created['job_id']);
                         } else {
-                            $skipped++;
+                            import_delete_storage($storageKey);
+                            flash('error', $created['error']);
+                        }
+                    } else {
+                        // Small file: keep the existing synchronous path for UX simplicity.
+                        try {
+                            $items = [];
+                            $skipped = 0;
+                            foreach (import_read_chunks($storageKey, import_chunk_size()) as $chunk) {
+                                foreach ($chunk as $row) {
+                                    if ($row['mobile'] !== '' && $row['content'] !== '') {
+                                        $items[] = ['mobile' => $row['mobile'], 'content' => $row['content']];
+                                    } else {
+                                        $skipped++;
+                                    }
+                                }
+                            }
+                            import_delete_storage($storageKey);
+
+                            [$ok, $info, $jobId] = bulk_queue_job($me, 'p2p', $title, $originator, null, $items);
+                            if ($ok) {
+                                audit((int)$me['id'], 'p2p.upload', "{$title}: " . count($items) . ' rows');
+                                flash('success', $info . ($skipped ? ' (' . to_persian_digits((string)$skipped) . ' ردیف نامعتبر نادیده گرفته شد)' : ''));
+                            } else {
+                                flash('error', $info);
+                            }
+                        } catch (RuntimeException $e) {
+                            import_delete_storage($storageKey);
+                            flash('error', $e->getMessage());
                         }
                     }
-
-                    [$ok, $info, $jobId] = bulk_queue_job($me, 'p2p', $title, $originator, null, $items);
-                    if ($ok) {
-                        audit((int)$me['id'], 'p2p.upload', "{$title}: " . count($items) . ' rows');
-                        flash('success', $info . ($skipped ? ' (' . to_persian_digits((string)$skipped) . ' ردیف نامعتبر نادیده گرفته شد)' : ''));
-                    } else {
-                        flash('error', $info);
-                    }
                 }
-            } catch (RuntimeException $e) {
-                flash('error', $e->getMessage());
             }
         }
         redirect('/p2p-send.php');

@@ -47,51 +47,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($originator === '') {
             flash('error', 'خط ارسال معتبر نیست.');
-        } elseif (empty($_FILES['file']) || $_FILES['file']['error'] === UPLOAD_ERR_NO_FILE) {
-            flash('error', 'فایل را انتخاب کنید.');
-        } elseif ($_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-            flash('error', 'بارگذاری فایل با خطا مواجه شد.');
         } else {
-            try {
-                $rows = read_spreadsheet_rows($_FILES['file']['tmp_name'], $_FILES['file']['name']);
-                if (count($rows) < 2) {
-                    flash('error', 'فایل باید یک ردیف عنوان ستون‌ها و حداقل یک ردیف داده داشته باشد.');
-                } elseif (count($rows) > 20001) {
-                    flash('error', 'حداکثر ۲۰٬۰۰۰ ردیف داده (به‌علاوه‌ی عنوان) پشتیبانی می‌شود.');
+            $upload = import_validate_upload($_FILES['file'] ?? []);
+            if (!$upload['ok']) {
+                flash('error', $upload['error']);
+            } else {
+                $stored = import_store_upload($_FILES['file']);
+                if (!$stored['ok']) {
+                    flash('error', $stored['error']);
                 } else {
-                    $headers = array_map('trim', array_shift($rows));
-                    // Column A = mobile, column B = per-row template — both fixed by
-                    // position, no header needed for them. Column C onward are the
-                    // variable values, named by their header text.
-                    $varHeaders = array_slice($headers, 2);
-
-                    $items = [];
-                    $skipped = 0;
-                    foreach ($rows as $row) {
-                        $mobile   = normalize_msisdn($row[0] ?? '');
-                        $template = trim($row[1] ?? '');
-                        if (!$mobile || $template === '') { $skipped++; continue; }
-
-                        $vars = [];
-                        foreach ($varHeaders as $i => $h) {
-                            if ($h === '') continue;
-                            $vars[$h] = trim($row[$i + 2] ?? '');
+                    $storageKey = $stored['storage_key'];
+                    $countResult = import_count_rows($storageKey);
+                    if (!$countResult['ok']) {
+                        import_delete_storage($storageKey);
+                        flash('error', $countResult['error']);
+                    } elseif ($countResult['count'] > import_max_rows()) {
+                        import_delete_storage($storageKey);
+                        flash('error', 'تعداد ردیف‌های فایل از سقف مجاز بیشتر است.');
+                    } elseif ($countResult['count'] > import_sync_max_recipients()) {
+                        // Large smart file: async import pipeline; worker renders each row's template.
+                        $headerRows = import_read_row_range($storageKey, 1, 1);
+                        $headerCells = $headerRows[0]['cells'] ?? [];
+                        $headers = array_map('trim', $headerCells);
+                        if (count($headers) < 2) {
+                            import_delete_storage($storageKey);
+                            flash('error', 'فایل هوشمند باید حداقل ستون موبایل و متن داشته باشد.');
+                        } else {
+                            $varHeaders = array_slice($headers, 2);
+                            $created = import_create_job($me, 'smart', $originator, $title, $storageKey, null, null, null, null, $varHeaders);
+                            if ($created['ok']) {
+                                audit((int)$me['id'], 'smart.upload.large', "{$title}: " . $countResult['count'] . ' rows');
+                                redirect('/import.php?id=' . $created['job_id']);
+                            } else {
+                                import_delete_storage($storageKey);
+                                flash('error', $created['error']);
+                            }
                         }
-                        $content = trim(render_bulk_template($template, $vars));
-                        if ($content === '') { $skipped++; continue; }
-                        $items[] = ['mobile' => $mobile, 'content' => $content];
-                    }
-
-                    [$ok, $info, $jobId] = bulk_queue_job($me, 'smart', $title, $originator, null, $items);
-                    if ($ok) {
-                        audit((int)$me['id'], 'smart.upload', "{$title}: " . count($items) . ' rows');
-                        flash('success', $info . ($skipped ? ' (' . to_persian_digits((string)$skipped) . ' ردیف نامعتبر نادیده گرفته شد)' : ''));
                     } else {
-                        flash('error', $info);
+                        // Small file: keep the existing synchronous path.
+                        try {
+                            $rows = read_spreadsheet_rows(import_storage_path($storageKey), basename($storageKey));
+                            import_delete_storage($storageKey);
+                            if (count($rows) < 2) {
+                                flash('error', 'فایل باید یک ردیف عنوان ستون‌ها و حداقل یک ردیف داده داشته باشد.');
+                            } else {
+                                $headers = array_map('trim', array_shift($rows));
+                                $varHeaders = array_slice($headers, 2);
+
+                                $items = [];
+                                $skipped = 0;
+                                foreach ($rows as $row) {
+                                    $mobile   = normalize_msisdn($row[0] ?? '');
+                                    $template = trim($row[1] ?? '');
+                                    if (!$mobile || $template === '') { $skipped++; continue; }
+
+                                    $vars = [];
+                                    foreach ($varHeaders as $i => $h) {
+                                        if ($h === '') continue;
+                                        $vars[$h] = trim($row[$i + 2] ?? '');
+                                    }
+                                    $content = trim(render_bulk_template($template, $vars));
+                                    if ($content === '') { $skipped++; continue; }
+                                    $items[] = ['mobile' => $mobile, 'content' => $content];
+                                }
+
+                                [$ok, $info, $jobId] = bulk_queue_job($me, 'smart', $title, $originator, null, $items);
+                                if ($ok) {
+                                    audit((int)$me['id'], 'smart.upload', "{$title}: " . count($items) . ' rows');
+                                    flash('success', $info . ($skipped ? ' (' . to_persian_digits((string)$skipped) . ' ردیف نامعتبر نادیده گرفته شد)' : ''));
+                                } else {
+                                    flash('error', $info);
+                                }
+                            }
+                        } catch (RuntimeException $e) {
+                            import_delete_storage($storageKey);
+                            flash('error', $e->getMessage());
+                        }
                     }
                 }
-            } catch (RuntimeException $e) {
-                flash('error', $e->getMessage());
             }
         }
         redirect('/smart-send.php');

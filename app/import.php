@@ -49,7 +49,9 @@ function import_create_job(
     string $storageKey,
     ?int $throttleCount = null,
     ?int $throttleMinutes = null,
-    ?string $messageType = null
+    ?string $messageType = null,
+    ?string $template = null,
+    ?array $variableHeaders = null
 ): array {
     $organizationId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
     $userId = (int)($user['id'] ?? 0);
@@ -81,11 +83,13 @@ function import_create_job(
             $db->prepare(
                 "INSERT INTO ellsms_import_jobs
                    (organization_id, user_id, source_type, original_filename, storage_key, status,
-                    total_rows, chunk_size, throttle_count, throttle_minutes, message_type)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                    total_rows, chunk_size, throttle_count, throttle_minutes, message_type,
+                    template, variable_headers)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
                 $organizationId, $userId, $sourceType, basename($storageKey), $storageKey,
                 'uploaded', $totalRows, $chunkSize, $throttleCount, $throttleMinutes, $messageType,
+                $template, $variableHeaders !== null ? json_encode($variableHeaders, JSON_UNESCAPED_UNICODE) : null,
             ]);
             $jobId = (int)$db->lastInsertId();
 
@@ -259,6 +263,94 @@ function import_create_bulk_job(PDO $db, int $importJobId, array $user, string $
         $throttleCount, $throttleMinutes, 'staged',
     ]);
     return (int)$db->lastInsertId();
+}
+
+/**
+ * Maximum recipients handled synchronously by the legacy send path.
+ * Files/lists above this threshold use the async import pipeline.
+ */
+function import_sync_max_recipients(): int {
+    return max(1, (int)(env('SMS_SYNC_MAX_RECIPIENTS', '100') ?? '100'));
+}
+
+/**
+ * Confirm a ready import job: revalidate cost, reserve wallet/quota for the
+ * linked bulk job, release the import-level reservations, and promote the bulk
+ * job to 'pending' so the send worker takes over.
+ *
+ * @return array{ok:bool, bulk_job_id:?int, error:?string}
+ */
+function import_confirm_job(int $jobId, array $user): array {
+    $db = db();
+    $organizationId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
+    $userId = (int)($user['id'] ?? 0);
+    $isAdmin = ($user['role'] ?? null) === 'admin';
+
+    $job = import_load_job($jobId, $isAdmin ? null : $organizationId);
+    if ($job === null || (string)$job['status'] !== 'ready_for_confirmation') {
+        return ['ok' => false, 'bulk_job_id' => null, 'error' => 'درخواست واردسازی در وضعیت تأیید قرار ندارد.'];
+    }
+    if (!$isAdmin && ((int)$job['user_id'] !== $userId || ($organizationId !== null && (int)$job['organization_id'] !== $organizationId))) {
+        return ['ok' => false, 'bulk_job_id' => null, 'error' => 'دسترسی به این درخواست وجود ندارد.'];
+    }
+
+    $bulkSt = $db->prepare('SELECT id FROM ellsms_bulk_jobs WHERE source_import_job_id = ? AND status = \'staged\'');
+    $bulkSt->execute([$jobId]);
+    $bulkJobId = (int)$bulkSt->fetchColumn();
+    if ($bulkJobId <= 0) {
+        return ['ok' => false, 'bulk_job_id' => null, 'error' => 'ارسال مرتبط با واردسازی یافت نشد.'];
+    }
+
+    $costSt = $db->prepare('SELECT COALESCE(SUM(price_cost_credits),0) AS cost, COUNT(*) AS cnt FROM ellsms_bulk_items WHERE job_id = ?');
+    $costSt->execute([$bulkJobId]);
+    $costRow = $costSt->fetch();
+    $totalCost = (int)$costRow['cost'];
+    $rowCount = (int)$costRow['cnt'];
+
+    if ($rowCount === 0) {
+        return ['ok' => false, 'bulk_job_id' => null, 'error' => 'ردیف معتبری برای ارسال وجود ندارد.'];
+    }
+
+    try {
+        if ($organizationId !== null && $organizationId > 0) {
+            $quota = usage_reserve_messages($organizationId, $rowCount, 'bulk_job', (string)$bulkJobId);
+            if (!$quota['ok']) {
+                throw new QuotaExceededException();
+            }
+            usage_commit_messages('bulk_job', (string)$bulkJobId, $rowCount);
+        }
+
+        if (!$isAdmin && $totalCost > 0) {
+            $reservation = wallet_reserve($userId, $totalCost, 'bulk_job', (string)$bulkJobId, "reserve:bulk_job:{$bulkJobId}");
+            if (!$reservation['ok']) {
+                throw new WalletInsufficientBalanceException();
+            }
+        }
+
+        db_transaction(function (PDO $db) use ($jobId, $bulkJobId, $rowCount): void {
+            $db->prepare('UPDATE ellsms_bulk_jobs SET status = \'pending\', total_rows = ? WHERE id = ?')
+               ->execute([$rowCount, $bulkJobId]);
+            $db->prepare("UPDATE ellsms_import_jobs SET status='queued', sending_started_at=NOW() WHERE id = ? AND status='ready_for_confirmation'")
+               ->execute([$jobId]);
+        });
+
+        wallet_release_reservation('import_job', (string)$jobId);
+        usage_release_messages('import_job', (string)$jobId);
+
+        Logger::info('import.confirmed', ['import_job_id' => $jobId, 'bulk_job_id' => $bulkJobId, 'row_count' => $rowCount, 'cost' => $totalCost]);
+        return ['ok' => true, 'bulk_job_id' => $bulkJobId, 'error' => null];
+    } catch (QuotaExceededException) {
+        return ['ok' => false, 'bulk_job_id' => null, 'error' => 'سهمیه‌ی سازمان برای این ارسال کافی نیست.'];
+    } catch (WalletInsufficientBalanceException) {
+        wallet_release_reservation('bulk_job', (string)$bulkJobId);
+        usage_release_messages('bulk_job', (string)$bulkJobId);
+        return ['ok' => false, 'bulk_job_id' => null, 'error' => 'موجودی کیف پول برای این ارسال کافی نیست.'];
+    } catch (Throwable $t) {
+        Logger::error('import.confirm.failed', ['import_job_id' => $jobId, 'exception' => $t]);
+        wallet_release_reservation('bulk_job', (string)$bulkJobId);
+        usage_release_messages('bulk_job', (string)$bulkJobId);
+        return ['ok' => false, 'bulk_job_id' => null, 'error' => 'خطا در تأیید درخواست واردسازی.'];
+    }
 }
 
 /**
