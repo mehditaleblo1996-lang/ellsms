@@ -202,6 +202,127 @@ function import_read_chunks(string $storageKey, int $chunkSize): Generator {
     }
 }
 
+/**
+ * Read a specific 1-indexed row range from the stored import file.
+ *
+ * This is used by the import worker to process the rows belonging to one
+ * chunk. The range is inclusive on both ends. Header-row skipping matches
+ * import_read_chunks().
+ *
+ * @return list<array{mobile:?string,content:string,row_no:int}>
+ */
+function import_read_row_range(string $storageKey, int $firstRow, int $lastRow): array {
+    $path = import_storage_path($storageKey);
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+    if ($ext === 'xlsx') {
+        return xlsx_read_row_range($path, $firstRow, $lastRow);
+    }
+    return csv_read_row_range($path, $firstRow, $lastRow);
+}
+
+function csv_read_row_range(string $path, int $firstRow, int $lastRow): array {
+    $fh = fopen($path, 'r');
+    if (!$fh) {
+        throw new RuntimeException('باز کردن فایل ممکن نشد.');
+    }
+
+    $bom = fread($fh, 3);
+    if ($bom !== "\xEF\xBB\xBF") {
+        rewind($fh);
+    }
+
+    $rowNo = 0;
+    $headerSkipped = false;
+    $rows = [];
+
+    while (($row = fgetcsv($fh)) !== false) {
+        $rowNo++;
+        $mobile = normalize_msisdn(trim((string)($row[0] ?? '')));
+        $content = trim((string)($row[1] ?? ''));
+
+        if (!$headerSkipped && $rowNo === 1 && $mobile === null) {
+            $headerSkipped = true;
+            continue;
+        }
+        $headerSkipped = true;
+
+        if ($rowNo < $firstRow) {
+            continue;
+        }
+        if ($rowNo > $lastRow) {
+            break;
+        }
+
+        $rows[] = ['mobile' => $mobile, 'content' => $content, 'row_no' => $rowNo];
+    }
+
+    fclose($fh);
+    return $rows;
+}
+
+function xlsx_read_row_range(string $path, int $firstRow, int $lastRow): array {
+    $zip = new ZipArchive();
+    if ($zip->open($path) !== true) {
+        throw new RuntimeException('فایل xlsx معتبر نیست.');
+    }
+
+    $sheetName = xlsx_first_sheet_name($zip);
+    if ($sheetName === null) {
+        $zip->close();
+        throw new RuntimeException('صفحه‌ای در فایل xlsx پیدا نشد.');
+    }
+
+    $stat = $zip->statName($sheetName);
+    if ($stat !== false && (int)$stat['size'] > MAX_XLSX_MEMBER_UNCOMPRESSED_BYTES) {
+        $zip->close();
+        throw new RuntimeException('فایل xlsx بیش از حد بزرگ است.');
+    }
+
+    $shared = xlsx_load_shared_strings($zip);
+    $sheetXml = $zip->getFromName($sheetName);
+    $zip->close();
+    if ($sheetXml === false) {
+        throw new RuntimeException('خواندن محتوای فایل xlsx ممکن نشد.');
+    }
+
+    $reader = new XMLReader();
+    $reader->xml($sheetXml);
+
+    $rowNo = 0;
+    $headerSkipped = false;
+    $rows = [];
+
+    while ($reader->read()) {
+        if ($reader->nodeType !== XMLReader::ELEMENT || $reader->name !== 'row') {
+            continue;
+        }
+
+        $rowNo++;
+        if ($rowNo < $firstRow) {
+            continue;
+        }
+        if ($rowNo > $lastRow) {
+            break;
+        }
+
+        $cells = xlsx_read_row_cells($reader, $shared);
+        $mobile = normalize_msisdn(trim((string)($cells[0] ?? '')));
+        $content = trim((string)($cells[1] ?? ''));
+
+        if (!$headerSkipped && $rowNo === 1 && $mobile === null) {
+            $headerSkipped = true;
+            continue;
+        }
+        $headerSkipped = true;
+
+        $rows[] = ['mobile' => $mobile, 'content' => $content, 'row_no' => $rowNo];
+    }
+
+    $reader->close();
+    return $rows;
+}
+
 function csv_read_chunks(string $path, int $chunkSize): Generator {
     $fh = fopen($path, 'r');
     if (!$fh) {

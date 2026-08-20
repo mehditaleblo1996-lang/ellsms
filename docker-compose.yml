@@ -147,6 +147,40 @@ services:
       - backend_net
     stop_grace_period: 30s
 
+  # Large-scale file import worker. Its OWN container so parsing/pricing 1M-row uploads never
+  # competes with the send worker or web requests. Claims import chunks atomically; multiple
+  # import-worker containers are safe but not required.
+  import-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ellsms-import-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/import-worker.php
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      WORKER_POLL_INTERVAL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-8}
+      WORKER_JOB_LEASE_SECONDS: ${WORKER_JOB_LEASE_SECONDS:-300}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-5}
+      JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
+      JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-1800}
+      IMPORT_CHUNK_SIZE: ${IMPORT_CHUNK_SIZE:-5000}
+      DB_INSERT_BATCH: ${DB_INSERT_BATCH:-1000}
+      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-2000000}
+      IMPORT_MAX_UPLOAD_BYTES: ${IMPORT_MAX_UPLOAD_BYTES:-134217728}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    stop_grace_period: 30s
+
   # Delivery-status polling. Its OWN container for the same reason webhook-worker is: a provider
   # whose status API hangs must only ever delay other STATUS polls, never a scheduled send, an
   # auto-reply, or a bulk-send pass.

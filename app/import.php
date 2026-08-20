@@ -90,13 +90,14 @@ function import_create_job(
             $jobId = (int)$db->lastInsertId();
 
             $chunkIns = $db->prepare(
-                'INSERT INTO ellsms_import_chunks (import_job_id, chunk_no, byte_offset, first_row, last_row, status)
-                 VALUES (?,?,?,?,?,?)'
+                'INSERT INTO ellsms_import_chunks (import_job_id, chunk_no, phase, byte_offset, first_row, last_row, status)
+                 VALUES (?,?,?,?,?,?,?)'
             );
-            for ($i = 0; $i < ceil($totalRows / $chunkSize); $i++) {
+            $chunkCount = (int)ceil($totalRows / $chunkSize);
+            for ($i = 0; $i < $chunkCount; $i++) {
                 $firstRow = $i * $chunkSize + 1;
                 $lastRow = min(($i + 1) * $chunkSize, $totalRows);
-                $chunkIns->execute([$jobId, $i + 1, 0, $firstRow, $lastRow, 'pending']);
+                $chunkIns->execute([$jobId, $i + 1, 'analyze', 0, $firstRow, $lastRow, 'pending']);
             }
 
             return $jobId;
@@ -180,40 +181,46 @@ function import_claim_chunk(): ?array {
 }
 
 /**
- * Mark a chunk completed and update the parent job counters.
+ * Mark a chunk completed and optionally update the parent job counters.
+ *
+ * Insert-pass chunks do NOT roll into the top-level counters because those
+ * counters already reflect the source-file analysis pass.
  */
-function import_chunk_completed(int $chunkId, array $counters): void {
+function import_chunk_completed(int $chunkId, array $counters, bool $updateJobCounters = true): void {
     $db = db();
-    db_transaction(function (PDO $db) use ($chunkId, $counters): void {
+    db_transaction(function (PDO $db) use ($chunkId, $counters, $updateJobCounters): void {
         $db->prepare(
             "UPDATE ellsms_import_chunks
              SET status='completed',
+                 rows_total = ?,
                  rows_valid = ?, rows_invalid = ?, rows_duplicate = ?, rows_blacklisted = ?,
                  rows_priced = ?, rows_unpriced = ?,
                  claimed_by = NULL, lease_expires_at = NULL
              WHERE id = ?"
         )->execute([
-            $counters['valid'], $counters['invalid'], $counters['duplicate'], $counters['blacklisted'],
-            $counters['priced'], $counters['unpriced'],
+            $counters['processed'], $counters['valid'], $counters['invalid'], $counters['duplicate'],
+            $counters['blacklisted'], $counters['priced'], $counters['unpriced'],
             $chunkId,
         ]);
 
-        $db->prepare(
-            "UPDATE ellsms_import_jobs
-             SET processed_rows = processed_rows + ?,
-                 valid_rows = valid_rows + ?,
-                 invalid_rows = invalid_rows + ?,
-                 duplicate_rows = duplicate_rows + ?,
-                 blacklisted_rows = blacklisted_rows + ?,
-                 priced_rows = priced_rows + ?,
-                 unpriced_rows = unpriced_rows + ?
-             WHERE id = (SELECT import_job_id FROM ellsms_import_chunks WHERE id = ?)"
-        )->execute([
-            $counters['processed'], $counters['valid'], $counters['invalid'],
-            $counters['duplicate'], $counters['blacklisted'],
-            $counters['priced'], $counters['unpriced'],
-            $chunkId,
-        ]);
+        if ($updateJobCounters) {
+            $db->prepare(
+                "UPDATE ellsms_import_jobs
+                 SET processed_rows = processed_rows + ?,
+                     valid_rows = valid_rows + ?,
+                     invalid_rows = invalid_rows + ?,
+                     duplicate_rows = duplicate_rows + ?,
+                     blacklisted_rows = blacklisted_rows + ?,
+                     priced_rows = priced_rows + ?,
+                     unpriced_rows = unpriced_rows + ?
+                 WHERE id = (SELECT import_job_id FROM ellsms_import_chunks WHERE id = ?)"
+            )->execute([
+                $counters['processed'], $counters['valid'], $counters['invalid'],
+                $counters['duplicate'], $counters['blacklisted'],
+                $counters['priced'], $counters['unpriced'],
+                $chunkId,
+            ]);
+        }
     });
 }
 
@@ -289,6 +296,7 @@ function import_cancel_job(int $jobId, array $user): bool {
 
         // Release any import-level reservation.
         wallet_release_reservation('import_job', (string)$jobId);
+        usage_release_messages('import_job', (string)$jobId);
 
         import_delete_storage((string)$job['storage_key']);
         return true;
