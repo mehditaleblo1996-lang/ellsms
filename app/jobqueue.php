@@ -45,12 +45,20 @@ function job_max_attempts(): int {
  * Phase 9, STEP 15/28: how many unthrottled bulk items run_bulk_send_pass() claims per worker
  * tick — previously a bare literal `20` at the one call site, made configurable so the
  * batch-size/throughput/lease-safety tradeoff (docs/observability-and-performance.md §9) can
- * actually be benchmarked and tuned per deployment without a code change. Default (20) is
- * unchanged from the pre-Phase-9 hardcoded value, so this is a no-op for any install that doesn't
- * set the variable.
+ * actually be benchmarked and tuned per deployment without a code change.
+ *
+ * Phase 9A raised the default from 20 to 200. The old value was sized for a worker that issued ONE
+ * provider request per claimed row, where claiming more only lengthened the pass. Now that
+ * compatible rows are batched into a single request (see bulk_send_claimed_items()), the claim size
+ * is what determines how much work a batch can be formed from: leaving it at 20 would cap every
+ * provider request at 20 recipients no matter what SMS_PROVIDER_BATCH_SIZE said.
+ *
+ * These are two separate knobs and should stay that way — the claim bounds DB work and lease
+ * exposure, the provider batch size bounds one HTTP request. Claim size is deliberately allowed to
+ * exceed it: a 500-row claim at a batch size of 200 simply becomes 200 + 200 + 100.
  */
 function worker_bulk_batch_size(): int {
-    return max(1, (int)(env('WORKER_BULK_BATCH_SIZE', '20') ?? '20'));
+    return max(1, (int)(env('WORKER_BULK_BATCH_SIZE', '200') ?? '200'));
 }
 
 /**

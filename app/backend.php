@@ -1371,7 +1371,7 @@ function bulk_queue_job(
  * reclaimable rows only if capacity remains.
  *
  * Returns the claimed rows already joined with their owning job's user_id/originator (bulk_items
- * itself stores neither). Does NOT return job status — bulk_send_one_item() re-reads that fresh,
+ * itself stores neither). Does NOT return job status — bulk_item_preflight() re-reads that fresh,
  * deliberately not from this claim-time snapshot, right before dispatch (see its own docblock).
  */
 function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams, int $limit): array {
@@ -1436,19 +1436,39 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
 }
 
 /**
- * Send one claimed bulk item and record the result. Shared by both the throttled and unthrottled
- * paths in run_bulk_send_pass() below. Returns true if it actually sent.
+ * How many recipients may share ONE provider request.
+ *
+ * Deliberately distinct from the three sizes it is easy to confuse it with:
+ *   - worker_bulk_batch_size()  how many DB rows one worker pass CLAIMS
+ *   - IMPORT_CHUNK_SIZE         how many source rows one import chunk analyzes
+ *   - throttle_count            how many rows a gradual job may send per window
+ *
+ * A pass may claim 500 rows and, at a provider batch size of 200, turn them into 200 + 200 + 100.
+ * Capped at 1000: a request carrying more than that starts to risk provider-side body limits and
+ * makes one timeout cost an unreasonable number of recipients.
  */
-function bulk_send_one_item(PDO $db, array $item): bool {
+function sms_provider_batch_size(): int {
+    $configured = (int)(env('SMS_PROVIDER_BATCH_SIZE', '200') ?? '200');
+    return max(1, min(1000, $configured));
+}
+
+/**
+ * Authorization/state preflight for one claimed bulk item.
+ *
+ * Extracted from bulk_send_one_item() so the BATCHED path applies exactly the same checks, in the
+ * same order, per item — batching must never become a way to skip a check that the per-item path
+ * performs. Every one of these is re-evaluated at execution time on purpose: a bulk job can sit in
+ * the queue long after it was accepted, and a cancellation, an organization suspension, a lapsed
+ * subscription or a revoked account must all take effect before the next dispatch, not after the
+ * job finishes.
+ *
+ * Terminal outcomes are written here (cancelled/failed) exactly as before.
+ *
+ * @return array{ok:bool, user?:array, organization_id?:?int}
+ */
+function bulk_item_preflight(PDO $db, array $item): array {
     $workerId = worker_id();
 
-    // Fresh cancellation re-check, right before any dispatch (STEP 13/21/26) — a genuine re-read,
-    // not the $item['job_status'] captured back when bulk_claim_items() claimed this row: that
-    // value is exactly what would go stale if a cancellation lands in the window between the claim
-    // and this line, which is the entire scenario this check exists to catch. Also fetches the
-    // job's PERSISTED organization_id fresh in the same query (Phase 6, STEP 12/26/27) — a job
-    // claimed before its organization was suspended must not dispatch after the suspension takes
-    // effect, the exact same race shape as the cancellation check right above it.
     $jobStatusSt = $db->prepare('SELECT status, organization_id FROM ellsms_bulk_jobs WHERE id = ?');
     $jobStatusSt->execute([$item['job_id']]);
     $jobRow = $jobStatusSt->fetch();
@@ -1456,8 +1476,9 @@ function bulk_send_one_item(PDO $db, array $item): bool {
         $db->prepare("UPDATE ellsms_bulk_items SET status='cancelled', claimed_by=NULL, lease_expires_at=NULL WHERE id=?")
            ->execute([$item['id']]);
         Logger::info('job.cancelled', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'stage' => 'before_dispatch']);
-        return false;
+        return ['ok' => false];
     }
+
     $organizationId = isset($jobRow['organization_id']) ? (int)$jobRow['organization_id'] : null;
     $orgStatus = organization_status($organizationId);
     if ($orgStatus !== null && in_array($orgStatus, ['disabled', 'suspended'], true)) {
@@ -1465,97 +1486,75 @@ function bulk_send_one_item(PDO $db, array $item): bool {
            ->execute(['سازمان مربوط به این ارسال معلق یا غیرفعال شده است.', $item['id']]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::warning('job.failed_permanent', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'reason' => 'organization_' . $orgStatus]);
-        return false;
+        return ['ok' => false];
     }
 
-    // Phase 13 (STEP 21/54): the SUBSCRIPTION state is re-checked here at execution time, not just
-    // at job-creation time — a subscription can be suspended, expire, or be cancelled long after a
-    // bulk job was queued, and a suspended organization must never keep sending from the queue
-    // (Invariant K/M: workers enforce the same subscription decisions the web and API do). Exactly
-    // the same shape as the organization-status check immediately above it, and permanent for the
-    // same reason: an authorization state that already failed once isn't expected to fix itself
-    // inside a short retry-backoff window. The quota consumed at acceptance is deliberately NOT
-    // released here — the job was legitimately accepted; see docs/plans-and-entitlements.md.
     if ($organizationId !== null && $organizationId > 0 && !organization_subscription_serviceable($organizationId)) {
         $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL WHERE id=?")
            ->execute(['اشتراک سازمان مربوط به این ارسال فعال نیست.', $item['id']]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::warning('job.failed_permanent', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'reason' => 'subscription_not_serviceable']);
         Metrics::increment('billing.worker.blocked', 1, ['job_type' => 'bulk_item']);
-        return false;
+        return ['ok' => false];
     }
 
-    // Phase 8 (STEP 11): user-state revalidation through the identity provider.
     $owner = backend_find_user_by_id((int)$item['user_id']);
-
-    // Re-checked at execution time, which for a queued bulk job can be
-    // long after it was submitted — panel_access was previously not
-    // checked here at all (only active/deleted), so a revoked user's
-    // already-queued rows kept sending indefinitely (STEP 6). Permanent,
-    // never retried — an authorization state that already failed once
-    // isn't expected to fix itself within a short backoff window.
     if (!is_backend_account_active($owner) || !has_panel_access($owner)) {
         $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL WHERE id=?")
            ->execute(['حساب مالک ارسال غیرفعال است یا دیگر دسترسی پنل ندارد.', $item['id']]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::warning('job.failed_permanent', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'reason' => 'owner_unauthorized']);
-        return false;
+        return ['ok' => false];
     }
 
     $isAdmin = (bool)$owner['is_admin'];
-    $user = [
-        'id'         => $owner['id'],
-        'role'       => $isAdmin ? 'admin' : 'user',
-        'originator' => $owner['originator'],
+    return [
+        'ok' => true,
         'organization_id' => $organizationId,
+        'is_admin' => $isAdmin,
+        'user' => [
+            'id'              => $owner['id'],
+            'role'            => $isAdmin ? 'admin' : 'user',
+            'originator'      => $owner['originator'],
+            'organization_id' => $organizationId,
+        ],
     ];
+}
 
-    // Uses dispatch_message_raw(), NOT dispatch_message() — the job's
-    // full worst-case cost was already reserved once, atomically, when
-    // the job was created (bulk_queue_job(), STEP 9); reserving again per
-    // item here would double-reserve against the same job. Instead each
-    // item commits its own actual cost against that SAME reservation,
-    // keyed by this item's own id so a worker retry of this exact row
-    // (e.g. after a crash mid-pass, or a scheduled retry below) can't
-    // double-charge (STEP 7/11) — wallet_commit_reservation()'s own
-    // idempotency key makes a second commit attempt for the same item id
-    // a safe no-op even if this function somehow ran twice for one item.
-    // The 8th element is gateway metadata, present only when the send went through a configured
-    // gateway (null on the legacy path). Recorded on the row below so delivery-status polling knows
-    // which gateway to ask, and so a delivery problem can be tied to the exact config version.
-    // $recordTransport = false: this row IS the durable record, and it stores the provider message id
-    // itself below. A second ellsms_message_attempts row would make the status poller track one
-    // message twice.
-    [$ok, $info, $sentCount, , $parts, $retryable, , $gatewayMeta] = array_pad(
-        dispatch_message_raw($user, $item['originator'], [$item['mobile']], $item['content'], null, false), 8, null
-    );
+/**
+ * Settle ONE bulk item against the outcome of a dispatch, batched or not.
+ *
+ * Money and terminal state stay strictly PER ITEM even when many items shared one provider request.
+ * That is deliberate: the wallet commit is keyed by this item's own id
+ * ('commit:bulk_item:{id}'), which is what makes a replay after a crash a no-op. One aggregated
+ * debit for a whole batch would forfeit that idempotency and make a partial failure unsettleable.
+ *
+ * $accepted is the set of destinations the provider actually accepted. An item whose destination is
+ * missing from it is treated exactly as a single-item failure would be — retried or failed by the
+ * existing policy — so one bad recipient in a batch never marks its neighbours sent, and never
+ * causes an accepted neighbour to be resent.
+ */
+function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, string $info, int $parts, bool $retryable, ?array $gatewayMeta, array $accepted): bool {
+    $workerId = worker_id();
+    $destination = (string)$item['mobile'];
+    $itemSent = $groupOk && in_array($destination, $accepted, true);
+    $sentCount = $itemSent ? 1 : 0;
 
-    if (!$isAdmin) {
+    if (empty($ctx['is_admin'])) {
         // The price FROZEN onto this row at acceptance (bulk_queue_job()) — never re-resolved here.
-        // That is what makes a retry, a throttled row that sends days later, and the original quote
-        // all cost the same amount even if an admin changed the tariff in between (STEP 24).
-        // Falls back to the pre-pricing arithmetic only for rows queued before this feature's
-        // migration ran, whose price columns are genuinely NULL — those were accepted at exactly one
-        // credit per segment, so that is what they must settle at.
         $unitCost   = $item['price_cost_credits'] !== null ? (int)$item['price_cost_credits'] : $parts;
         $actualCost = $sentCount > 0 ? $unitCost : 0;
         if ($actualCost > 0) {
             $commit = wallet_commit_reservation('bulk_job', (string)$item['job_id'], $actualCost, 'commit:bulk_item:' . $item['id']);
-            // Gated on the wallet's OWN idempotency verdict rather than assumed: the snapshot's
-            // settled total must move exactly when money did, so a replayed commit (a crash between
-            // dispatch and this row's status UPDATE) adds nothing here either.
             if (($commit['ok'] ?? false) && !($commit['replayed'] ?? false) && !empty($item['price_group_key'])) {
                 sms_price_snapshot_add_settlement('bulk_job', (string)$item['job_id'], (string)$item['price_group_key'], $actualCost);
             }
         }
     }
 
-    $attemptCount = (int)$item['attempt_count']; // already incremented by the claim above
+    $attemptCount = (int)$item['attempt_count']; // already incremented by the claim
 
-    if ($ok) {
-        // delivery_status starts at 'sent' — what the gateway ACCEPTING a message actually means. It
-        // is deliberately not 'delivered': only the status connector may claim delivery, and only
-        // from the provider's own answer.
+    if ($itemSent) {
         $db->prepare(
             "UPDATE ellsms_bulk_items
              SET status='sent', error=NULL, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL,
@@ -1566,9 +1565,12 @@ function bulk_send_one_item(PDO $db, array $item): bool {
         )->execute([
             $gatewayMeta['gateway_id'] ?? null,
             $gatewayMeta['gateway_config_version'] ?? null,
-            $gatewayMeta['provider_message_ids'][$item['mobile']] ?? null,
+            // Keyed by THIS item's destination. gateway_send() returns a destination-keyed map, so a
+            // batched send still gives every row its own provider reference — never the first
+            // recipient's, and never one id shared across rows.
+            $gatewayMeta['provider_message_ids'][$destination] ?? null,
             $gatewayMeta['route_id'] ?? null,
-            $gatewayMeta['operators'][$item['mobile']] ?? null,
+            $gatewayMeta['operators'][$destination] ?? null,
             $gatewayMeta['gateway_id'] ?? null,
             $item['id'],
         ]);
@@ -1578,13 +1580,6 @@ function bulk_send_one_item(PDO $db, array $item): bool {
     }
 
     if ($retryable && $attemptCount < job_max_attempts()) {
-        // Goes back to 'pending' (not a separate "retry" status — see
-        // db/migrations/2026_07_28_job_queue_reliability.sql) with
-        // next_attempt_at gating when it becomes claimable again; the
-        // job-completion query below already treats any 'pending' item as
-        // "not done," so a job with an item awaiting retry correctly never
-        // finalizes early (STEP 22). Does NOT touch sent_rows/failed_rows —
-        // those only reflect terminal outcomes (Invariant G).
         $delay = job_retry_backoff_seconds($attemptCount);
         $db->prepare("UPDATE ellsms_bulk_items SET status='pending', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE id=?")
            ->execute(['در حال تلاش مجدد: ' . $info, $delay, $item['id']]);
@@ -1600,6 +1595,162 @@ function bulk_send_one_item(PDO $db, array $item): bool {
         'attempt' => $attemptCount, 'reason' => $retryable ? 'max_attempts_reached' : 'permanent',
     ]);
     return false;
+}
+
+/**
+ * Send a set of claimed items that may legally share provider requests, and settle each one.
+ *
+ * WHAT THIS FUNCTION DOES NOT DO: it does not implement batching. gateway_send() already resolves an
+ * operator per destination, groups by effective configuration, and emits one request per group when
+ * the gateway's send_mode is 'batch' — and it already returns provider ids and operators keyed BY
+ * DESTINATION. The whole defect was that the bulk worker called dispatch_message_raw() with a
+ * one-element array, so that machinery never received more than one recipient and a 1M-row job
+ * became 1M provider requests. This function's only job is to hand it the whole compatible set.
+ *
+ * Consequently a per_message gateway keeps sending one request per recipient — gateway_send() makes
+ * that decision from the connector, not this worker, so nothing here needs to know about it.
+ *
+ * $items must already be compatible: same job, same owner, same originator, same content. See
+ * bulk_group_key().
+ *
+ * @return int how many items actually sent
+ */
+function bulk_send_group(PDO $db, array $items, array $ctx): int {
+    if ($items === []) {
+        return 0;
+    }
+
+    $destinations = array_values(array_map(static fn(array $i): string => (string)$i['mobile'], $items));
+    $content      = (string)$items[0]['content'];
+    $originator   = (string)$items[0]['originator'];
+
+    Metrics::increment('bulk.provider_batch.request', 1);
+    Metrics::gauge('bulk.provider_batch.size', count($destinations));
+
+    // $recordTransport = false: each bulk row IS the durable record and stores its own provider
+    // message id below. A second ellsms_message_attempts row would make the status poller track the
+    // same message twice.
+    [$ok, $info, , , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(
+        dispatch_message_raw($ctx['user'], $originator, $destinations, $content, null, false),
+        8,
+        null
+    );
+
+    $accepted = is_array($sentDestinations) ? array_map('strval', $sentDestinations) : [];
+
+    $sent = 0;
+    foreach ($items as $item) {
+        if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, (int)$parts, (bool)$retryable, $gatewayMeta, $accepted)) {
+            $sent++;
+        }
+    }
+
+    Metrics::increment($sent > 0 ? 'bulk.provider_batch.success' : 'bulk.provider_batch.failure', 1);
+    Metrics::increment('bulk.provider_batch.items', count($items));
+
+    return $sent;
+}
+
+/**
+ * The fields that MUST match before two claimed items may share a provider request.
+ *
+ * Only what the WORKER owns is keyed here. gateway_send() applies its own finer grouping on top
+ * (operator, effective parameter signature, per-recipient template variables), so duplicating that
+ * logic would be both redundant and a second place to get it wrong.
+ *
+ *  - job_id         job status, organization and subscription are re-checked per job, and
+ *                   sent_rows/failed_rows are per job.
+ *  - user_id        authorization (can_use_originator) and the owner-account check are per user.
+ *  - organization_id  tenant isolation and the wallet reservation identity.
+ *  - originator     changes the request and the authorization decision.
+ *  - content        THE binding constraint: dispatch_message_raw() carries ONE message body for the
+ *                   whole call. Rows whose text differs (p2p/smart) therefore group separately and
+ *                   are each sent on their own — correct, if not yet optimal. Sending them in one
+ *                   request needs the connector's ManyToMany array support to be driven from
+ *                   per-recipient content, which is a larger change than this one and is recorded
+ *                   as follow-up work rather than half-done here.
+ *
+ * Hashed because the content can be long and this value is only ever compared, never read back.
+ */
+function bulk_group_key(array $item, array $ctx): string {
+    return hash('xxh128', implode("\0", [
+        (string)$item['job_id'],
+        (string)$item['user_id'],
+        (string)($ctx['organization_id'] ?? ''),
+        (string)$item['originator'],
+        (string)$item['content'],
+    ]));
+}
+
+/**
+ * Send claimed items, batching compatible ones into bounded provider requests.
+ *
+ * Ordering note: the caller has ALREADY claimed these rows, and the claim is what enforces the
+ * gradual-send throttle (a throttled job claims at most throttle_count rows per window). Grouping
+ * happens strictly after that, so batching can only ever reshape requests for rows that were
+ * already eligible — it can never cause more messages to be sent in a window than the throttle
+ * allows.
+ *
+ * @return int how many items actually sent
+ */
+function bulk_send_claimed_items(PDO $db, array $items): int {
+    $batchSize = sms_provider_batch_size();
+    $sent = 0;
+
+    // Preflight first, per item, so a cancelled/unauthorized row is settled and removed from the set
+    // before it can influence any grouping decision.
+    $groups = [];
+    foreach ($items as $item) {
+        try {
+            $ctx = bulk_item_preflight($db, $item);
+            if (!($ctx['ok'] ?? false)) {
+                continue;
+            }
+            $key = bulk_group_key($item, $ctx);
+            $groups[$key] ??= ['ctx' => $ctx, 'items' => []];
+            $groups[$key]['items'][] = $item;
+        } catch (Throwable $t) {
+            Logger::error('bulk.item.failed', [
+                'bulk_item_id' => $item['id'] ?? null,
+                'job_id'       => $item['job_id'] ?? null,
+                'exception'    => $t,
+            ]);
+        }
+    }
+
+    foreach ($groups as $group) {
+        foreach (array_chunk($group['items'], $batchSize) as $chunk) {
+            try {
+                $sent += bulk_send_group($db, $chunk, $group['ctx']);
+            } catch (Throwable $t) {
+                // One failed provider request costs its own chunk and nothing else: the remaining
+                // chunks still go out, and these rows keep their lease so they are reclaimed and
+                // retried rather than silently abandoned.
+                Logger::error('bulk.batch.failed', [
+                    'job_id'     => $chunk[0]['job_id'] ?? null,
+                    'item_count' => count($chunk),
+                    'exception'  => $t,
+                ]);
+            }
+        }
+    }
+
+    return $sent;
+}
+
+/**
+ * Send one claimed bulk item and record the result.
+ *
+ * Retained as the single-item entry point (and for the tests that exercise one row at a time). The
+ * batched path in run_bulk_send_pass() goes through bulk_send_claimed_items(); both share the same
+ * preflight, dispatch and settlement code, so there is exactly one implementation of each rule.
+ */
+function bulk_send_one_item(PDO $db, array $item): bool {
+    $ctx = bulk_item_preflight($db, $item);
+    if (!($ctx['ok'] ?? false)) {
+        return false;
+    }
+    return bulk_send_group($db, [$item], $ctx) > 0;
 }
 
 /**
@@ -1620,8 +1771,13 @@ function bulk_send_one_item(PDO $db, array $item): bool {
  * Phase 4: item selection now goes through bulk_claim_items() — an atomic SELECT ... FOR UPDATE
  * SKIP LOCKED claim, not a plain SELECT — so two worker processes calling run_bulk_send_pass()
  * concurrently each get a disjoint set of items instead of racing to send the same rows twice
- * (Invariant B). The claim transaction itself is short (STEP 29); bulk_send_one_item()'s dispatch
- * call and finalize UPDATE run entirely outside it.
+ * (Invariant B). The claim transaction itself is short (STEP 29); the dispatch call and the finalize
+ * UPDATEs run entirely outside it.
+ *
+ * Phase 9A: claimed rows now go to bulk_send_claimed_items(), which groups compatible ones into
+ * bounded provider requests instead of issuing one request per row. The claim is unchanged and
+ * still runs FIRST, which is what keeps the gradual-send throttle authoritative — batching only
+ * reshapes how already-eligible rows reach the provider.
  */
 function run_bulk_send_pass(): int {
     $db = db();
@@ -1638,35 +1794,18 @@ function run_bulk_send_pass(): int {
     foreach ($throttled as $job) {
         $limit = max(1, (int)$job['throttle_count']);
         $jobId = (int)$job['id'];
+        // The CLAIM is what enforces the gradual rate: at most throttle_count rows leave the queue
+        // per window. Batching happens strictly afterwards and only reshapes how those already
+        // eligible rows are handed to the provider, so it can never send more than the window allows.
         $items = bulk_claim_items($db, 'j.id = ?', [$jobId], $limit);
         if (!$items) continue;
 
-        foreach ($items as $item) {
-            try {
-                if (bulk_send_one_item($db, $item)) $sent++;
-            } catch (Throwable $t) {
-                Logger::error('bulk.item.failed', [
-                    'bulk_item_id' => $item['id'] ?? null,
-                    'job_id'       => $item['job_id'] ?? null,
-                    'exception'    => $t,
-                ]);
-            }
-        }
+        $sent += bulk_send_claimed_items($db, $items);
         $db->prepare('UPDATE ellsms_bulk_jobs SET last_throttle_at = NOW() WHERE id = ?')->execute([$jobId]);
     }
 
     $unthrottledItems = bulk_claim_items($db, "j.status = 'processing' AND j.throttle_count IS NULL", [], worker_bulk_batch_size());
-    foreach ($unthrottledItems as $item) {
-        try {
-            if (bulk_send_one_item($db, $item)) $sent++;
-        } catch (Throwable $t) {
-            Logger::error('bulk.item.failed', [
-                'bulk_item_id' => $item['id'] ?? null,
-                'job_id'       => $item['job_id'] ?? null,
-                'exception'    => $t,
-            ]);
-        }
-    }
+    $sent += bulk_send_claimed_items($db, $unthrottledItems);
 
     $doneIds = $db->query(
         "SELECT j.id FROM ellsms_bulk_jobs j
