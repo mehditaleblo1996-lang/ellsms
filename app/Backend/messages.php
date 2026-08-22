@@ -53,24 +53,124 @@ function backend_outbound_summary(string $whereSql, array $params): array {
     return $st->fetch();
 }
 
-/** Paged/limited rows, optionally joined to the sender's username (display-only). */
-function backend_outbound_rows(string $whereSql, array $params, int $limit, int $offset = 0, bool $withUsername = true): array {
+/** Paged/limited rows, optionally joined to the sender's username (display-only).
+ *
+ * Phase 8 reporting/index optimization: cursor/keyset pagination replaces OFFSET.
+ * $cursor is either ['before_id' => int] (older rows, m.id < ?) or ['after_id' => int]
+ * (newer rows, m.id > ?). The caller's date range / tenant filters stay in $whereSql.
+ */
+function backend_outbound_rows(string $whereSql, array $params, int $limit, ?array $cursor = null, bool $withUsername = true): array {
     $select = $withUsername ? 'm.*, u.username' : 'm.*';
     $join   = $withUsername ? 'JOIN user_ u ON u.id = m.sender_user_id' : '';
-    $st = db()->prepare("SELECT {$select} FROM outbound_message m {$join} WHERE {$whereSql} ORDER BY m.id DESC LIMIT {$limit} OFFSET {$offset}");
-    $st->execute($params);
+
+    // Direction matters for correctness, not just presentation. "The N rows immediately NEWER than
+    // id X" is only expressible as ORDER BY id ASC -- ordering DESC would return the newest rows in
+    // the whole filtered set instead of the page adjacent to the cursor, silently skipping
+    // everything in between. The caller re-reverses an ASC page so the table still reads
+    // newest-first.
+    $extraWhere = '';
+    $extraParams = [];
+    $order = 'DESC';
+    if (!empty($cursor['before_id'])) {
+        $extraWhere = ' AND m.id < ?';
+        $extraParams[] = (int)$cursor['before_id'];
+    } elseif (!empty($cursor['after_id'])) {
+        $extraWhere = ' AND m.id > ?';
+        $extraParams[] = (int)$cursor['after_id'];
+        $order = 'ASC';
+    }
+
+    $st = db()->prepare(
+        "SELECT {$select} FROM outbound_message m {$join}
+         WHERE {$whereSql}{$extraWhere}
+         ORDER BY m.id {$order}
+         LIMIT " . max(1, $limit)
+    );
+    $st->execute(array_merge($params, $extraParams));
     return $st->fetchAll();
 }
 
-/** Unbounded (caller-limited) rows for CSV export — reports.php's own explicit LIMIT stays caller-owned. */
-function backend_outbound_export_rows(string $whereSql, array $params, int $limit): array {
+/** Unbounded (caller-limited) rows for CSV export — reports.php's own explicit LIMIT stays caller-owned.
+ *
+ * Returns a PDOStatement so the caller can stream with while ($r = $st->fetch()) and never materializes
+ * an unbounded result set in memory.
+ */
+function backend_outbound_export_rows(string $whereSql, array $params, int $limit) {
     $st = db()->prepare(
         "SELECT m.id, u.username, m.originator, m.destination, m.content, m.status, m.reference_id, m.error_code, m.sent_at, m.delivered_at
          FROM outbound_message m JOIN user_ u ON u.id = m.sender_user_id
-         WHERE {$whereSql} ORDER BY m.id DESC LIMIT {$limit}"
+         WHERE {$whereSql} ORDER BY m.id DESC LIMIT " . max(1, $limit)
     );
     $st->execute($params);
     return $st;
+}
+
+/**
+ * Row count for an export's filter set — a progress denominator only.
+ *
+ * Deliberately separate from backend_outbound_summary(): that returns the report's status
+ * breakdown, this is one number the export worker shows as "N of M". It is allowed to drift while
+ * the export runs; the file's contents are defined by the keyset walk, not by this count.
+ */
+function backend_outbound_export_count(string $whereSql, array $params): int {
+    $st = db()->prepare("SELECT COUNT(*) FROM outbound_message m WHERE {$whereSql}");
+    $st->execute($params);
+    return (int)$st->fetchColumn();
+}
+
+/**
+ * ONE keyset page of export rows, for cron/export-worker.php.
+ *
+ * Phase 8. The export worker must not query outbound_message directly — that is exactly the
+ * boundary this adapter exists to hold (docs/service-boundaries.md §1) — so the keyset walk lives
+ * here instead.
+ *
+ * KEYSET, NOT OFFSET. $afterId is the last id already written; 0 starts from the newest row. Paging
+ * a million-row export with OFFSET makes the database count and discard every skipped row on each
+ * page, so cost grows with depth. `WHERE m.id < ?` is an index seek at any depth, and it doubles as
+ * the resume point for a crashed export.
+ *
+ * OPTIONAL COLUMNS. outbound_message is backend-owned and deployments differ: reference_id and
+ * delivered_at exist in production but not in the minimal integration fixture. They are selected
+ * only when present, so a missing optional column degrades one CSV column instead of failing the
+ * whole export.
+ *
+ * Returns a plain array bounded by $limit — the caller writes it straight out and keeps nothing.
+ */
+function backend_outbound_export_page(string $whereSql, array $params, int $limit, int $afterId = 0): array {
+    static $optionalSelect = null;
+    if ($optionalSelect === null) {
+        $found = [];
+        foreach (['reference_id', 'delivered_at'] as $col) {
+            $chk = db()->prepare(
+                'SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?'
+            );
+            $chk->execute(['outbound_message', $col]);
+            if ((int)$chk->fetchColumn() > 0) {
+                $found[] = $col;
+            }
+        }
+        $optionalSelect = $found === [] ? '' : ', m.' . implode(', m.', $found);
+    }
+
+    $cursorWhere = $afterId > 0 ? ' AND m.id < ?' : '';
+    $bind = $params;
+    if ($afterId > 0) {
+        $bind[] = $afterId;
+    }
+
+    $st = db()->prepare(
+        "SELECT m.id, u.username, m.originator, m.destination, m.content, m.status,
+                m.error_code, m.sent_at{$optionalSelect}
+         FROM outbound_message m
+         JOIN user_ u ON u.id = m.sender_user_id
+         WHERE {$whereSql}{$cursorWhere}
+         ORDER BY m.id DESC
+         LIMIT " . max(1, $limit)
+    );
+    $st->execute($bind);
+    return $st->fetchAll();
 }
 
 /** users.php's per-account "sent_count" column — one user at a time (small admin table, not a hot path). */

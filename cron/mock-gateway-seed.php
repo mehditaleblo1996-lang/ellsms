@@ -116,8 +116,17 @@ $db->prepare(
      ON DUPLICATE KEY UPDATE value_type=VALUES(value_type), value=VALUES(value), data_type=VALUES(data_type), status=VALUES(status)"
 )->execute([$gatewayId]);
 
+// Assign a default test sender to the mock route so the load-test harness can send immediately.
+// The active_slot enforces one active assignment per (sender, message_type); ON DUPLICATE KEY
+// UPDATE repoints an existing assignment in a test environment rather than failing.
+$db->prepare(
+    "INSERT INTO ellsms_sender_routes (sender, route_id, message_type, status, active_slot)
+     VALUES ('5000', ?, 'default', 'active', '5000:default')
+     ON DUPLICATE KEY UPDATE route_id=VALUES(route_id), status=VALUES(status), active_slot=VALUES(active_slot)"
+)->execute([$routeId]);
+
 // Bump config version so running workers pick up the changes.
 $db->prepare("UPDATE ellsms_sms_gateways SET config_version = config_version + 1 WHERE id = ?")->execute([$gatewayId]);
 
 echo "Mock gateway seeded: gateway_id={$gatewayId}, route_id={$routeId}\n";
-echo "Set SMS_GATEWAY_TRANSPORT=1 and ELLSMS_MOCK_GATEWAY_ENABLED=1, then assign a test sender to route 'mock'.\n";
+echo "Set SMS_GATEWAY_TRANSPORT=1 and ELLSMS_MOCK_GATEWAY_ENABLED=1, then use originator 5000 for test sends.\n";

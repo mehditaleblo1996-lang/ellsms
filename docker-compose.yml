@@ -257,6 +257,55 @@ services:
       - backend_net
     stop_grace_period: 5s
 
+  # Phase 8 — prepares large report CSVs off the request path.
+  #
+  # Separate from worker/import-worker/status-worker for the same reason those are separate from
+  # each other: an export is long, I/O-heavy and low-priority. A multi-million-row CSV must never
+  # delay a scheduled send or a delivery-status poll, and a wedged export must not take the send
+  # pipeline down with it.
+  export-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ellsms-export-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/export-worker.php
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      # How often to look for queued exports when the queue is empty. The worker does NOT sleep
+      # between jobs while work remains, so a backlog drains at full speed.
+      REPORT_EXPORT_WORKER_INTERVAL_SECONDS: ${REPORT_EXPORT_WORKER_INTERVAL_SECONDS:-10}
+      # Rows per keyset page. This, not the total row count, is what bounds worker memory.
+      EXPORT_CHUNK_ROWS: ${EXPORT_CHUNK_ROWS:-2000}
+      # Lease held while exporting; a crashed worker's job becomes reclaimable after it expires.
+      REPORT_EXPORT_LEASE_SECONDS: ${REPORT_EXPORT_LEASE_SECONDS:-900}
+      # Hard ceiling so one runaway filter cannot fill the disk. Reaching it produces a clearly
+      # marked truncated file rather than a silently short one.
+      REPORT_EXPORT_MAX_ROWS: ${REPORT_EXPORT_MAX_ROWS:-2000000}
+      # How long a finished export stays downloadable before the retention sweep deletes the file.
+      REPORT_EXPORT_TTL_HOURS: ${REPORT_EXPORT_TTL_HOURS:-24}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+    volumes:
+      # The app container writes nothing here; this worker produces the files and public/report-exports.php
+      # reads them back, so both need the same storage/ mount.
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    # Long enough to finish writing the current page and rename the file, so a stop never leaves a
+    # half-written CSV behind.
+    stop_grace_period: 30s
+
 networks:
   backend_net:
     external: true

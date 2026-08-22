@@ -13,6 +13,7 @@
 # Run `make help` (or just `make`) to list all commands.
 
 .PHONY: help lint font-check test test-integration check \
+        export-worker-once export-worker-logs export-cleanup \
         docker-build up down logs worker-logs worker-once \
         composer-install db-schema-show db-tables db-schema-apply \
         db-migrations-show db-migrations-status db-migrations-apply \
@@ -44,6 +45,8 @@ help:
 	@echo ""
 	@echo "  make lint             PHP syntax check every .php file (fails on any parse error)"
 	@echo "  make font-check       Verify every declared webfont exists, is valid WOFF2, and is self-hosted"
+	@echo "  make export-worker-once  Prepare one queued report export in the foreground, then exit"
+	@echo "  make export-cleanup      Delete generated exports whose retention window has passed"
 	@echo "  make test             Run the PHPUnit unit suite (delegates to 'composer test')"
 	@echo "  make test-integration Run tests/Integration against a real disposable MySQL DB"
 	@echo "                        (needs ELLSMS_TEST_DB_HOST — see this target in the Makefile; skipped"
@@ -219,6 +222,22 @@ lint:
 		echo "Lint FAILED — see errors above."; \
 		exit 1; \
 	fi
+
+## ---------- Report exports (Phase 8) ----------
+
+# Run one export pass in the foreground: claims a queued export, writes it, runs the
+# retention sweep, exits. Useful for draining a backlog by hand or reproducing a
+# failing export without the container.
+export-worker-once:
+	@php cron/export-worker.php --once
+
+export-worker-logs:
+	@docker compose logs -f export-worker
+
+# Delete generated files whose retention window has passed. The worker does this
+# periodically on its own; this target is for running it on demand.
+export-cleanup:
+	@php -r 'require "app/bootstrap.php"; printf("expired %d export(s)\n", report_export_cleanup());'
 
 ## ---------- Fonts ----------
 

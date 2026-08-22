@@ -72,6 +72,7 @@ require_once __DIR__ . '/Cost/MessageCostEstimator.php';
 // engine (sms_parts), the pricing snapshots and the gateway status records; owns none of them and
 // writes nothing.
 require_once __DIR__ . '/Reports/MessageDetail.php';
+require_once __DIR__ . '/Reports/ExportJobs.php';
 // Customer/organization profile — personal profile, company legal profile, address, notification
 // preferences and private documents (docs/customer-profile.md). Loaded last: it composes tenant.php
 // (organization membership), rbac.php (settings.manage) and audit(), and owns none of them.

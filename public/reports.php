@@ -21,6 +21,7 @@ $userId = is_admin() ? (int)($_GET['user_id'] ?? 0) : (int)$me['id'];
 
 $where  = ['m.sent_at >= ?', 'm.sent_at < DATE_ADD(?, INTERVAL 1 DAY)'];
 $params = [$from, $to];
+$memberIdsForExport = [];   // populated for non-admins below; unused on the admin path
 if (is_admin() && $userId) {
     $where[] = 'm.sender_user_id = ?';
     $params[] = $userId;
@@ -36,6 +37,9 @@ if (is_admin() && $userId) {
     if (!$memberIds) {
         $memberIds = [(int)$me['id']];
     }
+    // Captured for a queued export so the worker reproduces this exact tenant scope rather than
+    // re-resolving org membership later, which may have changed by the time it runs.
+    $memberIdsForExport = $memberIds;
     $placeholders = implode(',', array_fill(0, count($memberIds), '?'));
     $where[] = "m.sender_user_id IN ({$placeholders})";
     array_push($params, ...$memberIds);
@@ -54,9 +58,10 @@ $W = implode(' AND ', $where);
  */
 $reportOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
 $reportUserId = !is_admin() && !$reportOrgId ? (int)$me['id'] : null;
-$S = report_canonical_status_totals($W, $params, $reportOrgId, $reportUserId);
+$S = Metrics::time('reports.summary', fn() => report_canonical_status_totals($W, $params, $reportOrgId, $reportUserId), ['source' => 'reports']);
+$cnt = (int)$S['total'];
 
-/* ---------- CSV export ---------- */
+/* ---------- CSV export (synchronous fallback for very small result sets only) ---------- */
 if (isset($_GET['export'])) {
     // Phase 13 (STEP 14): the report ITSELF is available on every plan (taking basic send history
     // away would make the product unusable — see app/Support/Entitlements.php's docblock); the bulk
@@ -65,63 +70,134 @@ if (isset($_GET['export'])) {
     if (!is_admin()) {
         require_entitlement((int)($me['organization_id'] ?? 0), Entitlements::REPORTS_ADVANCED);
     }
-    $st = backend_outbound_export_rows($W, $params, 100000);
-    header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ellsms-report-' . $from . '_' . $to . '.csv"');
-    $out = fopen('php://output', 'w');
-    fputs($out, "\xEF\xBB\xBF"); // BOM so Excel opens UTF-8 (Persian) correctly
-    fputcsv($out, ['شناسه','کاربر','خط ارسال','گیرنده','متن پیام','تعداد پارت','وضعیت','شناسه‌ی گیت‌وی',
-                   'مرجع اپراتور','وضعیت خام درگاه','تعداد تلاش استعلام','کد خطا','زمان ارسال','آخرین استعلام','زمان تحویل']);
 
-    // Delivery lifecycle is looked up in BOUNDED CHUNKS as rows stream, so a 100k-row export neither
-    // issues 100k queries nor loads every attempt into memory at once.
-    $buffer = [];
-    $flush = static function (array $batch) use ($out, $reportOrgId, $reportUserId): void {
-        if ($batch === []) {
-            return;
-        }
-        $delivery = report_delivery_lookup_by_destination($batch, $reportOrgId, $reportUserId);
+    // Large exports are prepared asynchronously by the export worker so the HTTP request never
+    // holds a huge result set. Keep this synchronous path only for tiny ranges for backward
+    // compatibility with any existing bookmarked export links.
+    if ($cnt <= 5000) {
+        $st = backend_outbound_export_rows($W, $params, 100000);
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="ellsms-report-' . $from . '_' . $to . '.csv"');
+        $out = fopen('php://output', 'w');
+        fputs($out, "\xEF\xBB\xBF"); // BOM so Excel opens UTF-8 (Persian) correctly
+        fputcsv($out, ['شناسه','کاربر','خط ارسال','گیرنده','متن پیام','تعداد پارت','وضعیت','شناسه‌ی گیت‌وی',
+                       'مرجع اپراتور','وضعیت خام درگاه','تعداد تلاش استعلام','کد خطا','زمان ارسال','آخرین استعلام','زمان تحویل']);
 
-        foreach ($batch as $r) {
-            $d = $delivery[(string)$r['destination']] ?? null;
-            $canonical = report_canonical_status($d['delivery_status'] ?? null, (string)$r['status']);
-            fputcsv($out, [
-                $r['id'], $r['username'], $r['originator'], $r['destination'], $r['content'],
-                sms_parts((string)$r['content']),
-                $canonical['status'],
-                $r['reference_id'],
-                // B28/B9: a 19-digit provider reference is written with a leading tab so Excel keeps
-                // it as TEXT. Without this the cell becomes 4.47362E+18 and the reference is lost.
-                $d !== null && $d['provider_message_id'] !== null ? "\t" . (string)$d['provider_message_id'] : '',
-                $d !== null ? (string)($d['provider_status'] ?? '') : '',
-                $d !== null ? (string)(int)$d['delivery_attempts'] : '',
-                $r['error_code'],
-                $r['sent_at'],
-                $d !== null ? (string)($d['delivery_checked_at'] ?? '') : '',
-                $d !== null && !empty($d['delivered_at']) ? (string)$d['delivered_at'] : (string)($r['delivered_at'] ?? ''),
-            ]);
-        }
-    };
+        // Delivery lifecycle is looked up in BOUNDED CHUNKS as rows stream, so a 100k-row export neither
+        // issues 100k queries nor loads every attempt into memory at once. Uses the SAME canonical
+        // lookup/status resolution as the summary cards and the list rows above
+        // (report_delivery_lookup_by_destination()/report_canonical_status()) — org/user-scoped and
+        // degrade-safe — rather than a third, separately-maintained copy of this correlation.
+        $buffer = [];
+        $flush = static function (array $batch) use ($out, $reportOrgId, $reportUserId): void {
+            if ($batch === []) {
+                return;
+            }
+            $delivery = report_delivery_lookup_by_destination($batch, $reportOrgId, $reportUserId);
 
-    while ($r = $st->fetch()) {
-        $buffer[] = $r;
-        if (count($buffer) >= 500) {
-            $flush($buffer);
-            $buffer = [];
+            foreach ($batch as $r) {
+                $d = $delivery[(string)$r['destination']] ?? null;
+                $canonical = report_canonical_status($d['delivery_status'] ?? null, (string)$r['status']);
+                fputcsv($out, [
+                    $r['id'], $r['username'], $r['originator'], $r['destination'], $r['content'],
+                    sms_parts((string)$r['content']),
+                    $canonical['status'],
+                    // outbound_message is backend-owned and reference_id is optional across
+                    // deployments (it is absent from the integration fixture), so it is read
+                    // defensively — a missing optional column must not fatal an export.
+                    $r['reference_id'] ?? '',
+                    // B28/B9: a 19-digit provider reference is written with a leading tab so Excel keeps
+                    // it as TEXT. Without this the cell becomes 4.47362E+18 and the reference is lost.
+                    $d !== null && $d['provider_message_id'] !== null ? "\t" . (string)$d['provider_message_id'] : '',
+                    $d !== null ? (string)($d['provider_status'] ?? '') : '',
+                    $d !== null ? (string)(int)$d['delivery_attempts'] : '',
+                    $r['error_code'],
+                    $r['sent_at'],
+                    $d !== null ? (string)($d['delivery_checked_at'] ?? '') : '',
+                    $d !== null && !empty($d['delivered_at']) ? (string)$d['delivered_at'] : (string)($r['delivered_at'] ?? ''),
+                ]);
+            }
+        };
+
+        while ($r = $st->fetch()) {
+            $buffer[] = $r;
+            if (count($buffer) >= 500) {
+                $flush($buffer);
+                $buffer = [];
+            }
         }
+        $flush($buffer);
+        exit;
     }
-    $flush($buffer);
-    exit;
+
+    // Too large to stream inside the request: queue a durable export job instead. The filters are
+    // captured HERE, together with the tenant scope that applies to THIS requester right now, so the
+    // worker reproduces exactly the rows this page would have shown. It re-compiles them through
+    // report_export_filter_sql() — the same builder used above — rather than storing SQL.
+    $exportId = report_export_queue(
+        (int)($me['organization_id'] ?? 0),
+        (int)$me['id'],
+        [
+            'from'   => $from,
+            'to'     => $to,
+            'status' => $status,
+            'dest'   => $dest,
+            'q'      => $text,
+            // Admin-ness is recorded as a fact of the request. If this user's role changes before
+            // the worker runs, the export must not retroactively widen or narrow.
+            'is_admin'   => is_admin(),
+            'user_id'    => is_admin() ? $userId : 0,
+            'member_ids' => is_admin() ? [] : $memberIdsForExport,
+        ],
+        'ellsms-report-' . $from . '_' . $to . '.csv'
+    );
+
+    flash('info', 'این محدوده بیش از ۵۰۰۰ پیام دارد؛ خروجی در پس‌زمینه آماده می‌شود. از صفحه «خروجی‌های گزارش» دانلود کنید.');
+    redirect('/report-exports.php?queued=' . $exportId);
 }
 
-/* ---------- Paged rows ---------- */
-$per  = 50;
-$page = max(1, (int)($_GET['page'] ?? 1));
-$cnt  = (int)$S['total'];
-$pages = max(1, (int)ceil($cnt / $per));
-$off  = ($page - 1) * $per;
+/* ---------- Paged rows (keyset/cursor pagination; OFFSET never used on unbounded sets) ---------- */
+$per = (int)($_GET['per_page'] ?? 50);
+if ($per < 1) {
+    $per = 1;
+}
+if ($per > 200) {
+    $per = 200;
+}
 
-$rows = backend_outbound_rows($W, $params, $per, $off);
+$beforeId = (isset($_GET['before_id']) && $_GET['before_id'] !== '') ? (int)$_GET['before_id'] : null;
+$afterId  = (isset($_GET['after_id'])  && $_GET['after_id']  !== '') ? (int)$_GET['after_id']  : null;
+$cursor = null;
+if ($beforeId !== null && $beforeId > 0) {
+    $cursor = ['before_id' => $beforeId];
+} elseif ($afterId !== null && $afterId > 0) {
+    $cursor = ['after_id' => $afterId];
+}
+// One extra row is requested purely to answer "is there another page?" without a COUNT(*) over the
+// whole filtered set. It is trimmed before rendering and never displayed.
+$fetched = Metrics::time(
+    'reports.rows',
+    fn() => backend_outbound_rows($W, $params, $per + 1, $cursor),
+    ['source' => 'reports', 'per_page' => $per]
+);
+$hasMore = count($fetched) > $per;
+$rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
+
+// backend_outbound_rows() returns newest-first for a `before_id` (or first) page, but oldest-first
+// for an `after_id` page -- it has to, because "the $per rows immediately NEWER than this id" is
+// only expressible as ORDER BY id ASC. Flip it back so the table always reads newest-first.
+if ($cursor !== null && isset($cursor['after_id'])) {
+    $rows = array_reverse($rows);
+}
+
+$ids          = $rows ? array_map('intval', array_column($rows, 'id')) : [];
+$nextBeforeId = $ids ? min($ids) : null;   // follow "older" from the oldest row on this page
+$prevAfterId  = $ids ? max($ids) : null;   // follow "newer" from the newest row on this page
+
+// Going older is offered when this page filled up; going newer only once the reader has actually
+// moved off the first page, so the initial view shows a single "older" link rather than a dead one.
+$hasNext = $rows !== [] && ($cursor === null || isset($cursor['before_id'])) ? $hasMore : true;
+$hasPrev = $rows !== [] && $cursor !== null && (isset($cursor['after_id']) ? $hasMore : true);
 
 /* ---------- Delivery lifecycle enrichment ----------
  * A send that went through a configured GATEWAY records its transport identity and delivery state in
@@ -180,6 +256,7 @@ require __DIR__ . '/../app/views/header.php';
     <label>شامل متن <input type="text" name="q" value="<?= e($text) ?>"></label>
     <button class="btn btn-primary">اعمال فیلتر</button>
     <a class="btn" href="/reports.php?<?= e($qs(['export' => 1])) ?>">خروجی CSV</a>
+    <a class="btn btn-ghost" href="/report-exports.php">خروجی‌های آماده‌شده</a>
   </form>
 
   <div class="table-wrap">
@@ -224,11 +301,18 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   </div>
 
-  <?php if ($pages > 1): ?>
+  <?php /* Keyset pagination: links carry a cursor id, not an offset. A total page COUNT is
+           deliberately not shown -- deriving one needs COUNT(*) over the whole filtered set, which
+           is the very thing that stops being affordable at millions of rows. */ ?>
+  <?php if ($hasPrev || $hasNext): ?>
   <div class="pagination">
-    <?php if ($page > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page - 1])) ?>">→ قبلی</a><?php endif; ?>
-    <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits((string)$page) ?> از <?= to_persian_digits((string)$pages) ?></span>
-    <?php if ($page < $pages): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page + 1])) ?>">بعدی ←</a><?php endif; ?>
+    <?php if ($hasPrev): ?>
+      <a class="btn btn-sm" href="?<?= e($qs(['before_id' => null, 'after_id' => $prevAfterId])) ?>">→ جدیدتر</a>
+    <?php endif; ?>
+    <span class="btn btn-sm btn-ghost"><?= to_persian_digits(number_format(count($rows))) ?> ردیف</span>
+    <?php if ($hasNext): ?>
+      <a class="btn btn-sm" href="?<?= e($qs(['after_id' => null, 'before_id' => $nextBeforeId])) ?>">قدیمی‌تر ←</a>
+    <?php endif; ?>
   </div>
   <?php endif; ?>
 </div>

@@ -9,6 +9,12 @@ storage/kyc/*
 !storage/kyc/.gitkeep
 storage/benchmarks/*
 !storage/benchmarks/.gitkeep
+# Generated report exports hold real message content (recipients, message bodies).
+# They are transient artifacts with a retention window — never commit them.
+storage/exports/*
+!storage/exports/.gitkeep
+storage/imports/*
+!storage/imports/.gitkeep
 public/assets/img/slides/*
 !public/assets/img/slides/.gitkeep
 
