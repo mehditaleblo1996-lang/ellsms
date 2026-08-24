@@ -343,3 +343,113 @@ function billing_coupon_by_code(string $code): ?array {
     $row = $st->fetch();
     return $row ?: null;
 }
+
+/* ==========================================================================
+   Refund FRAMEWORK (FIN-13) — explicit, admin-authorized, reason-required. NOT an automatic
+   refund policy: this product has none (app/Billing.php's existing subscription_cancel() docblock,
+   docs/wallet-architecture.md's "Refund / compensation" section). See
+   db/migrations/2026_08_24_financial_refund_events.sql for the full policy rationale.
+   ========================================================================== */
+
+/**
+ * Refunds an invoice IN FULL (this framework does not support partial/line-item refund — a
+ * deliberate scope limit, not an oversight: partial refund needs its own product decision about
+ * which line items are refundable, which this codebase has never made).
+ *
+ * WALLET POLICY for a credit-purchase invoice (purpose='credit'): reverses the wallet credit ONLY IF
+ * the account still holds at least that much available balance — i.e. the purchased credit has not
+ * been spent (or not fully spent) since. If the balance is insufficient, the refund event is still
+ * recorded (money may still be returned to the customer through an external channel — that is an
+ * operational decision outside this codebase) but wallet_reversed=0, and NOTHING is subtracted from
+ * the wallet. This is the explicit choice FIN-13 requires: never create a negative balance from an
+ * already-spent purchase.
+ *
+ * SUBSCRIPTION POLICY for a subscription invoice (purpose='subscription'): NO automatic subscription
+ * rollback of any kind — the organization's plan/period is left exactly as it is. Reversing a
+ * subscription (downgrade? cancel? refund only the unused remainder?) requires product decisions
+ * this codebase has never made; inventing one here would be exactly the "dangerous automatic
+ * behavior without a defined policy" FIN-13 explicitly forbids. An admin who refunds a subscription
+ * payment must separately decide what to do about the subscription itself, using the existing,
+ * unmodified tools in app/Billing.php (subscription_cancel(), subscription_transition(), etc.).
+ *
+ * Idempotent via UNIQUE(invoice_id) on ellsms_refund_events — a retried refund action on an
+ * already-refunded invoice is a safe no-op replay, never a second reversal.
+ *
+ * Returns ['ok'=>bool, 'reason'=>string, 'wallet_reversed'=>?bool].
+ */
+function billing_refund_invoice(int $invoiceId, int $actorUserId, string $reason): array {
+    $reason = trim($reason);
+    if ($reason === '') {
+        return ['ok' => false, 'reason' => 'reason_required'];
+    }
+
+    return db_transaction(function (PDO $db) use ($invoiceId, $actorUserId, $reason): array {
+        $st = $db->prepare('SELECT * FROM ellsms_invoices WHERE id = ? FOR UPDATE');
+        $st->execute([$invoiceId]);
+        $invoice = $st->fetch();
+        if (!$invoice) {
+            return ['ok' => false, 'reason' => 'invoice_not_found'];
+        }
+
+        $existingRefund = $db->prepare('SELECT id, wallet_reversed FROM ellsms_refund_events WHERE invoice_id = ?');
+        $existingRefund->execute([$invoiceId]);
+        if ($already = $existingRefund->fetch()) {
+            return ['ok' => true, 'reason' => 'already_refunded', 'wallet_reversed' => (bool)$already['wallet_reversed']];
+        }
+
+        if ($invoice['status'] !== 'paid') {
+            // Only a PAID invoice represents money that was actually collected — refusing here
+            // rather than silently no-op-ing is deliberate: an admin attempting to refund an unpaid
+            // invoice almost certainly has the wrong invoice, and a silent success would hide that.
+            return ['ok' => false, 'reason' => 'invoice_not_paid'];
+        }
+
+        $paymentSt = $db->prepare('SELECT * FROM ellsms_payments WHERE id = ?');
+        $paymentSt->execute([(int)$invoice['payment_id']]);
+        $payment = $paymentSt->fetch();
+        if (!$payment) {
+            return ['ok' => false, 'reason' => 'payment_missing'];
+        }
+
+        $walletReversed = false;
+        if ($invoice['purpose'] === 'credit') {
+            $available = wallet_balance((int)$payment['user_id'])['available'];
+            $creditAmount = (int)$payment['credits'];
+            if ($creditAmount > 0 && $available >= $creditAmount) {
+                $credit = wallet_credit(
+                    (int)$payment['user_id'], $creditAmount, 'refund', 'invoice', (string)$invoiceId,
+                    'invoice_refund:' . $invoiceId, $actorUserId, ['reason' => $reason, 'invoice_number' => $invoice['invoice_number']]
+                );
+                $walletReversed = (bool)($credit['ok'] ?? false);
+            } else {
+                Logger::warning('invoice.refund.wallet_insufficient_for_reversal', [
+                    'invoice_id' => $invoiceId, 'available' => $available, 'requested' => $creditAmount,
+                ]);
+            }
+        }
+        // purpose === 'subscription': deliberately no subscription action here — see this function's
+        // own docblock.
+
+        $db->prepare("UPDATE ellsms_invoices SET status='refunded' WHERE id = ?")->execute([$invoiceId]);
+
+        $db->prepare(
+            'INSERT INTO ellsms_refund_events (invoice_id, payment_id, organization_id, user_id, amount, wallet_reversed, reason, actor_user_id, idempotency_key)
+             VALUES (?,?,?,?,?,?,?,?,?)'
+        )->execute([
+            $invoiceId, (int)$invoice['payment_id'], $invoice['organization_id'], (int)$invoice['user_id'],
+            (int)$invoice['total_amount'], $walletReversed ? 1 : 0, $reason, $actorUserId, 'invoice_refund:' . $invoiceId,
+        ]);
+
+        Logger::info('invoice.refunded', ['invoice_id' => $invoiceId, 'actor_user_id' => $actorUserId, 'wallet_reversed' => $walletReversed, 'amount' => (int)$invoice['total_amount']]);
+        audit($actorUserId, 'billing.invoice.refunded', "invoice={$invoice['invoice_number']} amount={$invoice['total_amount']} wallet_reversed=" . ($walletReversed ? '1' : '0') . " reason={$reason}");
+
+        return ['ok' => true, 'reason' => 'refunded', 'wallet_reversed' => $walletReversed];
+    });
+}
+
+function billing_refund_event_for_invoice(int $invoiceId): ?array {
+    $st = db()->prepare('SELECT * FROM ellsms_refund_events WHERE invoice_id = ?');
+    $st->execute([$invoiceId]);
+    $row = $st->fetch();
+    return $row ?: null;
+}

@@ -7,15 +7,36 @@
  * wallet transactions. gated on require_admin() like every other platform-admin screen, never on an
  * organization permission (Invariant O).
  *
- * No write actions here beyond the one explicitly-authorized manual wallet adjustment path, which
- * reuses wallet_manual_adjustment() (app/wallet.php) exactly as public/users.php already does — this
- * page adds no new financial mutation capability, only a dedicated read surface plus a link to the
- * existing adjustment mechanism.
+ * The one write action here is FIN-13's explicit, reason-required refund
+ * (billing_refund_invoice(), app/Financial.php) — a full-invoice refund only, never a partial one,
+ * never an automatic subscription rollback. Every other financial mutation on this page's data
+ * (manual wallet adjustment) reuses the existing wallet_manual_adjustment() mechanism from
+ * public/users.php, unchanged.
  */
 require_once __DIR__ . '/../app/bootstrap.php';
 $me = require_admin();
 $pageTitle = 'گزارش مالی';
 $active = 'financial_admin';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
+    if (($_POST['do'] ?? '') === 'refund') {
+        $invoiceId = (int)($_POST['invoice_id'] ?? 0);
+        $reason = trim((string)($_POST['reason'] ?? ''));
+        $result = billing_refund_invoice($invoiceId, (int)$me['id'], $reason);
+        if ($result['ok'] && ($result['reason'] ?? '') === 'refunded') {
+            flash('success', 'فاکتور بازگشت داده شد.' . (($result['wallet_reversed'] ?? false)
+                ? ' اعتبار کیف پول کاربر بازگردانده شد.'
+                : ' اعتبار کیف پول بازگردانده نشد (موجودی کافی برای برگشت وجود نداشت یا این فاکتور اشتراکی بود).'));
+        } elseif ($result['ok']) {
+            flash('info', 'این فاکتور قبلاً بازگشت داده شده بود.');
+        } else {
+            $reasonFa = ['reason_required' => 'ذکر دلیل الزامی است.', 'invoice_not_found' => 'فاکتور یافت نشد.', 'invoice_not_paid' => 'فقط فاکتور پرداخت‌شده قابل بازگشت است.', 'payment_missing' => 'رکورد پرداخت یافت نشد.'];
+            flash('error', $reasonFa[$result['reason']] ?? ('بازگشت ناموفق: ' . $result['reason']));
+        }
+        redirect('/financial-admin.php?tab=invoices');
+    }
+}
 
 $tab = in_array($_GET['tab'] ?? 'invoices', ['invoices', 'payments', 'wallet'], true) ? $_GET['tab'] : 'invoices';
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -121,7 +142,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="table-wrap">
   <?php if ($tab === 'invoices'): ?>
   <table>
-    <tr><th>شماره</th><th>سازمان</th><th>نوع</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th></tr>
+    <tr><th>شماره</th><th>سازمان</th><th>نوع</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th><th></th></tr>
     <?php foreach ($rows as $r): ?>
       <tr>
         <td class="num ltr"><?= e($r['invoice_number']) ?></td>
@@ -130,9 +151,31 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= to_persian_digits(number_format((int)$r['total_amount'])) ?></td>
         <td><span class="badge badge-<?= $r['status'] === 'paid' ? 'ok' : ($r['status'] === 'issued' ? 'pending' : 'off') ?>"><?= e($invoiceStatusFa[$r['status']] ?? $r['status']) ?></span></td>
         <td class="num"><?= jdate($r['created_at']) ?></td>
+        <td>
+          <?php if ($r['status'] === 'paid'): ?>
+          <form method="post">
+            <?= csrf_field() ?>
+            <input type="hidden" name="do" value="refund">
+            <input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>">
+            <input type="hidden" name="reason" class="refund-reason-input">
+            <button type="button" class="btn btn-sm btn-danger" onclick="promptRefund(this)">بازگشت وجه</button>
+          </form>
+          <?php endif; ?>
+        </td>
       </tr>
     <?php endforeach; ?>
   </table>
+  <script>
+  function promptRefund(btn) {
+    var reason = prompt('دلیل بازگشت وجه را وارد کنید (الزامی):');
+    if (reason === null) return;
+    reason = reason.trim();
+    if (!reason) { alert('ذکر دلیل الزامی است.'); return; }
+    var form = btn.closest('form');
+    form.querySelector('.refund-reason-input').value = reason;
+    if (confirm('این فاکتور به‌طور کامل بازگشت داده شود؟ این عمل غیرقابل بازگشت است.')) form.submit();
+  }
+  </script>
   <?php elseif ($tab === 'payments'): ?>
   <table>
     <tr><th>شماره</th><th>سازمان</th><th>نوع</th><th>درگاه</th><th>مبلغ</th><th>وضعیت</th><th>مرجع</th><th>تاریخ</th></tr>
