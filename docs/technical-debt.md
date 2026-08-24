@@ -524,6 +524,37 @@ session-local, not this register's or the repository's own historical phase numb
   rows — but a storage-hygiene gap worth a retention sweep if failed imports accumulate in practice.
   See `docs/large-import-architecture.md#known-follow-up-not-a-phase-10-blocker`.
 
+### Financial commerce — orders/invoices/payments/refund framework (2026-08-24)
+
+Local session labels "FIN-1" through "FIN-13" — see `docs/financial-commerce.md` and
+`docs/financial-commerce-final-report.md`. Extends the existing billing/wallet/subscription
+foundation (Phase 3/Phase 13); does not replace or duplicate it.
+
+- **No real payment-provider refund exists.** `payment_gateway_supports_refund('zarinpal')`
+  correctly reports `false` — no such integration was built, and the refund framework
+  (`billing_refund_invoice()`) never pretends otherwise. A future real-refund integration would
+  need its own ZarinPal API work (refund is not part of ZarinPal's standard v4 payment/verify flow
+  used here) and its own review of what "money actually returned to the customer" means
+  operationally.
+- **Partial/line-item refund is out of scope by design.** The refund framework supports refunding
+  an invoice in full, exactly once, or not at all. Which line items of a multi-item purchase are
+  refundable, and for how much, is a product decision this codebase has never made — building a
+  partial-refund UI without that decision would risk exactly the "dangerous automatic behavior
+  without a defined policy" the framework is built to avoid.
+- **The AMOUNT_MISMATCH fail-closed check is a structural no-op for the ZarinPal adapter.**
+  ZarinPal's v4 verify response does not expose a separately-confirmed amount distinct from the
+  request parameter, so `verified_amount_rial` is always `null` for that adapter and the check
+  never fires. It is real and exercised for the fake gateway (proven in
+  `tests/Integration/FakePaymentGatewayE2eTest.php::testAmountMismatchFailsClosedNoFulfillment`)
+  and would activate automatically for any future real gateway whose adapter DOES expose a
+  confirmed amount. Not a gap in the check itself — a fact about what ZarinPal's specific API
+  contract allows this integration to verify independently.
+- **No `COMMERCE_ENABLED` master flag was added.** Deliberate — see
+  `docs/financial-commerce.md`'s "What was deliberately not built" section for the reasoning
+  (credit purchase is pre-existing always-on functionality this work extended, not new
+  functionality being introduced; subscription purchase/renewal is already fully gated by the
+  existing `BILLING_ENABLED`, default off).
+
 ## How to use this register
 
 Each phase above is sized to become one `/make-plan` → `/do` cycle when the team is ready for it —

@@ -485,3 +485,59 @@ production planning:
      (`make sms-gateway-simulate` for the byte-parity check, then one real send to a number you
      control) — never enable a new production gateway on a full-volume campaign as the first live
      traffic it sees.
+
+## 16. Financial commerce (invoices, payment gateways, refunds)
+
+Full architecture: `docs/financial-commerce.md`. Operator-relevant summary.
+
+**Nothing here needs enabling.** The invoice layer, tax, coupons, and the ZarinPal gateway adapter
+are active immediately on deploy — they extend `public/buy-credit.php`/`public/billing.php`'s
+existing, already-live purchase flows rather than adding a new gated feature. `BILLING_TAX_PERCENT`
+defaults to `0` (no behavior change until an operator sets a real rate).
+
+**Fake/sandbox payment gateway — `ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED`, default `0`.** Never enable
+this in production. It exists purely so this project's own tests
+(`tests/Integration/FakePaymentGatewayE2eTest.php`) and manual test-server exploration can drive the
+real payment pipeline (create → callback → verify → claim → fulfill) with zero external network
+calls. `payment_gateway_name()` (`app/Payment/PaymentGateway.php`) refuses to select it even if
+`PAYMENT_DEFAULT_GATEWAY=fake` is also set, unless this flag is explicitly `1` — the same
+defense-in-depth pattern the mock SMS gateway (§13) already uses. Before a production deploy,
+confirm `ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED` is unset or `0`; `make config-check` is the natural
+place to add an explicit assertion for this if a future phase wires it in.
+
+**New migrations** (all additive, guarded, rerun-safe, applied by the normal
+`make db-migrations-apply` sequence — no special ordering or manual step):
+`2026_08_24_financial_invoices.sql` (invoices, invoice items, coupons, coupon redemptions,
+`ellsms_payments.invoice_id`), `2026_08_24_financial_payment_gateway_column.sql`
+(`ellsms_payments.gateway`, default `'zarinpal'` — zero behavior change for every existing row),
+`2026_08_24_financial_billing_record_purchase_type.sql`
+(`ellsms_billing_records.purchase_type`, default `'new'`), `2026_08_24_financial_refund_events.sql`
+(the refund audit table).
+
+**Refund operational procedure.** No automatic refund policy exists (unchanged from before this
+work — see `docs/wallet-architecture.md`'s "Refund / compensation" section). To refund a paid
+invoice: `public/financial-admin.php` (invoices tab, platform-admin only) → "بازگشت وجه" on a paid
+invoice → a reason is mandatory. This:
+
+1. Marks the invoice `refunded` (one time only — a repeat attempt is a safe no-op).
+2. For a credit-purchase invoice: reverses the wallet credit **only if** the account still holds at
+   least that much unspent balance. If the customer has already spent some or all of the purchased
+   credit, the wallet is **not** touched (never goes negative) — `financial-admin.php` reports this
+   explicitly in its confirmation message. Refunding the customer's MONEY in that case (outside the
+   wallet) is an operational decision, not something this framework automates.
+3. For a subscription invoice: does **nothing** to the subscription itself — no automatic
+   downgrade, cancellation, or period adjustment. Use the existing tools on
+   `public/billing-admin.php` separately if the subscription itself also needs to change.
+4. Is fully audited (`ellsms_audit_log`, action `billing.invoice.refunded`) and recorded in
+   `ellsms_refund_events` (append-only, one row per invoice ever).
+
+**Real payment-provider refund is not implemented.** `payment_gateway_supports_refund('zarinpal')`
+returns `false` honestly — there is no ZarinPal refund API integration in this codebase. "Refunding"
+a customer's actual money for a ZarinPal payment today means an operator-side action outside
+ELLSMS (through the ZarinPal merchant panel or equivalent), independent of the invoice-level
+bookkeeping this framework provides.
+
+**Financial admin screens**: `public/financial-admin.php` (orders/invoices/payments/wallet
+transactions, filterable, DB-paginated, platform-admin only) and `public/billing-admin.php`
+(subscription lifecycle, unchanged, platform-admin only) are separate pages by design — see
+`docs/financial-commerce.md`.
