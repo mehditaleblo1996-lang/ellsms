@@ -100,7 +100,12 @@ foreach ($sendParams as $i => $p) {
 $statusSuccess = json_encode(['rules' => [['source' => 'body', 'path' => 'error_code', 'operator' => 'equals', 'values' => [0]]]], JSON_UNESCAPED_UNICODE);
 $statusResponse = json_encode(['provider_status' => 'state', 'items_path' => 'states', 'id_path' => 'id', 'status_path' => 'state'], JSON_UNESCAPED_UNICODE);
 $statusItems = json_encode(['items_path' => 'states', 'id_path' => 'id', 'status_path' => 'state'], JSON_UNESCAPED_UNICODE);
-$statusMapping = json_encode(['1' => 'accepted', '2' => 'sent', '3' => 'delivered', '4' => 'failed', '5' => 'pending'], JSON_UNESCAPED_UNICODE);
+// Provider token -> CANONICAL delivery status. Only the values in GATEWAY_DELIVERY_STATUSES
+// (app/Sms/GatewayConnector.php) are accepted; anything else makes the whole gateway fail to
+// compile, which shows up as a silent fallback to the legacy path rather than as an obvious error.
+// Token 5 previously mapped to 'pending', which is not one of them — 'queued' is the canonical
+// name for that state.
+$statusMapping = json_encode(['1' => 'accepted', '2' => 'sent', '3' => 'delivered', '4' => 'failed', '5' => 'queued'], JSON_UNESCAPED_UNICODE);
 $db->prepare(
     "INSERT INTO ellsms_sms_gateway_status_connectors
        (gateway_id, endpoint_url, http_method, content_type, success_rule_json, response_mapping_json, status_mapping_json, poll_initial_delay_seconds, poll_max_attempts, poll_max_age_seconds)

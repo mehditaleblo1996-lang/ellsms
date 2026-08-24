@@ -57,6 +57,13 @@ $allowlist = [
     // PHPUnit test class, since it needs to spawn real OS worker processes rather than run inside
     // one PHPUnit process.
     'cron/load-test.php'               => 'load-test harness seeds/cleans disposable user_ rows in the test database it requires — see its own safety guard',
+
+    // Phase 9B's gateway load harness, for exactly the same reason as cron/load-test.php above: it
+    // seeds and deletes its own disposable user_ row against a database it refuses to run without
+    // (BACKEND_DB_NAME must contain "test", or ELLSMS_ALLOW_LOAD_TEST=1 must be set), and it cannot
+    // go through the adapter because the adapter deliberately offers no way to CREATE an account —
+    // that is the backend platform's job, which is the whole point of the boundary.
+    'cron/perf-sms-load.php'           => 'gateway load harness seeds/cleans one disposable user_ row in the test database it requires — see its own safety guard',
 ];
 
 $tables = ['user_', 'domain', 'inbound_message', 'outbound_message'];

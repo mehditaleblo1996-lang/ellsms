@@ -14,6 +14,7 @@
 
 .PHONY: help lint font-check test test-integration check \
         export-worker-once export-worker-logs export-cleanup \
+        sms-load-1k sms-load-10k sms-load-100k sms-load-500k sms-load-1m \
         docker-build up down logs worker-logs worker-once \
         composer-install db-schema-show db-tables db-schema-apply \
         db-migrations-show db-migrations-status db-migrations-apply \
@@ -47,6 +48,7 @@ help:
 	@echo "  make font-check       Verify every declared webfont exists, is valid WOFF2, and is self-hosted"
 	@echo "  make export-worker-once  Prepare one queued report export in the foreground, then exit"
 	@echo "  make export-cleanup      Delete generated exports whose retention window has passed"
+	@echo "  make sms-load-1k         End-to-end load test through the MOCK gateway (also 10k/100k/500k/1m)"
 	@echo "  make test             Run the PHPUnit unit suite (delegates to 'composer test')"
 	@echo "  make test-integration Run tests/Integration against a real disposable MySQL DB"
 	@echo "                        (needs ELLSMS_TEST_DB_HOST — see this target in the Makefile; skipped"
@@ -223,6 +225,39 @@ lint:
 		exit 1; \
 	fi
 
+## ---------- SMS load testing (Phase 9B) ----------
+
+# End-to-end load tests through the MOCK gateway only — never a real provider.
+# Needs a disposable database; the harness refuses to run against one whose name
+# does not contain "test" unless ELLSMS_ALLOW_LOAD_TEST=1 is set explicitly.
+#
+#   ELLSMS_TEST_DB_HOST=127.0.0.1 ELLSMS_TEST_DB_PORT=13306 \
+#   ELLSMS_TEST_DB_NAME=ellsms_test ELLSMS_TEST_DB_USER=ellsms_test \
+#   ELLSMS_TEST_DB_PASS=... make sms-load-10k
+#
+# Results land in storage/benchmarks/ (gitignored). Override any knob on the
+# command line, e.g.  make sms-load-10k SMS_LOAD_ARGS=--provider-batch=500
+
+SMS_LOAD_ARGS ?=
+
+sms-load-1k:
+	@php cron/perf-sms-load.php --recipients=1000 --label=1k $(SMS_LOAD_ARGS)
+
+sms-load-10k:
+	@php cron/perf-sms-load.php --recipients=10000 --worker-claim=1000 --label=10k $(SMS_LOAD_ARGS)
+
+sms-load-100k:
+	@php cron/perf-sms-load.php --recipients=100000 --worker-claim=2000 --import-chunk=5000 --label=100k $(SMS_LOAD_ARGS)
+
+# The two largest sizes skip the delivery-status phase by default: polling 500k+
+# rows through one process dwarfs the send it is meant to measure. Add
+# SMS_LOAD_ARGS= to re-enable it deliberately.
+sms-load-500k:
+	@php cron/perf-sms-load.php --recipients=500000 --worker-claim=2000 --import-chunk=10000 --no-status --label=500k $(SMS_LOAD_ARGS)
+
+sms-load-1m:
+	@php cron/perf-sms-load.php --recipients=1000000 --worker-claim=2000 --import-chunk=10000 --no-status --label=1m $(SMS_LOAD_ARGS)
+
 ## ---------- Report exports (Phase 8) ----------
 
 # Run one export pass in the foreground: claims a queued export, writes it, runs the
@@ -271,6 +306,19 @@ test:
 # Skips every test (not a failure) if ELLSMS_TEST_DB_HOST isn't set, so
 # 'make check'/'make test' never depend on it and CI without a test DB
 # available still passes cleanly.
+#
+# ALSO EXPORT BACKEND_DB_* WITH THE SAME VALUES. The HTTP integration tests
+# (SmsPricingSecurityTest, ApiRateLimitHttpTest, ImpersonationHttpTest,
+# MaintenanceModeHttpTest, PublicApiHttpTest, ...) spawn their own `php -S` and hand it
+# getenv('BACKEND_DB_*') -- NOT the ELLSMS_TEST_DB_* names. With only ELLSMS_TEST_DB_* set,
+# that child server falls back to .env's change_me placeholders, health.php answers
+# {"database":"error"} with HTTP 503, and every one of those tests fails. The symptom looks
+# exactly like the machine being unable to host a server, so it is easy to misdiagnose as
+# environmental:
+#
+#   export BACKEND_DB_HOST=$ELLSMS_TEST_DB_HOST  BACKEND_DB_PORT=$ELLSMS_TEST_DB_PORT \
+#          BACKEND_DB_NAME=$ELLSMS_TEST_DB_NAME  BACKEND_DB_USER=$ELLSMS_TEST_DB_USER \
+#          BACKEND_DB_PASS=$ELLSMS_TEST_DB_PASS
 #
 # Phase 11's RestoreDisasterRecoveryTest (the STEP 42 hard-acceptance-criterion real restore
 # test) additionally needs the test DB user to CREATE/DROP databases matching its own name's
