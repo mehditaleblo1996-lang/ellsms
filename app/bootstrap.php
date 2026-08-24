@@ -85,6 +85,11 @@ require_once __DIR__ . '/AllowedIps.php';
 // composes the file reader, pricing, wallet, quota, and bulk job primitives above.
 require_once __DIR__ . '/import_reader.php';
 require_once __DIR__ . '/import.php';
+// The two-pass analyze/insert worker itself (Phase 10). Previously reachable ONLY from
+// cron/import-worker.php's own require — every other caller (an admin re-running analysis, an
+// integration test, a future feature) had no path to it at all. Loaded here so it is available
+// everywhere app/backend.php is, exactly like every other worker module in this chain.
+require_once __DIR__ . '/import_worker.php';
 
 /* ---------- Environment ---------- */
 function env(string $key, ?string $default = null): ?string {

@@ -476,6 +476,54 @@ documents. See `docs/customer-profile.md`.
   is not transaction-isolated, so a second full-suite run against the same test container fails that
   test until the ledger is cleared. A test-isolation quirk, not a product defect.
 
+### Scale continuation — provider batching, ManyToMany, large import (2026-08-24)
+
+Local session labels "Phase 9A/9B/9C/10/11" — see
+`docs/scale-continuation-final-report.md` for the closure narrative and why that numbering is
+session-local, not this register's or the repository's own historical phase numbering.
+
+- **At-least-once delivery is narrowed, not closed, and is provider-dependent.** If a provider
+  accepts a batch and the worker dies before the per-row settlement UPDATE commits, the lease
+  expires and those rows are reclaimed and re-sent — up to `SMS_PROVIDER_BATCH_SIZE` messages may go
+  out twice. A generic, connector-driven per-message idempotency token (`idempotency_keys_array`,
+  deterministic per `bulk_item.id`, stable across a crash+reclaim) is available and wired wherever a
+  connector's compiled parameters reference it. Whether it actually suppresses a duplicate SMS
+  depends on the provider accepting a per-message idempotency field, honoring it, and remembering it
+  for long enough — none of which this project can verify or guarantee across every configured
+  gateway. Money is protected unconditionally either way: `wallet_commit_reservation()`'s per-item
+  key makes a replayed settlement a no-op regardless of provider behavior. Full account in
+  `docs/many-to-many-batching.md#at-least-once-delivery`. Operators especially sensitive to
+  duplicate delivery should confirm idempotency support with each provider and can lower
+  `SMS_PROVIDER_BATCH_SIZE` to shrink blast radius independent of that.
+- **Per-item settlement is the throughput ceiling, unaddressed by design.** Provider-batching HTTP
+  cost is negligible (~5 ms for a 200-recipient request); the remaining ~18 ms/recipient at
+  measured scale (~30 ms/recipient extrapolated at 100k) is per-item database settlement —
+  `bulk_finalize_item()`'s own row UPDATE plus a second UPDATE against one shared
+  `ellsms_bulk_jobs.sent_rows` counter that every item in a batch serializes on. Two candidate fixes
+  are identified and deliberately **not** applied (aggregate the counter update per batch instead of
+  per item; batch the item UPDATEs themselves) — each needs its own phase and its own tests, and
+  this session's instructions were explicit that per-item settlement optimization was out of scope
+  here. Full measurement in `docs/sms-load-testing.md`. **500k/1m recipient runs were NOT executed**
+  on the test server (by design — correctness was prioritized over speed, and large benchmark runs
+  were explicitly deferred to the real production server); the 500k/1m durations quoted in that
+  document are extrapolated estimates, not measured results.
+- **The large-import pipeline (`app/import.php`, `app/import_worker.php`) had zero integration test
+  coverage before this session and could not complete a single import end to end on a fresh
+  database.** Five real, pre-existing bugs were found and fixed — see
+  `docs/large-import-architecture.md` for the full account of each (a chained
+  `execute()->fetchColumn()` on a non-fluent PDO return; a closure silently dropping the Smart-send
+  template; a `NOT NULL` column bound `NULL` on every web-UI import; two missing
+  `ellsms_import_jobs` columns, `claimed_by`/`claimed_at` and `originator`, the latter meaning the
+  sender a user actually selected was silently discarded and pricing/sending fell back to the
+  tenant's default route). All five are now closed, covered by
+  `tests/Integration/LargeImportPipelineTest.php`, and verified against a freshly migrated database.
+  None were introduced by this session's own changes — writing the first tests this pipeline has
+  ever had is what surfaced them.
+- **`ellsms_import_dedupe` rows are never cleaned up for a failed import job.** Not a correctness
+  issue — a failed job can never be re-analyzed, so there is no risk of reprocessing stale dedupe
+  rows — but a storage-hygiene gap worth a retention sweep if failed imports accumulate in practice.
+  See `docs/large-import-architecture.md#known-follow-up-not-a-phase-10-blocker`.
+
 ## How to use this register
 
 Each phase above is sized to become one `/make-plan` → `/do` cycle when the team is ready for it —

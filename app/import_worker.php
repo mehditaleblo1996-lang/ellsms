@@ -543,19 +543,26 @@ function import_insert_bulk_items_batch(PDO $db, array $rows): void {
  */
 function import_job_check_insert_completion(int $jobId): void {
     $db = db();
-    $pending = (int)$db->prepare(
+
+    // PDOStatement::execute() returns bool, not $this — it cannot be chained into ->fetchColumn().
+    // Every read below runs prepare() and execute() as separate statements for that reason.
+    $pendingSt = $db->prepare(
         "SELECT COUNT(*) FROM ellsms_import_chunks
          WHERE import_job_id = ? AND phase = 'insert' AND status IN ('pending','processing')"
-    )->execute([$jobId])->fetchColumn();
+    );
+    $pendingSt->execute([$jobId]);
+    $pending = (int)$pendingSt->fetchColumn();
 
     if ($pending > 0) {
         return;
     }
 
-    $failed = (int)$db->prepare(
+    $failedSt = $db->prepare(
         "SELECT COUNT(*) FROM ellsms_import_chunks
          WHERE import_job_id = ? AND phase = 'insert' AND status = 'failed'"
-    )->execute([$jobId])->fetchColumn();
+    );
+    $failedSt->execute([$jobId]);
+    $failed = (int)$failedSt->fetchColumn();
 
     if ($failed > 0) {
         $db->prepare("UPDATE ellsms_import_jobs SET status='failed', error_message='بخشی از درج ردیف‌ها ناموفق بود.', completed_at=NOW() WHERE id = ?")
@@ -565,10 +572,12 @@ function import_job_check_insert_completion(int $jobId): void {
         return;
     }
 
-    $queuedRows = (int)$db->prepare(
+    $queuedRowsSt = $db->prepare(
         "SELECT COALESCE(SUM(rows_valid),0) FROM ellsms_import_chunks
          WHERE import_job_id = ? AND phase = 'insert' AND status = 'completed'"
-    )->execute([$jobId])->fetchColumn();
+    );
+    $queuedRowsSt->execute([$jobId]);
+    $queuedRows = (int)$queuedRowsSt->fetchColumn();
     $db->prepare(
         "UPDATE ellsms_import_jobs
          SET status='ready_for_confirmation', queued_rows = ?, analysis_completed_at = NOW()

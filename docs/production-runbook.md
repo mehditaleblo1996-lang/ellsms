@@ -360,3 +360,128 @@ The only tunables are `COST_PREVIEW_TTL_SECONDS`, `COST_PREVIEW_RECONFIRM_PERCEN
 **Rollback:** the preview surfaces are additive — both send pages keep their original
 "send without preview" action, and removing the feature would not change how any send is priced or
 charged, because the estimator reuses the send path's own arithmetic rather than defining its own.
+
+## 11. Worker roles
+
+`docker-compose.yml` runs six distinct long-lived processes plus one dev-only fake provider. Each
+is its own container specifically so a slow or wedged workload of one kind never competes with, or
+blocks, another:
+
+| Container | Command | Handles |
+|---|---|---|
+| `worker` | `cron/worker.php` | Direct/scheduled/auto-reply/bulk-item sends, gateway dispatch |
+| `webhook-worker` | (separate from `worker`) | Outbound webhook delivery + retry/dead-letter (Phase 12) — isolated so a slow customer endpoint never delays SMS sending |
+| `import-worker` | `cron/import-worker.php` | Large-file import pass 1 (analyze/dedupe/price) and pass 2 (insert) — see §12. Its own container so parsing/pricing a large upload never competes with the send worker or web requests; multiple instances are safe but not required |
+| `status-worker` | (separate from `worker`) | Delivery-status polling against gateways that have a status connector configured |
+| `export-worker` | (separate from `worker`) | Off-request-path CSV report export generation — a multi-million-row export must never delay a scheduled send or a delivery-status poll, and a wedged export must not take the send pipeline down with it |
+| `mock-sms-gateway` | `mock/Dockerfile` | **Development/load-testing only — see §13.** Not part of the production send path |
+
+All workers (except the mock gateway) rely on the same atomic per-row claim/lease pattern
+(`docs/job-queue-architecture.md`), so running more than one instance of any of them is always safe.
+Scaling which one, and by how much, depends on which queue is actually backing up — check
+`make jobs-status` before adding replicas.
+
+Maintenance mode and drain/restart (§2, §3) apply identically to every worker role: `docker compose
+stop <service>` sends SIGTERM, each worker finishes its current pass rather than stopping
+mid-item, and `docker compose up -d <service>` resumes claiming where a prior instance left off —
+nothing worker-specific to remember beyond the container name.
+
+## 12. Large import pipeline
+
+Full architecture in `docs/large-import-architecture.md`. Operator-relevant summary:
+
+- **Two passes, both resumable.** Pass 1 (analyze: stream, dedupe, blacklist-filter, price) and pass
+  2 (insert: write `ellsms_bulk_items`) each work chunk-by-chunk with the same atomic claim/lease
+  pattern as every other queue in this project. A crashed `import-worker` loses at most one
+  in-flight chunk, which is reclaimed automatically once its lease expires — no manual intervention.
+- **Nothing sends until the user confirms.** A large import reaches `ready_for_confirmation` with a
+  priced, staged bulk job (`status='staged'`) and is only promoted to `'pending'` — the status the
+  send worker actually claims from — by an explicit confirmation action. An abandoned, unconfirmed
+  import never sends anything and its wallet/quota reservation can be released by cancelling it.
+- **Tunables** (`docker-compose.yml`, all optional with safe defaults): `IMPORT_CHUNK_SIZE` (default
+  5000 rows/chunk — smaller trades round trips for lower peak memory and finer-grained resumability),
+  `DB_INSERT_BATCH` (default 1000 — multi-row insert batch size for pass 2), `IMPORT_MAX_ROWS`
+  (default 2,000,000 — hard cap per file), `IMPORT_MAX_UPLOAD_BYTES` (default 128 MiB).
+- **Memory stays flat regardless of file size** — no stage holds a whole file in memory; verified
+  directly by `tests/Integration/LargeImportPipelineTest.php::test10000RowImportStaysBoundedInMemory`.
+- **A failed insert chunk fails the whole job and releases both the wallet and quota reservation** —
+  nothing is left half-charged or half-queued.
+- Sizing `IMPORT_CHUNK_SIZE`/`DB_INSERT_BATCH` larger trades memory headroom for fewer DB round
+  trips; this is a throughput tuning question for the real production server (§15), not something to
+  aggressively tune against this test server's characteristics.
+
+## 13. Mock SMS gateway — safety (dev/load-testing only)
+
+`mock-sms-gateway` (`mock/gateway.php`, `docker-compose.yml`) exists purely so this project's own
+load-testing harness (`cron/perf-sms-load.php`, `docs/sms-load-testing.md`) and local development
+have a fake provider that never performs real external egress. It answers only `/send` and
+`/status`.
+
+- **Never wire a production route/gateway connector at this container.** Nothing in the schema
+  prevents an operator from doing so — the safety is procedural, not enforced by code — so this is a
+  deploy-checklist item, not a technical guarantee: confirm no `ellsms_sms_gateways` row in the
+  production database points at `mock-sms-gateway` (or any `mock/gateway.php` instance) before
+  `SMS_GATEWAY_TRANSPORT=1` goes live.
+- `ELLSMS_MOCK_GATEWAY_ENABLED` defaults to `0` in every compose service. Leave it off in
+  production; it exists for local/dev/CI use only.
+- The load-testing harness itself refuses to run against anything but a `test`-named database (or an
+  explicit `ELLSMS_ALLOW_LOAD_TEST=1` override) and only ever targets `--gateway=mock` — there is no
+  code path from the harness to a real provider.
+- The mock's request log (`MOCK_SMS_REQUEST_LOG`) is unset in normal operation and records request
+  counts/byte sizes only, never recipients or message content — inert unless a harness explicitly
+  asks for it.
+
+## 14. P2P / ManyToMany provider batching
+
+`docs/bulk-provider-batching.md` (Phase 9A) and `docs/many-to-many-batching.md` (Phase 9C) have the
+full design. Operator-relevant summary:
+
+- **Provider batching is automatic and connector-driven** — no per-job configuration. A gateway
+  connector that references `recipients_array` batches identical-content bulk sends;  one that
+  additionally references `messages_array` also batches P2P/Smart-send rows where every recipient
+  has different text, up to `SMS_PROVIDER_BATCH_SIZE` (default 200, `.env.example`) recipients per
+  provider HTTP request. A connector that references neither keeps sending one request per
+  recipient, unchanged from before Phase 9A — nothing about this requires touching an existing
+  connector that does not opt in.
+- **At-least-once delivery, not exactly-once** — see `docs/technical-debt.md`'s "Scale continuation"
+  entry and `docs/many-to-many-batching.md#at-least-once-delivery` for the full account. A worker
+  crash between a provider accepting a batch and the per-row settlement commit can re-send up to
+  `SMS_PROVIDER_BATCH_SIZE` messages. Money is never double-charged regardless (settlement is keyed
+  per item). Deployments especially sensitive to duplicate delivery can lower
+  `SMS_PROVIDER_BATCH_SIZE` to shrink the exposure, and/or confirm with the provider whether their
+  batch endpoint accepts and honors the per-message idempotency token this project already sends
+  (`idempotency_keys_array`) when a connector is configured to forward it.
+- **Per-item settlement, not provider batching, is the current throughput ceiling** — see §15.
+
+## 15. Production benchmarking and tuning
+
+Full measured results, methodology, and known limits: `docs/sms-load-testing.md`. Summary for
+production planning:
+
+- On the test server used during development, provider batching itself is fast (~5 ms for a
+  200-recipient HTTP request); the measured ceiling is **per-item database settlement**, roughly
+  18 ms/recipient at moderate scale and roughly 30 ms/recipient extrapolated at 100k — caused by
+  every sent item issuing two UPDATEs, one of them against a single shared `ellsms_bulk_jobs` row
+  that every item in a batch serializes on. Two candidate fixes are identified in
+  `docs/sms-load-testing.md` and `docs/technical-debt.md` but deliberately not applied yet.
+- **500,000 and 1,000,000-recipient runs were NOT executed** on the test server used during this
+  work, by design — correctness was prioritized over speed on shared test infrastructure, and the
+  500k/1m figures quoted in `docs/sms-load-testing.md` are extrapolations from the measured 100k
+  run, not measured results. Do not quote them as benchmarks.
+- **Procedure for a real production benchmark**, once a suitable non-production or scheduled-window
+  environment is available:
+  1. Run `make sms-load-1k` / `-10k` / `-100k` first against that environment's own database and
+     hardware — do not assume the test-server numbers above transfer.
+  2. Only proceed to `make sms-load-500k` / `make sms-load-1m` (status-polling phase off by default
+     at that scale) once the smaller runs' throughput and memory-flatness look as expected.
+  3. Before trusting any of these numbers as representative, address the per-item settlement
+     bottleneck above if production throughput requirements demand it — the current numbers describe
+     THIS bottleneck, not a ceiling inherent to the architecture.
+  4. `cron/load-test.php` answers the multi-worker concurrency question separately from
+     `cron/perf-sms-load.php`'s single-process per-item cost question; use both if scaling worker
+     replica count is being evaluated (§11).
+  5. Before enabling `SMS_GATEWAY_TRANSPORT=1` for the first time in production, send one small,
+     controlled real message through the configured provider and confirm delivery end-to-end
+     (`make sms-gateway-simulate` for the byte-parity check, then one real send to a number you
+     control) — never enable a new production gateway on a full-volume campaign as the first live
+     traffic it sees.

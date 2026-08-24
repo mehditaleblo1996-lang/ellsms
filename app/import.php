@@ -55,6 +55,13 @@ function import_create_job(
 ): array {
     $organizationId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
     $userId = (int)($user['id'] ?? 0);
+    // ellsms_import_jobs.message_type is NOT NULL with a DEFAULT — but a default only applies when a
+    // column is OMITTED from an INSERT, never when NULL is bound explicitly, and every caller of this
+    // function (new-send.php, p2p-send.php, smart-send.php) either omits $messageType or passes null.
+    // Every large import through the web UI failed here until this normalization was added — reusing
+    // the same default the pricing engine itself falls back to, so an import job's message_type never
+    // disagrees with how sms_pricing_price_messages() will price it moments later.
+    $messageType = sms_pricing_normalize_message_type($messageType);
 
     $countResult = import_count_rows($storageKey);
     if (!$countResult['ok']) {
@@ -78,16 +85,17 @@ function import_create_job(
     try {
         $jobId = db_transaction(function (PDO $db) use (
             $userId, $organizationId, $sourceType, $title, $originator,
-            $storageKey, $totalRows, $chunkSize, $throttleCount, $throttleMinutes, $messageType
+            $storageKey, $totalRows, $chunkSize, $throttleCount, $throttleMinutes, $messageType,
+            $template, $variableHeaders
         ): int {
             $db->prepare(
                 "INSERT INTO ellsms_import_jobs
-                   (organization_id, user_id, source_type, original_filename, storage_key, status,
+                   (organization_id, user_id, source_type, originator, original_filename, storage_key, status,
                     total_rows, chunk_size, throttle_count, throttle_minutes, message_type,
                     template, variable_headers)
-                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
-                $organizationId, $userId, $sourceType, basename($storageKey), $storageKey,
+                $organizationId, $userId, $sourceType, $originator, basename($storageKey), $storageKey,
                 'uploaded', $totalRows, $chunkSize, $throttleCount, $throttleMinutes, $messageType,
                 $template, $variableHeaders !== null ? json_encode($variableHeaders, JSON_UNESCAPED_UNICODE) : null,
             ]);
