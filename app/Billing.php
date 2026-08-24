@@ -469,6 +469,72 @@ function subscription_change_plan(
 }
 
 /**
+ * PURE RENEWAL (financial-commerce continuation, FIN-7) — extends the CURRENT period at the SAME
+ * plan; never a plan change. subscription_change_plan()'s 'active'->'active' branch already covers
+ * "renew at a possibly-different plan" (its own comment: "a renewal/plan change within the same
+ * effective era") — this function exists specifically for the narrower, more common case where a
+ * customer pays to extend the plan they already have, so callers do not have to route a same-plan
+ * renewal through the plan-change machinery just to reach the period-extension side effect.
+ *
+ * RULE (documented per FIN-7's explicit instruction to determine and state it): if
+ * current_period_end is still in the future, the new period is appended onto it — a renewal paid a
+ * few days early does not cost the customer those days. If the period has already lapsed (a late
+ * renewal, or a subscription with no period end), the new period starts from now instead. This
+ * mirrors billing_add_months()'s own calendar-correct arithmetic and is the same rule
+ * subscription_change_plan()'s immediate-mode branch effectively applies when the plan happens not to
+ * change.
+ *
+ * Idempotent exactly like every other transition here: $idempotencyKey (derived by the caller from
+ * the payment id, e.g. 'payment_activation:{id}' — the SAME key payment_claim_and_activate_subscription()
+ * already uses for its own event) makes a duplicate/concurrent callback a detectable no-op via the
+ * UNIQUE constraint on ellsms_subscription_events.idempotency_key, never a second period extension.
+ */
+function subscription_renew(
+    int $organizationId, ?int $actorUserId = null, ?string $idempotencyKey = null, string $source = 'payment'
+): array {
+    return db_transaction(function (PDO $db) use ($organizationId, $actorUserId, $idempotencyKey, $source): array {
+        $st = $db->prepare('SELECT s.*, p.billing_period FROM ellsms_subscriptions s JOIN ellsms_plans p ON p.id = s.plan_id WHERE s.effective_organization_id = ? FOR UPDATE');
+        $st->execute([$organizationId]);
+        $sub = $st->fetch();
+        if (!$sub) {
+            return ['ok' => false, 'reason' => 'no_subscription'];
+        }
+
+        $periodMonths = $sub['billing_period'] === 'yearly' ? 12 : ($sub['billing_period'] === 'monthly' ? 1 : 0);
+        if ($periodMonths <= 0) {
+            // A free/legacy plan (billing_period='none') is never charged and has no period to
+            // extend — renewing it would be a no-op with a misleading "renewed" event, so refuse
+            // explicitly rather than silently doing nothing.
+            return ['ok' => false, 'reason' => 'plan_not_renewable'];
+        }
+
+        if (!subscription_record_event($db, (int)$sub['id'], $organizationId, 'renewed', $sub['status'], 'active', (int)$sub['plan_id'], (int)$sub['plan_id'], $actorUserId, $idempotencyKey, "source={$source}")) {
+            return ['ok' => true, 'reason' => 'already_applied', 'changed' => false];
+        }
+
+        // THE RULE: extend from current_period_end if it is still in the future; otherwise from now.
+        $now = time();
+        $currentEnd = $sub['current_period_end'] !== null ? strtotime($sub['current_period_end'] . ' UTC') : null;
+        $extendFrom = ($currentEnd !== false && $currentEnd !== null && $currentEnd > $now) ? $currentEnd : $now;
+        $newPeriodEnd = gmdate('Y-m-d H:i:s', billing_add_months($extendFrom, $periodMonths));
+
+        $db->prepare(
+            "UPDATE ellsms_subscriptions
+             SET status = 'active', current_period_end = ?, suspended_at = NULL, grace_ends_at = NULL,
+                 effective_organization_id = ?
+             WHERE id = ?"
+        )->execute([$newPeriodEnd, billing_effective_organization_id($organizationId, 'active'), $sub['id']]);
+
+        Logger::info('billing.subscription.renewed', ['organization_id' => $organizationId, 'subscription_id' => $sub['id'], 'new_period_end' => $newPeriodEnd, 'source' => $source]);
+        Metrics::increment('billing.subscription.renewed');
+        if ($actorUserId !== null) {
+            audit($actorUserId, 'billing.subscription.renewed', "org={$organizationId} until={$newPeriodEnd}");
+        }
+        return ['ok' => true, 'reason' => 'renewed', 'changed' => true, 'subscription_id' => (int)$sub['id'], 'current_period_end' => $newPeriodEnd];
+    });
+}
+
+/**
  * CANCELLATION (STEP 29). Default is cancel-at-period-end — the customer keeps what they paid for
  * until the period actually ends, and the lifecycle scheduler performs the final transition. An
  * immediate cancellation is supported but must be explicitly requested (platform-admin path).
@@ -537,17 +603,25 @@ function subscription_start_trial(int $organizationId, int $planId, ?int $actorU
  * from request input anywhere in this codebase (STEP 31/51) — this function is the only thing that
  * writes ellsms_billing_records.amount, and it reads it exclusively from the plan row.
  */
-function billing_record_create(int $organizationId, array $plan, ?int $subscriptionId = null): array {
+/**
+ * $purchaseType (FIN-7): 'new' (default — unchanged from before this parameter existed),
+ * 'renewal' (same-plan period extension; routes payment_claim_and_activate_subscription() to
+ * subscription_renew() instead of its plan-overwrite branch), or 'upgrade' (an explicit plan change —
+ * currently handled identically to 'new' by the activation function, since STEP 27's immediate-upgrade
+ * rule already IS "overwrite plan_id, fresh full period"; kept as its own value for the invoice/UI
+ * layer to label correctly and for a future divergence to hook into without another migration).
+ */
+function billing_record_create(int $organizationId, array $plan, ?int $subscriptionId = null, string $purchaseType = 'new'): array {
     $periodMonths = $plan['billing_period'] === 'yearly' ? 12 : ($plan['billing_period'] === 'monthly' ? 1 : 0);
     $periodStart = gmdate('Y-m-d H:i:s');
     $periodEnd   = $periodMonths > 0 ? gmdate('Y-m-d H:i:s', billing_add_months(time(), $periodMonths)) : null;
 
     db()->prepare(
         'INSERT INTO ellsms_billing_records
-            (organization_id, subscription_id, plan_id, plan_code, billing_period, amount, currency, status, period_start, period_end)
-         VALUES (?,?,?,?,?,?,?,\'pending\',?,?)'
+            (organization_id, subscription_id, plan_id, purchase_type, plan_code, billing_period, amount, currency, status, period_start, period_end)
+         VALUES (?,?,?,?,?,?,?,?,\'pending\',?,?)'
     )->execute([
-        $organizationId, $subscriptionId, (int)$plan['id'], $plan['code'], $plan['billing_period'],
+        $organizationId, $subscriptionId, (int)$plan['id'], $purchaseType, $plan['code'], $plan['billing_period'],
         (int)$plan['price_amount'], $plan['currency'], $periodStart, $periodEnd,
     ]);
 

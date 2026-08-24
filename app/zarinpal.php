@@ -219,6 +219,24 @@ function payment_claim_and_activate_subscription(array $payment, string $refId):
         $planId = (int)$record['plan_id'];
         $idempotencyKey = 'payment_activation:' . $payment['id'];
 
+        // FIN-7: a renewal billing record routes to subscription_renew() — SAME plan, period
+        // extended from current_period_end (if still future) rather than restarted from now. Every
+        // OTHER purchase_type ('new'/'upgrade') keeps the exact pre-FIN-7 activate/overwrite
+        // behavior below, unchanged.
+        if (($record['purchase_type'] ?? 'new') === 'renewal') {
+            $renewResult = subscription_renew($organizationId, null, $idempotencyKey, 'payment');
+            if (!$renewResult['ok']) {
+                return ['claimed' => true, 'activated' => false, 'reason' => $renewResult['reason']];
+            }
+            if (($renewResult['reason'] ?? '') === 'already_applied') {
+                return ['claimed' => true, 'activated' => false, 'reason' => 'already_activated'];
+            }
+            $db->prepare("UPDATE ellsms_billing_records SET status='paid', subscription_id=?, paid_at=UTC_TIMESTAMP() WHERE id=?")
+               ->execute([$renewResult['subscription_id'], $billingRecordId]);
+            Logger::info('billing.subscription.renewed_by_payment', ['organization_id' => $organizationId, 'subscription_id' => $renewResult['subscription_id'], 'payment_id' => $payment['id']]);
+            return ['claimed' => true, 'activated' => true, 'reason' => 'renewed', 'subscription_id' => $renewResult['subscription_id'], 'organization_id' => $organizationId];
+        }
+
         $existing = $db->prepare('SELECT * FROM ellsms_subscriptions WHERE effective_organization_id = ? FOR UPDATE');
         $existing->execute([$organizationId]);
         $subscription = $existing->fetch();

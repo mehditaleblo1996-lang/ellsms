@@ -83,6 +83,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db()->prepare("UPDATE ellsms_billing_records SET status='failed' WHERE id=?")->execute([$record['billing_record_id']]);
             flash('error', 'شروع پرداخت ممکن نشد: ' . e($create['message']));
         }
+    } elseif ($do === 'renew') {
+        // FIN-7 — PURE renewal: same plan, no unintended change. The plan is resolved from the
+        // organization's OWN current subscription row, never from request input, so a renewal can
+        // never be used to sneak a plan change past change_plan's own public-plan-only guard.
+        $current = subscription_for_organization($orgId);
+        if (!$current) {
+            flash('error', 'اشتراکی برای تمدید یافت نشد.');
+        } elseif ((int)$current['price_amount'] === 0) {
+            flash('error', 'پلن رایگان نیازی به تمدید پرداختی ندارد.');
+        } else {
+            $plan = billing_plan_by_id((int)$current['plan_id']);
+            $record = billing_record_create($orgId, $plan, (int)$current['id'], 'renewal');
+            $gateway = payment_gateway_name();
+            db()->prepare("INSERT INTO ellsms_payments (user_id, organization_id, credits, purpose, billing_record_id, amount_rial, gateway) VALUES (?,?,0,'subscription',?,?,?)")
+               ->execute([$me['id'], $orgId, $record['billing_record_id'], $record['amount'], $gateway]);
+            $paymentId = (int)db()->lastInsertId();
+            db()->prepare('UPDATE ellsms_billing_records SET payment_id = ? WHERE id = ?')->execute([$paymentId, $record['billing_record_id']]);
+
+            $create = payment_gateway_create($gateway, $record['amount'], $paymentId, "تمدید اشتراک {$plan['name']} — ELLSMS", (string)($me['mobile'] ?? ''));
+            if ($create['ok']) {
+                db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$create['authority'], $paymentId]);
+                billing_invoice_create($paymentId, $orgId, (int)$me['id'], 'subscription', [[
+                    'item_type' => 'subscription_renewal', 'reference_code' => $plan['code'],
+                    'description' => "تمدید اشتراک {$plan['name']} ({$record['period_months']} ماه)", 'quantity' => 1, 'unit_price' => $record['amount'],
+                ]]);
+                audit((int)$me['id'], 'billing.subscription.renewal_request', "org={$orgId} plan={$plan['code']} payment=#{$paymentId} gateway={$gateway}");
+                redirect(payment_gateway_redirect_url($gateway, $create['authority']));
+            }
+            db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=?")->execute([$paymentId]);
+            db()->prepare("UPDATE ellsms_billing_records SET status='failed' WHERE id=?")->execute([$record['billing_record_id']]);
+            flash('error', 'شروع پرداخت تمدید ممکن نشد: ' . e($create['message']));
+        }
     } elseif ($do === 'cancel') {
         $result = subscription_cancel($orgId, (int)$me['id'], false);
         flash($result['ok'] ? 'info' : 'error', $result['ok']
@@ -93,6 +125,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $report = usage_status_for($orgId);
+// subscription_for_organization() (not usage_status_for()'s own return shape) carries price_amount —
+// used only to decide whether to show the "renew" button (a free/legacy plan has nothing to renew).
+$currentSubscriptionForRenewal = subscription_for_organization($orgId);
 $plans = billing_public_plans();
 $records = billing_records_for_organization($orgId, 10);
 $statusFa = [
@@ -181,8 +216,15 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
     <?php endforeach; ?>
   </table>
   </div>
+  <?php if ($currentSubscriptionForRenewal !== null && (int)$currentSubscriptionForRenewal['price_amount'] > 0): ?>
+  <form method="post" style="margin-top:14px; display:inline-block; margin-inline-end:8px" onsubmit="return confirm('اشتراک با همان پلن فعلی تمدید شود؟')">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="renew">
+    <button class="btn btn-sm btn-primary">تمدید اشتراک با پلن فعلی</button>
+  </form>
+  <?php endif; ?>
   <?php if ($report['subscription_status'] !== null && !$report['cancel_at_period_end']): ?>
-  <form method="post" style="margin-top:14px" onsubmit="return confirm('اشتراک در پایان دوره لغو شود؟ هیچ داده‌ای حذف نمی‌شود.')">
+  <form method="post" style="margin-top:14px; display:inline-block" onsubmit="return confirm('اشتراک در پایان دوره لغو شود؟ هیچ داده‌ای حذف نمی‌شود.')">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="cancel">
     <button class="btn btn-sm btn-danger">لغو اشتراک در پایان دوره</button>
