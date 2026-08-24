@@ -180,8 +180,9 @@ function report_delivery_lookup_by_destination(array $outboundRows, ?int $organi
 function report_canonical_status_totals(string $outboundWhereSql, array $params, ?int $organizationId, ?int $userId): array {
     $totals = ['total' => 0, 'ok' => 0, 'delivered' => 0, 'failed' => 0, 'pending' => 0];
 
-    $st = db()->prepare("SELECT id, destination, status FROM outbound_message m WHERE {$outboundWhereSql} ORDER BY m.id DESC");
-    $st->execute($params);
+    // outbound_message is backend-owned (Phase 8, Invariant C) — read through the ONE designated
+    // adapter (app/Backend/messages.php) rather than querying it directly here.
+    $st = backend_outbound_status_scan_cursor($outboundWhereSql, $params);
 
     $chunk = [];
     $tally = function (array $rows) use (&$totals, $organizationId, $userId): void {

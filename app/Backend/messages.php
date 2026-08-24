@@ -203,6 +203,19 @@ function backend_outbound_scan(string $whereSql, array $params, int $rowCap): ar
     return $st->fetchAll();
 }
 
+/**
+ * Returns a live, unfetched PDOStatement for report_canonical_status_totals()
+ * (app/Reports/MessageDetail.php) to stream via repeated fetch() calls, chunking an arbitrarily
+ * large date range's id/destination/status columns without loading the whole result set into
+ * memory at once. Deliberately returns the statement itself, not fetchAll() — the one function in
+ * this file whose caller needs to control its own read cadence rather than receive a bounded array.
+ */
+function backend_outbound_status_scan_cursor(string $whereSql, array $params): PDOStatement {
+    $st = db()->prepare("SELECT id, destination, status FROM outbound_message m WHERE {$whereSql} ORDER BY m.id DESC");
+    $st->execute($params);
+    return $st;
+}
+
 /* ---------- Inbound (backend-owned) ---------- */
 
 function backend_inbound_count(string $whereSql, array $params): int {
