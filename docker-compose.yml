@@ -68,6 +68,11 @@ services:
       SUBSCRIPTION_JOB_BATCH_SIZE: ${SUBSCRIPTION_JOB_BATCH_SIZE:-200}
       USAGE_RESERVATION_TTL_MINUTES: ${USAGE_RESERVATION_TTL_MINUTES:-60}
       BILLING_CURRENCY: ${BILLING_CURRENCY:-IRR}
+      # Financial commerce (docs/financial-commerce.md) — invoices, tax, payment gateway
+      # abstraction. ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED must stay 0 in production.
+      BILLING_TAX_PERCENT: ${BILLING_TAX_PERCENT:-0}
+      PAYMENT_DEFAULT_GATEWAY: ${PAYMENT_DEFAULT_GATEWAY:-zarinpal}
+      ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED: ${ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED:-0}
     volumes:
       - ./:/var/www/html
     networks:
@@ -98,6 +103,11 @@ services:
       SUBSCRIPTION_JOB_BATCH_SIZE: ${SUBSCRIPTION_JOB_BATCH_SIZE:-200}
       USAGE_RESERVATION_TTL_MINUTES: ${USAGE_RESERVATION_TTL_MINUTES:-60}
       BILLING_CURRENCY: ${BILLING_CURRENCY:-IRR}
+      # Financial commerce (docs/financial-commerce.md) — cron/payments-reconcile.php runs from
+      # this container and needs the same gateway/tax config the app container uses.
+      BILLING_TAX_PERCENT: ${BILLING_TAX_PERCENT:-0}
+      PAYMENT_DEFAULT_GATEWAY: ${PAYMENT_DEFAULT_GATEWAY:-zarinpal}
+      ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED: ${ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED:-0}
       BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
       BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
       BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
