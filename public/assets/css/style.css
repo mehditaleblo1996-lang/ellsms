@@ -656,3 +656,10 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
 .lp-guide-item summary::after { content: "+"; font-size: 20px; color: var(--indigo); font-weight: 400; }
 .lp-guide-item[open] summary::after { content: "−"; }
 .lp-guide-body { padding: 0 0 18px; color: var(--muted); font-size: 14.5px; line-height: 1.9; }
+
+/* ---------- Financial commerce (FIN-11) — print-friendly invoice ---------- */
+@media print {
+  .topbar, .sidebar, .flash, .toolbar form, button, .btn { display: none !important; }
+  .print-invoice { border: none !important; box-shadow: none !important; }
+  body { background: #fff !important; }
+}

@@ -15,6 +15,7 @@ $nav = [
     'blacklist'  => ['/blacklist.php',   'لیست سیاه',        '🚫'],
     'tickets'    => ['/tickets.php',     'پشتیبانی',        '🎫'],
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
+    'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
 ];
 // Phase 12 — org-scoped integration nav (API keys/webhooks). Shown only when the current
 // organization membership actually carries the corresponding VIEW permission (owner/admin by
@@ -47,6 +48,7 @@ $adminNav = [
     'sms_gateways'      => ['/sms-gateways.php',       'درگاه‌های پیامک', '🔌'],
     'guide_admin'       => ['/guide-admin.php',        'راهنمای استفاده', '📘'],
     'billing_admin'     => ['/billing-admin.php',       'مدیریت اشتراک‌ها', '📦'],
+    'financial_admin'   => ['/financial-admin.php',     'گزارش مالی',      '🧾'],
     'settings'          => ['/settings.php',            'تنظیمات',        '⚙'],
 ];
 ?><!doctype html>
