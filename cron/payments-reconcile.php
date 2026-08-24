@@ -33,7 +33,7 @@
  * (a real user cancellation, from STEP 14, is a final outcome this script
  * does not attempt to override).
  */
-require_once __DIR__ . '/../app/zarinpal.php';
+require_once __DIR__ . '/../app/Payment/PaymentGateway.php';
 
 $dryRun = in_array('--dry-run', $argv ?? [], true);
 $staleMinutes = 15;
@@ -74,7 +74,14 @@ foreach ($rows as $payment) {
             continue;
         }
 
-        [$ok, $info, $refId] = zarinpal_verify((int)$payment['amount_rial'], $payment['authority']);
+        // FIN-2: dispatch to whichever gateway actually created this payment — a stale fake-gateway
+        // payment (test/dev only, since the fake gateway is off by default in production) must never
+        // be re-verified against ZarinPal, and vice versa.
+        $gateway = (string)($payment['gateway'] ?? 'zarinpal');
+        $verify = payment_gateway_verify($gateway, (int)$payment['amount_rial'], $payment['authority']);
+        $ok = $verify['ok'];
+        $info = $verify['message'];
+        $refId = $verify['ref_id'];
         if (!$ok) {
             Logger::warning('payments.reconcile.still_unverified', ['payment_id' => $paymentId, 'info' => $info]);
             $db->prepare("UPDATE ellsms_payments SET status='verification_failed' WHERE id=? AND status IN ('pending','verification_failed')")

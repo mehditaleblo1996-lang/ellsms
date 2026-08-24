@@ -186,6 +186,15 @@ function payment_claim_and_activate_subscription(array $payment, string $refId):
             return ['claimed' => false, 'activated' => false, 'reason' => 'already_processed'];
         }
 
+        // FIN-4: mark the invoice paid in the SAME transaction as the payment claim — this is what
+        // makes "invoice paid exactly once" hold under a duplicate/concurrent callback, the identical
+        // reasoning as the payment claim itself. A payment created before the invoice layer existed
+        // (or one whose invoice creation failed for some other reason) simply has no invoice row to
+        // mark — billing_invoice_mark_paid() returning false here is not an error.
+        if (isset($payment['invoice_id']) && $payment['invoice_id'] !== null) {
+            billing_invoice_mark_paid($db, (int)$payment['invoice_id']);
+        }
+
         $billingRecordId = isset($payment['billing_record_id']) ? (int)$payment['billing_record_id'] : 0;
         if ($billingRecordId <= 0) {
             return ['claimed' => true, 'activated' => false, 'reason' => 'no_billing_record'];
@@ -259,6 +268,15 @@ function payment_claim_and_credit(array $payment, string $refId): array {
         if ($claim->rowCount() === 0) {
             return ['claimed' => false, 'credit' => null];
         }
+
+        // FIN-4: same reasoning as payment_claim_and_activate_subscription() above — mark the
+        // invoice paid inside the SAME transaction as the payment claim, so a duplicate/concurrent
+        // callback can never mark it paid twice or credit the wallet while leaving the invoice
+        // 'issued'.
+        if (isset($payment['invoice_id']) && $payment['invoice_id'] !== null) {
+            billing_invoice_mark_paid($db, (int)$payment['invoice_id']);
+        }
+
         $credit = wallet_credit(
             (int)$payment['user_id'], (int)$payment['credits'], 'purchase', 'payment', (string)$payment['id'],
             'payment_credit:' . $payment['id']

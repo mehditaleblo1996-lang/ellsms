@@ -9,7 +9,7 @@
  * action re-checks permission and re-derives price server-side, and every limit shown is rendered
  * from the same central service the actual gates use, never a second copy of the rule.
  */
-require_once __DIR__ . '/../app/zarinpal.php';
+require_once __DIR__ . '/../app/Payment/PaymentGateway.php';
 $me = require_login();
 $pageTitle = 'اشتراک و مصرف';
 $active = 'billing';
@@ -61,20 +61,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             // Paid plan: the amount comes from the PLAN ROW, never from request input (STEP 31/51).
             $record = billing_record_create($orgId, $plan);
-            db()->prepare("INSERT INTO ellsms_payments (user_id, organization_id, credits, purpose, billing_record_id, amount_rial) VALUES (?,?,?, 'subscription', ?, ?)")
-               ->execute([$me['id'], $orgId, 0, $record['billing_record_id'], $record['amount']]);
+            $gateway = payment_gateway_name();
+            db()->prepare("INSERT INTO ellsms_payments (user_id, organization_id, credits, purpose, billing_record_id, amount_rial, gateway) VALUES (?,?,?, 'subscription', ?, ?, ?)")
+               ->execute([$me['id'], $orgId, 0, $record['billing_record_id'], $record['amount'], $gateway]);
             $paymentId = (int)db()->lastInsertId();
             db()->prepare('UPDATE ellsms_billing_records SET payment_id = ? WHERE id = ?')->execute([$paymentId, $record['billing_record_id']]);
 
-            [$ok, $info, $authority] = zarinpal_request($record['amount'], $paymentId, "اشتراک {$plan['name']} — ELLSMS", (string)($me['mobile'] ?? ''));
-            if ($ok) {
-                db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$authority, $paymentId]);
-                audit((int)$me['id'], 'billing.subscription.payment_request', "org={$orgId} plan={$plan['code']} payment=#{$paymentId}");
-                redirect(zarinpal_start_pay_url($authority));
+            $create = payment_gateway_create($gateway, $record['amount'], $paymentId, "اشتراک {$plan['name']} — ELLSMS", (string)($me['mobile'] ?? ''));
+            if ($create['ok']) {
+                db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$create['authority'], $paymentId]);
+                // FIN-4: subscription-purchase invoice, item_type distinguishes it from a pure
+                // renewal at the same plan (FIN-7 sets item_type='subscription_renewal' instead).
+                billing_invoice_create($paymentId, $orgId, (int)$me['id'], 'subscription', [[
+                    'item_type' => 'subscription_plan', 'reference_code' => $plan['code'],
+                    'description' => "اشتراک {$plan['name']} ({$record['period_months']} ماه)", 'quantity' => 1, 'unit_price' => $record['amount'],
+                ]]);
+                audit((int)$me['id'], 'billing.subscription.payment_request', "org={$orgId} plan={$plan['code']} payment=#{$paymentId} gateway={$gateway}");
+                redirect(payment_gateway_redirect_url($gateway, $create['authority']));
             }
             db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=?")->execute([$paymentId]);
             db()->prepare("UPDATE ellsms_billing_records SET status='failed' WHERE id=?")->execute([$record['billing_record_id']]);
-            flash('error', 'شروع پرداخت ممکن نشد: ' . e($info));
+            flash('error', 'شروع پرداخت ممکن نشد: ' . e($create['message']));
         }
     } elseif ($do === 'cancel') {
         $result = subscription_cancel($orgId, (int)$me['id'], false);

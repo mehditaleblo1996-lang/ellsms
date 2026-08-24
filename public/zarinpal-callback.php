@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../app/zarinpal.php';
+require_once __DIR__ . '/../app/Payment/PaymentGateway.php';
 $me = require_login();
 $pageTitle = 'نتیجه‌ی پرداخت';
 $active = '';
@@ -30,18 +30,38 @@ if (!$payment || (int)$payment['user_id'] !== (int)$me['id']) {
     Logger::warning('payment.cancelled_or_failed_at_gateway', ['payment_id' => $paymentId, 'user_id' => $me['id']]);
     $result = ['ok' => false, 'message' => 'پرداخت توسط شما لغو شد یا ناموفق بود.'];
 } else {
-    [$ok, $info, $refId] = zarinpal_verify((int)$payment['amount_rial'], $payment['authority']);
+    // FIN-2: dispatch to whichever gateway actually created this payment (zarinpal by default;
+    // fake only when explicitly enabled and used at creation time — see app/Payment/PaymentGateway.php).
+    $gateway = (string)($payment['gateway'] ?? 'zarinpal');
+    $verify = payment_gateway_verify($gateway, (int)$payment['amount_rial'], $payment['authority']);
+    $ok = $verify['ok'];
+    $info = $verify['message'];
+    $refId = $verify['ref_id'];
     if (!$ok) {
         // NOT the same as 'failed' — this is the verify() call itself not
         // succeeding (network error, ZarinPal API error, or a rejected
         // code), which may be transient. Kept retryable: `make
         // payments-reconcile` (cron/payments-reconcile.php) revisits rows
-        // in this state and calls zarinpal_verify() again, rather than
-        // this being treated as a permanent dead end like a real user
+        // in this state and calls the same gateway's verify again, rather
+        // than this being treated as a permanent dead end like a real user
         // cancellation is.
         db()->prepare("UPDATE ellsms_payments SET status='verification_failed' WHERE id=? AND status IN ('pending','verification_failed')")->execute([$paymentId]);
         Logger::error('payment.verify_failed', ['payment_id' => $paymentId, 'user_id' => $me['id'], 'info' => $info]);
         $result = ['ok' => false, 'message' => 'تأیید پرداخت ناموفق بود، اما پرداخت شما گم نشده — تأیید به‌صورت خودکار دوباره بررسی می‌شود: ' . $info];
+    } elseif ($verify['verified_amount_rial'] !== null && (int)$verify['verified_amount_rial'] !== (int)$payment['amount_rial']) {
+        // FIN-39 — AMOUNT MISMATCH: the provider confirms a DIFFERENT amount than what this payment
+        // was created for. FAIL CLOSED — no claim, no fulfillment. This is not the same failure mode
+        // as verify() itself failing (the provider DID confirm something, just not the right thing),
+        // so it gets its own security event rather than being folded into the generic verify-failed
+        // path, and the payment is marked 'failed' (a final outcome) rather than 'verification_failed'
+        // (a retryable one) — retrying a mismatched amount would just mismatch again.
+        db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=? AND status IN ('pending','verification_failed')")->execute([$paymentId]);
+        Logger::critical('payment.amount_mismatch', [
+            'payment_id' => $paymentId, 'user_id' => $me['id'], 'gateway' => $gateway,
+            'expected_amount_rial' => (int)$payment['amount_rial'], 'verified_amount_rial' => $verify['verified_amount_rial'],
+        ]);
+        audit((int)$me['id'], 'security.payment.amount_mismatch', "#{$paymentId} expected={$payment['amount_rial']} verified={$verify['verified_amount_rial']}");
+        $result = ['ok' => false, 'message' => 'مبلغ تأییدشده توسط درگاه با مبلغ فاکتور مطابقت ندارد — پرداخت لغو شد.'];
     } else {
         // Phase 3 (STEP 13): the payment-row claim and the wallet credit
         // now happen inside ONE database transaction, via the same

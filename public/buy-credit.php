@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../app/zarinpal.php';
+require_once __DIR__ . '/../app/Payment/PaymentGateway.php';
 $me = require_login();
 $pageTitle = 'خرید اعتبار';
 $active = 'buy_credit';
@@ -35,26 +35,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', 'حداقل میزان خرید ' . to_persian_digits(number_format($minPurchase)) . ' واحد اعتبار است.');
     } else {
         $amountRial = $credits * $rialPerCredit;
+        $gateway = payment_gateway_name();
         // Phase 6 closure: organization_id is persisted at creation time from the PURCHASING
         // user's server-resolved organization (require_login()/current_organization() — never from
         // request input) — payment_claim_and_credit() and the reconciliation job both read this
         // persisted value later; neither re-derives organization from whatever the browser session
-        // happens to be pointed at by the time ZarinPal calls back, which could be long after this
+        // happens to be pointed at by the time the gateway calls back, which could be long after this
         // request and after the user has switched their active organization.
-        db()->prepare('INSERT INTO ellsms_payments (user_id, organization_id, credits, amount_rial) VALUES (?,?,?,?)')
-           ->execute([$me['id'], $me['organization_id'] ?? null, $credits, $amountRial]);
+        db()->prepare('INSERT INTO ellsms_payments (user_id, organization_id, credits, amount_rial, gateway) VALUES (?,?,?,?,?)')
+           ->execute([$me['id'], $me['organization_id'] ?? null, $credits, $amountRial, $gateway]);
         $paymentId = (int)db()->lastInsertId();
 
         $description = "خرید {$credits} واحد اعتبار ELLSMS";
-        [$ok, $info, $authority] = zarinpal_request($amountRial, $paymentId, $description, (string)($me['mobile'] ?? ''));
+        $create = payment_gateway_create($gateway, $amountRial, $paymentId, $description, (string)($me['mobile'] ?? ''));
 
-        if ($ok) {
-            db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$authority, $paymentId]);
-            audit((int)$me['id'], 'payment.request', "#{$paymentId} {$credits}cr {$amountRial}rial");
-            redirect(zarinpal_start_pay_url($authority));
+        if ($create['ok']) {
+            db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$create['authority'], $paymentId]);
+            // FIN-4: invoice is issued the moment we have a real authority — same server-derived
+            // unit price the payment row itself was created from, never anything from $_POST beyond
+            // the already-validated $credits count.
+            billing_invoice_create($paymentId, $me['organization_id'] ?? null, (int)$me['id'], 'credit', [[
+                'item_type' => 'sms_credit', 'reference_code' => null,
+                'description' => "خرید {$credits} واحد اعتبار پیامک", 'quantity' => 1, 'unit_price' => $amountRial,
+            ]]);
+            audit((int)$me['id'], 'payment.request', "#{$paymentId} {$credits}cr {$amountRial}rial gateway={$gateway}");
+            redirect(payment_gateway_redirect_url($gateway, $create['authority']));
         } else {
             db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=?")->execute([$paymentId]);
-            flash('error', 'شروع پرداخت ممکن نشد: ' . $info);
+            flash('error', 'شروع پرداخت ممکن نشد: ' . $create['message']);
         }
     }
 }

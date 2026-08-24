@@ -52,10 +52,14 @@ require_once __DIR__ . '/Support/Limits.php';
 require_once __DIR__ . '/Billing.php';
 require_once __DIR__ . '/Entitlements.php';
 // Financial-commerce continuation (FIN-1) — the immutable invoice layer sitting on top of
-// ellsms_payments. Loaded after Billing.php because it calls billing_currency(); before
-// zarinpal.php-adjacent gateway code (loaded per-entrypoint, not from here) since those call INTO
-// this file, never the other way around.
+// ellsms_payments. Loaded after Billing.php because it calls billing_currency().
 require_once __DIR__ . '/Financial.php';
+// FIN-2/FIN-3 — generic payment gateway abstraction (wraps the existing, unchanged zarinpal.php)
+// plus the fake/sandbox adapter. Loaded globally (not per-entrypoint like the old direct
+// zarinpal.php require) since payment_gateway_name()/payment_gateway_create()/
+// payment_gateway_verify() are now the intended call surface everywhere a payment is created or
+// verified, including cron/payments-reconcile.php and the test suite.
+require_once __DIR__ . '/Payment/PaymentGateway.php';
 // SMS pricing — admin-managed operators/providers/routes/prices and the one resolution pipeline
 // every send and every preview prices through (docs/sms-pricing.md). Loaded before the estimator
 // because the estimator composes it; it in turn only needs setting()/db()/Logger/Metrics, all above.
