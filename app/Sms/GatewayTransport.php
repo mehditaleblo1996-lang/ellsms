@@ -179,19 +179,54 @@ function gateway_parameter_signature(array $connector, string $connectorKind, ?i
  * Built explicitly rather than by handing the connector an arbitrary array: an allowlist that is
  * constructed, not filtered, cannot accidentally grow to include something sensitive when a caller
  * passes a richer array later.
+ *
+ * Phase 9C — 'messages' (optional, keyed by destination) carries REAL per-recipient text. When
+ * present, `messages_array` is built positionally from it — recipients_array[i] and messages_array[i]
+ * describe the same row, in the same order gateway_send() formed the group in. When absent (every
+ * caller before Phase 9C, and every classic same-body bulk send today), `messages_array` falls back
+ * to the original array_fill() replication, so nothing about an existing connector's request changes.
+ * A destination with no entry in $messages falls back to the scalar `message` too — never an empty
+ * string, which would silently truncate that one recipient's text.
+ *
+ * 'idempotency_keys' (optional, keyed by destination) is the Phase 9C.10 generic answer to
+ * per-message provider idempotency. Deliberately NOT the 'uuid' parameter type — that generates a
+ * fresh random value on every resolve() call, so a retry after a crash would carry a DIFFERENT key
+ * and a provider trying to deduplicate on it would see two different requests for the same message.
+ * These keys are supplied by the caller (bulk_send_group(), derived from each bulk_item's own
+ * database id — stable across a lease-expiry reclaim and retry, see its docblock) so the SAME
+ * recipient gets the SAME key on every attempt. Absent entries fall back to the empty string, never a
+ * freshly generated one, for the same reason: a fabricated fallback would defeat the whole point.
  */
 function gateway_send_context(array $input): array {
     $recipients = is_array($input['recipients'] ?? null) ? array_values(array_map('strval', $input['recipients'])) : [];
     $sender = (string)($input['sender'] ?? '');
     $message = (string)($input['message'] ?? '');
     $count = count($recipients);
+
+    $perRecipientMessages = is_array($input['messages'] ?? null) ? $input['messages'] : null;
+    $messagesArray = $perRecipientMessages !== null
+        ? array_map(
+            static fn(string $destination): string => (string)($perRecipientMessages[$destination] ?? $message),
+            $recipients
+        )
+        : ($count > 0 ? array_fill(0, $count, $message) : []);
+
+    $perRecipientIdempotencyKeys = is_array($input['idempotency_keys'] ?? null) ? $input['idempotency_keys'] : null;
+    $idempotencyKeysArray = $perRecipientIdempotencyKeys !== null
+        ? array_map(
+            static fn(string $destination): string => (string)($perRecipientIdempotencyKeys[$destination] ?? ''),
+            $recipients
+        )
+        : [];
+
     return [
         'sender'          => $sender,
         'recipient'       => (string)($input['recipient'] ?? ($recipients[0] ?? '')),
         'recipients'      => implode(',', $recipients),
         'recipients_array'=> $recipients,
         'senders_array'   => $count > 0 ? array_fill(0, $count, $sender) : [],
-        'messages_array'  => $count > 0 ? array_fill(0, $count, $message) : [],
+        'messages_array'  => $messagesArray,
+        'idempotency_keys_array' => $idempotencyKeysArray,
         'message'         => $message,
         'message_type'    => (string)($input['message_type'] ?? ''),
         // Defaults to the ambient request id, exactly as the legacy client does — a send that
@@ -443,6 +478,13 @@ function gateway_extract_batch_result(array $section, mixed $decoded): array {
  * command, a single-recipient preview). Left null — the normal case — each destination resolves its
  * own.
  *
+ * $input['messages'], if present, is a destination-KEYED map of per-recipient text (Phase 9C). Keying
+ * by destination rather than by array position is deliberate: this function splits destinations into
+ * groups below, and a keyed lookup survives that split untouched — no re-indexing, no risk of the
+ * index-alignment class of bug a positional array would invite (see mock_reference()'s Phase 9B fix
+ * for exactly that failure mode with provider references). gateway_send_context() reads it per
+ * destination when building each group's context.
+ *
  * @return array{ok:bool, sent:list<string>, message_ids:array<string,string>, error:?string,
  *                error_class:?string, http:int, retryable:bool, groups:int}
  */
@@ -680,6 +722,34 @@ function gateway_transport_enabled(): bool {
 }
 
 /**
+ * Would a send from this originator resolve to a connector that consumes real per-recipient text?
+ *
+ * Phase 9C. Lets a caller that has NOT yet dispatched (bulk_group_key(), deciding whether rows with
+ * different content may share a request) ask the same question gateway_send_for_dispatch() answers
+ * internally, without duplicating route/connector resolution or triggering a second config load —
+ * gateway_compiled() is already memoized per (gateway_id, config_version), so this costs nothing
+ * beyond the lookup gateway_send_for_dispatch() was going to do anyway.
+ *
+ * Returns false (never batch by content) for every case that also makes gateway_send_for_dispatch()
+ * fall back to the legacy path: transport disabled, no route, no gateway. Fail toward the SAFE
+ * default — grouping by content — never toward assuming a capability that might not be there.
+ */
+function gateway_connector_capability_for_sender(string $originator, ?string $messageType): array {
+    if (!gateway_transport_enabled()) {
+        return ['ok' => false, 'per_recipient_content' => false];
+    }
+    $route = sms_pricing_route_for_sender($originator, sms_pricing_normalize_message_type($messageType));
+    $resolved = gateway_for_route($route);
+    if (!$resolved['ok']) {
+        return ['ok' => false, 'per_recipient_content' => false];
+    }
+    return [
+        'ok'                     => true,
+        'per_recipient_content'  => gateway_connector_supports_per_recipient_content($resolved['connector']),
+    ];
+}
+
+/**
  * Resolves the gateway for a send and performs it, or returns null to mean "use the legacy path".
  *
  * Null is returned when the transport is disabled, or when no gateway resolves for the route. That
@@ -689,9 +759,20 @@ function gateway_transport_enabled(): bool {
  * than assumed. Once every route has a gateway, `make sms-gateway-integrity-check` reports zero
  * fallbacks and the operator can rely on the new path.
  *
+ * $perDestinationContent (Phase 9C), if given, is a destination-KEYED map of real per-recipient text.
+ * $content remains required as the fallback for any destination absent from that map, and is what
+ * legacy single-body callers still pass alone. Passing a per-destination map to a connector that does
+ * not consume `messages_array` is harmless — gateway_send_context() only reads it when building that
+ * one array, so a plain connector keeps receiving $content exactly as before.
+ *
+ * $perDestinationIdempotencyKeys (Phase 9C.10), if given, is a destination-KEYED map of stable
+ * per-message tokens — see gateway_send_context()'s docblock for why they must be caller-supplied and
+ * deterministic rather than generated here. Harmless to pass to a connector that does not reference
+ * `idempotency_keys_array`, for the same reason as $perDestinationContent above.
+ *
  * @return array|null the gateway_send() result, or null to fall back
  */
-function gateway_send_for_dispatch(array $user, string $originator, array $destinations, string $content, ?string $messageType = null): ?array {
+function gateway_send_for_dispatch(array $user, string $originator, array $destinations, string $content, ?string $messageType = null, ?array $perDestinationContent = null, ?array $perDestinationIdempotencyKeys = null): ?array {
     if (!gateway_transport_enabled()) {
         return null;
     }
@@ -718,6 +799,8 @@ function gateway_send_for_dispatch(array $user, string $originator, array $desti
         'sender'          => $originator,
         'recipients'      => array_values(array_map('strval', $destinations)),
         'message'         => $content,
+        'messages'        => $perDestinationContent,
+        'idempotency_keys'=> $perDestinationIdempotencyKeys,
         'message_type'    => sms_pricing_normalize_message_type($messageType),
         'sender_user_id'  => (int)($user['id'] ?? 0),
         'organization_id' => $user['organization_id'] ?? '',

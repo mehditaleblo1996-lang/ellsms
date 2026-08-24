@@ -38,6 +38,10 @@ const GATEWAY_SEND_VARIABLES = [
     'sender', 'recipient', 'recipients', 'recipients_array', 'senders_array', 'messages_array',
     'message', 'message_type', 'request_id',
     'organization_id', 'operator_code', 'route_code', 'gateway_code', 'timestamp', 'sender_user_id',
+    // Phase 9C — a deterministic idempotency token PER RECIPIENT, positionally aligned with
+    // recipients_array/messages_array. See gateway_send_context()'s docblock for how it is derived
+    // and why it must be deterministic rather than a fresh 'uuid' parameter's value on every attempt.
+    'idempotency_keys_array',
 ];
 
 /**
@@ -398,6 +402,83 @@ function gateway_parameter_set_signature(array $merged): array {
     }
     sort($parts);   // order-independent: the same set in a different order is the same set
     return ['signature' => hash('sha256', implode("\x1e", $parts)), 'per_recipient' => $perRecipient];
+}
+
+/**
+ * Does this connector actually CONSUME a per-recipient message body?
+ *
+ * Phase 9C. `messages_array` has been an allowlisted GATEWAY_SEND_VARIABLE since batching was first
+ * built, but until now gateway_send_context() always synthesised it by repeating one message N
+ * times — so no connector, however configured, ever received real per-row text. This is the
+ * capability check that lets bulk_group_key() stop separating rows purely by their content: a
+ * connector only qualifies if a parameter's compiled descriptor actually references `messages_array`
+ * (as its whole value, or as a placeholder inside a template).
+ *
+ * CAPABILITY-DRIVEN, NOT PROVIDER-SPECIFIC. This reads the same compiled parameter descriptors
+ * gateway_parameter_set_signature() already walks for the per-recipient check — nothing here names a
+ * gateway, a provider, or a connector code. A gateway that references the scalar `message` instead
+ * keeps grouping by content exactly as before; only relaxing the guard for the specific variable that
+ * makes per-row content safe.
+ */
+function gateway_connector_supports_per_recipient_content(array $connector): bool {
+    return gateway_connector_send_parameters_reference($connector, 'messages_array');
+}
+
+/**
+ * Does this connector's SEND configuration carry a per-recipient idempotency token?
+ *
+ * Phase 9C.10 — the generic answer to "can per-message provider idempotency exist without
+ * provider-specific code": yes, IF the connector is configured with a parameter that references
+ * `idempotency_keys_array` (or a template placeholder containing it). Whether a given provider's API
+ * actually accepts and de-duplicates on such a value is outside what this project can verify — that
+ * is documented in docs/at-least-once-delivery.md as something to confirm per provider, not assumed.
+ */
+function gateway_connector_supports_per_recipient_idempotency(array $connector): bool {
+    return gateway_connector_send_parameters_reference($connector, 'idempotency_keys_array');
+}
+
+/**
+ * Scans every compiled SEND parameter (gateway + every route/operator scope this connector has
+ * compiled) for one that resolves to $variable — either as its whole value, or as a placeholder
+ * inside a template. Shared by both per-recipient-array capability checks above so there is exactly
+ * one place that walks the three parameter scopes.
+ */
+function gateway_connector_send_parameters_reference(array $connector, string $variable): bool {
+    $section = $connector['send'] ?? null;
+    if ($section === null) {
+        return false;
+    }
+    $matches = static function (array $parameter) use ($variable): bool {
+        if ($parameter['value_type'] === 'variable') {
+            return $parameter['value'] === $variable;
+        }
+        if ($parameter['value_type'] === 'template') {
+            return in_array($variable, $parameter['placeholders'], true);
+        }
+        return false;
+    };
+    foreach (($section['parameters']['gateway'] ?? []) as $parameter) {
+        if ($matches($parameter)) {
+            return true;
+        }
+    }
+    // Route/operator scoped overrides can introduce it too — checked across every scope this
+    // connector has compiled, not just the gateway-wide defaults.
+    foreach (($section['parameters']['route'] ?? []) as $routeParams) {
+        foreach ($routeParams as $parameter) {
+            if ($matches($parameter)) {
+                return true;
+            }
+        }
+    }
+    foreach (($section['parameters']['operator'] ?? []) as $operatorParams) {
+        foreach ($operatorParams as $parameter) {
+            if ($matches($parameter)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 /* ==========================================================================

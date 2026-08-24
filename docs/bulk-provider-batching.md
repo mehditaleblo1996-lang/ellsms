@@ -141,14 +141,14 @@ crash in that window previously risked re-sending one message, and can now risk 
 `SMS_PROVIDER_BATCH_SIZE` of them.
 
 Money is protected either way: `wallet_commit_reservation()` is keyed per item, so a replay does not
-double-charge. What is not protected is the recipient receiving the SMS twice. Removing that
-genuinely would need a provider-side idempotency key per message, which no current connector
-configuration expresses. Deployments especially sensitive to duplicates can lower
+double-charge. What is not protected by this project alone is the recipient receiving the SMS twice —
+that additionally needs the PROVIDER to recognize a retried message. Phase 9C.10 added the generic
+mechanism for that (`idempotency_keys_array`, deterministic per `bulk_item.id`); see
+`docs/many-to-many-batching.md#at-least-once-delivery` for the full account, including why it narrows
+this risk rather than closing it. Deployments especially sensitive to duplicates can also lower
 `SMS_PROVIDER_BATCH_SIZE` to shrink the exposure.
 
-**Different-content rows are not yet batched.** p2p and smart-send rows, where each recipient has
-their own text, group separately and are still sent one request each — correct, but not yet
-optimal. `dispatch_message_raw()` carries one body per call, so batching them needs the connector's
-ManyToMany array support driven from per-recipient content. That is a larger change than this one
-and is deliberately left as follow-up rather than half-done. Classic bulk (one body, many
-recipients) is the case that batches today, and is the one that produces million-row jobs.
+**Different-content rows.** ~~Not yet batched as of Phase 9A~~ — closed by Phase 9C. p2p and
+smart-send rows, where each recipient has their own text, now batch on any connector whose compiled
+parameters reference `messages_array`; a connector that does not stays exactly as this phase left it
+(fragmented by content, one request per row). See `docs/many-to-many-batching.md`.

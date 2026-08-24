@@ -184,7 +184,19 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
     return [false, 'گیت‌وی همه‌ی مقصدها را رد کرد. جزئیات در گزارش موجود است.', 0, $total, $parts, (bool)$result['retryable'], [], $meta];
 }
 
-function dispatch_message_raw(array $user, string $originator, array $destinations, string $content, ?int $scheduleId = null, bool $recordTransport = true): array {
+/**
+ * $perDestinationContent (Phase 9C, optional): a destination-KEYED map of real per-recipient text.
+ * $content stays required and remains the fallback for any destination absent from that map, the
+ * value used for the legacy (non-gateway) path — which has no per-row content notion — and what
+ * every existing caller still passes alone. Only the caller (bulk_send_group()) that has verified the
+ * resolved connector actually consumes per-recipient text passes this; everyone else is byte-for-byte
+ * unaffected. See gateway_send_context() for how it becomes messages_array.
+ *
+ * $perDestinationIdempotencyKeys (Phase 9C.10, optional): a destination-KEYED map of deterministic
+ * per-message tokens, forwarded unchanged to gateway_send_for_dispatch(). See its docblock and
+ * gateway_send_context()'s for why these must be caller-supplied rather than generated per attempt.
+ */
+function dispatch_message_raw(array $user, string $originator, array $destinations, string $content, ?int $scheduleId = null, bool $recordTransport = true, ?array $perDestinationContent = null, ?array $perDestinationIdempotencyKeys = null): array {
     Logger::info('sms.send.requested', [
         'user_id'       => $user['id'] ?? null,
         'message_count' => count($destinations),
@@ -217,7 +229,7 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     // The configured-gateway path (docs/sms-gateway-connectors.md). Returns null when the gateway
     // transport is switched off or no gateway is configured for this route, in which case the legacy
     // client below runs exactly as it always has — this seam is additive, and the default is legacy.
-    $gatewayResult = gateway_send_for_dispatch($user, $originator, $destinations, $content);
+    $gatewayResult = gateway_send_for_dispatch($user, $originator, $destinations, $content, null, $perDestinationContent, $perDestinationIdempotencyKeys);
     if ($gatewayResult !== null) {
         return dispatch_gateway_result($user, $originator, $destinations, $content, $scheduleId, $gatewayResult, $parts, $total, $recordTransport);
     }
@@ -1624,6 +1636,29 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
     $content      = (string)$items[0]['content'];
     $originator   = (string)$items[0]['originator'];
 
+    // Phase 9C: a group may now contain rows whose content genuinely differs (see bulk_group_key()) —
+    // keyed by destination, not position, so it survives gateway_send()'s internal grouping/splitting
+    // untouched. Built unconditionally and cheaply (it is only ever READ by gateway_send_context() —
+    // see its own docblock — when the resolved connector's compiled parameters actually reference
+    // messages_array; a plain connector never looks at this map and gets $content exactly as before).
+    // Two mobiles resolving to the same destination string keep the LAST row's text, matching how
+    // $accepted / provider ids below already collapse by destination.
+    $perDestinationContent = [];
+    $perDestinationIdempotencyKeys = [];
+    foreach ($items as $item) {
+        $destination = (string)$item['mobile'];
+        $perDestinationContent[$destination] = (string)$item['content'];
+        // Phase 9C.10 — deterministic per bulk_item.id, NOT a fresh random value: a lease-expiry
+        // reclaim and retry re-claims the SAME row (bulk_claim_items() UPDATEs it in place, see its
+        // own docblock), so this key is identical on every attempt for this exact recipient. A
+        // provider whose configured connector references idempotency_keys_array can therefore
+        // recognize "I already accepted bulk_item #N" even if the worker crashed and retried — the
+        // generic mitigation for the residual at-least-once window documented in
+        // docs/at-least-once-delivery.md. Namespaced so two installations, or a stray collision with
+        // some other reference an operator's provider account might see, can never coincide.
+        $perDestinationIdempotencyKeys[$destination] = 'ellsms:bulk_item:' . $item['id'];
+    }
+
     Metrics::increment('bulk.provider_batch.request', 1);
     Metrics::gauge('bulk.provider_batch.size', count($destinations));
 
@@ -1631,7 +1666,7 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
     // message id below. A second ellsms_message_attempts row would make the status poller track the
     // same message twice.
     [$ok, $info, , , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(
-        dispatch_message_raw($ctx['user'], $originator, $destinations, $content, null, false),
+        dispatch_message_raw($ctx['user'], $originator, $destinations, $content, null, false, $perDestinationContent, $perDestinationIdempotencyKeys),
         8,
         null
     );
@@ -1640,7 +1675,12 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
 
     $sent = 0;
     foreach ($items as $item) {
-        if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, (int)$parts, (bool)$retryable, $gatewayMeta, $accepted)) {
+        // Segments for THIS item's own text, not the group's representative $parts — correctness
+        // matters here even though it is a fallback: bulk_finalize_item() only falls back to it when
+        // the row's frozen price is NULL (pre-migration rows), but a wrong count in that fallback
+        // would misprice exactly the rows Phase 9C makes it possible to co-batch with different text.
+        $itemParts = sms_parts((string)$item['content']);
+        if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, $itemParts, (bool)$retryable, $gatewayMeta, $accepted)) {
             $sent++;
         }
     }
@@ -1663,23 +1703,51 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
  *  - user_id        authorization (can_use_originator) and the owner-account check are per user.
  *  - organization_id  tenant isolation and the wallet reservation identity.
  *  - originator     changes the request and the authorization decision.
- *  - content        THE binding constraint: dispatch_message_raw() carries ONE message body for the
- *                   whole call. Rows whose text differs (p2p/smart) therefore group separately and
- *                   are each sent on their own — correct, if not yet optimal. Sending them in one
- *                   request needs the connector's ManyToMany array support to be driven from
- *                   per-recipient content, which is a larger change than this one and is recorded
- *                   as follow-up work rather than half-done here.
+ *  - content        Rows whose text differs (p2p/smart) group separately UNLESS the resolved
+ *                   connector actually consumes per-recipient text (Phase 9C) — see
+ *                   bulk_connector_supports_per_recipient_content() below. dispatch_message_raw()
+ *                   carries one $content string as its REQUIRED fallback either way; content only
+ *                   drops out of this key when a real per-destination map will travel alongside it
+ *                   (built in bulk_send_group()), so a plain connector is never handed the wrong
+ *                   text and correctness never depends on guessing a capability.
  *
  * Hashed because the content can be long and this value is only ever compared, never read back.
  */
 function bulk_group_key(array $item, array $ctx): string {
-    return hash('xxh128', implode("\0", [
+    $fields = [
         (string)$item['job_id'],
         (string)$item['user_id'],
         (string)($ctx['organization_id'] ?? ''),
         (string)$item['originator'],
-        (string)$item['content'],
-    ]));
+    ];
+    if (!bulk_connector_supports_per_recipient_content((string)$item['originator'])) {
+        $fields[] = (string)$item['content'];
+    }
+    return hash('xxh128', implode("\0", $fields));
+}
+
+/**
+ * Not memoized here on purpose — gateway_connector_capability_for_sender() already resolves through
+ * sms_pricing_route_for_sender() (TTL-cached, sms_pricing_cache_reset()) and gateway_compiled()
+ * (cached by config_version, gateway_cache_reset()), so a 100,000-row claim from one sender still
+ * costs one real lookup, not one per row — an EARLIER version of this function added a second, static
+ * memo keyed only by originator on top of those, and that layer had no invalidation of its own: an
+ * admin changing a gateway's parameters mid-run (or, concretely, two tests in the same PHP process
+ * reusing one sender against two different gateways) would keep returning the FIRST answer forever.
+ * Removed rather than fixed with a version key, because the caches this already goes through are the
+ * correct place for that invalidation to live — this function has no business duplicating it.
+ *
+ * Fails toward FALSE (keep grouping by content) on any resolution problem — a capability that cannot
+ * be confirmed must never be assumed, because assuming it wrongly would silently send the wrong text
+ * to every recipient after the first in a merged group.
+ */
+function bulk_connector_supports_per_recipient_content(string $originator): bool {
+    try {
+        $capability = gateway_connector_capability_for_sender($originator, null);
+        return ($capability['ok'] ?? false) && ($capability['per_recipient_content'] ?? false);
+    } catch (Throwable) {
+        return false;
+    }
 }
 
 /**
