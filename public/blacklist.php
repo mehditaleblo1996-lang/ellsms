@@ -17,14 +17,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$mobile) {
             flash('error', 'شماره موبایل معتبر نیست.');
         } else {
-            db()->prepare('INSERT INTO ellsms_blacklist (user_id, mobile, note) VALUES (?,?,?)\n                           ON DUPLICATE KEY UPDATE note = VALUES(note)')
+            db()->prepare('INSERT INTO ellsms_blacklist (user_id, mobile, note) VALUES (?,?,?)
+                           ON DUPLICATE KEY UPDATE note = VALUES(note)')
                ->execute([$me['id'], $mobile, trim($_POST['note'] ?? '')]);
             flash('success', 'شماره به لیست سیاه افزوده شد.');
         }
     }
 
     if ($do === 'bulk_add') {
-        $lines = preg_split('/\\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
+        $lines = preg_split('/\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
         $ins = db()->prepare('INSERT IGNORE INTO ellsms_blacklist (user_id, mobile) VALUES (?,?)');
         $n = 0;
         foreach ($lines as $line) {
@@ -71,8 +72,8 @@ if ($afterId !== null && $afterId > 0) {
 $ids = $rows ? array_map('intval', array_column($rows, 'id')) : [];
 $nextBeforeId = $ids ? min($ids) : null;
 $prevAfterId = $ids ? max($ids) : null;
-$hasNext = $rows !== [] && (($beforeId === null && $afterId === null) || $beforeId !== null) ? $hasMore : true;
-$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null) && ($afterId !== null ? $hasMore : true);
+$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null);
+$hasNext = $rows !== [] && ($afterId !== null || $hasMore);
 
 require __DIR__ . '/../app/views/header.php';
 ?>
