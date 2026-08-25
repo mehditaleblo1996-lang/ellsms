@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($do === 'import') {
         $group = trim($_POST['group_name'] ?? '');
-        $lines = preg_split('/\\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
+        $lines = preg_split('/\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
         $limit = organization_limit((int)$myOrgId, Limits::CONTACTS);
         $imported = 0;
         $skippedOverLimit = 0;
