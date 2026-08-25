@@ -59,7 +59,8 @@ function backend_outbound_canonical_summary(
                     WHERE {$attemptWhere}
                     GROUP BY destination
                 ) newest ON newest.id = a.id
-            ) ma ON ma.destination = m.destination
+            ) ma
+              ON ma.destination COLLATE utf8mb4_0900_ai_ci = m.destination COLLATE utf8mb4_0900_ai_ci
             WHERE {$whereSql}
         ) canonical_rows";
 
