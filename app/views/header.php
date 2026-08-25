@@ -39,6 +39,7 @@ $adminNav = [
     'pricing'           => ['/pricing.php',            'بسته‌های قیمتی',  '🏷'],
     'sms_pricing'       => ['/sms-pricing.php',        'تعرفه‌ی پیامک',   '💱'],
     'sms_gateways'      => ['/sms-gateways.php',       'درگاه‌های پیامک', '🔌'],
+    'sms_gateway_clone' => ['/sms-gateway-clone.php',  'کپی کامل درگاه',  '⧉'],
     'guide_admin'       => ['/guide-admin.php',        'راهنمای استفاده', '📘'],
     'billing_admin'     => ['/billing-admin.php',       'مدیریت اشتراک‌ها', '📦'],
     'financial_admin'   => ['/financial-admin.php',     'گزارش مالی',      '🧾'],
