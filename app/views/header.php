@@ -17,11 +17,6 @@ $nav = [
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
 ];
-// Phase 12 — org-scoped integration nav (API keys/webhooks). Shown only when the current
-// organization membership actually carries the corresponding VIEW permission (owner/admin by
-// default, see app/rbac.php's role_permissions() — member does not) so an ordinary member never
-// sees a link that would just 403 on click; every OTHER nav item above is granted to every role by
-// default today, which is why none of them needed this same conditional treatment.
 $integrationNav = [];
 $navOrg = current_organization();
 if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
@@ -30,9 +25,6 @@ if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
 if ($navOrg && membership_has_permission($navOrg, Permissions::WEBHOOKS_VIEW)) {
     $integrationNav['webhooks'] = ['/webhooks.php', 'وب‌هوک‌ها', '🔗'];
 }
-// Phase 13 — the organization's own subscription/usage page. Shown to anyone with BILLING_VIEW
-// (owner/admin by default); BILLING_MANAGE additionally controls whether the actions on that page
-// are available, checked there rather than here.
 if ($navOrg && membership_has_permission($navOrg, Permissions::BILLING_VIEW)) {
     $integrationNav['billing'] = ['/billing.php', 'اشتراک و مصرف', '📦'];
 }
@@ -40,6 +32,7 @@ $adminNav = [
     'users'             => ['/users.php',             'کاربران',        '👤'],
     'kyc_review'        => ['/kyc-review.php',        'بررسی احراز هویت', '🪪'],
     'analytics'         => ['/analytics.php',          'آمار تفصیلی',    '📊'],
+    'logs'              => ['/logs.php',               'لاگ فعالیت‌ها',   '📜'],
     'numbers'           => ['/numbers.php',            'شماره‌ها',        '📞'],
     'number_categories' => ['/number-categories.php',  'دسته‌های شماره',  '🗂'],
     'slides'            => ['/slides.php',             'اسلایدر صفحه‌ی اصلی', '🖼'],
@@ -119,15 +112,6 @@ $adminNav = [
 
     <main class="content content-<?= e($active ?? 'page') ?>">
       <?php
-      /*
-       * Support-impersonation banner (docs/admin-impersonation.md, STEP 18). Rendered on EVERY
-       * authenticated page, above everything else, because the single worst failure mode of this
-       * feature is an operator forgetting which account they are looking at. Deliberately text and
-       * a colour, not an icon — an icon is missable, and this must not be.
-       *
-       * It carries the ONLY control in the panel that uses the preserved real-actor context; every
-       * other part of the page behaves as the target user.
-       */
       $impersonationBanner = is_impersonating() ? impersonation_banner_context() : null;
       ?>
       <?php if ($impersonationBanner): ?>
