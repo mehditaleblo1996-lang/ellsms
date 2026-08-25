@@ -8,7 +8,10 @@ services:
       - mongo
 
   mongo:
-    image: mongo:8.0
+    # MongoDB 8.x currently refuses to start on Linux kernel 6.19+ because of a
+    # TCMalloc/kernel incompatibility. Pin 6.0.27-jammy for this deployment until
+    # the host kernel is upgraded to a fixed release. Do not use the floating 8.x tag here.
+    image: mongo:6.0.27-jammy
     container_name: ellsms-mongo
     restart: unless-stopped
     environment:
