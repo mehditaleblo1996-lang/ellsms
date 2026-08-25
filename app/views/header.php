@@ -59,6 +59,7 @@ $adminNav = [
 <title><?= e($pageTitle ?? 'ELLSMS') ?> — ELLSMS</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="/assets/css/panel-layout-fixes.css">
 </head>
 <body>
 <div class="shell">
@@ -116,7 +117,7 @@ $adminNav = [
       </div>
     </header>
 
-    <main class="content">
+    <main class="content content-<?= e($active ?? 'page') ?>">
       <?php
       /*
        * Support-impersonation banner (docs/admin-impersonation.md, STEP 18). Rendered on EVERY
