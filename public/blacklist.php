@@ -17,15 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$mobile) {
             flash('error', 'شماره موبایل معتبر نیست.');
         } else {
-            db()->prepare('INSERT INTO ellsms_blacklist (user_id, mobile, note) VALUES (?,?,?)
-                           ON DUPLICATE KEY UPDATE note = VALUES(note)')
+            db()->prepare('INSERT INTO ellsms_blacklist (user_id, mobile, note) VALUES (?,?,?)\n                           ON DUPLICATE KEY UPDATE note = VALUES(note)')
                ->execute([$me['id'], $mobile, trim($_POST['note'] ?? '')]);
             flash('success', 'شماره به لیست سیاه افزوده شد.');
         }
     }
 
     if ($do === 'bulk_add') {
-        $lines = preg_split('/\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
+        $lines = preg_split('/\\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
         $ins = db()->prepare('INSERT IGNORE INTO ellsms_blacklist (user_id, mobile) VALUES (?,?)');
         $n = 0;
         foreach ($lines as $line) {
@@ -43,9 +42,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/blacklist.php');
 }
 
-$st = db()->prepare('SELECT * FROM ellsms_blacklist WHERE user_id=? ORDER BY created_at DESC');
-$st->execute([$me['id']]);
-$rows = $st->fetchAll();
+// Never materialize the whole blacklist in one HTTP request. Use id-based keyset pagination so
+// page cost stays constant even if an account eventually has hundreds of thousands of entries.
+$per = 100;
+$beforeId = (isset($_GET['before_id']) && $_GET['before_id'] !== '') ? (int)$_GET['before_id'] : null;
+$afterId  = (isset($_GET['after_id']) && $_GET['after_id'] !== '') ? (int)$_GET['after_id'] : null;
+
+$where = 'user_id = ?';
+$params = [(int)$me['id']];
+$order = 'DESC';
+if ($beforeId !== null && $beforeId > 0) {
+    $where .= ' AND id < ?';
+    $params[] = $beforeId;
+} elseif ($afterId !== null && $afterId > 0) {
+    $where .= ' AND id > ?';
+    $params[] = $afterId;
+    $order = 'ASC';
+}
+
+$st = db()->prepare("SELECT id, mobile, note, created_at FROM ellsms_blacklist WHERE {$where} ORDER BY id {$order} LIMIT " . ($per + 1));
+$st->execute($params);
+$fetched = $st->fetchAll();
+$hasMore = count($fetched) > $per;
+$rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
+if ($afterId !== null && $afterId > 0) {
+    $rows = array_reverse($rows);
+}
+$ids = $rows ? array_map('intval', array_column($rows, 'id')) : [];
+$nextBeforeId = $ids ? min($ids) : null;
+$prevAfterId = $ids ? max($ids) : null;
+$hasNext = $rows !== [] && (($beforeId === null && $afterId === null) || $beforeId !== null) ? $hasMore : true;
+$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null) && ($afterId !== null ? $hasMore : true);
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -93,5 +120,12 @@ require __DIR__ . '/../app/views/header.php';
     <?php if (!$rows): ?><tr><td colspan="4" class="empty">لیست سیاه شما خالی است.</td></tr><?php endif; ?>
   </table>
   </div>
+
+  <?php if ($hasPrev || $hasNext): ?>
+  <div class="pagination">
+    <?php if ($hasPrev && $prevAfterId): ?><a class="btn btn-sm" href="?after_id=<?= (int)$prevAfterId ?>">→ جدیدتر</a><?php endif; ?>
+    <?php if ($hasNext && $nextBeforeId): ?><a class="btn btn-sm" href="?before_id=<?= (int)$nextBeforeId ?>">قدیمی‌تر ←</a><?php endif; ?>
+  </div>
+  <?php endif; ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
