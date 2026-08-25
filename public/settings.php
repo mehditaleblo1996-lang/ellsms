@@ -35,6 +35,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'تنظیمات پرداخت ذخیره شد.');
     }
 
+    if ($do === 'audit_retention') {
+        $httpDays = max(1, min(3650, (int)($_POST['audit_http_retention_days'] ?? 90)));
+        $securityDays = max(1, min(3650, (int)($_POST['audit_security_retention_days'] ?? 365)));
+        set_setting('audit_http_retention_days', (string)$httpDays);
+        set_setting('audit_security_retention_days', (string)$securityDays);
+        audit((int)$me['id'], 'settings.audit_retention_update', 'http_days=' . $httpDays . ' security_days=' . $securityDays);
+        flash('success', 'Retention لاگ‌ها ذخیره شد. این مقدار روی لاگ‌های جدید اعمال می‌شود؛ TTL لاگ‌های قبلی طبق زمان انقضای ذخیره‌شده‌ی خودشان ادامه پیدا می‌کند.');
+    }
+
     redirect('/settings.php');
 }
 
@@ -42,7 +51,7 @@ require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
   <h2>ارسال</h2>
-  <p class="hint">ELLSMS با فراخوانی REST API خود سامانه‌ی مرکزی پیامک ارسال می‌کند — همان اندپوینتی که برای اولین آزمایش این پروژه استفاده شد.</p>
+  <p class="hint">ELLSMS با فراخوانی REST API خود سامانه‌ی مرکزی پیامک ارسال می‌کند.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="general">
@@ -56,6 +65,27 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     </div>
     <button class="btn btn-primary">ذخیره‌ی تنظیمات</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>لاگ و Audit</h2>
+  <p class="hint">لاگ درخواست‌های معمولی و رویدادهای امنیتی در MongoDB داخلی نگهداری می‌شوند. MongoDB روی هیچ پورت عمومی publish نمی‌شود. تغییر Retention فقط روی رویدادهای جدید اثر می‌گذارد.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="audit_retention">
+    <div class="form-row">
+      <label>Retention درخواست‌های HTTP (روز)
+        <input type="number" name="audit_http_retention_days" min="1" max="3650" value="<?= (int)setting('audit_http_retention_days', '90') ?>">
+        <div class="hint">پیش‌فرض: ۹۰ روز</div>
+      </label>
+      <label>Retention رویدادهای امنیتی و تغییرات (روز)
+        <input type="number" name="audit_security_retention_days" min="1" max="3650" value="<?= (int)setting('audit_security_retention_days', '365') ?>">
+        <div class="hint">ورود/خروج، تلاش ناموفق، تغییرات POST، تغییر رمز و تنظیمات. پیش‌فرض: ۳۶۵ روز</div>
+      </label>
+    </div>
+    <button class="btn btn-primary">ذخیره Retention</button>
+    <a class="btn btn-ghost" href="/logs.php">مشاهده لاگ‌ها</a>
   </form>
 </div>
 
@@ -95,7 +125,7 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <h2>تماس با ما</h2>
-  <p class="hint">آدرس و تلفن در صفحه‌ی عمومی <a href="/contact.php" target="_blank">تماس با ما</a> نمایش داده می‌شوند. فرم تیکت آن صفحه با فرستادن یک پیام به همین ربات تلگرام کار می‌کند — Token و Chat ID را می‌توان از <code class="kbd">.env</code> هم تنظیم کرد؛ آنچه اینجا ذخیره شود اولویت دارد.</p>
+  <p class="hint">آدرس و تلفن در صفحه‌ی عمومی <a href="/contact.php" target="_blank">تماس با ما</a> نمایش داده می‌شوند. Token و Chat ID نیز از اینجا قابل تنظیم هستند.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="contact">
@@ -110,11 +140,10 @@ require __DIR__ . '/../app/views/header.php';
     <div class="form-row">
       <label>Bot Token تلگرام
         <input type="text" name="telegram_bot_token" value="<?= e(setting('telegram_bot_token', '')) ?>" placeholder="123456789:AAExampleTokenFromBotFather" class="ltr">
-        <div class="hint">از <span class="ltr">@BotFather</span> در تلگرام یک ربات بسازید و توکن را اینجا وارد کنید.</div>
+        <div class="hint">توکن در Audit Log به‌صورت REDACTED ثبت می‌شود.</div>
       </label>
       <label>Chat ID
         <input type="text" name="telegram_chat_id" value="<?= e(setting('telegram_chat_id', '')) ?>" placeholder="123456789" class="ltr">
-        <div class="hint">شناسه‌ی چتی که تیکت‌ها باید به آن ارسال شوند (کاربر، گروه یا کانال).</div>
       </label>
     </div>
     <button class="btn btn-primary">ذخیره‌ی تنظیمات تماس با ما</button>
