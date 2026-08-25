@@ -13,21 +13,18 @@ $scopeW = $me['role'] === 'admin' ? '1=1' : 'sender_user_id = ' . (int)$me['id']
 
 $q = fn(string $sql) => (int)db()->query($sql)->fetch()['c'];
 
-// Same canonical status resolution reports.php uses, now aggregated in SQL instead of streaming all
-// outbound rows into PHP. The today predicate is a half-open range so the sent_at index remains usable.
-$dashOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
-$dashUserId = !is_admin() && !$dashOrgId ? (int)$me['id'] : null;
-
-$todayTotals = report_canonical_status_totals(
+// Dashboard must stay cheap even with hundreds of thousands of historical rows. Exact canonical
+// provider-delivery resolution remains on the report/detail surfaces; these top-level dashboard cards
+// use the backend transport statuses directly so login never performs a full-history destination join.
+// The today predicate is a half-open range so the sent_at index remains usable.
+$todaySummary = backend_outbound_summary(
     "sent_at >= CURDATE() AND sent_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND {$scopeW}",
-    [],
-    $dashOrgId,
-    $dashUserId
+    []
 );
-$todaySent   = $todayTotals['ok'];
-$todayFailed = $todayTotals['failed'];
-$totalTotals = report_canonical_status_totals($scopeW, [], $dashOrgId, $dashUserId);
-$totalSent   = $totalTotals['ok'];
+$todaySent   = (int)($todaySummary['ok'] ?? 0);
+$todayFailed = (int)($todaySummary['bad'] ?? 0);
+$totalSummary = backend_outbound_summary($scopeW, []);
+$totalSent    = (int)($totalSummary['ok'] ?? 0);
 $pendingSch  = $q("SELECT COUNT(*) c FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']));
 $inboxToday  = $me['role'] === 'admin' ? backend_inbound_today_count() : null;
 
@@ -43,6 +40,8 @@ $weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','
 
 /* Recent messages */
 $recent = backend_outbound_rows($scopeW, [], 8);
+$dashOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
+$dashUserId = !is_admin() && !$dashOrgId ? (int)$me['id'] : null;
 $recentDeliveryByDest = report_delivery_lookup_by_destination($recent, $dashOrgId, $dashUserId);
 
 require __DIR__ . '/../app/views/header.php';
