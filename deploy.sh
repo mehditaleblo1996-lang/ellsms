@@ -17,5 +17,10 @@ docker exec -i "${BACKEND_DB_HOST}" \
   mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/ellsms_extra.sql
 
+echo "==> Applying report-summary cache schema (safe to re-run)..."
+docker exec -i "${BACKEND_DB_HOST}" \
+  mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
+  < db/migrations/2026_08_25_report_summary_cache.sql
+
 echo "==> Done. Status:"
 docker compose ps
