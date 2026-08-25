@@ -39,6 +39,7 @@ $allowlist = [
     'app/Backend/credit_projection.php' => 'the one controlled `UPDATE user_ SET currentcredit` write (Invariant G/H) — see STEP 6',
     'app/Backend/identity.php'         => 'identity/domain repository (Invariant B) — every `user_`/`domain` read/write funnels through here',
     'app/Backend/messages.php'         => 'inbound/outbound message repository (Invariant C) — every `inbound_message`/`outbound_message` read funnels through here',
+    'app/Backend/report_summary.php'   => 'read-only outbound report aggregate adapter — returns bounded summary rows instead of streaming backend messages into PHP',
 
     // Deliberate, documented exception: the cross-boundary orphan/drift audit tool must be able
     // to inspect both sides of the boundary directly — routing it through the adapters it exists
