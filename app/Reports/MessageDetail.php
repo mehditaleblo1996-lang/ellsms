@@ -31,6 +31,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../Backend/report_summary.php';
+
 /**
  * Canonical delivery states → Persian display labels. The DB enum values themselves never change.
  *
@@ -152,80 +154,26 @@ function report_delivery_lookup_by_destination(array $outboundRows, ?int $organi
         );
         $st->execute($params);
         foreach ($st->fetchAll() as $a) {
-            // First (newest) attempt per destination wins — one row per outbound message; every
-            // individual attempt is enumerated on the detail page instead.
             $out[(string)$a['destination']] ??= $a;
         }
     } catch (Throwable $t) {
-        // Reporting must degrade, never fail: an install whose gateway migrations have not run yet
-        // still gets the original (transport-status-only) list.
         Logger::warning('reports.delivery_enrichment_failed', ['exception' => $t]);
     }
     return $out;
 }
 
 /**
- * Canonical-status TOTALS for the summary cards (§3 — "Summary card correctness"): total / ok
- * (sent-or-delivered) / delivered / failed, counted from the SAME per-row resolution
- * report_canonical_status() performs — never a second, raw-status-only aggregate that could disagree
- * with the list of rows displayed right below it.
+ * Canonical-status TOTALS for summary cards.
  *
- * Streamed in bounded chunks of 500 (the exact chunk size reports.php's own CSV export already uses)
- * rather than loaded into memory at once or counted with one scalar-subquery-per-row: a chunk's
- * destinations are resolved with ONE query via report_delivery_lookup_by_destination(), so an
- * N-row date range costs O(N/500) queries, not O(N) and not one huge in-memory array.
+ * Previous behavior streamed every matching outbound row into PHP in 500-row chunks and issued an
+ * attempt lookup per chunk. With ~401k messages that made an ordinary report page transfer ~401k rows
+ * from MySQL merely to compute five counters. The dedicated backend adapter now performs the same
+ * destination/latest-accepted-attempt precedence in SQL and returns one aggregate row.
  *
  * @return array{total:int, ok:int, delivered:int, failed:int, pending:int}
  */
 function report_canonical_status_totals(string $outboundWhereSql, array $params, ?int $organizationId, ?int $userId): array {
-    $totals = ['total' => 0, 'ok' => 0, 'delivered' => 0, 'failed' => 0, 'pending' => 0];
-
-    // outbound_message is backend-owned (Phase 8, Invariant C) — read through the ONE designated
-    // adapter (app/Backend/messages.php) rather than querying it directly here.
-    $st = backend_outbound_status_scan_cursor($outboundWhereSql, $params);
-
-    $chunk = [];
-    $tally = function (array $rows) use (&$totals, $organizationId, $userId): void {
-        if ($rows === []) {
-            return;
-        }
-        $delivery = report_delivery_lookup_by_destination($rows, $organizationId, $userId);
-        foreach ($rows as $r) {
-            $attempt = $delivery[(string)$r['destination']] ?? null;
-            $canonical = report_canonical_status($attempt['delivery_status'] ?? null, (string)$r['status']);
-            $totals['total']++;
-            switch ($canonical['status']) {
-                case 'delivered':
-                    $totals['delivered']++;
-                    $totals['ok']++;
-                    break;
-                case 'sent':
-                case 'accepted':
-                case 'queued':
-                    $totals['ok']++;
-                    break;
-                case 'failed':
-                case 'rejected':
-                case 'expired':
-                    $totals['failed']++;
-                    break;
-                case 'pending':
-                    $totals['pending']++;
-                    break;
-            }
-        }
-    };
-
-    while ($r = $st->fetch()) {
-        $chunk[] = $r;
-        if (count($chunk) >= 500) {
-            $tally($chunk);
-            $chunk = [];
-        }
-    }
-    $tally($chunk);
-
-    return $totals;
+    return backend_outbound_canonical_summary($outboundWhereSql, $params, $organizationId, $userId);
 }
 
 /** Internal reference types → Persian labels for "نوع درخواست". */
@@ -307,7 +255,6 @@ function report_resolve_names(array $gatewayIds, array $routeIds, array $operato
             }
             return $out;
         } catch (Throwable) {
-            // A reporting page must still render if a lookup table is missing on an older install.
             return [];
         }
     };
@@ -361,8 +308,6 @@ function report_build_timeline(array $row): array {
     if (!empty($row['delivered_at'])) {
         $steps[] = ['label' => 'تحویل', 'at' => (string)$row['delivered_at'], 'state' => 'delivered'];
     } elseif (in_array($status, ['failed', 'rejected', 'expired'], true)) {
-        // A terminal failure genuinely ends the lifecycle, but the provider gives no timestamp for
-        // it — so the step is shown WITHOUT a time rather than borrowing the poll time.
         $steps[] = ['label' => report_delivery_status_label($status), 'at' => null, 'state' => 'failed'];
     } else {
         $steps[] = ['label' => 'هنوز تحویل نشده', 'at' => null, 'state' => 'pending'];
