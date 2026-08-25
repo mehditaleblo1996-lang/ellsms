@@ -13,16 +13,22 @@ $scopeW = $me['role'] === 'admin' ? '1=1' : 'sender_user_id = ' . (int)$me['id']
 
 $q = fn(string $sql) => (int)db()->query($sql)->fetch()['c'];
 
-// Same canonical status resolution reports.php uses (report_canonical_status_totals()) — a message
-// the poller has since confirmed delivered must count the same way here as it does on the report list.
-$dashOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
-$dashUserId = !is_admin() && !$dashOrgId ? (int)$me['id'] : null;
+// Dashboard cards must remain O(1) result rows even when outbound_message contains millions of
+// messages. The report list still performs per-row canonical delivery enrichment for the rows it
+// actually renders, but the dashboard counters use the backend-owned table's SQL aggregate instead
+// of streaming every matching id/destination/status through PHP on every page load.
+//
+// The today predicate is deliberately a half-open range, not DATE(sent_at)=CURDATE(): wrapping the
+// indexed column in DATE() made MySQL examine the entire outbound_message table.
+$todaySummary = backend_outbound_summary(
+    "sent_at >= CURDATE() AND sent_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND {$scopeW}",
+    []
+);
+$todaySent   = (int)($todaySummary['ok'] ?? 0);
+$todayFailed = (int)($todaySummary['bad'] ?? 0);
 
-$todayTotals = report_canonical_status_totals("DATE(sent_at)=CURDATE() AND {$scopeW}", [], $dashOrgId, $dashUserId);
-$todaySent   = $todayTotals['ok'];
-$todayFailed = $todayTotals['failed'];
-$totalTotals = report_canonical_status_totals($scopeW, [], $dashOrgId, $dashUserId);
-$totalSent   = $totalTotals['ok'];
+$totalSummary = backend_outbound_summary($scopeW, []);
+$totalSent    = (int)($totalSummary['ok'] ?? 0);
 $pendingSch  = $q("SELECT COUNT(*) c FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']));
 $inboxToday  = $me['role'] === 'admin' ? backend_inbound_today_count() : null;
 
@@ -38,6 +44,8 @@ $weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','
 
 /* Recent messages */
 $recent = backend_outbound_rows($scopeW, [], 8);
+$dashOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
+$dashUserId = !is_admin() && !$dashOrgId ? (int)$me['id'] : null;
 $recentDeliveryByDest = report_delivery_lookup_by_destination($recent, $dashOrgId, $dashUserId);
 
 require __DIR__ . '/../app/views/header.php';
