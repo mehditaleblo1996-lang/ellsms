@@ -4,12 +4,6 @@ $me = require_login();
 $pageTitle = 'مخاطبین';
 $active = 'contacts';
 
-// Phase 7: platform admins keep the pre-existing unrestricted bypass every admin-gated page in this
-// codebase already has. An ordinary org member needs CONTACTS_VIEW just to be on this page at all,
-// and CONTACTS_MANAGE specifically to add/import/delete (STEP 13: read separated from mutation) —
-// both are granted to every built-in role by default today (app/rbac.php's role_permissions()
-// docblock), so this adds explicit, fail-closed enforcement without changing who can currently do
-// what; it only stops being a no-op the day a future custom role narrows one but not the other.
 if (!is_admin()) {
     require_permission(Permissions::CONTACTS_VIEW);
 }
@@ -17,8 +11,6 @@ if (!is_admin()) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
-    // Deleting a contact is recoverable only from a backup, so it is not a support action. Adding
-    // and importing stay allowed — they are how an operator reproduces a customer's report.
     if ($do === 'delete' && impersonation_guard_post('contacts.delete')) {
         redirect('/contacts.php');
     }
@@ -34,8 +26,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$mobile) {
             flash('error', 'شماره موبایل معتبر نیست.');
         } else {
-            // Phase 13 (STEP 15/40): a contact-count limit BLOCKS new creation; existing contacts
-            // are never touched or deleted (Invariant J).
             $slot = entitlement_with_resource_slot((int)$myOrgId, Limits::CONTACTS, static function (PDO $db) use ($me, $myOrgId) {
                 $db->prepare('INSERT INTO ellsms_contacts (user_id, organization_id, name, mobile, group_name) VALUES (?,?,?,?,?)')
                    ->execute([$me['id'], $myOrgId, trim($_POST['name'] ?? ''), normalize_msisdn($_POST['mobile'] ?? ''), trim($_POST['group_name'] ?? '')]);
@@ -49,10 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($do === 'import') {
         $group = trim($_POST['group_name'] ?? '');
-        $lines = preg_split('/\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
-        // Capacity is evaluated ONCE for the whole import under a single lock, then the import
-        // inserts up to whatever room actually exists — a partial import is deliberately preferred
-        // over rejecting the entire paste, and the customer is told exactly how many landed.
+        $lines = preg_split('/\\R/u', $_POST['bulk'] ?? '', -1, PREG_SPLIT_NO_EMPTY);
         $limit = organization_limit((int)$myOrgId, Limits::CONTACTS);
         $imported = 0;
         $skippedOverLimit = 0;
@@ -84,11 +71,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($do === 'delete') {
-        // Phase 6: an organization-scoped row is deletable by any member of that same
-        // organization (id + organization match); a legacy row with no organization_id yet
-        // (pre-tenant-backfill) falls back to the exact pre-Phase-6 user_id-only check, unchanged
-        // — Invariant D: a bare numeric id alone is never sufficient, one of the two ownership
-        // conditions below must also hold.
         db()->prepare('DELETE FROM ellsms_contacts WHERE id=? AND (organization_id = ? OR (organization_id IS NULL AND user_id = ?))')
            ->execute([(int)$_POST['id'], $myOrgId, $me['id']]);
         flash('info', 'مخاطب حذف شد.');
@@ -98,20 +80,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $myOrgId = $me['organization_id'] ?? null;
 $g = trim($_GET['group'] ?? '');
-// Phase 6: any member of the active organization sees the organization's contacts; a legacy row
-// with no organization_id yet (pre-tenant-backfill) falls back to the exact pre-Phase-6
-// user_id-only visibility, unchanged.
 $ownership = '(organization_id = ? OR (organization_id IS NULL AND user_id = ?))';
-$params = [$myOrgId, $me['id']];
-$where = $ownership;
-if ($g !== '') { $where .= ' AND group_name = ?'; $params[] = $g; }
-$st = db()->prepare("SELECT * FROM ellsms_contacts WHERE {$where} ORDER BY group_name, name LIMIT 1000");
-$st->execute($params);
-$rows = $st->fetchAll();
 
+// Group chips are aggregate rows, not contacts themselves; this result is bounded by the number of
+// distinct group names. The contact table below is always keyset-paged and never fetches the whole set.
 $gr = db()->prepare("SELECT group_name, COUNT(*) c FROM ellsms_contacts WHERE {$ownership} AND group_name<>'' GROUP BY group_name ORDER BY group_name");
 $gr->execute([$myOrgId, $me['id']]);
 $groups = $gr->fetchAll();
+
+$per = 100;
+$beforeId = (isset($_GET['before_id']) && $_GET['before_id'] !== '') ? (int)$_GET['before_id'] : null;
+$afterId  = (isset($_GET['after_id']) && $_GET['after_id'] !== '') ? (int)$_GET['after_id'] : null;
+$where = $ownership;
+$params = [$myOrgId, $me['id']];
+if ($g !== '') {
+    $where .= ' AND group_name = ?';
+    $params[] = $g;
+}
+$order = 'DESC';
+if ($beforeId !== null && $beforeId > 0) {
+    $where .= ' AND id < ?';
+    $params[] = $beforeId;
+} elseif ($afterId !== null && $afterId > 0) {
+    $where .= ' AND id > ?';
+    $params[] = $afterId;
+    $order = 'ASC';
+}
+$st = db()->prepare("SELECT id, name, mobile, group_name, created_at FROM ellsms_contacts WHERE {$where} ORDER BY id {$order} LIMIT " . ($per + 1));
+$st->execute($params);
+$fetched = $st->fetchAll();
+$hasMore = count($fetched) > $per;
+$rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
+if ($afterId !== null && $afterId > 0) {
+    $rows = array_reverse($rows);
+}
+$ids = $rows ? array_map('intval', array_column($rows, 'id')) : [];
+$nextBeforeId = $ids ? min($ids) : null;
+$prevAfterId = $ids ? max($ids) : null;
+$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null);
+$hasNext = $rows !== [] && (($afterId !== null) || $hasMore);
+$baseQuery = $g !== '' ? ['group' => $g] : [];
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -179,5 +187,12 @@ require __DIR__ . '/../app/views/header.php';
     <?php if (!$rows): ?><tr><td colspan="5" class="empty">هنوز مخاطبی وجود ندارد.</td></tr><?php endif; ?>
   </table>
   </div>
+
+  <?php if ($hasPrev || $hasNext): ?>
+  <div class="pagination">
+    <?php if ($hasPrev && $prevAfterId): ?><a class="btn btn-sm" href="?<?= e(http_build_query(array_merge($baseQuery, ['after_id' => $prevAfterId]))) ?>">→ جدیدتر</a><?php endif; ?>
+    <?php if ($hasNext && $nextBeforeId): ?><a class="btn btn-sm" href="?<?= e(http_build_query(array_merge($baseQuery, ['before_id' => $nextBeforeId]))) ?>">قدیمی‌تر ←</a><?php endif; ?>
+  </div>
+  <?php endif; ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
