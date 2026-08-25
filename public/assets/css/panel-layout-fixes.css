@@ -1,0 +1,104 @@
+/* ELLSMS panel layout fixes — keep authenticated pages fluid beside the RTL sidebar. */
+
+/* The old 1200px cap left a large unused strip on wide desktops. Let the main content use the
+   entire width that remains after the sidebar while keeping comfortable inline padding. */
+.content {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  padding-inline: clamp(18px, 2vw, 32px);
+}
+
+.content > .card,
+.content > .grid {
+  width: 100%;
+  min-width: 0;
+}
+
+.table-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.table-wrap > table {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Dashboard-specific sizing: the recent-message table should fit the card instead of allowing
+   long message/phone cells to dictate a wider intrinsic table width. */
+.content-dashboard .card {
+  min-width: 0;
+}
+
+.content-dashboard .table-wrap > table {
+  table-layout: fixed;
+}
+
+.content-dashboard .table-wrap th,
+.content-dashboard .table-wrap td {
+  min-width: 0;
+}
+
+.content-dashboard .msg-preview {
+  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-dashboard .msisdn,
+.content-dashboard .num {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-dashboard .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Give the message body the flexible share of the recent table while keeping utility columns
+   compact. Selectors work for both admin (with user column) and normal-user table shapes. */
+.content-dashboard .table-wrap th:first-child,
+.content-dashboard .table-wrap td:first-child {
+  width: 8%;
+}
+
+.content-dashboard .table-wrap th:last-child,
+.content-dashboard .table-wrap td:last-child {
+  width: 18%;
+}
+
+@media (min-width: 901px) {
+  .content-dashboard {
+    padding-top: 24px;
+    padding-bottom: 32px;
+  }
+}
+
+@media (max-width: 900px) {
+  .content {
+    padding-inline: 16px;
+  }
+
+  /* Small screens may scroll the table horizontally rather than crushing every column. */
+  .content-dashboard .table-wrap > table {
+    table-layout: auto;
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 480px) {
+  .content {
+    padding-inline: 12px;
+  }
+}
