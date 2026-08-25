@@ -48,47 +48,60 @@ function gateway_status_poll_pass(): array {
     // §Delivery status). Both are polled by the SAME code so a direct send and a bulk send cannot
     // drift into two different delivery-tracking behaviours.
     //
-    // Only rows that were actually sent through a gateway, still carry a provider id, and are not yet
-    // terminal. A row with no provider_message_id can never be asked about, so it is excluded in SQL
-    // rather than filtered in PHP — otherwise the batch limit would fill up with unaskable rows.
+    // IMPORTANT: eligibility belongs INSIDE SQL, before LIMIT. The old implementation selected the
+    // first N non-terminal bulk rows and only then rejected exhausted/too-old/not-yet-due rows in PHP.
+    // A backlog of rows at poll_max_attempts could therefore consume the entire LIMIT forever and
+    // starve every direct-send attempt behind it. Joining the status connector here lets each row be
+    // filtered with its own gateway's delay/age/attempt policy before it is allowed to consume a slot.
+    // gateway_status_row_is_due() remains below as a defensive second check for races/config reloads.
     $limit = gateway_status_batch_size();
-    $rows = [];
 
     $due = $db->prepare(
-        "SELECT 'bulk_item' AS source, bi.id, bi.gateway_id, bi.provider_message_id, bi.mobile AS destination,
-                bi.delivery_status, bi.delivery_attempts, bi.created_at, bi.delivery_checked_at,
-                bi.route_id, bi.operator_id, bj.originator AS sender
-         FROM ellsms_bulk_items bi
-         JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
-         WHERE bi.status = 'sent'
-           AND bi.gateway_id IS NOT NULL
-           AND bi.provider_message_id IS NOT NULL
-           AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN ('delivered','failed','rejected','expired'))
-         ORDER BY bi.delivery_checked_at IS NULL DESC, bi.id ASC
-         LIMIT " . $limit
-    );
-    $due->execute();
-    $rows = $due->fetchAll();
+        "SELECT source, id, gateway_id, provider_message_id, destination, delivery_status,
+                delivery_attempts, created_at, delivery_checked_at, route_id, operator_id, sender
+         FROM (
+             SELECT 'bulk_item' AS source, bi.id, bi.gateway_id, bi.provider_message_id,
+                    bi.mobile AS destination, bi.delivery_status, bi.delivery_attempts,
+                    bi.created_at, bi.delivery_checked_at, bi.route_id, bi.operator_id,
+                    bj.originator AS sender,
+                    COALESCE(bi.delivery_checked_at, bi.created_at) AS due_reference
+             FROM ellsms_bulk_items bi
+             JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
+             JOIN ellsms_sms_gateway_status_connectors sc ON sc.gateway_id = bi.gateway_id
+             WHERE bi.status = 'sent'
+               AND bi.gateway_id IS NOT NULL
+               AND bi.provider_message_id IS NOT NULL
+               AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN ('delivered','failed','rejected','expired'))
+               AND (sc.poll_max_attempts = 0 OR bi.delivery_attempts < sc.poll_max_attempts)
+               AND (sc.poll_max_age_seconds = 0
+                    OR TIMESTAMPDIFF(SECOND, bi.created_at, NOW()) <= sc.poll_max_age_seconds)
+               AND TIMESTAMPDIFF(SECOND, COALESCE(bi.delivery_checked_at, bi.created_at), NOW())
+                    >= sc.poll_initial_delay_seconds
 
-    $remaining = $limit - count($rows);
-    if ($remaining > 0) {
-        $dueAttempts = $db->prepare(
-            "SELECT 'attempt' AS source, ma.id, ma.gateway_id, ma.provider_message_id, ma.destination,
-                    ma.delivery_status, ma.delivery_attempts, ma.attempted_at AS created_at,
-                    ma.delivery_checked_at, ma.route_id, ma.operator_id, '' AS sender
+             UNION ALL
+
+             SELECT 'attempt' AS source, ma.id, ma.gateway_id, ma.provider_message_id,
+                    ma.destination, ma.delivery_status, ma.delivery_attempts,
+                    ma.attempted_at AS created_at, ma.delivery_checked_at, ma.route_id, ma.operator_id,
+                    '' AS sender,
+                    COALESCE(ma.delivery_checked_at, ma.attempted_at) AS due_reference
              FROM ellsms_message_attempts ma
+             JOIN ellsms_sms_gateway_status_connectors sc ON sc.gateway_id = ma.gateway_id
              WHERE ma.status = 'accepted'
                AND ma.gateway_id IS NOT NULL
                AND ma.provider_message_id IS NOT NULL
                AND (ma.delivery_status IS NULL OR ma.delivery_status NOT IN ('delivered','failed','rejected','expired'))
-             ORDER BY ma.delivery_checked_at IS NULL DESC, ma.id ASC
-             LIMIT " . $remaining
-        );
-        $dueAttempts->execute();
-        foreach ($dueAttempts->fetchAll() as $row) {
-            $rows[] = $row;
-        }
-    }
+               AND (sc.poll_max_attempts = 0 OR ma.delivery_attempts < sc.poll_max_attempts)
+               AND (sc.poll_max_age_seconds = 0
+                    OR TIMESTAMPDIFF(SECOND, ma.attempted_at, NOW()) <= sc.poll_max_age_seconds)
+               AND TIMESTAMPDIFF(SECOND, COALESCE(ma.delivery_checked_at, ma.attempted_at), NOW())
+                    >= sc.poll_initial_delay_seconds
+         ) AS eligible
+         ORDER BY due_reference ASC, source ASC, id ASC
+         LIMIT " . $limit
+    );
+    $due->execute();
+    $rows = $due->fetchAll();
 
     if ($rows === []) {
         return $stats;
@@ -115,7 +128,8 @@ function gateway_status_poll_pass(): array {
         }
         $status = $connector['status'];
 
-        // Only rows that are actually due; the rest are left for a later pass.
+        // SQL already filtered eligibility before LIMIT. Re-check here because config may have changed
+        // between selection and compilation, and because this is the final safety gate before claim.
         $due = [];
         foreach ($gatewayRows as $row) {
             if (!gateway_status_row_is_due($row, $status)) {
