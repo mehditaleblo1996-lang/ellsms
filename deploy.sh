@@ -44,10 +44,8 @@ docker exec -i "${BACKEND_DB_HOST}" \
   mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/migrations/2026_08_26_registration_requests.sql
 
-echo "==> Applying registration OTP schema (safe to re-run)..."
-docker exec -i "${BACKEND_DB_HOST}" \
-  mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
-  < db/migrations/2026_08_26_registration_otp.sql
+echo "==> Applying versioned DB migrations..."
+docker compose exec -T app php cron/db-migrate.php --apply
 
 echo "==> Done. Status:"
 docker compose ps
