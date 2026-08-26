@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS ellsms_totp_mfa (
+  user_id BIGINT NOT NULL PRIMARY KEY,
+  secret_ciphertext VARBINARY(255) NOT NULL,
+  secret_nonce VARBINARY(32) NOT NULL,
+  secret_tag VARBINARY(32) NOT NULL,
+  key_fingerprint VARCHAR(32) NOT NULL DEFAULT '',
+  enabled_at DATETIME NOT NULL,
+  last_used_step BIGINT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_totp_enabled_at (enabled_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
