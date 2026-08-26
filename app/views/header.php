@@ -37,6 +37,7 @@ $adminNav = [
     'users'                 => ['/users.php',                 'کاربران',            '👤'],
     'registration_requests' => ['/registration-requests.php', 'درخواست‌های ثبت‌نام', '📝'],
     'kyc_review'            => ['/kyc-review.php',            'بررسی احراز هویت',   '🪪'],
+    'kyc_gates'             => ['/kyc-gates.php',             'محدودیت‌های KYC',    '🔐'],
     'analytics'             => ['/analytics.php',             'آمار تفصیلی',        '📊'],
     'logs'                  => ['/logs.php',                  'لاگ فعالیت‌ها',       '📜'],
     'numbers'               => ['/numbers.php',               'شماره‌ها',            '📞'],
