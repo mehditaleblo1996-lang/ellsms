@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/Onboarding.php';
 if (!current_user()) {
     require __DIR__ . '/landing.php';
     exit;
@@ -7,6 +8,8 @@ if (!current_user()) {
 $me = require_login();
 $pageTitle = 'داشبورد';
 $active = 'dashboard';
+
+$onboarding = ($me['role'] !== 'admin' && onboarding_enabled()) ? onboarding_status($me) : null;
 
 $scope  = $me['role'] === 'admin' ? '' : ' AND sender_user_id = ' . (int)$me['id'];
 $scopeW = $me['role'] === 'admin' ? '1=1' : 'sender_user_id = ' . (int)$me['id'];
@@ -46,6 +49,22 @@ $recentDeliveryByDest = report_delivery_lookup_by_destination($recent, $dashOrgI
 
 require __DIR__ . '/../app/views/header.php';
 ?>
+<?php if ($onboarding && !$onboarding['complete']): ?>
+<div class="card" style="border:1px solid #dfe3ff;background:linear-gradient(135deg,#fff,#f7f8ff)">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
+    <div style="flex:1;min-width:250px">
+      <div class="hint">شروع کار با ELLSMS</div>
+      <h2 style="margin:5px 0 8px">تکمیل حساب: <?= to_persian_digits((string)$onboarding['progress']) ?>٪</h2>
+      <div style="height:8px;background:#eceefa;border-radius:999px;overflow:hidden;max-width:520px">
+        <div style="height:100%;width:<?= (int)$onboarding['progress'] ?>%;background:linear-gradient(90deg,#5b36f2,#315cff)"></div>
+      </div>
+      <p class="hint" style="margin:10px 0 0">مشخصات، احراز هویت، اعتبار و اولین ارسال را مرحله‌به‌مرحله کامل کنید.</p>
+    </div>
+    <a class="btn btn-primary" href="/onboarding.php">ادامه راه‌اندازی حساب</a>
+  </div>
+</div>
+<?php endif; ?>
+
 <div class="grid grid-4">
   <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value"><?= to_persian_digits(number_format($todaySent)) ?></div></div>
   <div class="stat"><div class="stat-label">ناموفق امروز</div><div class="stat-value"><?= to_persian_digits(number_format($todayFailed)) ?></div></div>
