@@ -87,6 +87,73 @@ function registration_request_create(array $input): array {
     return ['ok' => true, 'id' => $id];
 }
 
+/** System SMS transport for onboarding. The raw text is never logged here. */
+function registration_system_sms(array $destinations, string $text): array {
+    $normalized = [];
+    foreach ($destinations as $destination) {
+        $mobile = normalize_msisdn((string)$destination);
+        if ($mobile !== null) $normalized[] = $mobile;
+    }
+    $normalized = array_values(array_unique($normalized));
+    if ($normalized === []) return ['ok' => false, 'error' => 'هیچ شماره موبایل معتبری برای ارسال وجود ندارد.'];
+
+    $originator = normalize_originator((string)setting('default_originator', '')) ?? '';
+    if ($originator === '') return ['ok' => false, 'error' => 'خط ارسال پیش‌فرض برای پیامک‌های سامانه تنظیم نشده است.'];
+
+    $senderUserId = max(1, (int)setting('registration_sms_sender_user_id', '1'));
+    require_once __DIR__ . '/backend.php';
+    [$ok, $http, $rows] = backend_api_send($senderUserId, $originator, $normalized, $text);
+    if (!$ok || !is_array($rows)) return ['ok' => false, 'error' => 'ارسال پیامک سامانه ممکن نشد.', 'http' => $http];
+
+    $sent = 0;
+    foreach ($rows as $sentRow) {
+        if (is_array($sentRow) && (($sentRow['status'] ?? '') === 'sent')) $sent++;
+    }
+    return ['ok' => $sent > 0, 'sent' => $sent, 'total' => count($normalized), 'http' => $http];
+}
+
+/** @return list<string> */
+function registration_admin_mobiles(): array {
+    $raw = (string)setting('registration_admin_mobiles', '');
+    if ($raw === '') return [];
+    $parts = preg_split('/[\s,;]+/u', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $out = [];
+    foreach ($parts as $part) {
+        $mobile = normalize_msisdn((string)$part);
+        if ($mobile !== null) $out[] = $mobile;
+    }
+    return array_values(array_unique($out));
+}
+
+/** Best-effort: verification succeeds even if the admin SMS provider is temporarily unavailable. */
+function registration_notify_admins(int $registrationId): void {
+    $row = registration_request_get($registrationId);
+    if (!$row || $row['state'] !== 'pending_admin_approval' || !empty($row['admin_notified_at'])) return;
+
+    $mobiles = registration_admin_mobiles();
+    if ($mobiles === []) {
+        Logger::warning('registration.admin_notification_skipped', ['registration_id' => $registrationId, 'reason' => 'no_admin_mobile']);
+        return;
+    }
+
+    $name = trim((string)$row['first_name'] . ' ' . (string)$row['last_name']);
+    $type = $row['account_type'] === 'legal' ? 'حقوقی' : 'حقیقی';
+    $company = trim((string)$row['company_name']);
+    $text = "ثبت‌نام جدید ELLSMS\nشناسه: {$registrationId}\nنام: {$name}\nموبایل: {$row['mobile']}\nنوع: {$type}";
+    if ($company !== '') $text .= "\nشرکت: {$company}";
+    $text .= "\nبرای بررسی وارد پنل مدیریت شوید.";
+
+    $result = registration_system_sms($mobiles, $text);
+    if (!empty($result['ok'])) {
+        db()->prepare('UPDATE ellsms_registration_requests SET admin_notified_at = NOW() WHERE id = ? AND admin_notified_at IS NULL')->execute([$registrationId]);
+        Logger::info('registration.admin_notified', ['registration_id' => $registrationId, 'recipient_count' => (int)($result['sent'] ?? 0)]);
+        if (function_exists('audit_mongo_event')) audit_mongo_event('registration.admin_notified', ['registration_id' => $registrationId], true);
+    } else {
+        Logger::warning('registration.admin_notification_failed', ['registration_id' => $registrationId]);
+        if (function_exists('audit_mongo_event')) audit_mongo_event('registration.admin_notification_failed', ['registration_id' => $registrationId], true);
+    }
+}
+
 /**
  * Send a registration OTP without ever persisting/logging the raw code.
  * Uses the same backend messaging API as the existing login 2FA path.
@@ -105,36 +172,12 @@ function registration_send_otp(int $registrationId, bool $isResend = false): arr
         }
     }
 
-    $originator = normalize_originator((string)setting('default_originator', '')) ?? '';
-    if ($originator === '') {
-        return ['ok' => false, 'error' => 'خط ارسال پیش‌فرض برای پیامک‌های سامانه تنظیم نشده است.'];
-    }
-
-    // This id is only the backend audit/sender identity for system OTP messages.
-    // It is configurable in Settings DB and defaults to the historical bootstrap admin id.
-    $senderUserId = max(1, (int)setting('registration_sms_sender_user_id', '1'));
     $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     $text = "کد تأیید ثبت‌نام ELLSMS: {$code}\nاین کد تا ۵ دقیقه معتبر است.";
-
-    require_once __DIR__ . '/backend.php';
-    [$ok, $http, $rows, $err] = backend_api_send($senderUserId, $originator, [(string)$row['mobile']], $text);
-    $accepted = false;
-    if ($ok && is_array($rows)) {
-        foreach ($rows as $sentRow) {
-            if (is_array($sentRow) && (($sentRow['status'] ?? '') === 'sent')) {
-                $accepted = true;
-                break;
-            }
-        }
-    }
-    if (!$accepted) {
-        Logger::warning('registration.otp_send_failed', [
-            'registration_id' => $registrationId,
-            'http' => $http,
-        ]);
-        if (function_exists('audit_mongo_event')) {
-            audit_mongo_event('registration.otp_send_failed', ['registration_id' => $registrationId], true);
-        }
+    $send = registration_system_sms([(string)$row['mobile']], $text);
+    if (empty($send['ok'])) {
+        Logger::warning('registration.otp_send_failed', ['registration_id' => $registrationId]);
+        if (function_exists('audit_mongo_event')) audit_mongo_event('registration.otp_send_failed', ['registration_id' => $registrationId], true);
         return ['ok' => false, 'error' => 'ارسال کد تأیید ممکن نشد. کمی بعد دوباره تلاش کنید.'];
     }
 
@@ -145,16 +188,8 @@ function registration_send_otp(int $registrationId, bool $isResend = false): arr
          WHERE id = ? AND state = \'pending_mobile_verification\''
     )->execute([hash('sha256', $code), REGISTRATION_OTP_TTL_SECONDS, $registrationId]);
 
-    Logger::info('registration.otp_sent', [
-        'registration_id' => $registrationId,
-        'resend' => $isResend,
-    ]);
-    if (function_exists('audit_mongo_event')) {
-        audit_mongo_event('registration.otp_sent', [
-            'registration_id' => $registrationId,
-            'resend' => $isResend,
-        ], true);
-    }
+    Logger::info('registration.otp_sent', ['registration_id' => $registrationId, 'resend' => $isResend]);
+    if (function_exists('audit_mongo_event')) audit_mongo_event('registration.otp_sent', ['registration_id' => $registrationId, 'resend' => $isResend], true);
     return ['ok' => true];
 }
 
@@ -163,22 +198,14 @@ function registration_verify_otp(int $registrationId, string $code): array {
     if (strlen($code) !== 6) return ['ok' => false, 'error' => 'کد تأیید باید ۶ رقمی باشد.'];
 
     $row = registration_request_get($registrationId);
-    if (!$row || $row['state'] !== 'pending_mobile_verification') {
-        return ['ok' => false, 'error' => 'این درخواست دیگر منتظر تأیید موبایل نیست.'];
-    }
-    if ((int)$row['otp_attempts'] >= REGISTRATION_OTP_MAX_ATTEMPTS) {
-        return ['ok' => false, 'error' => 'تعداد تلاش‌های تأیید بیش از حد مجاز شده است. یک کد جدید درخواست کنید.'];
-    }
-    if (empty($row['otp_hash']) || empty($row['otp_expires_at']) || strtotime((string)$row['otp_expires_at']) < time()) {
-        return ['ok' => false, 'error' => 'کد تأیید منقضی شده است. کد جدید درخواست کنید.'];
-    }
+    if (!$row || $row['state'] !== 'pending_mobile_verification') return ['ok' => false, 'error' => 'این درخواست دیگر منتظر تأیید موبایل نیست.'];
+    if ((int)$row['otp_attempts'] >= REGISTRATION_OTP_MAX_ATTEMPTS) return ['ok' => false, 'error' => 'تعداد تلاش‌های تأیید بیش از حد مجاز شده است. یک کد جدید درخواست کنید.'];
+    if (empty($row['otp_hash']) || empty($row['otp_expires_at']) || strtotime((string)$row['otp_expires_at']) < time()) return ['ok' => false, 'error' => 'کد تأیید منقضی شده است. کد جدید درخواست کنید.'];
 
     db()->prepare('UPDATE ellsms_registration_requests SET otp_attempts = otp_attempts + 1 WHERE id = ?')->execute([$registrationId]);
     if (!hash_equals((string)$row['otp_hash'], hash('sha256', $code))) {
         Logger::warning('registration.otp_failed', ['registration_id' => $registrationId]);
-        if (function_exists('audit_mongo_event')) {
-            audit_mongo_event('registration.otp_failed', ['registration_id' => $registrationId], true);
-        }
+        if (function_exists('audit_mongo_event')) audit_mongo_event('registration.otp_failed', ['registration_id' => $registrationId], true);
         return ['ok' => false, 'error' => 'کد تأیید نادرست است.'];
     }
 
@@ -188,13 +215,40 @@ function registration_verify_otp(int $registrationId, string $code): array {
          WHERE id = ? AND state = 'pending_mobile_verification'"
     );
     $st->execute([$registrationId]);
-    if ($st->rowCount() !== 1) {
-        return ['ok' => false, 'error' => 'وضعیت درخواست تغییر کرده است. صفحه را دوباره باز کنید.'];
-    }
+    if ($st->rowCount() !== 1) return ['ok' => false, 'error' => 'وضعیت درخواست تغییر کرده است. صفحه را دوباره باز کنید.'];
 
     Logger::info('registration.mobile_verified', ['registration_id' => $registrationId]);
-    if (function_exists('audit_mongo_event')) {
-        audit_mongo_event('registration.mobile_verified', ['registration_id' => $registrationId], true);
-    }
+    if (function_exists('audit_mongo_event')) audit_mongo_event('registration.mobile_verified', ['registration_id' => $registrationId], true);
+
+    if (registration_mode() === 'approval') registration_notify_admins($registrationId);
     return ['ok' => true];
+}
+
+function registration_admin_decide(int $registrationId, int $adminUserId, string $decision, string $note = ''): array {
+    if (!in_array($decision, ['approve', 'reject'], true)) return ['ok' => false, 'error' => 'تصمیم نامعتبر است.'];
+    $row = registration_request_get($registrationId);
+    if (!$row || $row['state'] !== 'pending_admin_approval') return ['ok' => false, 'error' => 'این درخواست دیگر منتظر بررسی مدیر نیست.'];
+
+    $note = mb_substr(trim($note), 0, 500, 'UTF-8');
+    if ($decision === 'reject' && $note === '') return ['ok' => false, 'error' => 'برای رد درخواست دلیل را وارد کنید.'];
+
+    if ($decision === 'approve') {
+        $st = db()->prepare("UPDATE ellsms_registration_requests SET state='approved', approved_at=NOW(), approved_by=?, decision_note=? WHERE id=? AND state='pending_admin_approval'");
+        $st->execute([$adminUserId, $note, $registrationId]);
+        $event = 'registration.approved';
+        $message = "درخواست ثبت‌نام شما در ELLSMS تأیید شد.\nحساب شما در مرحله فعال‌سازی است و پس از آماده‌شدن، پیامک بعدی ارسال می‌شود.";
+    } else {
+        $st = db()->prepare("UPDATE ellsms_registration_requests SET state='rejected', rejected_at=NOW(), rejected_by=?, rejection_reason=?, decision_note=? WHERE id=? AND state='pending_admin_approval'");
+        $st->execute([$adminUserId, $note, $note, $registrationId]);
+        $event = 'registration.rejected';
+        $message = "درخواست ثبت‌نام شما در ELLSMS تأیید نشد.\nدلیل: {$note}";
+    }
+    if ($st->rowCount() !== 1) return ['ok' => false, 'error' => 'وضعیت درخواست همزمان تغییر کرده است.'];
+
+    Logger::info($event, ['registration_id' => $registrationId, 'admin_user_id' => $adminUserId]);
+    if (function_exists('audit_mongo_event')) audit_mongo_event($event, ['registration_id' => $registrationId, 'admin_user_id' => $adminUserId], true);
+
+    $sms = registration_system_sms([(string)$row['mobile']], $message);
+    if (empty($sms['ok'])) Logger::warning($event . '.sms_failed', ['registration_id' => $registrationId]);
+    return ['ok' => true, 'sms_sent' => !empty($sms['ok'])];
 }
