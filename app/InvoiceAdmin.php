@@ -2,13 +2,7 @@
 
 declare(strict_types=1);
 
-/**
- * Administrative payment gate for invoices.
- *
- * This is deliberately independent from the accounting status (`issued`, `paid`, ...). Disabling an
- * invoice does not pretend it was cancelled or paid; it only prevents the customer from starting or
- * retrying a gateway payment until an administrator approves it again.
- */
+/** Administrative payment gate for invoices. */
 function invoice_admin_state(array $invoice): string {
     $state = (string)($invoice['admin_state'] ?? 'approved');
     return in_array($state, ['approved', 'disabled'], true) ? $state : 'approved';
@@ -31,7 +25,10 @@ function invoice_admin_set_state(int $invoiceId, string $state, int $adminUserId
     }
 
     return db_transaction(function (PDO $db) use ($invoiceId, $state, $adminUserId, $note): array {
-        $st = $db->prepare('SELECT id,status,admin_state,invoice_number FROM ellsms_invoices WHERE id=? FOR UPDATE');
+        $st = $db->prepare('SELECT i.id,i.status,i.admin_state,i.invoice_number,i.payment_id,p.status AS payment_status,p.authority
+                            FROM ellsms_invoices i
+                            LEFT JOIN ellsms_payments p ON p.id=i.payment_id
+                            WHERE i.id=? FOR UPDATE');
         $st->execute([$invoiceId]);
         $invoice = $st->fetch();
         if (!$invoice) {
@@ -40,6 +37,15 @@ function invoice_admin_set_state(int $invoiceId, string $state, int $adminUserId
         if (($invoice['status'] ?? '') !== 'issued') {
             return ['ok' => false, 'reason' => 'invoice_not_issued'];
         }
+        // Once a provider authority has been issued and payment is actively pending, disabling the
+        // local button cannot reliably cancel the provider-side payment. Refuse the operation rather
+        // than create an orphan payment that could capture money while ELLSMS ignores the callback.
+        if ($state === 'disabled'
+            && ($invoice['payment_status'] ?? '') === 'pending'
+            && trim((string)($invoice['authority'] ?? '')) !== '') {
+            return ['ok' => false, 'reason' => 'active_payment'];
+        }
+
         $current = invoice_admin_state($invoice);
         if ($current === $state) {
             return ['ok' => true, 'reason' => 'unchanged', 'invoice_number' => $invoice['invoice_number']];
