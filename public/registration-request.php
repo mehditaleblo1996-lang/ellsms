@@ -31,6 +31,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'note' => $note,
         ]);
         if (!empty($result['ok'])) {
+            notification_insert_panel(
+                (int)$result['user_id'],
+                (int)$result['organization_id'],
+                'registration.account_created',
+                'حساب ELLSMS شما فعال شد',
+                'حساب شما با موفقیت فعال شده است. از بخش شروع کار می‌توانید مراحل تکمیل حساب را ادامه دهید.',
+                '/onboarding.php',
+                'success'
+            );
             flash('success', 'درخواست تأیید شد و حساب کاربر با موفقیت فعال شد.');
             if (empty($result['sms_sent'])) flash('error', 'حساب فعال شد اما پیامک نهایی به کاربر ارسال نشد.');
         } else {
