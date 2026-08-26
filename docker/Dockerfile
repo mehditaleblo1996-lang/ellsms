@@ -1,10 +1,10 @@
 FROM php:8.2-apache
 
 # pcntl is needed by cron/worker.php for graceful SIGTERM/SIGINT handling.
-# ext-mongodb backs the dedicated MongoDB audit trail. Build dependencies are removed after PECL
-# compilation so the runtime image does not carry a compiler toolchain.
+# ext-mongodb backs the dedicated MongoDB audit trail. qrencode renders TOTP provisioning QR codes
+# locally inside the app container so MFA secrets are never sent to an external QR service.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libzip-dev default-mysql-client gnupg libssl-dev pkg-config $PHPIZE_DEPS \
+      libzip-dev default-mysql-client gnupg libssl-dev pkg-config qrencode $PHPIZE_DEPS \
  && docker-php-ext-install pdo_mysql zip pcntl \
  && pecl install mongodb \
  && docker-php-ext-enable mongodb \
@@ -51,7 +51,7 @@ COPY docker/apache-clean-urls.conf /etc/apache2/conf-enabled/ellsms-rewrites.con
 # denies dotfiles, editor backups and SQL files if one is accidentally placed under public/.
 RUN { \
       echo '<Directory "${APACHE_DOCUMENT_ROOT}">'; \
-      echo '    <FilesMatch "(^\.|\.bak$|~$|\.sql$)">'; \
+      echo '    <FilesMatch "(^\\.|\\.bak$|~$|\\.sql$)">'; \
       echo '        Require all denied'; \
       echo '    </FilesMatch>'; \
       echo '</Directory>'; \
