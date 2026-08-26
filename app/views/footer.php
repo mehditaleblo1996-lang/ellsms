@@ -30,12 +30,23 @@
     });
   }
 
+  // Keep account security discoverable for every signed-in user without adding another long sidebar
+  // item. The shortcut sits beside notifications/name and goes to the clean physical route.
+  var userChip = document.querySelector('.user-chip');
+  if (userChip && !document.getElementById('accountSecurityShortcut')) {
+    var security = document.createElement('a');
+    security.id = 'accountSecurityShortcut';
+    security.className = 'btn btn-ghost';
+    security.href = '/account/security/';
+    security.title = 'امنیت حساب و MFA';
+    security.setAttribute('aria-label', 'امنیت حساب و MFA');
+    security.textContent = '🛡️';
+    userChip.parentNode.insertBefore(security, userChip);
+  }
+
   // Chrome can visually decompose/repaint the panel badly when a fixed backdrop-filter modal is
-  // removed in the same frame that a synchronous send starts navigating. The shared cost-preview
-  // script intentionally disables the submit button, but it also hides the modal immediately.
-  // Re-open it in a lightweight, non-blurred "sending" state until the HTTP response/redirect
-  // arrives. This keeps every send page visually stable while preserving the existing synchronous
-  // gateway flow (no queue semantics and no change to what is actually sent).
+  // removed in the same frame that a synchronous send starts navigating. Re-open it in a
+  // lightweight, non-blurred "sending" state until the HTTP response/redirect arrives.
   var confirmForm = document.getElementById('sendConfirmForm');
   if (confirmForm) {
     confirmForm.addEventListener('submit', function () {
