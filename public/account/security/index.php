@@ -12,9 +12,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = (string)($_POST['do'] ?? '');
 
-    if (!impersonation_action_allowed('account.mfa')) {
-        impersonation_record_block('account.mfa');
-        flash('error', impersonation_block_message('account.mfa'));
+    if (!impersonation_action_allowed('account.twofa')) {
+        impersonation_record_block('account.twofa');
+        flash('error', impersonation_block_message('account.twofa'));
         redirect('/account/security/');
     }
 
