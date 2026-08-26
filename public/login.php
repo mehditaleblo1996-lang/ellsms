@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/backend.php'; // needed for send_2fa_code()
+require_once __DIR__ . '/../app/TotpMfa.php';
 
 if (current_user()) redirect('/dashboard');
 
@@ -37,6 +38,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $meta = $m->fetch();
             if (!$meta || !$meta['panel_access']) {
                 $error = 'این حساب وجود دارد، اما دسترسی به پنل ELLSMS برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
+            } elseif (totp_enabled((int)$u['id'])) {
+                session_regenerate_id(true);
+                $_SESSION['twofa_uid'] = $u['id'];
+                $_SESSION['twofa_method'] = 'totp';
+                unset($_SESSION['twofa_sent_at']);
+                Logger::info('auth.totp.challenge_started', ['user_id' => $u['id']]);
+                redirect('/login/verify-2fa');
             } elseif ($meta['twofa_enabled']) {
                 [$ok, $info] = send_2fa_code((int)$u['id'], (string)$u['mobile']);
                 if (!$ok) {
@@ -44,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     session_regenerate_id(true);
                     $_SESSION['twofa_uid'] = $u['id'];
+                    $_SESSION['twofa_method'] = 'sms';
                     $_SESSION['twofa_sent_at'] = time();
                     redirect('/login/verify-2fa');
                 }
