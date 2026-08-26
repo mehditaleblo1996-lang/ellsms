@@ -5,6 +5,7 @@ require_once __DIR__ . '/../NotificationCenter.php';
 $nav = [
     'dashboard'     => ['/index.php',         'داشبورد',         '▦'],
     'notifications' => ['/notifications.php', 'اعلان‌ها',         '🔔'],
+    'guide'         => ['/guide.php',         'راهنمای کاربران',  '📘'],
 ];
 if ($me['role'] !== 'admin' && setting('onboarding_enabled', '1') !== '0') {
     $nav['onboarding'] = ['/onboarding.php', 'شروع کار', '✓'];
