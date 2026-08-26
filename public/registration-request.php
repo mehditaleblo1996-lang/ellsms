@@ -10,6 +10,16 @@ $id = max(0, (int)($_GET['id'] ?? $_POST['id'] ?? 0));
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     if (impersonation_guard_post('registration.approval')) redirect('/registration-request.php?id=' . $id);
+    $action = (string)($_POST['action'] ?? 'decision');
+
+    if ($action === 'resend_admin_notification') {
+        $notify = registration_notify_admins($id, true);
+        flash(!empty($notify['ok']) ? 'success' : 'error', !empty($notify['ok'])
+            ? 'پیامک اطلاع‌رسانی برای مدیر دوباره ارسال شد.'
+            : (string)($notify['error'] ?? 'ارسال پیامک مدیر موفق نبود.'));
+        redirect('/registration-request.php?id=' . $id);
+    }
+
     $decision = (string)($_POST['decision'] ?? '');
     $note = (string)($_POST['note'] ?? '');
 
@@ -29,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($decision === 'reject') {
         $result = registration_admin_decide($id, (int)$me['id'], 'reject', $note);
         if (!empty($result['ok'])) {
-            flash('success', 'درخواست رد شد.');
+            flash('success', 'درخواست رد شد. این موبایل، ایمیل و نام کاربری می‌توانند دوباره ثبت‌نام کنند.');
             if (empty($result['sms_sent'])) flash('error', 'درخواست رد شد اما ارسال پیامک به متقاضی موفق نبود.');
         } else {
             flash('error', (string)($result['error'] ?? 'ثبت تصمیم ممکن نشد.'));
@@ -96,11 +106,27 @@ require __DIR__ . '/../app/views/header.php';
 </div>
 
 <div class="card">
+  <h2>اعلان مدیر</h2>
+  <div class="form-row">
+    <div><strong>وضعیت پیامک</strong><div><?= $row['admin_notified_at'] ? '✓ ارسال شده' : 'ارسال نشده' ?></div></div>
+    <div><strong>آخرین ارسال</strong><div class="ltr"><?= e($row['admin_notified_at'] ?: '—') ?></div></div>
+    <div style="flex:2"><strong>گیرنده</strong><div class="hint">شماره‌های تنظیم‌شده در Settings؛ اگر خالی باشند، موبایل مدیران فعال ELLSMS استفاده می‌شود.</div></div>
+  </div>
+  <?php if ($row['state'] === 'pending_admin_approval'): ?>
+    <form method="post" style="margin-top:14px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+      <input type="hidden" name="action" value="resend_admin_notification">
+      <button class="btn" type="submit">ارسال مجدد پیامک به مدیر</button>
+    </form>
+  <?php endif; ?>
+</div>
+
+<div class="card">
   <h2>اطلاعات امنیتی ثبت‌نام</h2>
   <div class="form-row">
     <div><strong>IP</strong><div class="ltr"><?= e($row['signup_ip'] ?: '—') ?></div></div>
     <div style="flex:2"><strong>User-Agent</strong><div class="ltr" style="overflow-wrap:anywhere"><?= e($row['signup_user_agent'] ?: '—') ?></div></div>
-    <div><strong>SMS مدیر</strong><div><?= $row['admin_notified_at'] ? 'ارسال شده' : 'ارسال نشده' ?></div></div>
   </div>
   <?php if (!empty($row['activation_error'])): ?>
     <div class="flash flash-error" style="margin-top:14px">آخرین خطای فعال‌سازی: <?= e($row['activation_error']) ?></div>
@@ -109,11 +135,12 @@ require __DIR__ . '/../app/views/header.php';
 
 <?php if (in_array($row['state'], ['pending_admin_approval', 'approved'], true)): ?>
 <div class="card">
-  <h2><?= $row['state'] === 'approved' ? 'تکمیل فعال‌سازی حساب' : 'تصمیم مدیر و فعال‌سازی' ?></h2>
-  <p class="hint">با تأیید، حساب واقعی در سامانه مرکزی ساخته می‌شود، دسترسی ELLSMS فعال می‌شود، سازمان مالک ساخته می‌شود و در صورت فعال بودن Billing پلن پیش‌فرض اختصاص می‌یابد.</p>
+  <h2><?= $row['state'] === 'approved' ? 'تکمیل فعال‌سازی حساب' : 'تأیید و فعال‌سازی' ?></h2>
+  <p class="hint">با تأیید، حساب واقعی ساخته می‌شود، دسترسی ELLSMS فعال می‌شود و Organization مالک ایجاد می‌شود.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+    <input type="hidden" name="action" value="decision">
     <div class="form-row">
       <label>کد ملی
         <input type="text" name="national_id" class="ltr" maxlength="10" value="<?= e($row['national_id'] ?: '') ?>" required>
@@ -134,16 +161,30 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     </div>
     <label>یادداشت مدیر
-      <textarea name="note" rows="4" maxlength="500" placeholder="اختیاری برای تأیید؛ برای رد درخواست الزامی است."><?= e($row['decision_note'] ?? '') ?></textarea>
+      <textarea name="note" rows="3" maxlength="500" placeholder="اختیاری"><?= e($row['decision_note'] ?? '') ?></textarea>
     </label>
     <div class="toolbar" style="margin-top:14px">
       <button class="btn btn-primary" type="submit" name="decision" value="approve" onclick="return confirm('این درخواست تأیید و حساب کاربر فعال شود؟')">تأیید و فعال‌سازی حساب</button>
-      <?php if ($row['state'] === 'pending_admin_approval'): ?>
-        <button class="btn" type="submit" name="decision" value="reject" onclick="return confirm('این درخواست رد شود؟')">رد درخواست</button>
-      <?php endif; ?>
     </div>
   </form>
 </div>
+
+<?php if ($row['state'] === 'pending_admin_approval'): ?>
+<div class="card">
+  <h2>رد درخواست</h2>
+  <p class="hint">بعد از رد، این درخواست فقط برای سابقه نگه داشته می‌شود و همان موبایل، ایمیل و نام کاربری می‌توانند یک ثبت‌نام جدید انجام دهند.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+    <input type="hidden" name="action" value="decision">
+    <label>دلیل رد
+      <textarea name="note" rows="3" maxlength="500" required placeholder="دلیل رد را وارد کنید"></textarea>
+    </label>
+    <button class="btn" type="submit" name="decision" value="reject" onclick="return confirm('این درخواست رد شود؟')">رد درخواست</button>
+  </form>
+</div>
+<?php endif; ?>
+
 <?php else: ?>
 <div class="card">
   <h2>نتیجه بررسی</h2>
@@ -154,6 +195,7 @@ require __DIR__ . '/../app/views/header.php';
   <?php elseif ($row['state'] === 'rejected'): ?>
     <p>رد شده در <span class="ltr"><?= e($row['rejected_at'] ?: '—') ?></span> توسط مدیر #<?= to_persian_digits((string)$row['rejected_by']) ?>.</p>
     <p><strong>دلیل:</strong> <?= e($row['rejection_reason'] ?: '—') ?></p>
+    <div class="flash flash-success">اطلاعات این درخواست قفل نیست؛ متقاضی می‌تواند دوباره با همین اطلاعات ثبت‌نام کند.</div>
   <?php else: ?>
     <p class="muted">این درخواست در وضعیت قابل تصمیم‌گیری نیست.</p>
   <?php endif; ?>
