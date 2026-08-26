@@ -25,17 +25,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Logger::warning('registration.rate_limited', ['ip' => client_ip()]);
             $error = 'تعداد درخواست‌های ثبت‌نام بیش از حد مجاز است. لطفاً بعداً دوباره تلاش کنید.';
         } else {
-            $result = registration_request_create($_POST);
-            if (!empty($result['ok'])) {
-                $registrationId = (int)$result['id'];
-                $_SESSION['registration_request_id'] = $registrationId;
-                $otp = registration_send_otp($registrationId, false);
-                if (empty($otp['ok'])) {
-                    $_SESSION['registration_otp_error'] = (string)($otp['error'] ?? 'ارسال کد تأیید ممکن نشد.');
+            $nationalId = trim(from_persian_digits((string)($_POST['national_id'] ?? '')));
+            $email = trim((string)($_POST['email'] ?? ''));
+            $gender = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
+            if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                $error = 'ایمیل معتبر برای ساخت حساب الزامی است.';
+            } elseif (strlen($nationalId) !== 10 || !ctype_digit($nationalId)) {
+                $error = 'کد ملی باید دقیقاً ۱۰ رقم باشد.';
+            } else {
+                $result = registration_request_create($_POST);
+                if (!empty($result['ok'])) {
+                    $registrationId = (int)$result['id'];
+                    // Phase 4 needs the backend platform's own legacy verifier. It is derived here
+                    // while plaintext is already present in this request, never logged, and removed
+                    // from the registration row immediately after account activation.
+                    db()->prepare(
+                        'UPDATE ellsms_registration_requests
+                         SET national_id=?, gender=?, backend_password_hash=? WHERE id=?'
+                    )->execute([
+                        $nationalId,
+                        $gender,
+                        backend_hash_password((string)($_POST['password'] ?? '')),
+                        $registrationId,
+                    ]);
+                    $_SESSION['registration_request_id'] = $registrationId;
+                    $otp = registration_send_otp($registrationId, false);
+                    if (empty($otp['ok'])) {
+                        $_SESSION['registration_otp_error'] = (string)($otp['error'] ?? 'ارسال کد تأیید ممکن نشد.');
+                    }
+                    redirect('/register-verify.php');
                 }
-                redirect('/register-verify.php');
+                $error = (string)($result['error'] ?? 'ثبت درخواست ممکن نشد.');
             }
-            $error = (string)($result['error'] ?? 'ثبت درخواست ممکن نشد.');
         }
     }
 }
@@ -80,7 +101,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="tel" name="mobile" class="ltr" maxlength="20" placeholder="0912..." value="<?= e($_POST['mobile'] ?? '') ?>" required>
           </label>
           <label>ایمیل
-            <input type="email" name="email" class="ltr" maxlength="190" value="<?= e($_POST['email'] ?? '') ?>">
+            <input type="email" name="email" class="ltr" maxlength="190" value="<?= e($_POST['email'] ?? '') ?>" required>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>کد ملی
+            <input type="text" name="national_id" class="ltr" inputmode="numeric" maxlength="10" value="<?= e($_POST['national_id'] ?? '') ?>" required>
+          </label>
+          <label>جنسیت
+            <select name="gender">
+              <option value="MALE"<?= ($_POST['gender'] ?? 'MALE') === 'MALE' ? ' selected' : '' ?>>مرد</option>
+              <option value="FEMALE"<?= ($_POST['gender'] ?? '') === 'FEMALE' ? ' selected' : '' ?>>زن</option>
+            </select>
           </label>
         </div>
 
