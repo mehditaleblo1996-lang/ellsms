@@ -81,6 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </label>
       <button type="submit" class="btn btn-primary btn-block">ورود</button>
     </form>
+    <?php if (setting('registration_mode', 'approval') !== 'closed'): ?>
+      <p class="login-foot">حساب ندارید؟ <a href="/register.php">ثبت‌نام کنید</a></p>
+    <?php endif; ?>
     <p class="login-foot">ELLSMS نسخه <span class="ltr"><?= e(app_version()) ?></span> · پنل هوشمند پیامک<?php if (app_env() !== 'production'): ?> · <span class="ltr"><?= e(strtoupper(app_env())) ?></span><?php endif; ?></p>
   </main>
 </body>
