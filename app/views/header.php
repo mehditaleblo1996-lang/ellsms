@@ -29,21 +29,22 @@ if ($navOrg && membership_has_permission($navOrg, Permissions::BILLING_VIEW)) {
     $integrationNav['billing'] = ['/billing.php', 'اشتراک و مصرف', '📦'];
 }
 $adminNav = [
-    'users'             => ['/users.php',             'کاربران',        '👤'],
-    'kyc_review'        => ['/kyc-review.php',        'بررسی احراز هویت', '🪪'],
-    'analytics'         => ['/analytics.php',          'آمار تفصیلی',    '📊'],
-    'logs'              => ['/logs.php',               'لاگ فعالیت‌ها',   '📜'],
-    'numbers'           => ['/numbers.php',            'شماره‌ها',        '📞'],
-    'number_categories' => ['/number-categories.php',  'دسته‌های شماره',  '🗂'],
-    'slides'            => ['/slides.php',             'اسلایدر صفحه‌ی اصلی', '🖼'],
-    'pricing'           => ['/pricing.php',            'بسته‌های قیمتی',  '🏷'],
-    'sms_pricing'       => ['/sms-pricing.php',        'تعرفه‌ی پیامک',   '💱'],
-    'sms_gateways'      => ['/sms-gateways.php',       'درگاه‌های پیامک', '🔌'],
-    'sms_gateway_clone' => ['/sms-gateway-clone.php',  'کپی کامل درگاه',  '⧉'],
-    'guide_admin'       => ['/guide-admin.php',        'راهنمای استفاده', '📘'],
-    'billing_admin'     => ['/billing-admin.php',       'مدیریت اشتراک‌ها', '📦'],
-    'financial_admin'   => ['/financial-admin.php',     'گزارش مالی',      '🧾'],
-    'settings'          => ['/settings.php',            'تنظیمات',        '⚙'],
+    'users'                 => ['/users.php',                 'کاربران',            '👤'],
+    'registration_requests' => ['/registration-requests.php', 'درخواست‌های ثبت‌نام', '📝'],
+    'kyc_review'            => ['/kyc-review.php',            'بررسی احراز هویت',   '🪪'],
+    'analytics'             => ['/analytics.php',             'آمار تفصیلی',        '📊'],
+    'logs'                  => ['/logs.php',                  'لاگ فعالیت‌ها',       '📜'],
+    'numbers'               => ['/numbers.php',               'شماره‌ها',            '📞'],
+    'number_categories'     => ['/number-categories.php',     'دسته‌های شماره',      '🗂'],
+    'slides'                => ['/slides.php',                'اسلایدر صفحه‌ی اصلی', '🖼'],
+    'pricing'               => ['/pricing.php',               'بسته‌های قیمتی',      '🏷'],
+    'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
+    'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
+    'sms_gateway_clone'     => ['/sms-gateway-clone.php',     'کپی کامل درگاه',      '⧉'],
+    'guide_admin'           => ['/guide-admin.php',           'راهنمای استفاده',     '📘'],
+    'billing_admin'         => ['/billing-admin.php',         'مدیریت اشتراک‌ها',    '📦'],
+    'financial_admin'       => ['/financial-admin.php',       'گزارش مالی',          '🧾'],
+    'settings'              => ['/settings.php',              'تنظیمات',             '⚙'],
 ];
 ?><!doctype html>
 <html lang="fa" dir="rtl">
