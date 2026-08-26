@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 require_once __DIR__ . '/../app/Registration.php';
+require_once __DIR__ . '/../app/NotificationCenter.php';
 
 if (current_user()) redirect('/index.php');
 
@@ -44,6 +45,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $result = registration_verify_otp($registrationId, (string)($_POST['code'] ?? ''));
             if (!empty($result['ok'])) {
+                // Phase 7: create an in-panel admin notification independently from the legacy
+                // registration SMS path. This stays panel-only here so configured registration SMS
+                // recipients are not accidentally sent duplicate messages.
+                $verified = registration_request_get($registrationId) ?? $request;
+                $name = trim((string)$verified['first_name'] . ' ' . (string)$verified['last_name']);
+                $adminIds = db()->query('SELECT user_id FROM ellsms_meta WHERE panel_access=1 AND is_admin=1 ORDER BY user_id')->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($adminIds as $adminId) {
+                    notification_insert_panel(
+                        (int)$adminId,
+                        null,
+                        'registration.new',
+                        'درخواست ثبت‌نام جدید',
+                        $name . ' با شماره ' . (string)$verified['mobile'] . ' منتظر بررسی مدیر است.',
+                        '/registration-request.php?id=' . $registrationId,
+                        'info'
+                    );
+                }
                 redirect('/register-pending.php');
             }
             $error = (string)($result['error'] ?? 'تأیید کد ممکن نشد.');
