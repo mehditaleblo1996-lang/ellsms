@@ -46,23 +46,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
            ->execute([$me['id'], $me['organization_id'] ?? null, $credits, $amountRial, $gateway]);
         $paymentId = (int)db()->lastInsertId();
 
+        // FIN-4: issue the invoice at PURCHASE INTENT, before contacting the payment gateway.
+        // This deliberately leaves an `issued` (unpaid) invoice even when gateway initialization
+        // fails, so the customer has a durable accounting document and can retry payment later from
+        // /invoices.php against this SAME payment row. The amount is entirely server-derived from
+        // the validated credit quantity and configured unit price; no client-supplied price exists.
+        billing_invoice_create($paymentId, $me['organization_id'] ?? null, (int)$me['id'], 'credit', [[
+            'item_type' => 'sms_credit', 'reference_code' => null,
+            'description' => "خرید {$credits} واحد اعتبار پیامک", 'quantity' => 1, 'unit_price' => $amountRial,
+        ]]);
+        audit((int)$me['id'], 'invoice.issued_for_credit_purchase', "payment=#{$paymentId} {$credits}cr {$amountRial}rial");
+
         $description = "خرید {$credits} واحد اعتبار ELLSMS";
         $create = payment_gateway_create($gateway, $amountRial, $paymentId, $description, (string)($me['mobile'] ?? ''));
 
         if ($create['ok']) {
             db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$create['authority'], $paymentId]);
-            // FIN-4: invoice is issued the moment we have a real authority — same server-derived
-            // unit price the payment row itself was created from, never anything from $_POST beyond
-            // the already-validated $credits count.
-            billing_invoice_create($paymentId, $me['organization_id'] ?? null, (int)$me['id'], 'credit', [[
-                'item_type' => 'sms_credit', 'reference_code' => null,
-                'description' => "خرید {$credits} واحد اعتبار پیامک", 'quantity' => 1, 'unit_price' => $amountRial,
-            ]]);
             audit((int)$me['id'], 'payment.request', "#{$paymentId} {$credits}cr {$amountRial}rial gateway={$gateway}");
             redirect(payment_gateway_redirect_url($gateway, $create['authority']));
         } else {
+            // Keep the invoice issued/unpaid. invoices.php already allows retrying an issued invoice
+            // whose payment row is failed/pending/verification_failed, and reuses this same payment
+            // rather than generating duplicate invoices.
             db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=?")->execute([$paymentId]);
-            flash('error', 'شروع پرداخت ممکن نشد: ' . $create['message']);
+            audit((int)$me['id'], 'payment.gateway_init_failed', "payment=#{$paymentId} gateway={$gateway}");
+            flash('error', 'شروع پرداخت ممکن نشد. فاکتور پرداخت‌نشده ثبت شد و می‌توانید از بخش فاکتورها دوباره پرداخت را انجام دهید.');
         }
     }
 }
