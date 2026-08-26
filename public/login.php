@@ -1,10 +1,10 @@
 <?php
 require_once __DIR__ . '/../app/backend.php'; // needed for send_2fa_code()
 
-if (current_user()) redirect('/index.php');
+if (current_user()) redirect('/dashboard');
 
 /* No account has ELLSMS admin yet — send people to bootstrap. */
-if (!ellsms_has_admin()) redirect('/bootstrap-admin.php');
+if (!ellsms_has_admin()) redirect('/admin/bootstrap');
 
 $error = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     session_regenerate_id(true);
                     $_SESSION['twofa_uid'] = $u['id'];
                     $_SESSION['twofa_sent_at'] = time();
-                    redirect('/verify-2fa.php');
+                    redirect('/login/verify-2fa');
                 }
             } else {
                 session_regenerate_id(true);
@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 session_mark_authenticated();
                 audit((int)$u['id'], 'login');
                 Logger::info('auth.login.success', ['user_id' => $u['id']]);
-                redirect('/index.php');
+                redirect('/dashboard');
             }
         }
     }
@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <button type="submit" class="btn btn-primary btn-block">ورود</button>
     </form>
     <?php if (setting('registration_mode', 'approval') !== 'closed'): ?>
-      <p class="login-foot">حساب ندارید؟ <a href="/register.php">ثبت‌نام کنید</a></p>
+      <p class="login-foot">حساب ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
     <?php endif; ?>
     <p class="login-foot">ELLSMS نسخه <span class="ltr"><?= e(app_version()) ?></span> · پنل هوشمند پیامک<?php if (app_env() !== 'production'): ?> · <span class="ltr"><?= e(strtoupper(app_env())) ?></span><?php endif; ?></p>
   </main>
