@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 require_once __DIR__ . '/../app/Registration.php';
+require_once __DIR__ . '/../app/NotificationCenter.php';
 $me = require_admin();
 $pageTitle = 'تنظیمات';
 $active = 'settings';
@@ -46,6 +47,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_setting('onboarding_video_title', $videoTitle);
             audit((int)$me['id'], 'settings.onboarding_update', 'enabled=' . $enabled . ' has_video=' . ($videoUrl !== '' ? '1' : '0'));
             flash('success', 'تنظیمات شروع کار ذخیره شد.');
+        }
+    }
+
+    if ($do === 'notifications') {
+        foreach (NOTIFICATION_EVENTS as $event => $_label) {
+            foreach (NOTIFICATION_CHANNELS as $channel) {
+                notification_set_channel($event, $channel, !empty($_POST['notify'][$event][$channel]), (int)$me['id']);
+            }
+        }
+        $emailFrom = trim((string)($_POST['notification_email_from'] ?? ''));
+        if ($emailFrom !== '' && filter_var($emailFrom, FILTER_VALIDATE_EMAIL) === false) {
+            flash('error', 'ایمیل فرستنده اعلان معتبر نیست؛ تنظیم کانال‌ها ذخیره شد ولی ایمیل فرستنده تغییر نکرد.');
+        } else {
+            set_setting('notification_email_from', $emailFrom);
+            flash('success', 'تنظیمات مرکز اعلان‌ها ذخیره شد.');
         }
     }
 
@@ -149,6 +165,38 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     </div>
     <button class="btn btn-primary">ذخیره تنظیمات شروع کار</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>مرکز اعلان‌ها</h2>
+  <p class="hint">برای هر رویداد تعیین کنید اعلان داخل پنل، SMS، Email یا Telegram ارسال شود. Panel به‌صورت پیش‌فرض روشن است؛ Email و Telegram تا وقتی تنظیمات لازم را نداشته باشند fail-open هستند و پنل را مختل نمی‌کنند.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="notifications">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>رویداد</th><th>Panel</th><th>SMS</th><th>Email</th><th>Telegram</th></tr></thead>
+        <tbody>
+        <?php foreach (NOTIFICATION_EVENTS as $event => $label): ?>
+          <tr>
+            <td><strong><?= e($label) ?></strong><div class="hint ltr"><?= e($event) ?></div></td>
+            <?php foreach (NOTIFICATION_CHANNELS as $channel): ?>
+              <td style="text-align:center"><input type="checkbox" name="notify[<?= e($event) ?>][<?= e($channel) ?>]" value="1" <?= notification_channel_enabled($event,$channel)?'checked':'' ?> style="width:auto"></td>
+            <?php endforeach; ?>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <div class="form-row" style="margin-top:14px">
+      <label>Email فرستنده (اختیاری)
+        <input type="email" name="notification_email_from" class="ltr" value="<?= e(setting('notification_email_from','')) ?>" placeholder="noreply@example.com">
+      </label>
+      <div class="hint">Telegram از Bot Token و Chat ID بخش «تماس با ما» استفاده می‌کند. Email فقط وقتی روی سرور PHP mail تنظیم باشد ارسال می‌شود.</div>
+    </div>
+    <button class="btn btn-primary">ذخیره تنظیمات اعلان‌ها</button>
+    <a class="btn btn-ghost" href="/notifications.php">مشاهده اعلان‌های من</a>
   </form>
 </div>
 
