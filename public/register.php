@@ -27,9 +27,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $result = registration_request_create($_POST);
             if (!empty($result['ok'])) {
-                $_SESSION['registration_request_id'] = (int)$result['id'];
-                // Phase 2 will replace this destination with OTP verification.
-                redirect('/register-pending.php');
+                $registrationId = (int)$result['id'];
+                $_SESSION['registration_request_id'] = $registrationId;
+                $otp = registration_send_otp($registrationId, false);
+                if (empty($otp['ok'])) {
+                    $_SESSION['registration_otp_error'] = (string)($otp['error'] ?? 'ارسال کد تأیید ممکن نشد.');
+                }
+                redirect('/register-verify.php');
             }
             $error = (string)($result['error'] ?? 'ثبت درخواست ممکن نشد.');
         }
@@ -49,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <main class="login-card" style="max-width:680px;width:min(680px,calc(100% - 30px))">
     <img src="/assets/img/logo.png" alt="ELLSMS" class="login-logo">
     <h1 style="font-size:1.35rem;margin:0 0 10px">ثبت‌نام در ELLSMS</h1>
-    <p class="login-sub">اطلاعات اولیه را وارد کنید. در مرحله بعد شماره موبایل شما تأیید می‌شود و سپس درخواست برای مدیر ارسال خواهد شد.</p>
+    <p class="login-sub">اطلاعات اولیه را وارد کنید. یک کد ۶ رقمی برای تأیید شماره موبایل شما ارسال می‌شود و پس از تأیید، درخواست برای مدیر می‌رود.</p>
 
     <?php if (!registration_enabled()): ?>
       <div class="flash flash-error">ثبت‌نام در حال حاضر غیرفعال است.</div>
@@ -105,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </label>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-block">ادامه و تأیید موبایل</button>
+        <button type="submit" class="btn btn-primary btn-block">ثبت‌نام و ارسال کد تأیید</button>
       </form>
       <p class="login-foot">حساب دارید؟ <a href="/login.php">وارد شوید</a></p>
     <?php endif; ?>
