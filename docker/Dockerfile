@@ -40,18 +40,12 @@ RUN { \
       echo '</Directory>'; \
     } > /etc/apache2/conf-enabled/ellsms-sms-api.conf
 
-# All URL rewrites for this app in ONE <Directory> block/file. Public API requests are routed to
-# public/api/index.php; health endpoints remain extension-less for monitors.
-RUN { \
-      echo '<Directory "${APACHE_DOCUMENT_ROOT}">'; \
-      echo '    RewriteEngine On'; \
-      echo '    RewriteRule ^health/ready/?$ health-ready.php [L]'; \
-      echo '    RewriteRule ^health/?$ health.php [L]'; \
-      echo '    RewriteCond %{REQUEST_FILENAME} !-f'; \
-      echo '    RewriteRule ^api/v1(/.*)?$ api/index.php [QSA,L]'; \
-      echo '    CGIPassAuth On'; \
-      echo '</Directory>'; \
-    } > /etc/apache2/conf-enabled/ellsms-rewrites.conf
+# All app URL rewrites live in one reviewed configuration file. This includes:
+# - clean browser URLs for public/user/admin pages
+# - compatibility redirects from legacy GET/HEAD .php URLs
+# - unchanged public API routing
+# - unchanged /health and /health/ready monitor contracts
+COPY docker/apache-clean-urls.conf /etc/apache2/conf-enabled/ellsms-rewrites.conf
 
 # Defense in depth: the document root already excludes .env/.git/app/cron/docs/tests; this also
 # denies dotfiles, editor backups and SQL files if one is accidentally placed under public/.
