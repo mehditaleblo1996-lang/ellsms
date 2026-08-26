@@ -78,6 +78,76 @@
   width: 18%;
 }
 
+/* Send confirmation stability.
+   Chrome/Edge can trigger a compositor repaint glitch when a fixed element using backdrop-filter
+   disappears at the exact moment a synchronous form navigation starts. The symptom is the panel
+   appearing partially collapsed/blank until the next click forces a repaint. Avoid creating that
+   GPU backdrop layer in the first place; the plain translucent overlay gives the same visual
+   separation without destabilising the page underneath. */
+.modal-overlay {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* During the synchronous provider call keep a compact intentional waiting state on screen instead
+   of removing/re-adding the large preview card. The form remains in the DOM (important for the
+   browser submission), but its detailed preview is visually hidden while navigation is pending. */
+.modal-overlay.is-submitting {
+  cursor: progress;
+  background: rgba(11,16,35,.42);
+  pointer-events: all;
+}
+
+.modal-overlay.is-submitting .modal-dialog {
+  max-width: 380px;
+  overflow: visible;
+  box-shadow: none;
+  animation: none;
+}
+
+.modal-overlay.is-submitting .card {
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin: 0;
+  border-color: var(--line) !important;
+}
+
+.modal-overlay.is-submitting .card > :not(h2):not(form) {
+  display: none !important;
+}
+
+.modal-overlay.is-submitting #sendConfirmTitle {
+  margin: 0 0 14px;
+}
+
+.modal-overlay.is-submitting #sendConfirmTitle::after {
+  content: "\Aلطفاً چند لحظه منتظر بمانید؛ پاسخ درگاه در حال دریافت است.";
+  display: block;
+  white-space: pre-line;
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.modal-overlay.is-submitting #sendConfirmForm {
+  margin: 0 !important;
+}
+
+.modal-overlay.is-submitting #sendConfirmForm > :not(.toolbar),
+.modal-overlay.is-submitting #sendConfirmForm .toolbar > :not(#sendConfirmSubmit) {
+  display: none !important;
+}
+
+.modal-overlay.is-submitting #sendConfirmSubmit {
+  cursor: progress;
+  min-width: 150px;
+}
+
 @media (min-width: 901px) {
   .content-dashboard {
     padding-top: 24px;
