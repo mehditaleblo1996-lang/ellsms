@@ -18,15 +18,11 @@ $walletOk = (bool)$cp['wallet']['sufficient'];
 $quotaOk  = (bool)$cp['quota']['sufficient'];
 $canSend  = $walletOk && $quotaOk;
 $dist = $cp['segments']['distribution'] ?? [];
-
-// Route pricing: `credits_per_segment` is null when operators genuinely differ in rate, so the
-// "is this free?" test is price_source, not the number (which may legitimately be null or 0.5).
 $isExempt = ($cp['pricing']['price_source'] ?? '') === 'admin_exempt';
 $unitPrice = $cp['pricing']['credits_per_segment'];
 $unitMin = ($cp['pricing']['unit_price_min_millicredits'] ?? 0) / 1000;
 $unitMax = ($cp['pricing']['unit_price_max_millicredits'] ?? 0) / 1000;
 $groups = $cp['pricing']['groups'] ?? [];
-// Operator names come from the configured catalog, never a hard-coded UI label list (STEP 20).
 $operatorLabels = [];
 foreach ($groups as $g) {
     $operatorLabels[$g['operator']] = $g['operator_name'] !== '' ? $g['operator_name'] : $g['operator'];
@@ -38,8 +34,6 @@ foreach ($groups as $g) {
   <h2 id="sendConfirmTitle">خلاصه‌ی ارسال — پیش از تأیید</h2>
 
   <?php
-    // Sender + schedule are shown from the SAME request's already-validated inputs — display only,
-    // never re-decided here. The confirm submit re-parses and re-validates every one of them again.
     $previewMode = (string)($_POST['mode'] ?? 'now');
     $previewIsScheduled = in_array($previewMode, ['later', 'recurring'], true);
     $previewScheduleAt = null;
@@ -123,8 +117,6 @@ foreach ($groups as $g) {
         <?php if ($unitPrice !== null): ?>
           <?= to_persian_digits(rtrim(rtrim(number_format((float)$unitPrice, 3), '0'), '.')) ?> واحد اعتبار
         <?php else: ?>
-          <?php // Mixed operator rates: one averaged number would be a price no recipient actually
-                // pays, so the range is shown and the per-operator breakdown below carries the detail. ?>
           <?= to_persian_digits(rtrim(rtrim(number_format($unitMin, 3), '0'), '.')) ?>
           تا
           <?= to_persian_digits(rtrim(rtrim(number_format($unitMax, 3), '0'), '.')) ?>
@@ -143,71 +135,6 @@ foreach ($groups as $g) {
     </td></tr>
   </table>
   </div>
-
-  <?php if (!$isExempt && count($groups) > 0): ?>
-    <h3 style="margin-top:14px">تفکیک بر اساس اپراتور</h3>
-    <div class="table-wrap">
-    <table>
-      <tr><th>اپراتور</th><th>گیرندگان</th><th>پیامک</th><th>هزینه</th></tr>
-      <?php
-        // Grouped by operator for the default view — a normal user cares which carrier costs what,
-        // not which internal route carried it. The provider/route detail is one click away below.
-        $byOperator = [];
-        foreach ($groups as $g) {
-          $key = $g['operator'];
-          $byOperator[$key] ??= ['label' => $operatorLabels[$key], 'recipients' => 0, 'segments' => 0, 'cost' => 0];
-          $byOperator[$key]['recipients'] += (int)$g['recipients'];
-          $byOperator[$key]['segments']   += (int)$g['segments'];
-          $byOperator[$key]['cost']       += (int)$g['cost'];
-        }
-      ?>
-      <?php foreach ($byOperator as $row): ?>
-        <tr>
-          <td><?= e($row['label']) ?></td>
-          <td class="num"><?= to_persian_digits(number_format($row['recipients'])) ?></td>
-          <td class="num"><?= to_persian_digits(number_format($row['segments'])) ?></td>
-          <td class="num"><?= to_persian_digits(number_format($row['cost'])) ?></td>
-        </tr>
-      <?php endforeach; ?>
-    </table>
-    </div>
-    <details style="margin-top:8px">
-      <summary>جزئیات مسیر ارسال</summary>
-      <div class="table-wrap">
-      <table>
-        <tr><th>اپراتور</th><th>ارائه‌دهنده</th><th>مسیر</th><th>نوع پیام</th><th>هر بخش</th><th>هزینه</th></tr>
-        <?php foreach ($groups as $g): ?>
-          <tr>
-            <td><?= e($operatorLabels[$g['operator']]) ?></td>
-            <td class="ltr"><?= e((string)$g['provider']) ?></td>
-            <td class="ltr"><?= e((string)$g['route']) ?></td>
-            <td class="ltr"><?= e((string)$g['message_type']) ?></td>
-            <td class="num"><?= to_persian_digits(rtrim(rtrim(number_format((float)$g['unit_price'], 3), '0'), '.')) ?></td>
-            <td class="num"><?= to_persian_digits(number_format((int)$g['cost'])) ?></td>
-          </tr>
-        <?php endforeach; ?>
-      </table>
-      </div>
-      <p class="hint">
-        تشخیص اپراتور بر پایه‌ی پیش‌شماره‌ی پیکربندی‌شده است؛ پس از جابه‌جایی شماره میان اپراتورها ممکن است
-        با اپراتور فعلیِ شماره یکسان نباشد.
-      </p>
-    </details>
-  <?php endif; ?>
-
-  <?php if (!empty($cp['quota']['enforced'])): ?>
-    <h3 style="margin-top:14px">سهمیه‌ی پلن</h3>
-    <div class="table-wrap">
-    <table>
-      <tr><th>مصرف این ارسال</th><td class="num"><?= to_persian_digits(number_format((int)$cp['quota']['estimated_usage'])) ?> پیام</td></tr>
-      <?php foreach ([['monthly','ماهانه'], ['daily','روزانه']] as [$k, $label]): ?>
-        <?php if (isset($cp['quota'][$k]) && $cp['quota'][$k]['limit'] !== null): ?>
-          <tr><th>باقی‌مانده‌ی <?= $label ?></th><td class="num"><?= to_persian_digits(number_format((int)$cp['quota'][$k]['remaining'])) ?> از <?= to_persian_digits(number_format((int)$cp['quota'][$k]['limit'])) ?></td></tr>
-        <?php endif; ?>
-      <?php endforeach; ?>
-    </table>
-    </div>
-  <?php endif; ?>
 
   <?php if (!$walletOk): ?>
     <div class="flash flash-error">اعتبار کافی نیست — این ارسال به <?= to_persian_digits(number_format($estimatedCost)) ?> واحد اعتبار نیاز دارد.</div>
@@ -246,8 +173,6 @@ foreach ($groups as $g) {
   var submit  = document.getElementById('sendConfirmSubmit');
   if (!overlay) return;
 
-  // Closing only hides the overlay — the underlying send form, still filled in, is already
-  // rendered on this same page beneath it. No navigation, no data loss.
   function close() { overlay.classList.remove('is-open'); }
 
   if (cancel) cancel.addEventListener('click', close);
@@ -258,10 +183,11 @@ foreach ($groups as $g) {
     if (e.key === 'Escape') close();
   });
 
-  // Backend remains authoritative for the actual send; this only stops a second click/Enter from
-  // firing a second POST while the first is still in flight.
   if (form && submit) {
     form.addEventListener('submit', function () {
+      // Once the user confirms, the confirmation modal has completed its job. Hide it immediately
+      // while the normal synchronous provider request finishes in the background of this navigation.
+      close();
       submit.disabled = true;
       submit.textContent = 'در حال ارسال…';
     });
