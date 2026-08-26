@@ -1,7 +1,11 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/Registration.php';
 if (current_user()) redirect('/index.php');
 $id = (int)($_SESSION['registration_request_id'] ?? 0);
+$request = registration_request_get($id);
+if (!$request) redirect('/register.php');
+if ($request['state'] === 'pending_mobile_verification') redirect('/register-verify.php');
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -14,10 +18,20 @@ $id = (int)($_SESSION['registration_request_id'] ?? 0);
 <body class="login-body">
   <main class="login-card">
     <img src="/assets/img/logo.png" alt="ELLSMS" class="login-logo">
-    <div class="flash flash-success">اطلاعات اولیه با موفقیت ثبت شد.</div>
-    <h1 style="font-size:1.25rem">مرحله بعد: تأیید شماره موبایل</h1>
-    <p class="login-sub">در فاز بعدی کد تأیید پیامکی برای همین درخواست فعال می‌شود. تا آن زمان هیچ حساب کاربری فعالی در سامانه ساخته نشده است.</p>
-    <?php if ($id > 0): ?><p class="hint">شناسه درخواست: <span class="ltr"><?= to_persian_digits((string)$id) ?></span></p><?php endif; ?>
+    <?php if ($request['state'] === 'pending_admin_approval'): ?>
+      <div class="flash flash-success">شماره موبایل شما با موفقیت تأیید شد.</div>
+      <h1 style="font-size:1.25rem">در انتظار تأیید مدیر</h1>
+      <p class="login-sub">درخواست شما ثبت شده و برای بررسی مدیر آماده است. تا زمان تأیید مدیر، حساب فعال برای استفاده از سرویس ساخته نمی‌شود.</p>
+    <?php elseif ($request['state'] === 'rejected'): ?>
+      <div class="flash flash-error">درخواست ثبت‌نام شما تأیید نشده است.</div>
+      <?php if (trim((string)$request['rejection_reason']) !== ''): ?><p class="login-sub"><?= e((string)$request['rejection_reason']) ?></p><?php endif; ?>
+    <?php elseif (in_array($request['state'], ['approved','account_created'], true)): ?>
+      <div class="flash flash-success">درخواست شما تأیید شده است.</div>
+      <p class="login-sub">برای ادامه از صفحه ورود استفاده کنید.</p>
+    <?php else: ?>
+      <div class="flash flash-error">این درخواست دیگر در وضعیت فعال ثبت‌نام نیست.</div>
+    <?php endif; ?>
+    <p class="hint">شناسه درخواست: <span class="ltr"><?= to_persian_digits((string)$id) ?></span></p>
     <p class="login-foot"><a href="/login.php">بازگشت به صفحه ورود</a></p>
   </main>
 </body>
