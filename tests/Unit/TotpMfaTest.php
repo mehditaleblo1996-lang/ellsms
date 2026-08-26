@@ -26,19 +26,38 @@ final class TotpMfaTest extends TestCase
 
         $login = (string)file_get_contents($root . '/public/login.php');
         self::assertStringContainsString("totp_enabled((int)\$u['id'])", $login);
-        self::assertStringContainsString("\$_SESSION['twofa_method'] = 'totp'", $login);
+        self::assertStringContainsString("\$_SESSION['twofa_method'] = 'choose'", $login);
 
         $verify = (string)file_get_contents($root . '/public/verify-2fa.php');
         self::assertStringContainsString("totp_verify_user((int)\$u['id'], \$code)", $verify);
-        self::assertStringContainsString("\$method === 'totp'", $verify);
+        self::assertStringContainsString("choose_totp", $verify);
+        self::assertStringContainsString("choose_sms", $verify);
+        self::assertStringContainsString("switch_sms", $verify);
+        self::assertStringContainsString("switch_totp", $verify);
     }
 
-    public function testTotpSecretIsEncryptedAndReplayProtected(): void
+    public function testTotpSecretIsEncryptedReplayProtectedAndQrIsLocal(): void
     {
-        $source = (string)file_get_contents(dirname(__DIR__, 2) . '/app/TotpMfa.php');
+        $root = dirname(__DIR__, 2);
+        $source = (string)file_get_contents($root . '/app/TotpMfa.php');
         self::assertStringContainsString("openssl_encrypt(\$secretBase32, 'aes-256-gcm'", $source);
         self::assertStringContainsString('last_used_step', $source);
         self::assertStringContainsString('auth.totp.replay_blocked', $source);
+        self::assertStringContainsString("['qrencode', '-t', 'SVG'", $source);
+        self::assertStringNotContainsString('quickchart', strtolower($source));
+        self::assertStringNotContainsString('googleapis', strtolower($source));
         self::assertStringNotContainsString('secret_plaintext', $source);
+
+        $dockerfile = (string)file_get_contents($root . '/docker/Dockerfile');
+        self::assertStringContainsString('qrencode', $dockerfile);
+    }
+
+    public function testSecurityPageAllowsSelfServiceSmsAndAuthenticatorEnrollment(): void
+    {
+        $source = (string)file_get_contents(dirname(__DIR__, 2) . '/public/account/security/index.php');
+        self::assertStringContainsString("value=\"sms_enable\"", $source);
+        self::assertStringContainsString("value=\"sms_disable\"", $source);
+        self::assertStringContainsString('totp_qr_svg_data_uri', $source);
+        self::assertStringContainsString('هر دو را فعال کنید', $source);
     }
 }
