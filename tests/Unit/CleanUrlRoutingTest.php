@@ -62,6 +62,9 @@ final class CleanUrlRoutingTest extends TestCase
             'health.php',
             'health-ready.php',
             'zarinpal-callback.php',
+            // Internal POST-only command endpoint. It immediately redirects back to a clean user URL
+            // and is deliberately not given a public canonical GET route.
+            'send-queue.php',
         ];
 
         $missing = [];
