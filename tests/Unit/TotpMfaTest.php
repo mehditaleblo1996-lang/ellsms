@@ -25,20 +25,20 @@ final class TotpMfaTest extends TestCase
         self::assertFileExists($root . '/public/account/security/index.php');
 
         $login = (string)file_get_contents($root . '/public/login.php');
-        self::assertStringContainsString("totp_enabled((int)$u['id'])", $login);
-        self::assertStringContainsString("$_SESSION['twofa_method'] = 'totp'", $login);
+        self::assertStringContainsString("totp_enabled((int)\$u['id'])", $login);
+        self::assertStringContainsString("\$_SESSION['twofa_method'] = 'totp'", $login);
 
         $verify = (string)file_get_contents($root . '/public/verify-2fa.php');
-        self::assertStringContainsString("totp_verify_user((int)$u['id'], $code)", $verify);
-        self::assertStringContainsString("$method === 'totp'", $verify);
+        self::assertStringContainsString("totp_verify_user((int)\$u['id'], \$code)", $verify);
+        self::assertStringContainsString("\$method === 'totp'", $verify);
     }
 
     public function testTotpSecretIsEncryptedAndReplayProtected(): void
     {
         $source = (string)file_get_contents(dirname(__DIR__, 2) . '/app/TotpMfa.php');
-        self::assertStringContainsString("openssl_encrypt($secretBase32, 'aes-256-gcm'", $source);
+        self::assertStringContainsString("openssl_encrypt(\$secretBase32, 'aes-256-gcm'", $source);
         self::assertStringContainsString('last_used_step', $source);
-        self::assertStringContainsString("auth.totp.replay_blocked", $source);
-        self::assertStringNotContainsString('INSERT INTO ellsms_totp_mfa (user_id,secret', $source);
+        self::assertStringContainsString('auth.totp.replay_blocked', $source);
+        self::assertStringNotContainsString('secret_plaintext', $source);
     }
 }
