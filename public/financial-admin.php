@@ -1,26 +1,16 @@
 <?php
-/**
- * ELLSMS — PLATFORM-ADMIN financial history (financial-commerce continuation, FIN-12).
- *
- * Deliberately separate from public/billing-admin.php (subscription lifecycle only, per that
- * page's own docblock) — this page is READ-ONLY financial inspection: orders/invoices, payments,
- * wallet transactions. gated on require_admin() like every other platform-admin screen, never on an
- * organization permission (Invariant O).
- *
- * The one write action here is FIN-13's explicit, reason-required refund
- * (billing_refund_invoice(), app/Financial.php) — a full-invoice refund only, never a partial one,
- * never an automatic subscription rollback. Every other financial mutation on this page's data
- * (manual wallet adjustment) reuses the existing wallet_manual_adjustment() mechanism from
- * public/users.php, unchanged.
- */
+/** ELLSMS — platform-admin financial history and invoice controls. */
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/InvoiceAdmin.php';
 $me = require_admin();
 $pageTitle = 'گزارش مالی';
 $active = 'financial_admin';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    if (($_POST['do'] ?? '') === 'refund') {
+    $do = (string)($_POST['do'] ?? '');
+
+    if ($do === 'refund') {
         $invoiceId = (int)($_POST['invoice_id'] ?? 0);
         $reason = trim((string)($_POST['reason'] ?? ''));
         $result = billing_refund_invoice($invoiceId, (int)$me['id'], $reason);
@@ -33,6 +23,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $reasonFa = ['reason_required' => 'ذکر دلیل الزامی است.', 'invoice_not_found' => 'فاکتور یافت نشد.', 'invoice_not_paid' => 'فقط فاکتور پرداخت‌شده قابل بازگشت است.', 'payment_missing' => 'رکورد پرداخت یافت نشد.'];
             flash('error', $reasonFa[$result['reason']] ?? ('بازگشت ناموفق: ' . $result['reason']));
+        }
+        redirect('/financial-admin.php?tab=invoices');
+    }
+
+    if (in_array($do, ['invoice_approve', 'invoice_disable'], true)) {
+        $invoiceId = (int)($_POST['invoice_id'] ?? 0);
+        $note = trim((string)($_POST['note'] ?? ''));
+        $state = $do === 'invoice_approve' ? 'approved' : 'disabled';
+        $result = invoice_admin_set_state($invoiceId, $state, (int)$me['id'], $note);
+        if ($result['ok']) {
+            flash($state === 'approved' ? 'success' : 'info', $state === 'approved'
+                ? 'فاکتور برای کاربر فعال و قابل پرداخت شد.'
+                : 'فاکتور برای کاربر غیرفعال شد و امکان پرداخت آن وجود ندارد.');
+        } else {
+            $reasonFa = [
+                'invalid_request' => 'درخواست نامعتبر است.',
+                'note_required' => 'برای غیرفعال کردن فاکتور، ذکر دلیل الزامی است.',
+                'note_too_long' => 'یادداشت مدیر بیش از حد طولانی است.',
+                'invoice_not_found' => 'فاکتور یافت نشد.',
+                'invoice_not_issued' => 'فقط فاکتور صادرشده و پرداخت‌نشده را می‌توان فعال یا غیرفعال کرد.',
+            ];
+            flash('error', $reasonFa[$result['reason']] ?? 'تغییر وضعیت فاکتور ممکن نشد.');
         }
         redirect('/financial-admin.php?tab=invoices');
     }
@@ -72,13 +84,10 @@ if ($tab === 'invoices') {
     $st = db()->prepare("SELECT * FROM ellsms_payments {$whereSql} ORDER BY id DESC LIMIT " . ($perPage + 1) . ' OFFSET ' . $offset);
     $st->execute($params);
     $rows = $st->fetchAll();
-} else { // wallet
+} else {
     $where = [];
     $params = [];
     if ($filterOrg > 0) {
-        // ellsms_wallet_transactions is keyed by user_id, not organization_id — resolve via the
-        // membership table rather than trusting a user-supplied organization_id blindly against an
-        // unrelated column.
         $where[] = 'user_id IN (SELECT user_id FROM ellsms_organization_memberships WHERE organization_id = ?)';
         $params[] = $filterOrg;
     }
@@ -142,18 +151,40 @@ require __DIR__ . '/../app/views/header.php';
   <div class="table-wrap">
   <?php if ($tab === 'invoices'): ?>
   <table>
-    <tr><th>شماره</th><th>سازمان</th><th>نوع</th><th>مبلغ</th><th>وضعیت</th><th>تاریخ</th><th></th></tr>
+    <tr><th>شماره</th><th>سازمان</th><th>نوع</th><th>مبلغ</th><th>پرداخت</th><th>دسترسی کاربر</th><th>تاریخ</th><th>عملیات</th></tr>
     <?php foreach ($rows as $r): ?>
+      <?php $adminState = invoice_admin_state($r); ?>
       <tr>
         <td class="num ltr"><?= e($r['invoice_number']) ?></td>
         <td class="num"><?= (int)($r['organization_id'] ?? 0) ?: '—' ?></td>
         <td><?= e($purposeFa[$r['purpose']] ?? $r['purpose']) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$r['total_amount'])) ?></td>
         <td><span class="badge badge-<?= $r['status'] === 'paid' ? 'ok' : ($r['status'] === 'issued' ? 'pending' : 'off') ?>"><?= e($invoiceStatusFa[$r['status']] ?? $r['status']) ?></span></td>
+        <td>
+          <span class="badge badge-<?= $adminState === 'approved' ? 'ok' : 'off' ?>"><?= $adminState === 'approved' ? 'فعال' : 'غیرفعال' ?></span>
+          <?php if (!empty($r['admin_note'])): ?><div class="hint"><?= e($r['admin_note']) ?></div><?php endif; ?>
+        </td>
         <td class="num"><?= jdate($r['created_at']) ?></td>
         <td>
-          <?php if ($r['status'] === 'paid'): ?>
-          <form method="post">
+          <?php if ($r['status'] === 'issued'): ?>
+            <?php if ($adminState === 'approved'): ?>
+            <form method="post" style="display:inline" onsubmit="var n=prompt('دلیل غیرفعال کردن فاکتور را وارد کنید:'); if(n===null||!n.trim()) return false; this.note.value=n.trim(); return confirm('فاکتور برای کاربر غیرفعال شود؟');">
+              <?= csrf_field() ?>
+              <input type="hidden" name="do" value="invoice_disable">
+              <input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>">
+              <input type="hidden" name="note" value="">
+              <button class="btn btn-sm btn-danger">غیرفعال</button>
+            </form>
+            <?php else: ?>
+            <form method="post" style="display:inline" onsubmit="return confirm('این فاکتور دوباره برای کاربر فعال و قابل پرداخت شود؟')">
+              <?= csrf_field() ?>
+              <input type="hidden" name="do" value="invoice_approve">
+              <input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>">
+              <button class="btn btn-sm btn-primary">تأیید / فعال‌سازی</button>
+            </form>
+            <?php endif; ?>
+          <?php elseif ($r['status'] === 'paid'): ?>
+          <form method="post" style="display:inline">
             <?= csrf_field() ?>
             <input type="hidden" name="do" value="refund">
             <input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>">
