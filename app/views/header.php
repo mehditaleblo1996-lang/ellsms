@@ -37,6 +37,7 @@ if ($navOrg && membership_has_permission($navOrg, Permissions::BILLING_VIEW)) {
 }
 $adminNav = [
     'users'                 => ['/users.php',                 'کاربران',            '👤'],
+    'user_send_policies'    => ['/user-send-policies.php',    'محدودیت ارسال کاربران', '🛡'],
     'registration_requests' => ['/registration-requests.php', 'درخواست‌های ثبت‌نام', '📝'],
     'kyc_review'            => ['/kyc-review.php',            'بررسی احراز هویت',   '🪪'],
     'kyc_gates'             => ['/kyc-gates.php',             'محدودیت‌های KYC',    '🔐'],
