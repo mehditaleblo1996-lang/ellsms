@@ -3,13 +3,17 @@ services:
     environment:
       MFA_MASTER_KEY: ${MFA_MASTER_KEY:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
-      # Business rule: every newly-issued invoice includes 10% VAT.
-      BILLING_TAX_PERCENT: "10"
+      # Business rule: all newly-issued invoices include 10% VAT.
+      BILLING_TAX_PERCENT: 10
       AUDIT_MONGO_ENABLED: ${AUDIT_MONGO_ENABLED:-1}
       AUDIT_MONGO_DATABASE: ${AUDIT_MONGO_DATABASE:-ellsms_audit}
       AUDIT_MONGO_URI: "mongodb://${AUDIT_MONGO_USERNAME:-ellsms_audit}:${AUDIT_MONGO_PASSWORD:?set AUDIT_MONGO_PASSWORD in .env}@mongo:27017/${AUDIT_MONGO_DATABASE:-ellsms_audit}?authSource=admin"
     depends_on:
       - mongo
+
+  worker:
+    environment:
+      BILLING_TAX_PERCENT: 10
 
   mongo:
     # MongoDB 8.x currently refuses to start on Linux kernel 6.19+ because of a
