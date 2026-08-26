@@ -30,24 +30,39 @@
     });
   }
 
-  // Cost-preview confirmation used to POST back to send.php/new-send.php, where the provider HTTP
-  // call ran synchronously and could leave the modal showing "در حال ارسال…" until gateway timeout.
-  // For immediate sends only, post the already-CSRF-protected confirmation to the lightweight queue
-  // endpoint. Recurring/gradual flows keep their original page action and semantics.
-  var confirmForm = document.getElementById('sendConfirmForm');
-  if (confirmForm) {
-    var modeInput = confirmForm.querySelector('input[name="mode"]');
+  function isImmediateSendForm(form) {
+    if (!form) return false;
+    var modeInput = form.querySelector('[name="mode"]:checked') || form.querySelector('[name="mode"]');
     var mode = modeInput ? modeInput.value : '';
     var path = window.location.pathname;
-    var immediate = mode === 'direct' || mode === 'now' || (mode === '' && path === '/messages/send');
-    if (immediate) {
-      confirmForm.setAttribute('action', '/send-queue.php');
-      confirmForm.addEventListener('submit', function () {
-        var submit = document.getElementById('sendConfirmSubmit');
-        if (submit) submit.textContent = 'در حال ثبت در صف…';
-      });
-    }
+    return mode === 'direct' || mode === 'now' || (mode === '' && path === '/messages/send');
   }
+
+  function routeImmediateToQueue(form) {
+    if (isImmediateSendForm(form)) {
+      form.setAttribute('action', '/send-queue.php');
+      return true;
+    }
+    return false;
+  }
+
+  // Preview confirmation: enqueue immediately and let the worker perform the slow provider call.
+  var confirmForm = document.getElementById('sendConfirmForm');
+  if (confirmForm && routeImmediateToQueue(confirmForm)) {
+    confirmForm.addEventListener('submit', function () {
+      var submit = document.getElementById('sendConfirmSubmit');
+      if (submit) submit.textContent = 'در حال ثبت در صف…';
+    });
+  }
+
+  // "ارسال بدون پیش‌نمایش" must have the same non-blocking behavior. Only the explicit confirm
+  // button is intercepted; preview, recurring, gradual and scheduling submissions stay untouched.
+  document.querySelectorAll('button[name="do"][value="confirm"]').forEach(function (button) {
+    if (confirmForm && button.form === confirmForm) return;
+    button.addEventListener('click', function () {
+      routeImmediateToQueue(button.form);
+    });
+  });
 })();
 </script>
 </body>
