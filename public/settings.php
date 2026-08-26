@@ -34,6 +34,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'تنظیمات ثبت‌نام ذخیره شد.');
     }
 
+    if ($do === 'onboarding') {
+        $enabled = !empty($_POST['onboarding_enabled']) ? '1' : '0';
+        $videoUrl = trim((string)($_POST['onboarding_video_url'] ?? ''));
+        $videoTitle = mb_substr(trim((string)($_POST['onboarding_video_title'] ?? '')), 0, 160, 'UTF-8');
+        if ($videoUrl !== '' && filter_var($videoUrl, FILTER_VALIDATE_URL) === false) {
+            flash('error', 'لینک ویدیوی آموزش معتبر نیست.');
+        } else {
+            set_setting('onboarding_enabled', $enabled);
+            set_setting('onboarding_video_url', $videoUrl);
+            set_setting('onboarding_video_title', $videoTitle);
+            audit((int)$me['id'], 'settings.onboarding_update', 'enabled=' . $enabled . ' has_video=' . ($videoUrl !== '' ? '1' : '0'));
+            flash('success', 'تنظیمات شروع کار ذخیره شد.');
+        }
+    }
+
     if ($do === 'contact') {
         set_setting('contact_address',     trim($_POST['contact_address'] ?? ''));
         set_setting('contact_phone',       trim($_POST['contact_phone'] ?? ''));
@@ -89,7 +104,7 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <h2>ثبت‌نام کاربران</h2>
-  <p class="hint">شماره‌های مدیر پس از تأیید OTP کاربر، پیامک درخواست جدید دریافت می‌کنند. تأیید مدیر در فاز فعلی درخواست را Approved می‌کند؛ ساخت حساب فعال در فاز بعد انجام می‌شود.</p>
+  <p class="hint">شماره‌های مدیر پس از تأیید OTP کاربر، پیامک درخواست جدید دریافت می‌کنند.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="registration">
@@ -98,7 +113,7 @@ require __DIR__ . '/../app/views/header.php';
         <select name="registration_mode">
           <option value="closed"<?= registration_mode()==='closed'?' selected':'' ?>>بسته</option>
           <option value="approval"<?= registration_mode()==='approval'?' selected':'' ?>>با تأیید مدیر</option>
-          <option value="auto_after_otp"<?= registration_mode()==='auto_after_otp'?' selected':'' ?>>خودکار بعد از OTP (برای فاز بعد رزرو)</option>
+          <option value="auto_after_otp"<?= registration_mode()==='auto_after_otp'?' selected':'' ?>>خودکار بعد از OTP</option>
         </select>
       </label>
       <label>شناسه کاربر سیستمی ارسال SMS
@@ -107,10 +122,33 @@ require __DIR__ . '/../app/views/header.php';
     </div>
     <label>شماره موبایل مدیران دریافت‌کننده اعلان
       <textarea name="registration_admin_mobiles" rows="4" class="ltr" placeholder="0912... هر خط یک شماره"><?= e(setting('registration_admin_mobiles','')) ?></textarea>
-      <div class="hint">فاصله، ویرگول یا خط جدید قابل استفاده است. هنگام ذخیره شماره‌ها normalize می‌شوند.</div>
+      <div class="hint">اگر خالی باشد، موبایل مدیران فعال ELLSMS به‌صورت خودکار استفاده می‌شود.</div>
     </label>
     <button class="btn btn-primary">ذخیره تنظیمات ثبت‌نام</button>
     <a class="btn btn-ghost" href="/registration-requests.php">مشاهده درخواست‌ها</a>
+  </form>
+</div>
+
+<div class="card">
+  <h2>شروع کار و Onboarding</h2>
+  <p class="hint">راهنمای تکمیل حساب برای کاربران جدید. ویدیو کاملاً اختیاری است؛ تا وقتی لینکی وارد نکنید هیچ بخش ویدیویی به کاربر نمایش داده نمی‌شود.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="onboarding">
+    <label style="display:flex;align-items:center;gap:8px">
+      <input type="checkbox" name="onboarding_enabled" value="1" <?= setting('onboarding_enabled','1') !== '0' ? 'checked' : '' ?> style="width:auto;margin:0">
+      نمایش راهنمای شروع کار برای کاربران
+    </label>
+    <div class="form-row" style="margin-top:14px">
+      <label>عنوان ویدیو (اختیاری)
+        <input type="text" maxlength="160" name="onboarding_video_title" value="<?= e(setting('onboarding_video_title','آموزش شروع کار با ELLSMS')) ?>">
+      </label>
+      <label>لینک ویدیو (اختیاری)
+        <input type="url" name="onboarding_video_url" class="ltr" placeholder="https://..." value="<?= e(setting('onboarding_video_url','')) ?>">
+        <div class="hint">خالی باشد، ویدیو اصلاً نمایش داده نمی‌شود.</div>
+      </label>
+    </div>
+    <button class="btn btn-primary">ذخیره تنظیمات شروع کار</button>
   </form>
 </div>
 
