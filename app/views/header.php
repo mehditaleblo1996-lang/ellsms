@@ -1,8 +1,10 @@
 <?php
 /** expects: $pageTitle (string), $active (string nav key), $me (user array) */
 $me = $me ?? require_login();
+require_once __DIR__ . '/../NotificationCenter.php';
 $nav = [
-    'dashboard'  => ['/index.php',       'داشبورد',         '▦'],
+    'dashboard'     => ['/index.php',         'داشبورد',         '▦'],
+    'notifications' => ['/notifications.php', 'اعلان‌ها',         '🔔'],
 ];
 if ($me['role'] !== 'admin' && setting('onboarding_enabled', '1') !== '0') {
     $nav['onboarding'] = ['/onboarding.php', 'شروع کار', '✓'];
@@ -52,6 +54,7 @@ $adminNav = [
     'financial_admin'       => ['/financial-admin.php',       'گزارش مالی',          '🧾'],
     'settings'              => ['/settings.php',              'تنظیمات',             '⚙'],
 ];
+$notificationUnread = notification_unread_count((int)$me['id']);
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -74,6 +77,7 @@ $adminNav = [
       <?php foreach ($nav as $key => [$href, $label, $icon]): ?>
         <a href="<?= $href ?>" class="nav-item<?= ($active ?? '') === $key ? ' is-active' : '' ?>">
           <span class="nav-icon"><?= $icon ?></span><?= $label ?>
+          <?php if ($key === 'notifications' && $notificationUnread > 0): ?><span class="badge badge-pending" style="margin-inline-start:auto"><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></span><?php endif; ?>
         </a>
       <?php endforeach; ?>
       <?php if ($integrationNav): ?>
@@ -108,6 +112,9 @@ $adminNav = [
             اعتبار: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong>
           </span>
         <?php endif; ?>
+        <a class="btn btn-ghost" href="/notifications.php" title="اعلان‌ها" style="position:relative">
+          🔔<?php if ($notificationUnread > 0): ?> <strong><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></strong><?php endif; ?>
+        </a>
         <a class="user-chip" href="/profile.php" title="حساب کاربری و رمز عبور">
           <?= e($me['full_name'] ?: $me['username']) ?><?= $me['role'] === 'admin' ? ' · مدیر' : '' ?>
         </a>
