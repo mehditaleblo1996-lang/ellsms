@@ -4,6 +4,7 @@
  * centralized feature gating (docs/profile-kyc.md).
  */
 declare(strict_types=1);
+require_once __DIR__ . '/NotificationCenter.php';
 
 const KYC_STATUSES = [
     'draft'             => 'احراز نشده',
@@ -50,7 +51,7 @@ function kyc_request_get(int $organizationId): array {
     }
 }
 
-/** Owner user id for an organization, used only to resolve individual-account KYC documents. */
+/** Owner user id for an organization, used for individual KYC and user notifications. */
 function kyc_owner_user_id(int $organizationId): int {
     if ($organizationId <= 0) return 0;
     $st = db()->prepare("SELECT user_id FROM ellsms_organization_memberships WHERE organization_id=? AND role='owner' AND status='active' ORDER BY id LIMIT 1");
@@ -58,11 +59,6 @@ function kyc_owner_user_id(int $organizationId): int {
     return (int)($st->fetchColumn() ?: 0);
 }
 
-/**
- * Final approval is stricter than submission: every required ACTIVE document must exist and must
- * have been explicitly approved by an admin. This prevents a request from becoming approved while
- * one of its identity documents is still pending or rejected.
- */
 function kyc_can_approve(int $organizationId): array {
     $orgProfile = profile_organization_get($organizationId);
     $accountType = (string)($orgProfile['account_type'] ?? 'individual');
@@ -89,9 +85,7 @@ function kyc_can_approve(int $organizationId): array {
             continue;
         }
         $review = (string)($byType[$type]['review_status'] ?? 'pending');
-        if ($review !== 'approved') {
-            $missing[] = 'مدرک «' . profile_document_type_label($type) . '» هنوز تأیید نشده است';
-        }
+        if ($review !== 'approved') $missing[] = 'مدرک «' . profile_document_type_label($type) . '» هنوز تأیید نشده است';
     }
     return ['ok' => $missing === [], 'missing' => $missing];
 }
@@ -106,12 +100,10 @@ function kyc_transition(int $organizationId, string $toStatus, int $actorUserId,
     }
     if ($toStatus === 'approved') {
         $approval = kyc_can_approve($organizationId);
-        if (!$approval['ok']) {
-            return ['ok' => false, 'reason' => 'documents_not_approved', 'missing' => $approval['missing']];
-        }
+        if (!$approval['ok']) return ['ok' => false, 'reason' => 'documents_not_approved', 'missing' => $approval['missing']];
     }
 
-    return db_transaction(function (PDO $db) use ($organizationId, $toStatus, $actorUserId, $note): array {
+    $result = db_transaction(function (PDO $db) use ($organizationId, $toStatus, $actorUserId, $note): array {
         $st = $db->prepare('SELECT * FROM ellsms_kyc_requests WHERE organization_id = ? FOR UPDATE');
         $st->execute([$organizationId]);
         $current = $st->fetch();
@@ -153,6 +145,36 @@ function kyc_transition(int $organizationId, string $toStatus, int $actorUserId,
         Logger::info('kyc.transitioned', ['organization_id'=>$organizationId,'from'=>$fromStatus,'to'=>$toStatus,'actor_user_id'=>$actorUserId]);
         return ['ok'=>true,'from'=>$fromStatus,'to'=>$toStatus];
     });
+
+    // External channels are dispatched only after the DB transition commits. Notification failures
+    // are fail-open and cannot roll back a valid KYC decision.
+    if (!empty($result['ok'])) {
+        if ($toStatus === 'submitted') {
+            notification_dispatch_admins(
+                'kyc.submitted',
+                'درخواست احراز هویت جدید',
+                'یک درخواست KYC برای سازمان #' . $organizationId . ' آماده بررسی است.',
+                '/kyc-review.php?id=' . $organizationId,
+                'info'
+            );
+        } elseif (in_array($toStatus, ['approved','needs_correction','rejected'], true)) {
+            $ownerUserId = kyc_owner_user_id($organizationId);
+            if ($ownerUserId > 0) {
+                $event = 'kyc.' . $toStatus;
+                $title = match ($toStatus) {
+                    'approved' => 'احراز هویت شما تأیید شد',
+                    'needs_correction' => 'احراز هویت نیاز به اصلاح دارد',
+                    default => 'احراز هویت شما رد شد',
+                };
+                $body = $toStatus === 'approved'
+                    ? 'احراز هویت حساب با موفقیت تأیید شد.'
+                    : ($note !== '' ? $note : 'برای جزئیات وارد حساب کاربری شوید.');
+                $severity = $toStatus === 'approved' ? 'success' : ($toStatus === 'rejected' ? 'error' : 'warning');
+                notification_dispatch_user($ownerUserId, $organizationId, $event, $title, $body, '/profile.php', $severity);
+            }
+        }
+    }
+    return $result;
 }
 
 function kyc_can_submit(int $organizationId, int $userId, string $accountType, array $userProfile, array $organizationProfile, array $address): array {
@@ -210,7 +232,6 @@ function kyc_requests_list(?string $statusFilter = null, string $search = '', in
     $st=db()->prepare($sql); $st->execute($params); return $st->fetchAll();
 }
 
-/* Centralized, admin-configurable KYC gates. All defaults remain OFF for backwards compatibility. */
 const KYC_FEATURE_GATES = [
     'sms_send'                 => 'ارسال پیامک',
     'credit_purchase'          => 'خرید اعتبار',
