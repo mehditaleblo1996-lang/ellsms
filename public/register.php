@@ -7,6 +7,44 @@ if (current_user()) redirect('/index.php');
 $error = null;
 $created = false;
 
+/**
+ * Lightweight, self-hosted registration CAPTCHA used only after the normal rate limit trips.
+ * The answer lives server-side in the session, expires quickly, and is single-use. No external
+ * CAPTCHA provider/keys are needed and no sensitive registration fields are stored in the session.
+ */
+function registration_captcha_issue(): void {
+    $a = random_int(2, 9);
+    $b = random_int(1, 9);
+    $op = random_int(0, 1) === 1 ? '+' : '-';
+    if ($op === '-' && $b > $a) [$a, $b] = [$b, $a];
+    $answer = $op === '+' ? $a + $b : $a - $b;
+
+    $_SESSION['registration_captcha'] = [
+        'question' => $a . ' ' . $op . ' ' . $b,
+        'answer' => (string)$answer,
+        'expires_at' => time() + 300,
+    ];
+}
+
+function registration_captcha_required(): bool {
+    $captcha = $_SESSION['registration_captcha'] ?? null;
+    if (!is_array($captcha)) return false;
+    if ((int)($captcha['expires_at'] ?? 0) < time()) {
+        unset($_SESSION['registration_captcha']);
+        return false;
+    }
+    return true;
+}
+
+function registration_captcha_verify(string $answer): bool {
+    if (!registration_captcha_required()) return false;
+    $captcha = $_SESSION['registration_captcha'];
+    $answer = trim(from_persian_digits($answer));
+    $ok = hash_equals((string)$captcha['answer'], $answer);
+    if ($ok) unset($_SESSION['registration_captcha']);
+    return $ok;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
@@ -15,51 +53,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         usleep(300000);
         $created = true;
     } else {
-        $max = rate_limit_config('RATE_LIMIT_REGISTRATION_MAX', 5);
-        $window = rate_limit_config('RATE_LIMIT_REGISTRATION_WINDOW_SECONDS', 3600);
-        $ipOk = rate_limit_hit(rate_limit_bucket('registration', 'ip', client_ip()), $max, $window);
-        $mobileKey = normalize_msisdn((string)($_POST['mobile'] ?? '')) ?? preg_replace('/\D+/', '', (string)($_POST['mobile'] ?? ''));
-        $mobileOk = $mobileKey === '' || rate_limit_hit(rate_limit_bucket('registration', 'mobile', $mobileKey), $max, $window);
+        $captchaWasRequired = registration_captcha_required();
+        $captchaPassed = false;
 
-        if (!$ipOk || !$mobileOk) {
-            Logger::warning('registration.rate_limited', ['ip' => client_ip()]);
-            $error = 'تعداد درخواست‌های ثبت‌نام بیش از حد مجاز است. لطفاً بعداً دوباره تلاش کنید.';
-        } else {
-            $nationalId = trim(from_persian_digits((string)($_POST['national_id'] ?? '')));
-            $email = trim((string)($_POST['email'] ?? ''));
-            $gender = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
-            if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
-                $error = 'ایمیل معتبر برای ساخت حساب الزامی است.';
-            } elseif (strlen($nationalId) !== 10 || !ctype_digit($nationalId)) {
-                $error = 'کد ملی باید دقیقاً ۱۰ رقم باشد.';
-            } else {
-                $result = registration_request_create($_POST);
-                if (!empty($result['ok'])) {
-                    $registrationId = (int)$result['id'];
-                    // Phase 4 needs the backend platform's own legacy verifier. It is derived here
-                    // while plaintext is already present in this request, never logged, and removed
-                    // from the registration row immediately after account activation.
-                    db()->prepare(
-                        'UPDATE ellsms_registration_requests
-                         SET national_id=?, gender=?, backend_password_hash=? WHERE id=?'
-                    )->execute([
-                        $nationalId,
-                        $gender,
-                        backend_hash_password((string)($_POST['password'] ?? '')),
-                        $registrationId,
-                    ]);
-                    $_SESSION['registration_request_id'] = $registrationId;
-                    $otp = registration_send_otp($registrationId, false);
-                    if (empty($otp['ok'])) {
-                        $_SESSION['registration_otp_error'] = (string)($otp['error'] ?? 'ارسال کد تأیید ممکن نشد.');
-                    }
-                    redirect('/register-verify.php');
+        if ($captchaWasRequired) {
+            $captchaPassed = registration_captcha_verify((string)($_POST['captcha_answer'] ?? ''));
+            if (!$captchaPassed) {
+                Logger::warning('registration.captcha_failed', ['ip' => client_ip()]);
+                if (function_exists('audit_mongo_event')) {
+                    audit_mongo_event('registration.captcha_failed', [], true);
                 }
-                $error = (string)($result['error'] ?? 'ثبت درخواست ممکن نشد.');
+                registration_captcha_issue();
+                $error = 'پاسخ کپچا درست نیست. لطفاً دوباره تلاش کنید.';
+            } else {
+                Logger::info('registration.captcha_passed', ['ip' => client_ip()]);
+                if (function_exists('audit_mongo_event')) {
+                    audit_mongo_event('registration.captcha_passed', [], true);
+                }
+            }
+        }
+
+        if ($error === null) {
+            $rateAllowed = $captchaPassed;
+
+            if (!$captchaPassed) {
+                $max = rate_limit_config('RATE_LIMIT_REGISTRATION_MAX', 5);
+                $window = rate_limit_config('RATE_LIMIT_REGISTRATION_WINDOW_SECONDS', 3600);
+                $ipOk = rate_limit_hit(rate_limit_bucket('registration', 'ip', client_ip()), $max, $window);
+                $mobileKey = normalize_msisdn((string)($_POST['mobile'] ?? '')) ?? preg_replace('/\D+/', '', (string)($_POST['mobile'] ?? ''));
+                $mobileOk = $mobileKey === '' || rate_limit_hit(rate_limit_bucket('registration', 'mobile', $mobileKey), $max, $window);
+                $rateAllowed = $ipOk && $mobileOk;
+
+                if (!$rateAllowed) {
+                    registration_captcha_issue();
+                    Logger::warning('registration.captcha_required', ['ip' => client_ip()]);
+                    if (function_exists('audit_mongo_event')) {
+                        audit_mongo_event('registration.captcha_required', [], true);
+                    }
+                    $error = 'برای ادامه، لطفاً کپچای زیر را حل کنید.';
+                }
+            }
+
+            if ($rateAllowed) {
+                $nationalId = trim(from_persian_digits((string)($_POST['national_id'] ?? '')));
+                $email = trim((string)($_POST['email'] ?? ''));
+                $gender = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
+                if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                    $error = 'ایمیل معتبر برای ساخت حساب الزامی است.';
+                } elseif (strlen($nationalId) !== 10 || !ctype_digit($nationalId)) {
+                    $error = 'کد ملی باید دقیقاً ۱۰ رقم باشد.';
+                } else {
+                    $result = registration_request_create($_POST);
+                    if (!empty($result['ok'])) {
+                        $registrationId = (int)$result['id'];
+                        // Phase 4 needs the backend platform's own legacy verifier. It is derived here
+                        // while plaintext is already present in this request, never logged, and removed
+                        // from the registration row immediately after account activation.
+                        db()->prepare(
+                            'UPDATE ellsms_registration_requests
+                             SET national_id=?, gender=?, backend_password_hash=? WHERE id=?'
+                        )->execute([
+                            $nationalId,
+                            $gender,
+                            backend_hash_password((string)($_POST['password'] ?? '')),
+                            $registrationId,
+                        ]);
+                        $_SESSION['registration_request_id'] = $registrationId;
+                        $otp = registration_send_otp($registrationId, false);
+                        if (empty($otp['ok'])) {
+                            $_SESSION['registration_otp_error'] = (string)($otp['error'] ?? 'ارسال کد تأیید ممکن نشد.');
+                        }
+                        redirect('/register-verify.php');
+                    }
+                    $error = (string)($result['error'] ?? 'ثبت درخواست ممکن نشد.');
+                }
             }
         }
     }
 }
+
+$showCaptcha = registration_captcha_required();
+$captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['question'] ?? '') : '';
 
 ?><!doctype html>
 <html lang="fa" dir="rtl">
@@ -141,6 +215,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="text" name="company_name" maxlength="190" value="<?= e($_POST['company_name'] ?? '') ?>">
           </label>
         </div>
+
+        <?php if ($showCaptcha): ?>
+          <div class="card" style="margin:16px 0;padding:16px;border:1px solid rgba(255,255,255,.12)">
+            <strong>تأیید انسان بودن</strong>
+            <p class="hint" style="margin:6px 0 12px">برای ادامه حاصل عبارت زیر را وارد کنید:</p>
+            <div class="ltr" style="font-size:1.4rem;font-weight:700;letter-spacing:2px;margin-bottom:10px"><?= e($captchaQuestion) ?> = ?</div>
+            <input type="text" name="captcha_answer" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="پاسخ" required>
+          </div>
+        <?php endif; ?>
 
         <button type="submit" class="btn btn-primary btn-block">ثبت‌نام و ارسال کد تأیید</button>
       </form>
