@@ -1,15 +1,7 @@
 <?php
-/**
- * ELLSMS — customer invoice list + detail/print view (financial-commerce continuation, FIN-5/FIN-11).
- *
- * Read-only except for the "pay" action on an unpaid invoice, which re-derives the amount from the
- * invoice's own stored total (never from request input) and starts a fresh gateway payment against
- * the SAME payment row the invoice is already linked to — no new invoice is created for a retry.
- *
- * Organization-scoped exactly like every other financial page: billing_invoice_by_id()/
- * billing_invoices_for_organization() (app/Financial.php) enforce ownership server-side.
- */
+/** ELLSMS — customer invoice list + detail/print view. */
 require_once __DIR__ . '/../app/Payment/PaymentGateway.php';
+require_once __DIR__ . '/../app/InvoiceAdmin.php';
 $me = require_login();
 $pageTitle = 'فاکتورها';
 $active = 'invoices';
@@ -18,7 +10,6 @@ if (!is_admin()) {
     require_permission(Permissions::PAYMENTS_VIEW);
 }
 $orgId = $me['organization_id'] ?? null;
-
 $invoiceId = (int)($_GET['id'] ?? 0);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -31,8 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($do === 'pay') {
         $invoice = billing_invoice_by_id($postedInvoiceId, $orgId, (int)$me['id']);
-        if (!$invoice || $invoice['status'] !== 'issued') {
-            flash('error', 'این فاکتور قابل پرداخت نیست.');
+        if (!$invoice || !invoice_admin_payable($invoice)) {
+            flash('error', $invoice && invoice_admin_state($invoice) === 'disabled'
+                ? 'این فاکتور توسط مدیر غیرفعال شده و در حال حاضر قابل پرداخت نیست.'
+                : 'این فاکتور قابل پرداخت نیست.');
             redirect('/invoices.php');
         }
         $paySt = db()->prepare('SELECT * FROM ellsms_payments WHERE id = ?');
@@ -66,6 +59,7 @@ if ($invoiceId > 0) {
     require __DIR__ . '/../app/views/header.php';
     $purposeFa = ['credit' => 'خرید اعتبار', 'subscription' => 'اشتراک'];
     $statusFa = ['issued' => 'صادرشده', 'paid' => 'پرداخت‌شده', 'cancelled' => 'لغوشده', 'expired' => 'منقضی', 'refunded' => 'بازگشت‌داده‌شده'];
+    $adminState = invoice_admin_state($invoice);
     ?>
 <div class="card print-invoice">
   <div class="toolbar" style="justify-content:space-between">
@@ -75,8 +69,12 @@ if ($invoiceId > 0) {
       <a class="btn btn-sm" href="/invoices.php">بازگشت</a>
     </div>
   </div>
+  <?php if ($adminState === 'disabled'): ?>
+    <div class="flash flash-error">این فاکتور توسط مدیر غیرفعال شده و تا زمان فعال‌سازی مجدد امکان پرداخت آن وجود ندارد.<?= !empty($invoice['admin_note']) ? ' دلیل: ' . e($invoice['admin_note']) : '' ?></div>
+  <?php endif; ?>
   <table>
     <tr><th>وضعیت</th><td><span class="badge badge-<?= $invoice['status'] === 'paid' ? 'ok' : ($invoice['status'] === 'issued' ? 'pending' : 'off') ?>"><?= e($statusFa[$invoice['status']] ?? $invoice['status']) ?></span></td></tr>
+    <tr><th>دسترسی پرداخت</th><td><span class="badge badge-<?= $adminState === 'approved' ? 'ok' : 'off' ?>"><?= $adminState === 'approved' ? 'فعال' : 'غیرفعال توسط مدیر' ?></span></td></tr>
     <tr><th>نوع</th><td><?= e($purposeFa[$invoice['purpose']] ?? $invoice['purpose']) ?></td></tr>
     <tr><th>تاریخ صدور</th><td><?= jdate($invoice['issued_at']) ?></td></tr>
     <?php if ($invoice['paid_at']): ?><tr><th>تاریخ پرداخت</th><td><?= jdate($invoice['paid_at']) ?></td></tr><?php endif; ?>
@@ -85,7 +83,7 @@ if ($invoiceId > 0) {
   <h3 style="margin-top:20px">اقلام</h3>
   <div class="table-wrap">
   <table>
-    <tr><th>شرح</th><th>تعداد</th><th>قیمت واحد</th><th>تخفیف</th><th>مالیات</th><th>جمع</th></tr>
+    <tr><th>شرح</th><th>تعداد</th><th>قیمت واحد</th><th>تخفیف</th><th>ارزش افزوده</th><th>جمع</th></tr>
     <?php foreach ($invoice['items'] as $item): ?>
       <tr>
         <td><?= e($item['description_snapshot']) ?></td>
@@ -104,13 +102,11 @@ if ($invoiceId > 0) {
     <?php if ((int)$invoice['discount_amount'] > 0): ?>
     <tr><th>تخفیف<?= $invoice['coupon_code'] ? ' (' . e($invoice['coupon_code']) . ')' : '' ?></th><td class="num">-<?= to_persian_digits(number_format((int)$invoice['discount_amount'])) ?> ریال</td></tr>
     <?php endif; ?>
-    <?php if ((int)$invoice['tax_amount'] > 0): ?>
-    <tr><th>مالیات</th><td class="num"><?= to_persian_digits(number_format((int)$invoice['tax_amount'])) ?> ریال</td></tr>
-    <?php endif; ?>
+    <tr><th>ارزش افزوده (۱۰٪)</th><td class="num"><?= to_persian_digits(number_format((int)$invoice['tax_amount'])) ?> ریال</td></tr>
     <tr><th><strong>مبلغ نهایی</strong></th><td class="num"><strong><?= to_persian_digits(number_format((int)$invoice['total_amount'])) ?> ریال</strong></td></tr>
   </table>
 
-  <?php if ($invoice['status'] === 'issued' && $invoice['payment'] && in_array($invoice['payment']['status'], ['pending', 'verification_failed', 'failed'], true)): ?>
+  <?php if (invoice_admin_payable($invoice) && $invoice['payment'] && in_array($invoice['payment']['status'], ['pending', 'verification_failed', 'failed'], true)): ?>
   <form method="post" style="margin-top:16px">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="pay">
@@ -121,7 +117,6 @@ if ($invoiceId > 0) {
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; return; }
 
-// ------------------------------------------------------------------ list
 $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 20;
 $invoices = billing_invoices_for_organization($orgId, (int)$me['id'], $perPage, ($page - 1) * $perPage);
@@ -134,18 +129,20 @@ require __DIR__ . '/../app/views/header.php';
   <h2>فاکتورها</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>شماره فاکتور</th><th>نوع</th><th>مبلغ (ریال)</th><th>وضعیت</th><th>تاریخ</th><th></th></tr>
+    <tr><th>شماره فاکتور</th><th>نوع</th><th>مبلغ (ریال)</th><th>وضعیت</th><th>دسترسی</th><th>تاریخ</th><th></th></tr>
     <?php foreach ($invoices as $inv): ?>
+      <?php $adminState = invoice_admin_state($inv); ?>
       <tr>
         <td class="num ltr"><?= e($inv['invoice_number']) ?></td>
         <td><?= e($purposeFa[$inv['purpose']] ?? $inv['purpose']) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$inv['total_amount'])) ?></td>
         <td><span class="badge badge-<?= $inv['status'] === 'paid' ? 'ok' : ($inv['status'] === 'issued' ? 'pending' : 'off') ?>"><?= e($statusFa[$inv['status']] ?? $inv['status']) ?></span></td>
+        <td><span class="badge badge-<?= $adminState === 'approved' ? 'ok' : 'off' ?>"><?= $adminState === 'approved' ? 'فعال' : 'غیرفعال' ?></span></td>
         <td class="num"><?= jdate($inv['created_at']) ?></td>
         <td><a class="btn btn-sm" href="/invoices.php?id=<?= (int)$inv['id'] ?>">مشاهده</a></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$invoices): ?><tr><td colspan="6" class="empty">فاکتوری ثبت نشده.</td></tr><?php endif; ?>
+    <?php if (!$invoices): ?><tr><td colspan="7" class="empty">فاکتوری ثبت نشده.</td></tr><?php endif; ?>
   </table>
   </div>
   <div class="toolbar" style="margin-top:14px">
