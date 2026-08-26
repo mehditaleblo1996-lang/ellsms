@@ -220,7 +220,9 @@ function registration_verify_otp(int $registrationId, string $code): array {
     Logger::info('registration.mobile_verified', ['registration_id' => $registrationId]);
     if (function_exists('audit_mongo_event')) audit_mongo_event('registration.mobile_verified', ['registration_id' => $registrationId], true);
 
-    if (registration_mode() === 'approval') registration_notify_admins($registrationId);
+    // auto_after_otp is reserved for the activation phase; until then it deliberately follows
+    // the safe approval path instead of silently creating an account without the Phase 4 invariants.
+    if (registration_mode() !== 'closed') registration_notify_admins($registrationId);
     return ['ok' => true];
 }
 
