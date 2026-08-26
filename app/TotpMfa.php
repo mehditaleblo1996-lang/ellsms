@@ -146,3 +146,41 @@ function totp_provisioning_uri(string $username, string $secretBase32): string {
     return 'otpauth://totp/' . $label . '?secret=' . rawurlencode($secretBase32)
         . '&issuer=' . rawurlencode(TOTP_MFA_ISSUER) . '&algorithm=SHA1&digits=6&period=30';
 }
+
+/**
+ * Render the provisioning URI as a QR code locally with qrencode. The secret never leaves the
+ * ELLSMS container: no Google Chart/QuickChart/CDN request is used. Returns a data: SVG URI that is
+ * already permitted by the panel CSP, or null if the local qrencode binary is unavailable.
+ */
+function totp_qr_svg_data_uri(string $provisioningUri): ?string {
+    if ($provisioningUri === '' || !function_exists('proc_open')) return null;
+
+    $descriptors = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+    $pipes = [];
+    $process = @proc_open(
+        ['qrencode', '-t', 'SVG', '-o', '-', '-m', '2', '-s', '6', $provisioningUri],
+        $descriptors,
+        $pipes,
+        null,
+        null,
+        ['bypass_shell' => true]
+    );
+    if (!is_resource($process)) return null;
+
+    fclose($pipes[0]);
+    $svg = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exit = proc_close($process);
+
+    if ($exit !== 0 || !is_string($svg) || stripos($svg, '<svg') === false) {
+        Logger::warning('auth.totp.qr_render_failed', ['exit' => $exit, 'stderr_present' => trim((string)$stderr) !== '']);
+        return null;
+    }
+    return 'data:image/svg+xml;base64,' . base64_encode($svg);
+}
