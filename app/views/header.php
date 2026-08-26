@@ -3,6 +3,11 @@
 $me = $me ?? require_login();
 $nav = [
     'dashboard'  => ['/index.php',       'داشبورد',         '▦'],
+];
+if ($me['role'] !== 'admin' && setting('onboarding_enabled', '1') !== '0') {
+    $nav['onboarding'] = ['/onboarding.php', 'شروع کار', '✓'];
+}
+$nav += [
     'new_send'   => ['/new-send.php',    'پنل جدید ارسال',  '🆕'],
     'send'       => ['/send.php',        'ارسال پیامک',     '➤'],
     'p2p'        => ['/p2p-send.php',    'نظیر به نظیر',    '⇄'],
