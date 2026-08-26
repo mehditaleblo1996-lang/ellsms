@@ -1,6 +1,7 @@
 <?php
 /** Public registration/onboarding primitives. */
 declare(strict_types=1);
+require_once __DIR__ . '/NotificationCenter.php';
 
 const REGISTRATION_OTP_TTL_SECONDS = 300;
 const REGISTRATION_OTP_RESEND_SECONDS = 60;
@@ -111,21 +112,16 @@ function registration_admin_mobiles(): array {
             if ($mobile !== null) $out[] = $mobile;
         }
     }
-
-    // If the operator did not configure explicit notification numbers, use the verified mobile
-    // numbers already attached to active ELLSMS admin accounts. This makes admin notification work
-    // out of the box while Settings can still override/extend the recipients explicitly.
-    if ($out === [] && function_exists('backend_ellsms_admin_mobiles')) {
-        $out = backend_ellsms_admin_mobiles();
-    }
+    if ($out === [] && function_exists('backend_ellsms_admin_mobiles')) $out = backend_ellsms_admin_mobiles();
     return array_values(array_unique($out));
 }
 
-/** Best-effort admin alert. $force=true is used by the manual resend button in admin UI. */
+/** Best-effort admin alert. Manual resend explicitly bypasses the per-event SMS switch. */
 function registration_notify_admins(int $registrationId, bool $force = false): array {
     $row = registration_request_get($registrationId);
     if (!$row || $row['state'] !== 'pending_admin_approval') return ['ok' => false, 'error' => 'درخواست در وضعیت انتظار بررسی مدیر نیست.'];
     if (!$force && !empty($row['admin_notified_at'])) return ['ok' => true, 'already_sent' => true];
+    if (!$force && !notification_channel_enabled('registration.new', 'sms')) return ['ok' => true, 'disabled' => true];
 
     $mobiles = registration_admin_mobiles();
     if ($mobiles === []) {
@@ -221,8 +217,6 @@ function registration_admin_decide(int $registrationId, int $adminUserId, string
         $event = 'registration.approved';
         $message = "درخواست ثبت‌نام شما در ELLSMS تأیید شد.\nحساب شما در مرحله فعال‌سازی است و پس از آماده‌شدن، پیامک بعدی ارسال می‌شود.";
     } else {
-        // Clear password material immediately. The rejected row remains as an audit/history record,
-        // but it no longer blocks a fresh registration with the same mobile/email/username.
         $st = db()->prepare("UPDATE ellsms_registration_requests SET state='rejected', rejected_at=NOW(), rejected_by=?, rejection_reason=?, decision_note=?, password_verifier='', backend_password_hash=NULL, otp_hash=NULL, otp_expires_at=NULL WHERE id=? AND state='pending_admin_approval'");
         $st->execute([$adminUserId, $note, $note, $registrationId]);
         $event = 'registration.rejected';
@@ -233,7 +227,8 @@ function registration_admin_decide(int $registrationId, int $adminUserId, string
     Logger::info($event, ['registration_id' => $registrationId, 'admin_user_id' => $adminUserId]);
     if (function_exists('audit_mongo_event')) audit_mongo_event($event, ['registration_id' => $registrationId, 'admin_user_id' => $adminUserId], true);
 
-    $sms = registration_system_sms([(string)$row['mobile']], $message);
-    if (empty($sms['ok'])) Logger::warning($event . '.sms_failed', ['registration_id' => $registrationId]);
-    return ['ok' => true, 'sms_sent' => !empty($sms['ok'])];
+    $smsEnabled = notification_channel_enabled($event, 'sms');
+    $sms = $smsEnabled ? registration_system_sms([(string)$row['mobile']], $message) : ['ok' => true, 'disabled' => true];
+    if ($smsEnabled && empty($sms['ok'])) Logger::warning($event . '.sms_failed', ['registration_id' => $registrationId]);
+    return ['ok' => true, 'sms_sent' => !empty($sms['ok']), 'sms_enabled' => $smsEnabled];
 }
