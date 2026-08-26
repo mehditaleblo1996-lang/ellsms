@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/Registration.php';
 $me = require_admin();
 $pageTitle = 'تنظیمات';
 $active = 'settings';
@@ -13,6 +14,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_setting('default_originator', trim($_POST['default_originator'] ?? ''));
         audit((int)$me['id'], 'settings.update');
         flash('success', 'تنظیمات ذخیره شد.');
+    }
+
+    if ($do === 'registration') {
+        $mode = (string)($_POST['registration_mode'] ?? 'approval');
+        if (!in_array($mode, ['closed','approval','auto_after_otp'], true)) $mode = 'approval';
+        $rawMobiles = (string)($_POST['registration_admin_mobiles'] ?? '');
+        $parts = preg_split('/[\s,;]+/u', $rawMobiles, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $mobiles = [];
+        foreach ($parts as $part) {
+            $mobile = normalize_msisdn((string)$part);
+            if ($mobile !== null) $mobiles[] = $mobile;
+        }
+        $mobiles = array_values(array_unique($mobiles));
+        set_setting('registration_mode', $mode);
+        set_setting('registration_admin_mobiles', implode("\n", $mobiles));
+        set_setting('registration_sms_sender_user_id', (string)max(1, (int)($_POST['registration_sms_sender_user_id'] ?? 1)));
+        audit((int)$me['id'], 'settings.registration_update', 'mode=' . $mode . ' admin_mobile_count=' . count($mobiles));
+        flash('success', 'تنظیمات ثبت‌نام ذخیره شد.');
     }
 
     if ($do === 'contact') {
@@ -65,6 +84,33 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     </div>
     <button class="btn btn-primary">ذخیره‌ی تنظیمات</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>ثبت‌نام کاربران</h2>
+  <p class="hint">شماره‌های مدیر پس از تأیید OTP کاربر، پیامک درخواست جدید دریافت می‌کنند. تأیید مدیر در فاز فعلی درخواست را Approved می‌کند؛ ساخت حساب فعال در فاز بعد انجام می‌شود.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="registration">
+    <div class="form-row">
+      <label>حالت ثبت‌نام
+        <select name="registration_mode">
+          <option value="closed"<?= registration_mode()==='closed'?' selected':'' ?>>بسته</option>
+          <option value="approval"<?= registration_mode()==='approval'?' selected':'' ?>>با تأیید مدیر</option>
+          <option value="auto_after_otp"<?= registration_mode()==='auto_after_otp'?' selected':'' ?>>خودکار بعد از OTP (برای فاز بعد رزرو)</option>
+        </select>
+      </label>
+      <label>شناسه کاربر سیستمی ارسال SMS
+        <input type="number" min="1" name="registration_sms_sender_user_id" value="<?= (int)setting('registration_sms_sender_user_id','1') ?>" class="ltr">
+      </label>
+    </div>
+    <label>شماره موبایل مدیران دریافت‌کننده اعلان
+      <textarea name="registration_admin_mobiles" rows="4" class="ltr" placeholder="0912... هر خط یک شماره"><?= e(setting('registration_admin_mobiles','')) ?></textarea>
+      <div class="hint">فاصله، ویرگول یا خط جدید قابل استفاده است. هنگام ذخیره شماره‌ها normalize می‌شوند.</div>
+    </label>
+    <button class="btn btn-primary">ذخیره تنظیمات ثبت‌نام</button>
+    <a class="btn btn-ghost" href="/registration-requests.php">مشاهده درخواست‌ها</a>
   </form>
 </div>
 
