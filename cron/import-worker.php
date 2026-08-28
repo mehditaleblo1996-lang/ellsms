@@ -4,7 +4,9 @@
  *
  * Runs forever inside its own container, processing uploaded import files
  * asynchronously so heavy file analysis never blocks the send worker or web
- * requests. Polls for work every WORKER_POLL_INTERVAL_SECONDS.
+ * requests. Polls for work every WORKER_POLL_INTERVAL_SECONDS only while idle;
+ * when work exists it drains consecutive chunks immediately with no artificial
+ * one-second gap between each chunk.
  *
  * Usage:
  *   php cron/import-worker.php        # persistent daemon
@@ -41,8 +43,7 @@ Logger::info('import_worker.started', [
 ]);
 
 do {
-    $loopStartedAt = microtime(true);
-
+    $processed = 0;
     try {
         $processed = import_fast_worker_run_once();
         if ($processed > 0) {
@@ -52,12 +53,12 @@ do {
         Logger::error('import_worker.tick.failed', ['exception' => $t]);
     }
 
-    if (!$once) {
-        $elapsed = microtime(true) - $loopStartedAt;
-        $sleep = max(0, $pollIntervalSeconds - (int)$elapsed);
-        if ($sleep > 0 && !$shuttingDown) {
-            sleep($sleep);
-        }
+    // Polling delay is for an EMPTY queue only. Previously every completed insert chunk slept
+    // until the next poll interval, so a 100k generated send staged as ~20 chunks paid roughly
+    // 20 seconds of pure sleep. When a chunk/job was processed, immediately loop and claim the
+    // next unit of work; DB/gateway back-pressure remains enforced by the existing chunk sizes.
+    if (!$once && $processed === 0 && !$shuttingDown) {
+        sleep($pollIntervalSeconds);
     }
 } while (!$once && !$shuttingDown);
 
