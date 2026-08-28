@@ -21,4 +21,10 @@ if (import_cancel_job($jobId, $me)) {
 }
 
 $back = (string)($_POST['back'] ?? 'list');
-redirect($back === 'detail' ? '/contacts/import?id=' . $jobId : '/contacts/import');
+if ($back === 'detail') {
+    redirect('/contacts/import?id=' . $jobId);
+}
+if ($back === 'p2p') {
+    redirect('/p2p-send.php');
+}
+redirect('/contacts/import');
