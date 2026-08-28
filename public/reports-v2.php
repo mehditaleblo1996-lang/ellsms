@@ -78,8 +78,6 @@ $bulkCanonical = "CASE WHEN bi.delivery_status='delivered' THEN 'delivered' WHEN
 if (in_array($status, ['pending','sent','delivered','failed'], true)) { $bw[]="$bulkCanonical = ?"; $bp[]=$status; }
 $BW = implode(' AND ', $bw);
 
-// Aggregate each physical source separately. This avoids full-row scans in PHP and avoids any
-// collation/type coupling between the legacy outbound table and the bulk tables.
 $ds = db()->prepare("SELECT COUNT(*) total, SUM(($directCanonical) IN ('sent','delivered')) ok_count, SUM(($directCanonical)='delivered') delivered_count, SUM(($directCanonical)='failed') failed_count FROM outbound_message m WHERE $DW");
 $ds->execute($dp); $D = $ds->fetch() ?: [];
 $bs = db()->prepare("SELECT COUNT(*) total, SUM(($bulkCanonical) IN ('sent','delivered')) ok_count, SUM(($bulkCanonical)='delivered') delivered_count, SUM(($bulkCanonical)='failed') failed_count FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id=bi.job_id WHERE $BW");
@@ -91,62 +89,57 @@ $S = [
     'failed'=>(int)($D['failed_count']??0)+(int)($B['failed_count']??0),
 ];
 
-// Unified keyset cursor. Fetch at most per+1 rows FROM EACH source, then merge only that bounded
-// candidate set in PHP. This intentionally avoids SQL UNION: the two historical tables can have
-// different collations and UNIONing their text columns can fail in production even though each query
-// is valid on its own. Worst-case PHP merge is 402 rows, never the whole report history.
 $cursorTime = trim((string)($_GET['before_time'] ?? ''));
 $cursorSource = trim((string)($_GET['before_source'] ?? ''));
 $cursorId = (int)($_GET['before_id'] ?? 0);
-$dpRows = $dp;
-$bpRows = $bp;
-$directCursor = '';
-$bulkCursor = '';
+$cursorDirect = '';
+$cursorBulk = '';
+$dpRows = $dp; $bpRows = $bp;
 if ($cursorTime !== '' && in_array($cursorSource, ['direct','bulk'], true) && $cursorId > 0) {
-    $directCursor = " AND (m.sent_at < ? OR (m.sent_at = ? AND ('direct' < ? OR ('direct' = ? AND m.id < ?))))";
-    array_push($dpRows, $cursorTime, $cursorTime, $cursorSource, $cursorSource, $cursorId);
-    $bulkCursor = " AND (bi.created_at < ? OR (bi.created_at = ? AND ('bulk' < ? OR ('bulk' = ? AND bi.id < ?))))";
-    array_push($bpRows, $cursorTime, $cursorTime, $cursorSource, $cursorSource, $cursorId);
+    $cursorDirect = " AND (m.sent_at < ? OR (m.sent_at = ? AND m.id < ?))";
+    array_push($dpRows, $cursorTime, $cursorTime, $cursorId);
+    $cursorBulk = " AND (bi.created_at < ? OR (bi.created_at = ? AND bi.id < ?))";
+    array_push($bpRows, $cursorTime, $cursorTime, $cursorId);
 }
 
 $limit = $per + 1;
 $directSql = "SELECT m.id, 'direct' source, m.sent_at sort_time, m.sent_at, m.delivered_at,
-                    m.sender_user_id user_id, COALESCE(u.username, CONCAT('#',m.sender_user_id)) username,
-                    m.originator, m.destination, m.content, $directCanonical canonical_status,
-                    NULL job_id, NULL provider_message_id, NULL delivery_attempts, NULL delivery_checked_at
-             FROM outbound_message m
-             LEFT JOIN users u ON u.id=m.sender_user_id
-             WHERE $DW $directCursor
-             ORDER BY m.sent_at DESC, m.id DESC
-             LIMIT $limit";
-$dst = db()->prepare($directSql);
-$dst->execute($dpRows);
-$directRows = $dst->fetchAll();
+                     m.sender_user_id user_id, COALESCE(u.username, CONCAT('#',m.sender_user_id)) username,
+                     m.originator, m.destination, m.content, $directCanonical canonical_status,
+                     NULL job_id, NULL provider_message_id, NULL delivery_attempts, NULL delivery_checked_at
+              FROM outbound_message m
+              LEFT JOIN user_ u ON u.id=m.sender_user_id
+              WHERE $DW $cursorDirect
+              ORDER BY m.sent_at DESC, m.id DESC
+              LIMIT $limit";
+$directSt = db()->prepare($directSql);
+$directSt->execute($dpRows);
+$directRows = $directSt->fetchAll();
 
 $bulkSql = "SELECT bi.id, 'bulk' source, bi.created_at sort_time, bi.created_at sent_at, NULL AS delivered_at,
-                  bj.user_id, COALESCE(u.username, CONCAT('#',bj.user_id)) username,
-                  bj.originator, bi.mobile destination, bi.content, $bulkCanonical canonical_status,
-                  bi.job_id, bi.provider_message_id, bi.delivery_attempts, bi.delivery_checked_at
-           FROM ellsms_bulk_items bi
-           JOIN ellsms_bulk_jobs bj ON bj.id=bi.job_id
-           LEFT JOIN users u ON u.id=bj.user_id
-           WHERE $BW $bulkCursor
-           ORDER BY bi.created_at DESC, bi.id DESC
-           LIMIT $limit";
-$bst = db()->prepare($bulkSql);
-$bst->execute($bpRows);
-$bulkRows = $bst->fetchAll();
+                   bj.user_id, COALESCE(u2.username, CONCAT('#',bj.user_id)) username,
+                   bj.originator, bi.mobile destination, bi.content, $bulkCanonical canonical_status,
+                   bi.job_id, bi.provider_message_id, bi.delivery_attempts, bi.delivery_checked_at
+            FROM ellsms_bulk_items bi
+            JOIN ellsms_bulk_jobs bj ON bj.id=bi.job_id
+            LEFT JOIN user_ u2 ON u2.id=bj.user_id
+            WHERE $BW $cursorBulk
+            ORDER BY bi.created_at DESC, bi.id DESC
+            LIMIT $limit";
+$bulkSt = db()->prepare($bulkSql);
+$bulkSt->execute($bpRows);
+$bulkRows = $bulkSt->fetchAll();
 
-$fetched = array_merge($directRows, $bulkRows);
-usort($fetched, static function (array $a, array $b): int {
-    $timeCmp = strcmp((string)$b['sort_time'], (string)$a['sort_time']);
-    if ($timeCmp !== 0) return $timeCmp;
-    $sourceCmp = strcmp((string)$b['source'], (string)$a['source']);
-    if ($sourceCmp !== 0) return $sourceCmp;
+$merged = array_merge($directRows, $bulkRows);
+usort($merged, static function(array $a, array $b): int {
+    $ta = (string)$a['sort_time'];
+    $tb = (string)$b['sort_time'];
+    if ($ta !== $tb) return $tb <=> $ta;
+    if ($a['source'] !== $b['source']) return $b['source'] <=> $a['source'];
     return (int)$b['id'] <=> (int)$a['id'];
 });
-$hasNext = count($fetched) > $per;
-$rows = array_slice($fetched, 0, $per);
+$hasNext = count($merged) > $per;
+$rows = array_slice($merged, 0, $per);
 $last = $rows ? $rows[count($rows)-1] : null;
 
 $users = is_admin() ? backend_list_users_summary() : [];
