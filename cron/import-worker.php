@@ -12,6 +12,7 @@
  */
 require_once __DIR__ . '/../app/backend.php';
 require_once __DIR__ . '/../app/import_worker.php';
+require_once __DIR__ . '/../app/import_fast_worker.php';
 
 $once = in_array('--once', $argv ?? [], true);
 $pollIntervalSeconds = max(1, (int)(env('WORKER_POLL_INTERVAL_SECONDS', '8') ?? '8'));
@@ -36,13 +37,14 @@ Logger::info('import_worker.started', [
     'worker_id' => worker_id(),
     'once'      => $once,
     'pid'       => getmypid(),
+    'fast_generated_send_path' => true,
 ]);
 
 do {
     $loopStartedAt = microtime(true);
 
     try {
-        $processed = import_worker_run_once();
+        $processed = import_fast_worker_run_once();
         if ($processed > 0) {
             Logger::info('import_worker.tick.completed', ['processed' => $processed]);
         }
