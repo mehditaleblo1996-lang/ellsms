@@ -14,14 +14,9 @@ $jobId = (int)($_POST['id'] ?? 0);
 
 $result = import_confirm_job($jobId, $me);
 if ($result['ok']) {
-    flash('success', 'ارسال با موفقیت تأیید و به صف ارسال اضافه شد.');
-} else {
-    flash('error', $result['error'] ?? 'خطا در تأیید ارسال.');
+    flash('success', 'ارسال با موفقیت تأیید و به صف ارسال اضافه شد. وضعیت همین ارسال را در این صفحه دنبال کنید.');
+    redirect('/import.php?id=' . $jobId);
 }
 
-$job = import_load_job($jobId, is_admin() ? null : (int)($me['organization_id'] ?? 0));
-$redirect = '/p2p-send.php';
-if ($job !== null && (string)$job['source_type'] === 'smart') {
-    $redirect = '/smart-send.php';
-}
-redirect($redirect);
+flash('error', $result['error'] ?? 'خطا در تأیید ارسال.');
+redirect('/import.php?id=' . $jobId);
