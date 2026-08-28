@@ -15,6 +15,7 @@
 require_once __DIR__ . '/../app/backend.php';
 require_once __DIR__ . '/../app/import_worker.php';
 require_once __DIR__ . '/../app/import_fast_worker.php';
+require_once __DIR__ . '/../app/ImportNotifications.php';
 
 $once = in_array('--once', $argv ?? [], true);
 $pollIntervalSeconds = max(1, (int)(env('WORKER_POLL_INTERVAL_SECONDS', '8') ?? '8'));
@@ -46,6 +47,7 @@ do {
     $processed = 0;
     try {
         $processed = import_fast_worker_run_once();
+        import_notifications_sync();
         if ($processed > 0) {
             Logger::info('import_worker.tick.completed', ['processed' => $processed]);
         }
