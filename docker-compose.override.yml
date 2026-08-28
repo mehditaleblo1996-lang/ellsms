@@ -3,6 +3,8 @@ services:
     environment:
       MFA_MASTER_KEY: ${MFA_MASTER_KEY:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      # Large-import business limit: allow up to 2,000,000 source rows per job.
+      IMPORT_MAX_ROWS: 2000000
       # Business rule: all newly-issued invoices include 10% VAT.
       BILLING_TAX_PERCENT: 10
       AUDIT_MONGO_ENABLED: ${AUDIT_MONGO_ENABLED:-1}
@@ -25,6 +27,8 @@ services:
 
   import-worker:
     environment:
+      # Keep the worker on the same hard 2,000,000-row ceiling as the web app.
+      IMPORT_MAX_ROWS: 2000000
       FAST_IMPORT_BATCH_SIZE: ${FAST_IMPORT_BATCH_SIZE:-10000}
       DB_INSERT_BATCH: ${DB_INSERT_BATCH:-5000}
       WORKER_POLL_INTERVAL_SECONDS: ${IMPORT_WORKER_POLL_INTERVAL_SECONDS:-1}
