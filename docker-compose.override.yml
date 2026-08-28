@@ -30,7 +30,10 @@ services:
     networks:
       - backend_net
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --username '$${MONGO_INITDB_ROOT_USERNAME}' --password '$${MONGO_INITDB_ROOT_PASSWORD}' --authenticationDatabase admin --eval 'db.adminCommand({ping:1}).ok' | grep 1"]
+      # Compose turns $$ into a literal $, then CMD-SHELL expands the variables inside the container.
+      # Do not single-quote these: that made mongosh try to authenticate the literal username
+      # ${MONGO_INITDB_ROOT_USERNAME}, producing a false unhealthy state despite Mongo itself running.
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'db.adminCommand({ping:1}).ok' | grep 1"]
       interval: 30s
       timeout: 10s
       retries: 5
