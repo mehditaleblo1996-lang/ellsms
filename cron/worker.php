@@ -13,6 +13,7 @@
  */
 require_once __DIR__ . '/../app/backend.php';
 require_once __DIR__ . '/../app/DirectSendQueue.php';
+require_once __DIR__ . '/../app/BulkFastWorker.php';
 
 $once = in_array('--once', $argv ?? [], true);
 $pollIntervalSeconds = max(1, (int)(env('WORKER_POLL_INTERVAL_SECONDS', '8') ?? '8'));
@@ -44,6 +45,7 @@ Logger::info('worker.started', [
     'pid'                   => getmypid(),
     'poll_interval_seconds' => $pollIntervalSeconds,
     'signal_handling'       => $pcntlAvailable ? 'enabled' : 'unavailable',
+    'fast_bulk_path'        => true,
 ]);
 if (!$pcntlAvailable) {
     Logger::warning('worker.signal_handling_unavailable', [
@@ -103,7 +105,7 @@ do {
     if ($shuttingDown) break;
 
     try {
-        $b = Metrics::time('worker.pass.bulk', fn() => run_bulk_send_pass());
+        $b = Metrics::time('worker.pass.bulk', fn() => run_bulk_send_pass_fast());
         if ($b > 0) Logger::info('worker.bulk.sent', ['count' => $b]);
         Metrics::gauge('worker.pass.bulk.sent', $b);
         $workProcessed += max(0, (int)$b);
@@ -116,10 +118,6 @@ do {
 
     if ($once || $shuttingDown) break;
 
-    // Polling is for an IDLE worker only. Sleeping after successfully sending a bulk batch turned
-    // the default 200-item claim + 8s poll into an artificial ceiling of ~25 messages/second even
-    // when the provider answered immediately. When any pass did work, immediately start another
-    // pass; only an empty loop waits for the poll interval.
     if ($workProcessed <= 0) {
         $idleStartedAt = microtime(true);
         sleep($pollIntervalSeconds);
