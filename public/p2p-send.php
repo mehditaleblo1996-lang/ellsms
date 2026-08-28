@@ -5,12 +5,8 @@ $me = require_login();
 $pageTitle = 'ارسال نظیر به نظیر';
 $active = 'p2p';
 
-// Phase 7: same MESSAGES_SEND gate as public/new-send.php — this page dispatches a bulk 'p2p' job,
-// granted to every built-in role by default today (app/rbac.php), platform admins keep their
-// existing unrestricted bypass.
 if (!is_admin()) {
     require_permission(Permissions::MESSAGES_SEND);
-    // Phase 13 (STEP 14): bulk sending is a plan-gated capability, checked alongside RBAC.
     require_entitlement((int)($me['organization_id'] ?? 0), Entitlements::BULK_SEND);
 }
 
@@ -108,8 +104,6 @@ foreach ($jobs as &$j) {
 }
 unset($j);
 
-// Keep async import controls visible on the same P2P page. Bounded to the latest 20 rows so this
-// remains cheap even after years of imports.
 $importSql = "SELECT id,user_id,organization_id,original_filename,status,total_rows,processed_rows,
                      valid_rows,invalid_rows,duplicate_rows,blacklisted_rows,queued_rows,
                      estimated_cost_credits,created_at,updated_at
@@ -173,11 +167,12 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
 
 <div class="card">
   <h2>ارسال‌های نظیر به نظیر</h2>
+  <p class="hint">برای دیدن وضعیت تک‌تک شماره‌ها، روی «جزئیات» بزنید.</p>
   <div class="table-wrap">
   <table>
     <tr>
       <th>عنوان</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?>
-      <th>خط</th><th>کل</th><th>ارسال‌شده</th><th>ناموفق</th><th>وضعیت</th><th>تاریخ</th><th></th>
+      <th>خط</th><th>کل</th><th>ارسال‌شده</th><th>ناموفق</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th>
     </tr>
     <?php foreach ($jobs as $j): ?>
       <tr>
@@ -187,11 +182,12 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
         <td class="num"><?= to_persian_digits((string)$j['total_rows']) ?></td>
         <td class="num"><?= to_persian_digits((string)$j['sent_rows']) ?></td>
         <td class="num"><?= to_persian_digits((string)$j['failed_rows']) ?></td>
-        <td><span class="badge badge-<?= e($j['status']) ?>"><?= e($statusFa[$j['status']]) ?></span></td>
+        <td><span class="badge badge-<?= e($j['status']) ?>"><?= e($statusFa[$j['status']] ?? $j['status']) ?></span></td>
         <td class="num"><?= jdate($j['created_at']) ?></td>
-        <td>
+        <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <a class="btn btn-sm" href="/bulk-job.php?id=<?= (int)$j['id'] ?>">جزئیات</a>
           <?php if (in_array($j['status'], ['pending', 'processing'], true)): ?>
-          <form method="post" onsubmit="return confirm('این ارسال لغو شود؟')">
+          <form method="post" onsubmit="return confirm('این ارسال لغو شود؟')" style="display:inline">
             <?= csrf_field() ?>
             <input type="hidden" name="do" value="cancel">
             <input type="hidden" name="id" value="<?= $j['id'] ?>">
