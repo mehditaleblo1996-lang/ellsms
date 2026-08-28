@@ -20,10 +20,17 @@ RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-avail
 # Sensible PHP defaults. post_max_size covers two KYC document uploads
 # (id card + second document, 8MB cap each in app/bootstrap.php) in one
 # submission, plus form overhead.
+#
+# Large send-cost previews legitimately hold normalized recipients plus a route/operator pricing
+# resolution in memory. PHP's stock 128M ceiling is too small for a ~10k-recipient preview even
+# though the request is bounded and the database work is already batched/cached. 256M gives that
+# bounded request headroom without turning memory_limit off (or allowing one Apache request to grow
+# without limit). This is a guardrail, not a replacement for the app's recipient/import thresholds.
 # AuditPrepend registers a shutdown hook for every HTTP PHP entrypoint. It does no Mongo I/O before
 # the application runs and is fail-safe, so MongoDB can never make an ELLSMS request unavailable.
 RUN { \
       echo 'date.timezone = Asia/Tehran'; \
+      echo 'memory_limit = 256M'; \
       echo 'upload_max_filesize = 10M'; \
       echo 'post_max_size = 24M'; \
       echo 'expose_php = Off'; \
