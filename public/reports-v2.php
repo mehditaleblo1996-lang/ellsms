@@ -47,7 +47,6 @@ if (!is_admin()) {
     if (!$memberIds) $memberIds = [(int)$me['id']];
 }
 
-// Direct/API source filters.
 $dw = ['m.sent_at >= ?', 'm.sent_at < DATE_ADD(?, INTERVAL 1 DAY)'];
 $dp = [$from, $to];
 if (is_admin() && $userId > 0) {
@@ -63,7 +62,6 @@ $directCanonical = "CASE WHEN m.status='delivered' THEN 'delivered' WHEN m.statu
 if (in_array($status, ['pending','sent','delivered','failed'], true)) { $dw[]="$directCanonical = ?"; $dp[]=$status; }
 $DW = implode(' AND ', $dw);
 
-// Bulk source filters.
 $bw = ['bi.created_at >= ?', 'bi.created_at < DATE_ADD(?, INTERVAL 1 DAY)'];
 $bp = [$from, $to];
 if (is_admin() && $userId > 0) {
@@ -80,7 +78,6 @@ $bulkCanonical = "CASE WHEN bi.delivery_status='delivered' THEN 'delivered' WHEN
 if (in_array($status, ['pending','sent','delivered','failed'], true)) { $bw[]="$bulkCanonical = ?"; $bp[]=$status; }
 $BW = implode(' AND ', $bw);
 
-// Bounded summaries: one aggregate per physical source, never fetch the full result set into PHP.
 $ds = db()->prepare("SELECT COUNT(*) total, SUM(($directCanonical) IN ('sent','delivered')) ok_count, SUM(($directCanonical)='delivered') delivered_count, SUM(($directCanonical)='failed') failed_count FROM outbound_message m WHERE $DW");
 $ds->execute($dp); $D = $ds->fetch() ?: [];
 $bs = db()->prepare("SELECT COUNT(*) total, SUM(($bulkCanonical) IN ('sent','delivered')) ok_count, SUM(($bulkCanonical)='delivered') delivered_count, SUM(($bulkCanonical)='failed') failed_count FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id=bi.job_id WHERE $BW");
@@ -92,7 +89,6 @@ $S = [
     'failed'=>(int)($D['failed_count']??0)+(int)($B['failed_count']??0),
 ];
 
-// Cursor is (sent_at, source, id). This stays stable even though direct and bulk ids overlap.
 $cursorTime = trim((string)($_GET['before_time'] ?? ''));
 $cursorSource = trim((string)($_GET['before_source'] ?? ''));
 $cursorId = (int)($_GET['before_id'] ?? 0);
@@ -115,7 +111,7 @@ $sql = "SELECT * FROM (
     FROM outbound_message m LEFT JOIN users u ON u.id=m.sender_user_id
     WHERE $DW $cursorSqlDirect
     UNION ALL
-    SELECT bi.id, 'bulk' source, bi.created_at sort_time, bi.created_at sent_at, bi.delivered_at,
+    SELECT bi.id, 'bulk' source, bi.created_at sort_time, bi.created_at sent_at, NULL AS delivered_at,
            bj.user_id, COALESCE(u2.username, CONCAT('#',bj.user_id)) username,
            bj.originator, bi.mobile destination, bi.content, $bulkCanonical canonical_status,
            bi.job_id, bi.provider_message_id, bi.delivery_attempts, bi.delivery_checked_at
