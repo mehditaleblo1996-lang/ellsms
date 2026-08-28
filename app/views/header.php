@@ -18,6 +18,7 @@ $nav += [
     'schedules'  => ['/schedules.php',   'زمان‌بندی‌شده',    '◷'],
     'autoreply'  => ['/autoreply.php',   'منشی پیامک',      '🤖'],
     'reports'    => ['/reports.php',     'گزارش ارسال',     '≣'],
+    'reports_bulk' => ['/reports-bulk.php', 'گزارش ارسال حجیم', '≣'],
     'inbox'      => ['/inbox.php',       'صندوق دریافت',    '✉'],
     'contacts'   => ['/contacts.php',    'مخاطبین',         '☰'],
     'blacklist'  => ['/blacklist.php',   'لیست سیاه',        '🚫'],
