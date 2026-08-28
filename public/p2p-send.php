@@ -25,16 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
         $affected = db()->exec("UPDATE ellsms_bulk_jobs SET status='cancelled' WHERE id={$id} AND type='p2p' AND status IN ('pending','processing'){$own}");
         if ($affected > 0) {
-            // Give back whatever the job's worst-case reservation still
-            // holds — a cancelled job must not strand reserved credit
-            // (Phase 3, STEP 9). Idempotent no-op if nothing was reserved
-            // (an admin's job never reserves) or already released.
             wallet_release_reservation('bulk_job', (string)$id);
-            // Only rows still 'pending' — an item a worker already claimed
-            // ('processing') is left alone; its own fresh cancellation
-            // re-check in bulk_send_one_item() decides its fate safely
-            // (Phase 4, STEP 21) instead of this racing directly against
-            // whatever that worker is doing with it right now.
             db()->exec("UPDATE ellsms_bulk_items SET status='cancelled' WHERE job_id={$id} AND status='pending'");
         }
         flash('info', 'ارسال لغو شد.');
@@ -65,7 +56,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         import_delete_storage($storageKey);
                         flash('error', 'تعداد ردیف‌های فایل از سقف مجاز بیشتر است.');
                     } elseif ($countResult['count'] > import_sync_max_recipients()) {
-                        // Large file: async import pipeline.
                         $created = import_create_job($me, 'p2p', $originator, $title, $storageKey);
                         if ($created['ok']) {
                             audit((int)$me['id'], 'p2p.upload.large', "{$title}: " . $countResult['count'] . ' rows');
@@ -75,7 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             flash('error', $created['error']);
                         }
                     } else {
-                        // Small file: keep the existing synchronous path for UX simplicity.
                         try {
                             $items = [];
                             $skipped = 0;
@@ -119,7 +108,35 @@ foreach ($jobs as &$j) {
 }
 unset($j);
 
+// Keep async import controls visible on the same P2P page. Bounded to the latest 20 rows so this
+// remains cheap even after years of imports.
+$importSql = "SELECT id,user_id,organization_id,original_filename,status,total_rows,processed_rows,
+                     valid_rows,invalid_rows,duplicate_rows,blacklisted_rows,queued_rows,
+                     estimated_cost_credits,created_at,updated_at
+              FROM ellsms_import_jobs
+              WHERE source_type='p2p'";
+$importParams = [];
+if (!is_admin()) {
+    $importSql .= ' AND user_id=?';
+    $importParams[] = (int)$me['id'];
+}
+$importSql .= ' ORDER BY id DESC LIMIT 20';
+$importSt = db()->prepare($importSql);
+$importSt->execute($importParams);
+$importJobs = $importSt->fetchAll();
+
 $statusFa = ['pending' => 'در صف', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده'];
+$importStatusFa = [
+    'uploaded' => 'بارگذاری شد',
+    'analyzing' => 'در حال تحلیل',
+    'ready_for_confirmation' => 'منتظر تأیید',
+    'queued' => 'در صف ارسال',
+    'sending' => 'در حال ارسال',
+    'completed' => 'تکمیل‌شده',
+    'failed' => 'ناموفق',
+    'cancelled' => 'لغوشده',
+];
+$importCancellable = ['uploaded', 'analyzing', 'ready_for_confirmation'];
 
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'send.bulk';
@@ -186,6 +203,52 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
     <?php endforeach; ?>
     <?php if (!$jobs): ?><tr><td colspan="9" class="empty">هنوز ارسالی انجام نشده.</td></tr><?php endif; ?>
   </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h2>واردسازی‌های نظیر به نظیر</h2>
+  <p class="hint">واردسازی‌های حجیم اخیر همین‌جا نمایش داده می‌شوند؛ برای Job آماده، «ادامه و تأیید» را بزنید یا قبل از شروع ارسال آن را لغو کنید.</p>
+  <div class="table-wrap">
+    <table>
+      <tr>
+        <th>#</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?>
+        <th>فایل</th><th>وضعیت</th><th>پیشرفت</th><th>کل</th><th>معتبر</th><th>در صف</th><th>تاریخ</th><th>عملیات</th>
+      </tr>
+      <?php foreach ($importJobs as $r):
+          $total = max(0, (int)$r['total_rows']);
+          $processed = max(0, (int)$r['processed_rows']);
+          $pct = $total > 0 ? min(100, (int)round(($processed / $total) * 100)) : 0;
+          $canCancel = in_array((string)$r['status'], $importCancellable, true);
+      ?>
+        <tr>
+          <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
+          <?php if (is_admin()): ?><td class="num">#<?= to_persian_digits((string)$r['user_id']) ?></td><?php endif; ?>
+          <td><?= e((string)$r['original_filename']) ?></td>
+          <td><span class="badge"><?= e($importStatusFa[(string)$r['status']] ?? (string)$r['status']) ?></span></td>
+          <td class="num"><?= to_persian_digits((string)$pct) ?>٪</td>
+          <td class="num"><?= to_persian_digits(number_format($total)) ?></td>
+          <td class="num"><?= to_persian_digits(number_format((int)$r['valid_rows'])) ?></td>
+          <td class="num"><?= to_persian_digits(number_format((int)$r['queued_rows'])) ?></td>
+          <td class="num"><?= jdate((string)$r['created_at']) ?></td>
+          <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <a class="btn btn-sm" href="/import.php?id=<?= (int)$r['id'] ?>">مشاهده</a>
+            <?php if ((string)$r['status'] === 'ready_for_confirmation'): ?>
+              <a class="btn btn-sm btn-primary" href="/import.php?id=<?= (int)$r['id'] ?>">ادامه و تأیید ارسال</a>
+            <?php endif; ?>
+            <?php if ($canCancel): ?>
+              <form method="post" action="/import-cancel.php" style="display:inline" onsubmit="return confirm('واردسازی #<?= (int)$r['id'] ?> لغو شود؟');">
+                <?= csrf_field() ?>
+                <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                <input type="hidden" name="back" value="p2p">
+                <button class="btn btn-sm btn-danger" type="submit">لغو</button>
+              </form>
+            <?php endif; ?>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+      <?php if (!$importJobs): ?><tr><td colspan="<?= is_admin() ? 10 : 9 ?>" class="empty">هنوز واردسازی حجیمی ثبت نشده است.</td></tr><?php endif; ?>
+    </table>
   </div>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
