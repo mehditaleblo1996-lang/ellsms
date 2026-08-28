@@ -14,33 +14,27 @@ services:
   worker:
     environment:
       BILLING_TAX_PERCENT: 10
-      # Bulk/scheduled/direct-queue sends run here, so they MUST use the same
-      # connector transport and secret vault as the web app. Without these,
-      # a large send created by new-send.php silently switches transport when
-      # it reaches the background worker.
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      # High-volume direct/bulk jobs: claim and hand up to 1000 compatible recipients to one
+      # provider request. The connector layer still applies its own grouping/capabilities.
+      WORKER_BULK_BATCH_SIZE: ${WORKER_BULK_BATCH_SIZE:-1000}
+      SMS_PROVIDER_BATCH_SIZE: ${SMS_PROVIDER_BATCH_SIZE:-1000}
+      # Avoid turning one large successful send into tens of thousands of metric log writes.
+      METRICS_LOG_SAMPLE_RATE: ${WORKER_METRICS_LOG_SAMPLE_RATE:-0.01}
 
   import-worker:
     environment:
-      # Generated direct sends are streamed in 10k-row batches. The persistent worker wakes every
-      # second so the bounded insert-stage chunks do not add an artificial 8-second gap each.
       FAST_IMPORT_BATCH_SIZE: ${FAST_IMPORT_BATCH_SIZE:-10000}
       DB_INSERT_BATCH: ${DB_INSERT_BATCH:-5000}
       WORKER_POLL_INTERVAL_SECONDS: ${IMPORT_WORKER_POLL_INTERVAL_SECONDS:-1}
-      # Pricing currently emits one metric call per recipient. Keep observability sampled for this
-      # high-volume worker instead of writing 100k/500k near-identical log lines.
       METRICS_LOG_SAMPLE_RATE: ${IMPORT_METRICS_LOG_SAMPLE_RATE:-0.001}
 
   status-worker:
     environment:
-      # Delivery polling compiles the same secret-backed gateway connector.
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
 
   mongo:
-    # MongoDB 8.x currently refuses to start on Linux kernel 6.19+ because of a
-    # TCMalloc/kernel incompatibility. Pin 6.0.27-jammy for this deployment until
-    # the host kernel is upgraded to a fixed release. Do not use the floating 8.x tag here.
     image: mongo:6.0.27-jammy
     container_name: ellsms-mongo
     restart: unless-stopped
