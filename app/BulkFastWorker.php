@@ -3,19 +3,12 @@
  * High-throughput bulk worker path.
  *
  * The legacy batched sender intentionally re-runs job/org/account preflight for every claimed row.
- * That is safe but becomes N+1 work for large homogeneous jobs (200 identical rows were taking
- * ~6 seconds locally while the provider itself answered in <1 second). This path keeps the same
- * claim, provider batching and per-item settlement semantics, but resolves the execution context
+ * That is safe but becomes N+1 work for large homogeneous jobs. This path keeps the same claim,
+ * provider batching and per-item financial settlement semantics, but resolves the execution context
  * once per (job,user) inside one claim and reuses it for the rest of that claim.
- *
- * Financial settlement remains per item and idempotent through bulk_finalize_item(); this file does
- * not weaken wallet/retry/provider-message-id guarantees.
  */
 declare(strict_types=1);
 
-/**
- * Send claimed rows with one preflight per homogeneous job/user claim instead of one per row.
- */
 function bulk_send_claimed_items_fast(PDO $db, array $items): int {
     if ($items === []) {
         return 0;
@@ -25,15 +18,15 @@ function bulk_send_claimed_items_fast(PDO $db, array $items): int {
     $sent = 0;
     $groups = [];
     $ctxCache = [];
+    $firstItemIdByCtx = [];
     $preflightStarted = microtime(true);
 
     foreach ($items as $item) {
         $ctxKey = (string)$item['job_id'] . ':' . (string)$item['user_id'];
 
         if (!array_key_exists($ctxKey, $ctxCache)) {
+            $firstItemIdByCtx[$ctxKey] = (int)$item['id'];
             try {
-                // One execution-time revalidation for this claimed job/user set. Claimed rows are
-                // already bounded; the provider chunk is dispatched immediately afterwards.
                 $ctxCache[$ctxKey] = bulk_item_preflight($db, $item);
             } catch (Throwable $t) {
                 Logger::error('bulk.fast.preflight.failed', [
@@ -41,17 +34,23 @@ function bulk_send_claimed_items_fast(PDO $db, array $items): int {
                     'job_id' => $item['job_id'] ?? null,
                     'exception' => $t,
                 ]);
-                $ctxCache[$ctxKey] = ['ok' => false, 'exception' => $t->getMessage()];
+                $ctxCache[$ctxKey] = ['ok' => false];
             }
         }
 
         $ctx = $ctxCache[$ctxKey];
         if (!($ctx['ok'] ?? false)) {
-            // Preserve legacy terminal-state behavior for every remaining row when the shared
-            // preflight failed. This path is exceptional and correctness matters more than speed.
-            if ((int)$item['id'] !== (int)($items[0]['id'] ?? 0)) {
-                try { bulk_item_preflight($db, $item); } catch (Throwable $t) {
-                    Logger::error('bulk.item.failed', ['bulk_item_id'=>$item['id'] ?? null,'job_id'=>$item['job_id'] ?? null,'exception'=>$t]);
+            // The first row already went through legacy preflight and received its terminal state.
+            // Apply that exact legacy path to the rest only on this exceptional failure path.
+            if ((int)$item['id'] !== ($firstItemIdByCtx[$ctxKey] ?? -1)) {
+                try {
+                    bulk_item_preflight($db, $item);
+                } catch (Throwable $t) {
+                    Logger::error('bulk.item.failed', [
+                        'bulk_item_id' => $item['id'] ?? null,
+                        'job_id' => $item['job_id'] ?? null,
+                        'exception' => $t,
+                    ]);
                 }
             }
             continue;
@@ -70,12 +69,12 @@ function bulk_send_claimed_items_fast(PDO $db, array $items): int {
     foreach ($groups as $group) {
         foreach (array_chunk($group['items'], $batchSize) as $chunk) {
             try {
-                $chunkStarted = microtime(true);
-                $sentBefore = $sent;
+                $started = microtime(true);
+                $before = $sent;
                 $sent += bulk_send_group($db, $chunk, $group['ctx']);
-                Metrics::timing('bulk.fast.group_total', (microtime(true) - $chunkStarted) * 1000, [
+                Metrics::timing('bulk.fast.group_total', (microtime(true) - $started) * 1000, [
                     'items' => count($chunk),
-                    'sent' => $sent - $sentBefore,
+                    'sent' => $sent - $before,
                 ]);
             } catch (Throwable $t) {
                 Logger::error('bulk.batch.failed', [
@@ -90,10 +89,7 @@ function bulk_send_claimed_items_fast(PDO $db, array $items): int {
     return $sent;
 }
 
-/**
- * Same queue/throttle/finalization contract as run_bulk_send_pass(), using the fast claimed-row
- * execution path above. Kept separate so rollback is one call-site change and old tests remain valid.
- */
+/** Same queue/throttle/completion contract as run_bulk_send_pass(), but using fast preflight. */
 function run_bulk_send_pass_fast(): int {
     $db = db();
     $db->exec("UPDATE ellsms_bulk_jobs SET status='processing' WHERE status='pending' ORDER BY id LIMIT 1");
@@ -141,7 +137,6 @@ function run_bulk_send_pass_fast(): int {
 
         foreach ($doneIds as $jobId) {
             wallet_release_reservation('bulk_job', (string)$jobId);
-            usage_release_messages('bulk_job', (string)$jobId);
         }
 
         foreach ($doneJobs as $job) {
@@ -163,7 +158,10 @@ function run_bulk_send_pass_fast(): int {
                     'total_rows' => (int)$job['total_rows'],
                 ]);
             } catch (Throwable $t) {
-                Logger::error('webhook.event.emit_failed', ['bulk_job_id' => $job['id'] ?? null, 'exception' => $t]);
+                Logger::error('webhook.event.emit_failed', [
+                    'bulk_job_id' => $job['id'] ?? null,
+                    'exception' => $t,
+                ]);
             }
         }
     }
