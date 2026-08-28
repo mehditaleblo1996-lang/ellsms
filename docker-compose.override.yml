@@ -14,6 +14,17 @@ services:
   worker:
     environment:
       BILLING_TAX_PERCENT: 10
+      # Bulk/scheduled/direct-queue sends run here, so they MUST use the same
+      # connector transport and secret vault as the web app. Without these,
+      # a large send created by new-send.php silently switches transport when
+      # it reaches the background worker.
+      SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+
+  status-worker:
+    environment:
+      # Delivery polling compiles the same secret-backed gateway connector.
+      SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
 
   mongo:
     # MongoDB 8.x currently refuses to start on Linux kernel 6.19+ because of a
@@ -30,9 +41,6 @@ services:
     networks:
       - backend_net
     healthcheck:
-      # Compose turns $$ into a literal $, then CMD-SHELL expands the variables inside the container.
-      # Do not single-quote these: that made mongosh try to authenticate the literal username
-      # ${MONGO_INITDB_ROOT_USERNAME}, producing a false unhealthy state despite Mongo itself running.
       test: ["CMD-SHELL", "mongosh --quiet --username \"$${MONGO_INITDB_ROOT_USERNAME}\" --password \"$${MONGO_INITDB_ROOT_PASSWORD}\" --authenticationDatabase admin --eval 'db.adminCommand({ping:1}).ok' | grep 1"]
       interval: 30s
       timeout: 10s
