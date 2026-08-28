@@ -1,46 +1,15 @@
 <?php
 /**
- * ELLSMS — message delivery lifecycle for the reporting UI.
+ * ELLSMS — message delivery lifecycle helpers for reporting surfaces.
  *
- * WHAT THIS IS. A read-only resolver that assembles everything known about one sent message from the
- * records that ALREADY exist: the transport attempt (ellsms_message_attempts / ellsms_bulk_items),
- * the immutable pricing snapshot (ellsms_sms_price_snapshots), and the gateway/route/operator names
- * the attempt itself recorded. It computes nothing that was decided at send time.
- *
- * THREE RULES THIS FILE EXISTS TO ENFORCE.
- *
- * 1. HISTORICAL FACTS COME FROM THE SEND, NOT FROM TODAY'S CONFIGURATION. An attempt row records the
- *    gateway_id, gateway_config_version, route_id and operator_id that were ACTUALLY used. A sender's
- *    preferred route may have been re-pointed since — reading it now would report a route the message
- *    never travelled. Every lookup here is keyed on what the row stored.
- *
- * 2. PRICES ARE READ, NEVER RECOMPUTED. The cost shown is the accepted/settled snapshot from
- *    ellsms_sms_price_snapshots. Re-pricing a historical send against today's tariff would silently
- *    disagree with what the customer was actually charged.
- *
- * 3. SEGMENT COUNT HAS ONE SOURCE. The part count comes from the pricing snapshot's stored
- *    segment_count where one exists, and otherwise from sms_parts() — the SAME function pricing and
- *    cost preview use. There is deliberately no second length algorithm in this file; a UI that
- *    hardcoded 70/67/160/153 would drift from billing the moment either changed.
- *
- * PROVIDER MESSAGE IDs ARE STRINGS, ALWAYS. A 19-digit provider reference exceeds PHP's and
- * JavaScript's exact-integer range, so it is carried and rendered as a string end to end. Casting it
- * to a number anywhere turns 4473621976262727360 into 4.4736219762627E+18 — a value that matches
- * nothing when an operator searches for it.
+ * Historical delivery state comes from ELLSMS-owned transport attempts; raw outbound_message status
+ * is only a fallback. Provider references are always strings because real providers can return ids
+ * larger than PHP/JavaScript's exact integer range.
  */
-
 declare(strict_types=1);
 
 require_once __DIR__ . '/../Backend/report_summary.php';
 
-/**
- * Canonical delivery states → Persian display labels. The DB enum values themselves never change.
- *
- * 'pending' is not a value of ellsms_message_attempts.delivery_status (that ENUM has no such state —
- * a row simply has no delivery_status yet until the poller reaches it); it is produced by
- * report_canonical_status()'s fallback to a not-yet-sent outbound_message.status, and is handled here
- * so that fallback path renders through the exact same label table as everything else.
- */
 function report_delivery_status_label(?string $status): string {
     return match ($status) {
         'accepted'  => 'پذیرفته شده',
@@ -56,51 +25,31 @@ function report_delivery_status_label(?string $status): string {
     };
 }
 
-/**
- * A CSS badge class per canonical state (docs/reporting-status-and-send-modal.md), so failure reads
- * as failure and "sent" is never visually confused with "delivered" at a glance. `default` is
- * 'unknown' — deliberately NOT 'pending': a status this function has never heard of (a legacy row,
- * a value from before this catalog existed) is genuinely unknown, not "waiting," and showing it in
- * amber ("در انتظار") would be a false promise that something is still in progress.
- */
 function report_delivery_status_class(?string $status): string {
     return match ($status) {
-        'delivered'                      => 'delivered',
-        'failed', 'rejected', 'expired'  => 'failed',
-        'sent', 'accepted', 'queued'     => 'sent',
-        'pending'                        => 'pending',
-        default                          => 'unknown',
+        'delivered'                     => 'delivered',
+        'failed', 'rejected', 'expired' => 'failed',
+        'sent', 'accepted', 'queued'    => 'sent',
+        'pending'                       => 'pending',
+        default                         => 'unknown',
     };
 }
 
 /**
- * THE single canonical UI-facing status for one message (docs/reporting-status-and-send-modal.md) —
- * every page in this codebase that shows a message's status (dashboard, reports list, report detail,
- * CSV export) must resolve it through this function, never re-derive its own mapping.
+ * Single canonical UI-facing status. Provider-confirmed lifecycle wins; otherwise the backend
+ * transport status is shown without inventing a delivery result.
  *
- * Resolution order, and why:
- *   1. $deliveryStatus, whenever it is present and non-empty. This is
- *      ellsms_message_attempts/ellsms_bulk_items.delivery_status — maintained by the status poller
- *      from what the PROVIDER actually confirmed. It is authoritative over a raw transport status
- *      even when the transport status looks "newer" (a message can be transport-"sent" for a long
- *      time before the provider confirms delivery, or reports it failed) — a send succeeding at the
- *      HTTP/transport layer is never treated as delivery.
- *   2. $fallbackSendStatus, mapped into the SAME canonical vocabulary, ONLY when there is no delivery
- *      lifecycle value at all — a legacy row from before delivery tracking existed, or a send that
- *      never went through a gateway with tracked status polling. This is presentation-only: it does
- *      not write anything back, and a historical row's actual stored values are never touched.
- *
- * @return array{status:string, label:string, class:string}
+ * @return array{status:string,label:string,class:string}
  */
 function report_canonical_status(?string $deliveryStatus, ?string $fallbackSendStatus = null): array {
     $status = ($deliveryStatus !== null && $deliveryStatus !== '') ? $deliveryStatus : null;
     if ($status === null) {
         $status = match ($fallbackSendStatus) {
-            'delivered'              => 'delivered',
-            'sent'                   => 'sent',
-            'failed', 'send_failed'  => 'failed',
-            'pending'                => 'pending',
-            default                  => 'unknown',
+            'delivered'             => 'delivered',
+            'sent'                  => 'sent',
+            'failed', 'send_failed' => 'failed',
+            'pending'               => 'pending',
+            default                 => 'unknown',
         };
     }
     return [
@@ -111,27 +60,52 @@ function report_canonical_status(?string $deliveryStatus, ?string $fallbackSendS
 }
 
 /**
- * The delivery-lifecycle attempt matching each of $outboundRows, keyed by destination — ONE bounded
- * query for the whole page (B20 — no N+1), extracted so the dashboard's recent-messages widget and
- * the reports list use the EXACT same correlation logic rather than two copies that could drift.
+ * Bounded delivery enrichment for a page/export chunk, keyed by destination for compatibility with
+ * existing callers.
  *
- * CORRELATION IS BY DESTINATION, not by id: outbound_message (backend-owned) and
- * ellsms_message_attempts (ELLSMS-owned) share no foreign key (Phase 8, Invariant E), so destination
- * is what the rest of this reporting layer already uses to line the two up. The newest matching
- * 'accepted' attempt per destination wins — the same rule reports.php's list has used since the
- * delivery-reporting phase.
+ * IMPORTANT: outbound_message and ellsms_message_attempts do not share a foreign key. The old code
+ * simply chose the newest attempt for a destination. If three historical outbound rows on the page
+ * had the same mobile, ONE delivered attempt therefore made all three rows look delivered. That is
+ * worse than showing the backend's conservative `sent` state.
  *
- * @param list<array<string,mixed>> $outboundRows  rows with at least a 'destination' key
- * @return array<string,array<string,mixed>>  destination => attempt row
+ * We now enrich only when the destination occurs exactly once in this bounded result set, and only
+ * when the attempt timestamp is close to that outbound row's sent_at. Ambiguous repeated recipients
+ * deliberately receive no enrichment and fall back to outbound_message.status. This never fabricates
+ * a delivery state and fixes the dashboard/report disagreement without an N+1 query.
+ *
+ * @param list<array<string,mixed>> $outboundRows
+ * @return array<string,array<string,mixed>> destination => attempt row
  */
 function report_delivery_lookup_by_destination(array $outboundRows, ?int $organizationId, ?int $userId): array {
     if ($outboundRows === []) {
         return [];
     }
-    $dests = array_values(array_unique(array_map(static fn(array $r): string => (string)$r['destination'], $outboundRows)));
+
+    $counts = [];
+    $rowByDestination = [];
+    foreach ($outboundRows as $row) {
+        $destination = (string)($row['destination'] ?? '');
+        if ($destination === '') {
+            continue;
+        }
+        $counts[$destination] = ($counts[$destination] ?? 0) + 1;
+        $rowByDestination[$destination] = $row;
+    }
+
+    // A destination represented by more than one outbound row cannot be correlated safely with the
+    // current schema. Do not let one attempt leak its status onto every historical message.
+    $dests = [];
+    foreach ($counts as $destination => $count) {
+        if ($count === 1) {
+            $dests[] = $destination;
+        }
+    }
+    if ($dests === []) {
+        return [];
+    }
+
     $placeholders = implode(',', array_fill(0, count($dests), '?'));
     $params = $dests;
-
     $scopeSql = '';
     if ($organizationId !== null && $organizationId > 0) {
         $scopeSql = ' AND ma.organization_id = ?';
@@ -153,8 +127,26 @@ function report_delivery_lookup_by_destination(array $outboundRows, ?int $organi
              ORDER BY ma.id DESC"
         );
         $st->execute($params);
-        foreach ($st->fetchAll() as $a) {
-            $out[(string)$a['destination']] ??= $a;
+        while ($a = $st->fetch()) {
+            $destination = (string)$a['destination'];
+            if (isset($out[$destination])) {
+                continue;
+            }
+            $outbound = $rowByDestination[$destination] ?? null;
+            if ($outbound === null) {
+                continue;
+            }
+            $sentAt = strtotime((string)($outbound['sent_at'] ?? ''));
+            $attemptedAt = strtotime((string)($a['attempted_at'] ?? ''));
+            if ($sentAt === false || $attemptedAt === false) {
+                continue;
+            }
+            // Backend and ELLSMS write around the same dispatch. Ten minutes is deliberately wide
+            // enough for queue/API delay, but narrow enough not to attach an old delivery to a new SMS.
+            if (abs($attemptedAt - $sentAt) > 600) {
+                continue;
+            }
+            $out[$destination] = $a;
         }
     } catch (Throwable $t) {
         Logger::warning('reports.delivery_enrichment_failed', ['exception' => $t]);
@@ -162,21 +154,11 @@ function report_delivery_lookup_by_destination(array $outboundRows, ?int $organi
     return $out;
 }
 
-/**
- * Canonical-status TOTALS for summary cards.
- *
- * Previous behavior streamed every matching outbound row into PHP in 500-row chunks and issued an
- * attempt lookup per chunk. With ~401k messages that made an ordinary report page transfer ~401k rows
- * from MySQL merely to compute five counters. The dedicated backend adapter now performs the same
- * destination/latest-accepted-attempt precedence in SQL and returns one aggregate row.
- *
- * @return array{total:int, ok:int, delivered:int, failed:int, pending:int}
- */
+/** @return array{total:int,ok:int,delivered:int,failed:int,pending:int} */
 function report_canonical_status_totals(string $outboundWhereSql, array $params, ?int $organizationId, ?int $userId): array {
     return backend_outbound_canonical_summary($outboundWhereSql, $params, $organizationId, $userId);
 }
 
-/** Internal reference types → Persian labels for "نوع درخواست". */
 function report_reference_type_label(?string $type): string {
     return match ($type) {
         'direct_send' => 'ارسال مستقیم',
@@ -188,12 +170,6 @@ function report_reference_type_label(?string $type): string {
     };
 }
 
-/**
- * The message encoding, derived with the SAME rule sms_parts() uses to choose its segment sizes.
- *
- * Deliberately derived from the content rather than stored: it is a pure function of the text, and a
- * stored copy could disagree with the segment count computed beside it.
- */
 function report_message_encoding(string $content): array {
     $isUnicode = (bool)preg_match('/[^\x20-\x7E\r\n]/u', $content);
     return [
@@ -203,16 +179,6 @@ function report_message_encoding(string $content): array {
     ];
 }
 
-/**
- * Segment count for a reported message.
- *
- * Prefers the count FROZEN at acceptance (the pricing snapshot), because that is the number the
- * customer was billed on and it must not move when this code changes. Falls back to sms_parts() —
- * the same engine — for rows sent before snapshots existed, which is a derivation, not an invention:
- * the input text is the same one that was priced.
- *
- * @return array{parts:int, source:string}
- */
 function report_segment_count(?array $snapshot, ?string $content): array {
     if ($snapshot !== null && (int)($snapshot['segment_count'] ?? 0) > 0) {
         return ['parts' => (int)$snapshot['segment_count'], 'source' => 'snapshot'];
@@ -223,23 +189,9 @@ function report_segment_count(?array $snapshot, ?string $content): array {
     return ['parts' => sms_parts($content), 'source' => 'derived'];
 }
 
-/**
- * Names for the gateway/route/operator ids an attempt recorded, fetched in ONE query per kind.
- *
- * Bounded by construction: the caller passes every id on the page at once, so a 50-row recipient
- * table costs three queries rather than 150 (B20 — no N+1).
- *
- * An id with no matching row keeps its numeric form rather than disappearing: an operator or route
- * deleted since the send is a fact worth showing, and silently blanking it would look like the send
- * had no route at all.
- *
- * @param list<int> $gatewayIds
- * @param list<int> $routeIds
- * @param list<int> $operatorIds
- */
+/** Resolve display names in at most one query per catalog kind. */
 function report_resolve_names(array $gatewayIds, array $routeIds, array $operatorIds): array {
     $names = ['gateways' => [], 'routes' => [], 'operators' => []];
-
     $fetch = static function (string $table, array $ids, string $labelExpr): array {
         $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
         if ($ids === []) {
@@ -250,7 +202,7 @@ function report_resolve_names(array $gatewayIds, array $routeIds, array $operato
             $st = db()->prepare("SELECT id, {$labelExpr} AS label FROM {$table} WHERE id IN ({$placeholders})");
             $st->execute($ids);
             $out = [];
-            foreach ($st->fetchAll() as $row) {
+            while ($row = $st->fetch()) {
                 $out[(int)$row['id']] = (string)$row['label'];
             }
             return $out;
@@ -258,53 +210,29 @@ function report_resolve_names(array $gatewayIds, array $routeIds, array $operato
             return [];
         }
     };
-
     $names['gateways']  = $fetch('ellsms_sms_gateways', $gatewayIds, 'code');
     $names['routes']    = $fetch('ellsms_sms_routes', $routeIds, 'code');
     $names['operators'] = $fetch('ellsms_sms_operators', $operatorIds, 'name');
     return $names;
 }
 
-/**
- * The delivery lifecycle of one attempt row, as an ordered list of real events.
- *
- * ONLY timestamps that actually exist become steps. A missing delivery time yields no "تحویل" step
- * rather than a step with an invented time — a fabricated lifecycle is worse than a short one,
- * because it is indistinguishable from a real one.
- *
- * `delivery_checked_at` is "when we last ASKED", never "when it was delivered". They are separate
- * facts and conflating them would make a still-undelivered message look delivered at poll time.
- */
 function report_build_timeline(array $row): array {
     $steps = [];
-
     $requested = $row['created_at'] ?? $row['attempted_at'] ?? null;
     if ($requested) {
         $steps[] = ['label' => 'ثبت درخواست', 'at' => (string)$requested, 'state' => 'done'];
     }
-
     $attempted = $row['attempted_at'] ?? null;
     if ($attempted && $attempted !== $requested) {
         $steps[] = ['label' => 'تلاش ارسال', 'at' => (string)$attempted, 'state' => 'done'];
     }
-
     $status = $row['delivery_status'] ?? null;
     if ($status !== null && $status !== '') {
-        $steps[] = [
-            'label' => 'ارسال به درگاه',
-            'at'    => (string)($attempted ?? $requested ?? ''),
-            'state' => 'done',
-        ];
+        $steps[] = ['label' => 'ارسال به درگاه', 'at' => (string)($attempted ?? $requested ?? ''), 'state' => 'done'];
     }
-
     if (!empty($row['delivery_checked_at'])) {
-        $steps[] = [
-            'label' => 'آخرین استعلام وضعیت',
-            'at'    => (string)$row['delivery_checked_at'],
-            'state' => 'done',
-        ];
+        $steps[] = ['label' => 'آخرین استعلام وضعیت', 'at' => (string)$row['delivery_checked_at'], 'state' => 'done'];
     }
-
     if (!empty($row['delivered_at'])) {
         $steps[] = ['label' => 'تحویل', 'at' => (string)$row['delivered_at'], 'state' => 'delivered'];
     } elseif (in_array($status, ['failed', 'rejected', 'expired'], true)) {
@@ -312,17 +240,9 @@ function report_build_timeline(array $row): array {
     } else {
         $steps[] = ['label' => 'هنوز تحویل نشده', 'at' => null, 'state' => 'pending'];
     }
-
     return $steps;
 }
 
-/**
- * Every transport attempt belonging to one reference, newest first.
- *
- * Scoped by organization at the SQL level rather than filtered afterwards: a report page must not be
- * able to load another tenant's rows and then decide not to show them (B18). A NULL organization_id
- * row (pre-tenant-backfill) is reachable only by a platform admin, who passes null here.
- */
 function report_attempts_for_reference(string $referenceType, string $referenceId, ?int $organizationId): array {
     $sql = 'SELECT * FROM ellsms_message_attempts WHERE reference_type = ? AND reference_id = ?';
     $params = [$referenceType, $referenceId];
@@ -331,19 +251,11 @@ function report_attempts_for_reference(string $referenceType, string $referenceI
         $params[] = $organizationId;
     }
     $sql .= ' ORDER BY id DESC';
-
     $st = db()->prepare($sql);
     $st->execute($params);
     return $st->fetchAll();
 }
 
-/**
- * One attempt by primary key, tenant-scoped.
- *
- * Returns null rather than throwing when the row belongs to another organization, so the caller
- * renders an ordinary "not found" — an authorization failure that says "exists, but not yours" is
- * itself a cross-tenant disclosure (it confirms the id is real).
- */
 function report_attempt_by_id(int $attemptId, ?int $organizationId): ?array {
     $sql = 'SELECT * FROM ellsms_message_attempts WHERE id = ?';
     $params = [$attemptId];
@@ -357,13 +269,6 @@ function report_attempt_by_id(int $attemptId, ?int $organizationId): ?array {
     return $row === false ? null : $row;
 }
 
-/**
- * Recipient rows of one bulk job, tenant-scoped through the job that owns them.
- *
- * The organization check is on the JOB, not the item, because ellsms_bulk_items has no
- * organization_id of its own — going through the owning job is what keeps a crafted item id from
- * reaching another tenant's recipients.
- */
 function report_bulk_items(int $jobId, ?int $organizationId, int $limit = 200, int $offset = 0): array {
     $sql = 'SELECT bi.* FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id WHERE bi.job_id = ?';
     $params = [$jobId];
@@ -371,33 +276,23 @@ function report_bulk_items(int $jobId, ?int $organizationId, int $limit = 200, i
         $sql .= ' AND bj.organization_id = ?';
         $params[] = $organizationId;
     }
-    $sql .= ' ORDER BY bi.id ASC LIMIT ' . max(1, $limit) . ' OFFSET ' . max(0, $offset);
-
+    $sql .= ' ORDER BY bi.id ASC LIMIT ' . max(1, min(500, $limit)) . ' OFFSET ' . max(0, $offset);
     $st = db()->prepare($sql);
     $st->execute($params);
     return $st->fetchAll();
 }
 
-/**
- * The historical billing view of one operation, straight from the immutable snapshot.
- *
- * `committed` is what was actually settled; `accepted` is what was reserved at acceptance. They
- * differ legitimately (a bulk job where some recipients failed settles below its reservation), and
- * showing both is what makes that difference explainable instead of looking like a billing error.
- */
 function report_pricing_for(string $referenceType, string $referenceId): array {
     $groups = sms_price_snapshot_for($referenceType, $referenceId);
     if ($groups === []) {
         return ['available' => false, 'groups' => [], 'accepted' => 0, 'committed' => 0, 'currency' => 'credit'];
     }
-
     $accepted = 0;
     $committed = 0;
     foreach ($groups as $g) {
         $accepted  += (int)$g['total_cost_credits'];
         $committed += (int)$g['committed_cost_credits'];
     }
-
     return [
         'available' => true,
         'groups'    => $groups,
@@ -408,13 +303,6 @@ function report_pricing_for(string $referenceType, string $referenceId): array {
     ];
 }
 
-/**
- * Formats a unit price held in integer millicredits for display.
- *
- * Integer arithmetic throughout — 1 credit is 1000 millicredits, and the fractional part is rendered
- * by string assembly rather than by dividing into a float, so a price never drifts by a rounding
- * error on its way to the screen.
- */
 function report_format_millicredits(int $millicredits): string {
     $whole = intdiv($millicredits, 1000);
     $fraction = $millicredits % 1000;
