@@ -16,6 +16,9 @@ const NOTIFICATION_EVENTS = [
     'credit.low'                    => 'اعتبار کم',
     'bulk.completed'                => 'پایان ارسال انبوه',
     'bulk.failed'                   => 'خطای ارسال انبوه',
+    'import.started'                => 'شروع واردسازی',
+    'import.ready'                  => 'آماده‌شدن واردسازی',
+    'import.failed'                 => 'خطای واردسازی',
     'gateway.failed'                => 'خطای درگاه پیامک',
 ];
 
