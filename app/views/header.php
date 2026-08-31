@@ -52,6 +52,7 @@ $adminNav = [
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
     'queue_cancellation'    => ['/queue-cancellation.php',    'لغو صف ارسال',        '🛑'],
+    'bulk_archive'          => ['/bulk-archive.php',          'آرشیو شش‌ماهه پیام‌ها', '🗄'],
     'sms_gateway_clone'     => ['/sms-gateway-clone.php',     'کپی کامل درگاه',      '⧉'],
     'guide_admin'           => ['/guide-admin.php',           'راهنمای استفاده',     '📘'],
     'billing_admin'         => ['/billing-admin.php',         'مدیریت اشتراک‌ها',    '📦'],
