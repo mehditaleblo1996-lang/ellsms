@@ -11,12 +11,16 @@
  */
 require_once __DIR__ . '/../app/backend.php';
 require_once __DIR__ . '/../app/Backend/report_summary_cache.php';
+require_once __DIR__ . '/../app/Backend/report_dimension_summary.php';
 
 $once = in_array('--once', $argv ?? [], true);
 $interval = max(10, (int)(env('REPORT_SUMMARY_WORKER_INTERVAL_SECONDS', '60') ?? '60'));
 $chunkRows = max(100, min(50000, (int)(env('REPORT_SUMMARY_CHUNK_ROWS', '5000') ?? '5000')));
 $maxRows = max($chunkRows, (int)(env('REPORT_SUMMARY_MAX_ROWS_PER_PASS', '50000') ?? '50000'));
 $rebuildEvery = max(300, (int)(env('REPORT_SUMMARY_FULL_REBUILD_SECONDS', '3600') ?? '3600'));
+$dimChunkRows = max(100, min(50000, (int)(env('REPORT_DIMENSION_SUMMARY_CHUNK_ROWS', '5000') ?? '5000')));
+$dimMaxRows = max($dimChunkRows, (int)(env('REPORT_DIMENSION_SUMMARY_MAX_ROWS_PER_PASS', '50000') ?? '50000'));
+$dimRebuildEvery = max(300, (int)(env('REPORT_DIMENSION_SUMMARY_FULL_REBUILD_SECONDS', '3600') ?? '3600'));
 
 $shuttingDown = false;
 $shutdownReason = null;
@@ -70,6 +74,29 @@ do {
             'elapsed_ms' => (int)round((microtime(true) - $started) * 1000),
         ]);
         Metrics::increment('reports.summary_worker.pass.failed', 1);
+    }
+
+    // Issue #12's dimensioned aggregate (tenant/type/provider/sender/operator/status, bulk-scoped —
+    // see docs/daily-metadata-aggregation.md) runs as a second, independent pass in the same worker
+    // loop: same cadence/signal handling, its own failure never blocks the undimensioned cache above.
+    $dimStarted = microtime(true);
+    try {
+        $dimStats = Metrics::time(
+            'reports.dimension_summary_worker.pass',
+            fn() => report_dimension_summary_worker_pass($dimChunkRows, $dimMaxRows, $dimRebuildEvery)
+        );
+        Logger::info('reports.dimension_summary_worker.pass_completed', $dimStats + [
+            'elapsed_ms' => (int)round((microtime(true) - $dimStarted) * 1000),
+        ]);
+        Metrics::gauge('reports.dimension_summary_worker.processed', (int)($dimStats['processed'] ?? 0));
+        Metrics::gauge('reports.dimension_summary_worker.backlog_rows', (int)($dimStats['backlog_rows'] ?? 0));
+        Metrics::gauge('reports.dimension_summary_worker.backlog_lag_seconds', (int)($dimStats['backlog_lag_seconds'] ?? 0));
+    } catch (Throwable $t) {
+        Logger::critical('reports.dimension_summary_worker.pass_failed', [
+            'exception' => $t,
+            'elapsed_ms' => (int)round((microtime(true) - $dimStarted) * 1000),
+        ]);
+        Metrics::increment('reports.dimension_summary_worker.pass.failed', 1);
     }
 
     if ($once || $shuttingDown) break;
