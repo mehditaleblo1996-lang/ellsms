@@ -392,9 +392,14 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2>درگاه‌ها</h2>
   <table class="table">
-    <thead><tr><th>شناسه</th><th>نام</th><th>وضعیت</th><th>حالت ارسال</th><th>نسخه‌ی پیکربندی</th><th>کامپایل</th><th></th></tr></thead>
+    <thead><tr><th>شناسه</th><th>نام</th><th>وضعیت</th><th>حالت ارسال</th><th>نسخه‌ی پیکربندی</th><th>کامپایل</th><th>سلامت ارسال (#10)</th><th></th></tr></thead>
     <tbody>
-    <?php foreach ($gateways as $row): $rowCompiled = $row['status'] === 'active' ? gateway_compiled((int)$row['id']) : null; ?>
+    <?php
+    $providerHealthByKey = [];
+    foreach (provider_health_snapshot() as $p) { $providerHealthByKey[$p['provider_key']] = $p; }
+    foreach ($gateways as $row): $rowCompiled = $row['status'] === 'active' ? gateway_compiled((int)$row['id']) : null;
+    $health = $providerHealthByKey['gateway:' . (int)$row['id']] ?? null;
+    ?>
       <tr>
         <td class="ltr"><?= e($row['code']) ?><?= $row['is_default'] ? ' ★' : '' ?></td>
         <td><?= e($row['name']) ?></td>
@@ -402,6 +407,15 @@ require __DIR__ . '/../app/views/header.php';
         <td><?= $row['send_mode'] === 'batch' ? 'دسته‌ای' : 'تک‌پیام' ?></td>
         <td class="ltr">v<?= (int)$row['config_version'] ?></td>
         <td><?= $rowCompiled !== null ? 'سالم' : '<strong>ناموفق</strong>' ?></td>
+        <td>
+          <?php if ($health === null): ?>
+            <span class="muted">بدون سابقه ارسال</span>
+          <?php elseif ($health['status'] === 'outage'): ?>
+            <strong style="color:#c0392b">قطعی — <?= (int)$health['consecutive_failures'] ?> شکست پیاپی</strong>
+          <?php else: ?>
+            سالم
+          <?php endif; ?>
+        </td>
         <td>
           <a class="btn" href="/sms-gateways.php?gateway=<?= (int)$row['id'] ?>&tab=connector">ویرایش</a>
           <?php if (!$row['is_default'] && $row['status'] === 'active'): ?>
@@ -415,7 +429,7 @@ require __DIR__ . '/../app/views/header.php';
       </tr>
     <?php endforeach; ?>
     <?php if ($gateways === []): ?>
-      <tr><td colspan="7" class="muted">هیچ درگاهی تعریف نشده است. با دستور <span class="ltr">make sms-gateway-backfill</span> می‌توانید درگاه فعلی را ثبت کنید.</td></tr>
+      <tr><td colspan="8" class="muted">هیچ درگاهی تعریف نشده است. با دستور <span class="ltr">make sms-gateway-backfill</span> می‌توانید درگاه فعلی را ثبت کنید.</td></tr>
     <?php endif; ?>
     </tbody>
   </table>
