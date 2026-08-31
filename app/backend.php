@@ -1387,6 +1387,19 @@ function bulk_queue_job(
  * Returns the claimed rows already joined with their owning job's user_id/originator (bulk_items
  * itself stores neither). Does NOT return job status — bulk_item_preflight() re-reads that fresh,
  * deliberately not from this claim-time snapshot, right before dispatch (see its own docblock).
+ *
+ * A note on why claim ordering is NOT joined onto this UPDATE (issue #3): an earlier version of
+ * this function joined ellsms_bulk_jobs directly onto the claim UPDATE (`UPDATE ellsms_bulk_items i
+ * JOIN ellsms_bulk_jobs bj ...`) so a claim spanning multiple message classes could ORDER BY
+ * priority. A real load test (cron/load-test.php, 4 concurrent worker processes, 5000 items) caught
+ * it leaving ~3% of items permanently stuck in 'processing' with a valid lease — comparing against
+ * the pre-change commit under the IDENTICAL scenario confirmed zero stuck items there, isolating the
+ * join as the cause: it pulls ellsms_bulk_jobs into the claim's lock scope, creating new lock
+ * contention with whatever else concurrently touches that table (job-activation, wallet
+ * reservations) that the original single-table UPDATE never had. Priority isolation between classes
+ * is achieved a different way instead — see bulk_claim_unthrottled_items_by_class() below, which
+ * calls this function once per class (each call already filtered to one class via $jobFilterSql),
+ * so no single call ever needs to order a mixed-class claim.
  */
 function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams, int $limit): array {
     $workerId = worker_id();
@@ -1394,23 +1407,21 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
     $claimToken = $workerId . ':' . bin2hex(random_bytes(4));
     $claimStartedAt = microtime(true);
 
+    // Deliberately a single-table UPDATE (subquery in WHERE, no JOIN on the target table) — see
+    // "A note on why claim ordering is NOT joined onto this UPDATE" below. Priority isolation
+    // between message classes is achieved entirely by the CALLER issuing separate, already
+    // single-class-filtered calls to this function (bulk_claim_unthrottled_items_by_class()'s
+    // per-class quota loop) rather than by ordering a mixed-class claim here.
     db_transaction(function (PDO $db) use ($jobFilterSql, $jobFilterParams, $limit, $claimToken, $leaseSeconds): void {
         $jobIdsSubquery = "SELECT j.id FROM ellsms_bulk_jobs j WHERE {$jobFilterSql}";
 
-        // Claim order within whatever job set $jobFilterSql selects: highest-priority message class
-        // first (see app/MessageClass.php), then FIFO by id within a class. When the caller has
-        // already filtered to a single job (or a single class — see run_bulk_send_pass_fast()'s
-        // per-class quota calls), every row shares one class and this FIELD() ordering is a no-op;
-        // it only matters when $jobFilterSql spans jobs of multiple classes at once.
-        $classOrder = "FIELD(bj.message_class, '" . implode("','", message_classes_by_priority()) . "')";
         $duePending = $db->prepare(
-            "UPDATE ellsms_bulk_items i
-             JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
-             SET i.status='processing', i.claimed_by=?, i.claimed_at=NOW(),
-                 i.lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), i.attempt_count=i.attempt_count+1, i.next_attempt_at=NULL
-             WHERE i.job_id IN ({$jobIdsSubquery})
-               AND i.status='pending' AND (i.next_attempt_at IS NULL OR i.next_attempt_at <= NOW())
-             ORDER BY {$classOrder}, i.id
+            "UPDATE ellsms_bulk_items
+             SET status='processing', claimed_by=?, claimed_at=NOW(),
+                 lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1, next_attempt_at=NULL
+             WHERE job_id IN ({$jobIdsSubquery})
+               AND status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+             ORDER BY id
              LIMIT {$limit}"
         );
         $duePending->execute(array_merge([$claimToken, $leaseSeconds], $jobFilterParams));
@@ -1418,13 +1429,12 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
 
         if ($remaining > 0) {
             $expiredLease = $db->prepare(
-                "UPDATE ellsms_bulk_items i
-                 JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
-                 SET i.claimed_by=?, i.claimed_at=NOW(),
-                     i.lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), i.attempt_count=i.attempt_count+1
-                 WHERE i.job_id IN ({$jobIdsSubquery})
-                   AND i.status='processing' AND i.lease_expires_at IS NOT NULL AND i.lease_expires_at < NOW()
-                 ORDER BY {$classOrder}, i.id
+                "UPDATE ellsms_bulk_items
+                 SET claimed_by=?, claimed_at=NOW(),
+                     lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1
+                 WHERE job_id IN ({$jobIdsSubquery})
+                   AND status='processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
+                 ORDER BY id
                  LIMIT {$remaining}"
             );
             $expiredLease->execute(array_merge([$claimToken, $leaseSeconds], $jobFilterParams));

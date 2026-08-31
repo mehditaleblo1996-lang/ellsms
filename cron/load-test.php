@@ -337,6 +337,17 @@ if (!$keep) {
         }
         db()->prepare('DELETE FROM ellsms_wallet_reservations WHERE reference_type = ? AND reference_id IN (' . implode(',', array_fill(0, count($jobIds), '?')) . ')')
             ->execute(array_merge(['bulk_job'], array_map('strval', $jobIds)));
+        foreach ($seededOrgIds as $oid) {
+            // A completed bulk job emits a webhook event (Phase 12, webhook_event_emit()) even
+            // with zero endpoints configured -- ellsms_webhook_events/_deliveries/_endpoints all
+            // FK-reference organization_id RESTRICT, so they must be cleared before the
+            // organization itself is deleted below, or the FK blocks it.
+            db()->prepare('DELETE wd FROM ellsms_webhook_deliveries wd
+                            JOIN ellsms_webhook_events we ON we.id = wd.event_id
+                            WHERE we.organization_id = ?')->execute([$oid]);
+            db()->prepare('DELETE FROM ellsms_webhook_events WHERE organization_id = ?')->execute([$oid]);
+            db()->prepare('DELETE FROM ellsms_webhook_endpoints WHERE organization_id = ?')->execute([$oid]);
+        }
         foreach ($seededUserIds as $uid) {
             // A failure-rate run records ellsms_message_attempts rows (Phase 8, Invariant E) for
             // every simulated 4xx/5xx/timeout -- these reference organization_id and must be
