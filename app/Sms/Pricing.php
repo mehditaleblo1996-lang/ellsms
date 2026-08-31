@@ -313,25 +313,38 @@ function sms_resolve_operator(string $normalizedMsisdn): array {
    ========================================================================== */
 
 /**
- * The route a send uses, resolved in a fixed precedence order. NOTHING here compares prices or
- * provider health — each step is a lookup that either yields exactly one row or moves on:
+ * The route a send uses, resolved in a fixed precedence order (issue #8) — deterministic, NOTHING
+ * here compares prices or provider health, each step is a lookup that either yields exactly one row
+ * or moves on:
  *
- *   1. explicit sender assignment for this exact message type
- *   2. explicit sender assignment for message type 'default'
- *   3. the configured default route for this exact message type
- *   4. the configured default route for message type 'default'
+ *   1. explicit sender-number assignment for this exact message type, else for 'default'
+ *   2. explicit destination-operator assignment for this exact message type, else for 'default'
+ *      (only when $destinationMsisdn is given and its operator is known — see below)
+ *   3. the configured default route for this exact message type, else for 'default'
+ *
+ * Step 2 is deliberately per-destination, not per-call: a single call always resolves ONE route, so
+ * it only ever consults the operator step for a call with exactly one destination (every caller of
+ * this function already only passes a destination when it has exactly one — see
+ * gateway_send_for_dispatch()). A multi-destination batch (bulk sends) has no single "the"
+ * destination operator to check, so it skips straight from sender to default, exactly as before this
+ * issue — this is a documented, intentional scope limit (see docs/sms-routing.md), not a silent gap:
+ * splitting one batch across routes by each recipient's own operator is a larger follow-up.
  *
  * Every step additionally requires the owning provider to be ACTIVE — an archived provider makes all
  * of its routes unusable for NEW price resolution (STEP 8), which is why the provider join carries a
- * status filter rather than being decorative. Uniqueness at steps 1/2 (uniq_active_sender_route) and
- * 3/4 (uniq_default_route_per_type) is enforced by the schema, so "which one?" can never arise.
+ * status filter rather than being decorative. Uniqueness at every step (uniq_active_sender_route,
+ * uniq_active_operator_route, uniq_default_route_per_type) is enforced by the schema, so "which
+ * one?" can never arise. Auto failover between providers is explicitly NOT part of this: a step
+ * either resolves or it doesn't, and provider health/uptime plays no role in the choice.
  */
-function sms_pricing_route_for_sender(string $sender, string $messageType): ?array {
+function sms_pricing_route_for_sender(string $sender, string $messageType, ?string $destinationMsisdn = null): ?array {
     $sender = (string)(normalize_originator($sender) ?? '');
     $messageType = sms_pricing_normalize_message_type($messageType);
-    $key = 'route:' . $sender . ':' . $messageType;
+    $normalizedDestination = $destinationMsisdn !== null ? normalize_msisdn($destinationMsisdn) : null;
+    $operatorId = $normalizedDestination !== null ? sms_resolve_operator($normalizedDestination)['operator_id'] : null;
+    $key = 'route:' . $sender . ':' . $messageType . ':' . ($operatorId ?? '-');
 
-    $route = sms_pricing_cached($key, static function () use ($sender, $messageType): ?array {
+    $route = sms_pricing_cached($key, static function () use ($sender, $messageType, $operatorId): ?array {
         if (!sms_pricing_catalog_available()) {
             return null;
         }
@@ -358,6 +371,24 @@ function sms_pricing_route_for_sender(string $sender, string $messageType): ?arr
                 $row = $st->fetch();
                 if ($row) {
                     $row['selection'] = 'sender_assignment';
+                    Metrics::increment('sms_routing.selection', 1, ['selection' => 'sender_assignment']);
+                    return $row;
+                }
+            }
+
+            if ($operatorId !== null) {
+                $st = $db->prepare(
+                    "{$select}
+                     JOIN ellsms_operator_routes op ON op.route_id = r.id AND op.status = 'active'
+                     WHERE r.status = 'active' AND op.operator_id = ? AND op.message_type IN (?, 'default')
+                     ORDER BY (op.message_type = ?) DESC, op.priority DESC, op.id ASC
+                     LIMIT 1"
+                );
+                $st->execute([$operatorId, $messageType, $messageType]);
+                $row = $st->fetch();
+                if ($row) {
+                    $row['selection'] = 'operator_route';
+                    Metrics::increment('sms_routing.selection', 1, ['selection' => 'operator_route']);
                     return $row;
                 }
             }
@@ -372,8 +403,10 @@ function sms_pricing_route_for_sender(string $sender, string $messageType): ?arr
             $row = $st->fetch();
             if ($row) {
                 $row['selection'] = 'default_route';
+                Metrics::increment('sms_routing.selection', 1, ['selection' => 'default_route']);
                 return $row;
             }
+            Metrics::increment('sms_routing.selection', 1, ['selection' => 'no_route']);
             return null;
         } catch (Throwable $t) {
             Logger::error('sms_pricing.route_lookup.failed', ['sender' => $sender, 'message_type' => $messageType, 'exception' => $t]);

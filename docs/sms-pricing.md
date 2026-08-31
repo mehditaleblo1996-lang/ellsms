@@ -140,16 +140,39 @@ sender: a pooled `ellsms_numbers` row *and* a legacy free-text `ellsms_meta.orig
 accepted by `can_use_originator()`. A numbers-table foreign key would silently fail to price every
 legacy-originator install.
 
-Route selection order (`sms_pricing_route_for_sender()`), each step yielding at most one row:
+**Route selection precedence (issue #8)** — `sms_pricing_route_for_sender()`, each step yielding at
+most one row, deterministic, never comparing price or provider health/uptime:
 
-1. explicit sender assignment for this exact message type
-2. explicit sender assignment for message type `default`
-3. the configured default route for this exact message type
-4. the configured default route for message type `default`
+1. explicit sender-number assignment (`ellsms_sender_routes`) for this exact message type, else for
+   `default`
+2. explicit destination-**operator** assignment (`ellsms_operator_routes`) for this exact message
+   type, else for `default` — only consulted for a call with exactly one destination (see below)
+3. the configured default route for this exact message type, else for `default`
 
-Every step additionally requires the owning provider to be ACTIVE. Uniqueness at steps 1–2
-(`uniq_active_sender_route`) and 3–4 (`uniq_default_route_per_type`) is enforced by the database, so
-"which of the two?" can never arise.
+Every step additionally requires the owning provider to be ACTIVE. Uniqueness at every step
+(`uniq_active_sender_route`, `uniq_active_operator_route`, `uniq_default_route_per_type`) is
+enforced by the database, so "which one?" can never arise. **Auto failover between providers is
+explicitly not part of this** — a step either resolves or it doesn't; nothing here ever picks a
+different provider because one is faster, cheaper, or healthier.
+
+**Step 2 only applies to a single-destination send.** `sms_pricing_route_for_sender()` resolves ONE
+route per call — a multi-destination batch (bulk sends: `sms_pricing_resolve_batch()` deliberately
+resolves the route once for the whole batch, the no-N+1 design in §STEP 18) has no single "the"
+destination operator to check, so it skips straight from sender to default, exactly as it always
+has. `gateway_send_for_dispatch()` only passes a destination when `count($destinations) === 1`
+(covering the OTP/Transactional/single-recipient case, the majority of traffic with a meaningful
+per-message operator). Splitting one batch across routes by each recipient's own operator is a
+documented, intentional follow-up, not a silent gap — see `tests/Integration/SmsPricingTest.php`'s
+`testOperatorRoutingOnlyAppliesToASingleDestinationNeverABatch`.
+
+**Auditability/observability:** the resolved route always carries a `selection` field
+(`sender_assignment` / `operator_route` / `default_route`), surfaced in `cron/sms-pricing-status.php`
+and `cron/sms-gateway-simulate.php` (the "which gateway would this sender actually use" dry-run
+tool), and a `sms_routing.selection` metric (tagged by that same value, plus `no_route` when nothing
+resolves) is emitted on every non-cached resolution.
+
+Admin UI: Settings → SMS Pricing → "اپراتور ← مسیر" tab (`public/sms-pricing.php`), mirroring the
+existing "خط ← مسیر" (sender → route) tab.
 
 ---
 

@@ -53,8 +53,9 @@ if ($options['gateway'] !== null) {
     $routeId = null;
 } else {
     // No gateway named: resolve exactly as a real send would, so this also answers "which gateway
-    // would this sender actually use".
-    $route = sms_pricing_route_for_sender($sender, $messageType);
+    // would this sender actually use". Matches gateway_send_for_dispatch()'s own rule (issue #8):
+    // the destination-operator routing step only applies to a single-destination send, never a batch.
+    $route = sms_pricing_route_for_sender($sender, $messageType, count($destinations) === 1 ? $destinations[0] : null);
     $resolved = gateway_for_route($route);
     if (!$resolved['ok']) {
         fwrite(STDERR, "No gateway resolves for this sender: {$resolved['reason']}\n");
