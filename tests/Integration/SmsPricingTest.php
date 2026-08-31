@@ -95,6 +95,14 @@ final class SmsPricingTest extends IntegrationTestCase
         sms_pricing_cache_reset();
     }
 
+    /** Issue #8: the destination-operator routing step, between sender assignment and default route. */
+    private function assignOperatorRoute(int $operatorId, int $routeId, string $messageType = 'default'): void
+    {
+        db()->prepare('INSERT INTO ellsms_operator_routes (operator_id, message_type, route_id, status, active_slot) VALUES (?,?,?,?,?)')
+            ->execute([$operatorId, $messageType, $routeId, 'active', $operatorId . ':' . $messageType]);
+        sms_pricing_cache_reset();
+    }
+
     /** Points this test's sender at a private route/rate, so the seeded default catalog is irrelevant. */
     private function privateRouteAt(int $millicredits, ?int $operatorId = null): int
     {
@@ -226,6 +234,94 @@ final class SmsPricingTest extends IntegrationTestCase
         $this->makeRoute($providerId, 'a_' . $suffix, 'otp', true);
         $this->expectException(\PDOException::class);
         $this->makeRoute($providerId, 'b_' . $suffix, 'otp', true);
+    }
+
+    /* ================= Operator routing precedence (issue #8) ================= */
+
+    public function testAnOperatorRouteAppliesWhenNoSenderAssignmentExistsAndOneDestinationIsGiven(): void
+    {
+        $suffix = bin2hex(random_bytes(3));
+        $operatorId = $this->makeOperator('oprt_' . $suffix, ['0195']);
+        $routeId = $this->makeRoute($this->makeProvider('prov_' . $suffix), 'route_' . $suffix);
+        $this->assignOperatorRoute($operatorId, $routeId);
+
+        // '6000' has no sender assignment at all -- otherwise this would just prove step 1 again.
+        $resolved = sms_pricing_route_for_sender('6000', 'promotional', '9819512345678');
+        $this->assertSame($routeId, (int)$resolved['route_id']);
+        $this->assertSame('operator_route', $resolved['selection']);
+    }
+
+    public function testASenderAssignmentStillBeatsAnOperatorRoute(): void
+    {
+        $suffix = bin2hex(random_bytes(3));
+        $operatorId = $this->makeOperator('oprt_' . $suffix, ['0195']);
+        $operatorRouteId = $this->makeRoute($this->makeProvider('opprov_' . $suffix), 'oproute_' . $suffix);
+        $this->assignOperatorRoute($operatorId, $operatorRouteId);
+
+        $senderRouteId = $this->privateRouteAt(2000); // assigns $this->sender directly
+
+        $resolved = sms_pricing_route_for_sender($this->sender, 'promotional', '9819512345678');
+        $this->assertSame($senderRouteId, (int)$resolved['route_id']);
+        $this->assertSame('sender_assignment', $resolved['selection'], 'precedence: sender number must win over destination operator');
+    }
+
+    public function testAnOperatorRouteStillBeatsTheDefaultRoute(): void
+    {
+        $suffix = bin2hex(random_bytes(3));
+        $operatorId = $this->makeOperator('oprt_' . $suffix, ['0195']);
+        $operatorRouteId = $this->makeRoute($this->makeProvider('opprov_' . $suffix), 'oproute_' . $suffix);
+        $this->assignOperatorRoute($operatorId, $operatorRouteId);
+
+        // Same seeded/default catalog every other test in this class relies on for "no config at all".
+        $resolved = sms_pricing_route_for_sender('6000', 'promotional', '9819512345678');
+        $this->assertSame($operatorRouteId, (int)$resolved['route_id']);
+        $this->assertSame('operator_route', $resolved['selection']);
+
+        // A different destination, same sender, unrecognized operator -- falls all the way to default.
+        $unmatched = sms_pricing_route_for_sender('6000', 'promotional', '447700900123');
+        $this->assertSame('default_route', $unmatched['selection']);
+    }
+
+    public function testOperatorRoutingOnlyAppliesToASingleDestinationNeverABatch(): void
+    {
+        $suffix = bin2hex(random_bytes(3));
+        $operatorId = $this->makeOperator('oprt_' . $suffix, ['0195']);
+        $routeId = $this->makeRoute($this->makeProvider('prov_' . $suffix), 'route_' . $suffix);
+        $this->assignOperatorRoute($operatorId, $routeId);
+
+        // No destination given at all -- exactly what a multi-destination batch call passes
+        // (sms_pricing_resolve_batch() resolves the route ONCE for the whole batch, STEP 18's
+        // explicit no-N+1 design -- see that function's own docblock). Must skip straight to default,
+        // never guess an operator from a batch with no single destination to check.
+        $resolved = sms_pricing_route_for_sender('6000', 'promotional');
+        $this->assertSame('default_route', $resolved['selection']);
+        $this->assertNotSame($routeId, (int)$resolved['route_id']);
+    }
+
+    public function testAnArchivedOperatorRouteIsUnusable(): void
+    {
+        $suffix = bin2hex(random_bytes(3));
+        $operatorId = $this->makeOperator('oprt_' . $suffix, ['0195']);
+        $routeId = $this->makeRoute($this->makeProvider('prov_' . $suffix), 'route_' . $suffix);
+        $this->assignOperatorRoute($operatorId, $routeId);
+
+        db()->prepare("UPDATE ellsms_operator_routes SET status = 'archived', active_slot = NULL WHERE operator_id = ?")
+            ->execute([$operatorId]);
+        sms_pricing_cache_reset();
+
+        $resolved = sms_pricing_route_for_sender('6000', 'promotional', '9819512345678');
+        $this->assertSame('default_route', $resolved['selection']);
+    }
+
+    public function testTheDatabaseRefusesASecondActiveOperatorRouteForTheSameOperatorAndType(): void
+    {
+        $suffix = bin2hex(random_bytes(3));
+        $operatorId = $this->makeOperator('oprt_' . $suffix, ['0195']);
+        $routeA = $this->makeRoute($this->makeProvider('a_' . $suffix), 'a_' . $suffix);
+        $routeB = $this->makeRoute($this->makeProvider('b_' . $suffix), 'b_' . $suffix);
+        $this->assignOperatorRoute($operatorId, $routeA, 'otp');
+        $this->expectException(\PDOException::class);
+        $this->assignOperatorRoute($operatorId, $routeB, 'otp');
     }
 
     /* ================= Price resolution (STEP 10/11) ================= */

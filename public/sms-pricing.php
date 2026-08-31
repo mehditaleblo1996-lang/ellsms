@@ -238,6 +238,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            /* ---------------- Operator routes (issue #8) ----------------
+             * Same shape/pattern as sender routes above (mirrors it deliberately, not a copy-paste
+             * accident) — the only difference is the key is an operator, not a sender number, and it
+             * only applies when no sender-specific assignment matched (app/Sms/Pricing.php). */
+            case 'operator_route_create': {
+                $operatorId = (int)($_POST['operator_id'] ?? 0);
+                $routeId = (int)($_POST['route_id'] ?? 0);
+                $messageType = in_array($_POST['message_type'] ?? '', SMS_MESSAGE_TYPES, true) ? $_POST['message_type'] : 'default';
+                if ($operatorId <= 0 || $routeId <= 0) { flash('error', 'اپراتور و مسیر الزامی است.'); break; }
+                try {
+                    $db->prepare('INSERT INTO ellsms_operator_routes (operator_id, message_type, route_id, priority, active_slot) VALUES (?,?,?,?,?)')
+                       ->execute([$operatorId, $messageType, $routeId, (int)($_POST['priority'] ?? 0), $operatorId . ':' . $messageType]);
+                } catch (PDOException) {
+                    flash('error', 'برای این اپراتور و این نوع پیام، تخصیص فعالی از قبل وجود دارد.');
+                    break;
+                }
+                pricing_audit($me, 'operator_route.create', ['operator_id' => $operatorId, 'route_id' => $routeId, 'message_type' => $messageType]);
+                flash('success', 'تخصیص مسیر ثبت شد.');
+                break;
+            }
+            case 'operator_route_update': {
+                $id = (int)($_POST['id'] ?? 0);
+                $status = ($_POST['status'] ?? 'active') === 'archived' ? 'archived' : 'active';
+                try {
+                    $db->prepare("UPDATE ellsms_operator_routes
+                                  SET status = ?, priority = ?,
+                                      active_slot = IF(? = 'active', CONCAT(operator_id, ':', message_type), NULL)
+                                  WHERE id = ?")
+                       ->execute([$status, (int)($_POST['priority'] ?? 0), $status, $id]);
+                } catch (PDOException) {
+                    flash('error', 'فعال‌سازی این تخصیص با تخصیص فعال دیگری تداخل دارد.');
+                    break;
+                }
+                pricing_audit($me, 'operator_route.update', ['id' => $id, 'status' => $status]);
+                flash('success', 'تخصیص مسیر به‌روزرسانی شد.');
+                break;
+            }
+
             /* ---------------- Prices (STEP 34/35) ---------------- */
             case 'price_create': {
                 $routeId    = (int)($_POST['route_id'] ?? 0);
@@ -336,6 +374,7 @@ $providers = $db->query('SELECT p.*, (SELECT COUNT(*) FROM ellsms_sms_routes r W
 $routes    = $db->query('SELECT r.*, p.code AS provider_code, p.name AS provider_name, p.status AS provider_status FROM ellsms_sms_routes r JOIN ellsms_sms_providers p ON p.id = r.provider_id ORDER BY p.code, r.code')->fetchAll();
 $prefixes  = $db->query('SELECT x.*, o.code AS operator_code, o.name AS operator_name FROM ellsms_sms_operator_prefixes x JOIN ellsms_sms_operators o ON o.id = x.operator_id ORDER BY x.prefix_length DESC, x.normalized_prefix')->fetchAll();
 $senderRoutes = $db->query('SELECT s.*, r.code AS route_code, p.code AS provider_code FROM ellsms_sender_routes s JOIN ellsms_sms_routes r ON r.id = s.route_id JOIN ellsms_sms_providers p ON p.id = r.provider_id ORDER BY s.sender, s.message_type')->fetchAll();
+$operatorRoutes = $db->query('SELECT o.*, op.code AS operator_code, op.name AS operator_name, r.code AS route_code, p.code AS provider_code FROM ellsms_operator_routes o JOIN ellsms_sms_operators op ON op.id = o.operator_id JOIN ellsms_sms_routes r ON r.id = o.route_id JOIN ellsms_sms_providers p ON p.id = r.provider_id ORDER BY op.code, o.message_type')->fetchAll();
 $prices    = $db->query(
     'SELECT rp.*, r.code AS route_code, p.code AS provider_code, o.code AS operator_code
      FROM ellsms_sms_route_prices rp
@@ -381,7 +420,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="toolbar">
     <?php foreach ([
       'operators' => 'اپراتورها', 'prefixes' => 'پیش‌شماره‌ها', 'providers' => 'ارائه‌دهنده‌ها',
-      'routes' => 'مسیرها', 'senders' => 'خط ← مسیر', 'prices' => 'تعرفه‌ها',
+      'routes' => 'مسیرها', 'senders' => 'خط ← مسیر', 'operator_routes' => 'اپراتور ← مسیر', 'prices' => 'تعرفه‌ها',
     ] as $key => $label): ?>
       <a class="btn<?= $tab === $key ? ' btn-primary' : '' ?>" href="/sms-pricing.php?tab=<?= $key ?>"><?= $label ?></a>
     <?php endforeach; ?>
@@ -588,6 +627,54 @@ require __DIR__ . '/../app/views/header.php';
           <select name="status">
             <option value="active"<?= $s['status'] === 'active' ? ' selected' : '' ?>>فعال</option>
             <option value="archived"<?= $s['status'] === 'archived' ? ' selected' : '' ?>>بایگانی</option>
+          </select>
+          <button class="btn">ذخیره</button>
+        </form>
+      </td>
+    </tr>
+    <?php endforeach; ?>
+  </table></div>
+</div>
+
+<?php elseif ($tab === 'operator_routes'): ?>
+<div class="card">
+  <h2>تخصیص مسیر به اپراتور مقصد</h2>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="do" value="operator_route_create"><input type="hidden" name="tab" value="operator_routes">
+    <label>اپراتور <select name="operator_id" required>
+      <?php foreach ($operators as $o): ?>
+        <option value="<?= (int)$o['id'] ?>"><?= e($o['code'] . ' — ' . $o['name']) ?></option>
+      <?php endforeach; ?>
+    </select></label>
+    <label>نوع پیام <select name="message_type">
+      <?php foreach (SMS_MESSAGE_TYPES as $t): ?><option value="<?= $t ?>"><?= $t ?></option><?php endforeach; ?>
+    </select></label>
+    <label>مسیر <select name="route_id" required>
+      <?php foreach ($routes as $r): if ($r['status'] !== 'active') continue; ?>
+        <option value="<?= (int)$r['id'] ?>"><?= e($r['provider_code'] . ' / ' . $r['code']) ?></option>
+      <?php endforeach; ?>
+    </select></label>
+    <button class="btn btn-primary">افزودن</button>
+  </form>
+  <p class="muted">این تخصیص فقط زمانی اعمال می‌شود که خط ارسال تخصیص اختصاصی نداشته باشد و ارسال به یک مقصد باشد
+    (نه ارسال گروهی) — ترتیب اولویت: خط ارسال ← اپراتور مقصد ← مسیر پیش‌فرض.</p>
+</div>
+<div class="card">
+  <h2>تخصیص‌ها</h2>
+  <div class="table-wrap"><table>
+    <tr><th>اپراتور</th><th>نوع پیام</th><th>مسیر</th><th>وضعیت</th></tr>
+    <?php foreach ($operatorRoutes as $o): ?>
+    <tr>
+      <td class="ltr"><?= e($o['operator_code'] . ' — ' . $o['operator_name']) ?></td>
+      <td class="ltr"><?= e($o['message_type']) ?></td>
+      <td class="ltr"><?= e($o['provider_code'] . ' / ' . $o['route_code']) ?></td>
+      <td>
+        <form method="post" class="toolbar" style="margin:0">
+          <?= csrf_field() ?><input type="hidden" name="do" value="operator_route_update"><input type="hidden" name="tab" value="operator_routes">
+          <input type="hidden" name="id" value="<?= (int)$o['id'] ?>">
+          <select name="status">
+            <option value="active"<?= $o['status'] === 'active' ? ' selected' : '' ?>>فعال</option>
+            <option value="archived"<?= $o['status'] === 'archived' ? ' selected' : '' ?>>بایگانی</option>
           </select>
           <button class="btn">ذخیره</button>
         </form>
