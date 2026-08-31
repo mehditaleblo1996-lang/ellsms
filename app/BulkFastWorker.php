@@ -113,12 +113,7 @@ function run_bulk_send_pass_fast(): int {
         $db->prepare('UPDATE ellsms_bulk_jobs SET last_throttle_at = NOW() WHERE id = ?')->execute([$jobId]);
     }
 
-    $unthrottledItems = bulk_claim_items(
-        $db,
-        "j.status = 'processing' AND j.throttle_count IS NULL",
-        [],
-        worker_bulk_batch_size()
-    );
+    $unthrottledItems = bulk_claim_unthrottled_items_by_class($db, worker_bulk_batch_size());
     $sent += bulk_send_claimed_items_fast($db, $unthrottledItems);
 
     $doneIds = $db->query(

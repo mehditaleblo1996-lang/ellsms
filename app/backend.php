@@ -1250,8 +1250,10 @@ function render_bulk_template(string $template, array $vars): string {
  */
 function bulk_queue_job(
     array $user, string $type, string $title, string $originator, ?string $template, array $items,
-    ?int $throttleCount = null, ?int $throttleMinutes = null, ?string $messageType = null
+    ?int $throttleCount = null, ?int $throttleMinutes = null, ?string $messageType = null,
+    ?string $messageClass = null
 ): array {
+    $messageClass = normalize_bulk_message_class($messageClass);
     if (!$items) return [false, 'هیچ ردیف معتبری در فایل پیدا نشد.', null];
 
     // Support impersonation: a queued bulk job is a send that happens LATER, which makes it exactly
@@ -1283,15 +1285,15 @@ function bulk_queue_job(
     $totalCost = $priced['total_cost'];
 
     try {
-        $jobId = db_transaction(function (PDO $db) use ($user, $userId, $isAdmin, $type, $title, $originator, $template, $throttleCount, $throttleMinutes, $items, $totalCost, $priced): int {
+        $jobId = db_transaction(function (PDO $db) use ($user, $userId, $isAdmin, $type, $title, $originator, $template, $throttleCount, $throttleMinutes, $items, $totalCost, $priced, $messageClass): int {
             // Phase 6: organization_id comes only from $user['organization_id'] (server-resolved by
             // require_login()/current_organization() for the caller — never trusted from request
             // input) — NULL for an install that hasn't run tenant-backfill yet, which is fine, the
             // job just behaves exactly like a pre-Phase-6 job until it does.
             $organizationId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
-            $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, organization_id, type, title, originator, template, throttle_count, throttle_minutes, status, total_rows)
-                          VALUES (?,?,?,?,?,?,?,?,'pending',?)")
-               ->execute([$user['id'], $organizationId, $type, $title, $originator, $template, $throttleCount, $throttleMinutes, count($items)]);
+            $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, organization_id, type, message_class, title, originator, template, throttle_count, throttle_minutes, status, total_rows)
+                          VALUES (?,?,?,?,?,?,?,?,?,'pending',?)")
+               ->execute([$user['id'], $organizationId, $type, $messageClass, $title, $originator, $template, $throttleCount, $throttleMinutes, count($items)]);
             $jobId = (int)$db->lastInsertId();
 
             // Phase 13 (STEP 20): a bulk job consumes quota at ACCEPTANCE — the moment it enters the
@@ -1395,13 +1397,20 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
     db_transaction(function (PDO $db) use ($jobFilterSql, $jobFilterParams, $limit, $claimToken, $leaseSeconds): void {
         $jobIdsSubquery = "SELECT j.id FROM ellsms_bulk_jobs j WHERE {$jobFilterSql}";
 
+        // Claim order within whatever job set $jobFilterSql selects: highest-priority message class
+        // first (see app/MessageClass.php), then FIFO by id within a class. When the caller has
+        // already filtered to a single job (or a single class — see run_bulk_send_pass_fast()'s
+        // per-class quota calls), every row shares one class and this FIELD() ordering is a no-op;
+        // it only matters when $jobFilterSql spans jobs of multiple classes at once.
+        $classOrder = "FIELD(bj.message_class, '" . implode("','", message_classes_by_priority()) . "')";
         $duePending = $db->prepare(
-            "UPDATE ellsms_bulk_items
-             SET status='processing', claimed_by=?, claimed_at=NOW(),
-                 lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1, next_attempt_at=NULL
-             WHERE job_id IN ({$jobIdsSubquery})
-               AND status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
-             ORDER BY id
+            "UPDATE ellsms_bulk_items i
+             JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
+             SET i.status='processing', i.claimed_by=?, i.claimed_at=NOW(),
+                 i.lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), i.attempt_count=i.attempt_count+1, i.next_attempt_at=NULL
+             WHERE i.job_id IN ({$jobIdsSubquery})
+               AND i.status='pending' AND (i.next_attempt_at IS NULL OR i.next_attempt_at <= NOW())
+             ORDER BY {$classOrder}, i.id
              LIMIT {$limit}"
         );
         $duePending->execute(array_merge([$claimToken, $leaseSeconds], $jobFilterParams));
@@ -1409,12 +1418,13 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
 
         if ($remaining > 0) {
             $expiredLease = $db->prepare(
-                "UPDATE ellsms_bulk_items
-                 SET claimed_by=?, claimed_at=NOW(),
-                     lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1
-                 WHERE job_id IN ({$jobIdsSubquery})
-                   AND status='processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
-                 ORDER BY id
+                "UPDATE ellsms_bulk_items i
+                 JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
+                 SET i.claimed_by=?, i.claimed_at=NOW(),
+                     i.lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), i.attempt_count=i.attempt_count+1
+                 WHERE i.job_id IN ({$jobIdsSubquery})
+                   AND i.status='processing' AND i.lease_expires_at IS NOT NULL AND i.lease_expires_at < NOW()
+                 ORDER BY {$classOrder}, i.id
                  LIMIT {$remaining}"
             );
             $expiredLease->execute(array_merge([$claimToken, $leaseSeconds], $jobFilterParams));
@@ -1445,6 +1455,70 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
     }
 
     return $rows;
+}
+
+/**
+ * Unthrottled-bulk-item claiming for one worker tick, split fairly across message classes
+ * (issue #3) instead of one flat `ORDER BY id LIMIT worker_bulk_batch_size()` across every
+ * processing job regardless of class. Without this, a single huge Advertising job created before
+ * a smaller Bulk Campaign job would keep winning every tick's entire budget under plain FIFO —
+ * not because it's higher priority (it isn't; it's the lowest), but purely because it happened to
+ * be older. allocate_priority_quota() reserves each class with backlog a guaranteed floor of the
+ * tick's budget first, so neither class can be starved to zero by the other regardless of age.
+ *
+ * Also emits the per-class depth/oldest-pending-age gauges the acceptance criteria for #3 asks
+ * for ("metrics expose depth, throughput, lag and oldest-message-age per class") — throughput/lag
+ * are already covered per-call by queue.claim.bulk_items inside bulk_claim_items() above, tagged
+ * per class here via the job_filter it's called with.
+ */
+function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array {
+    $classes = [MESSAGE_CLASS_BULK_CAMPAIGN, MESSAGE_CLASS_ADVERTISING];
+
+    $depthStmt = $db->prepare(
+        "SELECT bj.message_class, COUNT(*) AS depth, MIN(i.created_at) AS oldest_created_at
+         FROM ellsms_bulk_items i
+         JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
+         WHERE bj.status = 'processing' AND bj.throttle_count IS NULL
+           AND i.status = 'pending' AND (i.next_attempt_at IS NULL OR i.next_attempt_at <= NOW())
+         GROUP BY bj.message_class"
+    );
+    $depthStmt->execute();
+    $depthByClass = array_fill_keys($classes, 0);
+    $oldestByClass = [];
+    foreach ($depthStmt->fetchAll() as $row) {
+        $class = normalize_bulk_message_class($row['message_class']);
+        $depthByClass[$class] = (int)$row['depth'];
+        $oldestByClass[$class] = $row['oldest_created_at'];
+    }
+
+    foreach ($classes as $class) {
+        Metrics::gauge('queue.bulk.depth', $depthByClass[$class], ['message_class' => $class]);
+        $ageSeconds = isset($oldestByClass[$class])
+            ? max(0, time() - strtotime($oldestByClass[$class] . ' UTC'))
+            : 0;
+        Metrics::gauge('queue.bulk.oldest_age_seconds', $ageSeconds, ['message_class' => $class]);
+    }
+
+    $quota = allocate_priority_quota($depthByClass, $totalBudget);
+
+    $items = [];
+    foreach ($classes as $class) {
+        $share = $quota[$class] ?? 0;
+        if ($share <= 0) {
+            continue;
+        }
+        $claimed = bulk_claim_items(
+            $db,
+            "j.status = 'processing' AND j.throttle_count IS NULL AND j.message_class = ?",
+            [$class],
+            $share
+        );
+        if ($claimed) {
+            $items = array_merge($items, $claimed);
+        }
+    }
+
+    return $items;
 }
 
 /**
