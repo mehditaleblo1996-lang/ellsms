@@ -282,17 +282,19 @@ final class SmsPricingTest extends IntegrationTestCase
         $this->assertSame('default_route', $unmatched['selection']);
     }
 
-    public function testOperatorRoutingOnlyAppliesToASingleDestinationNeverABatch(): void
+    public function testASingleCallWithNoDestinationSkipsStraightToDefault(): void
     {
+        // sms_pricing_route_for_sender() resolves exactly ONE route per call and genuinely cannot
+        // guess an operator with no destination to check -- it must skip straight to default. Issue
+        // #8's re-audit fix (sms_pricing_route_groups_for_destinations(), tested in
+        // tests/Integration/SmsPricingRouteGroupsTest.php) means a multi-destination BATCH no longer
+        // calls this function with a null destination the way it used to; this test now documents
+        // the single-call primitive's own contract, which every other caller still builds on.
         $suffix = bin2hex(random_bytes(3));
         $operatorId = $this->makeOperator('oprt_' . $suffix, ['0195']);
         $routeId = $this->makeRoute($this->makeProvider('prov_' . $suffix), 'route_' . $suffix);
         $this->assignOperatorRoute($operatorId, $routeId);
 
-        // No destination given at all -- exactly what a multi-destination batch call passes
-        // (sms_pricing_resolve_batch() resolves the route ONCE for the whole batch, STEP 18's
-        // explicit no-N+1 design -- see that function's own docblock). Must skip straight to default,
-        // never guess an operator from a batch with no single destination to check.
         $resolved = sms_pricing_route_for_sender('6000', 'promotional');
         $this->assertSame('default_route', $resolved['selection']);
         $this->assertNotSame($routeId, (int)$resolved['route_id']);

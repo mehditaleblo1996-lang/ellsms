@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = bulk_cancel_message($itemId, $me, $reason);
         flash($result['ok'] && $result['cancelled'] ? 'success' : 'error',
             $result['ok'] && $result['cancelled'] ? "پیام #{$itemId} لغو شد." : 'این پیام قابل لغو نیست (ارسال‌شده یا یافت نشد).');
-        redirect('/queue-cancellation.php');
+        redirect('/admin/queue/cancellation');
     }
 
     if ($do === 'cancel_provider') {
@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = bulk_cancel_by_provider($providerKey, $me, $reason);
             flash('success', "{$result['jobs_cancelled']} کمپین ({$result['items_cancelled']} پیام) برای «{$providerKey}» لغو شد.");
         }
-        redirect('/queue-cancellation.php');
+        redirect('/admin/queue/cancellation');
     }
 }
 

@@ -172,12 +172,118 @@ function gateway_extract_positional_result(array $section,mixed $decoded,array $
 
 function gateway_transport_enabled():bool{return (string)env('SMS_GATEWAY_TRANSPORT','0')==='1';}
 function gateway_connector_capability_for_sender(string $originator,?string $messageType):array{if(!gateway_transport_enabled())return ['ok'=>false,'per_recipient_content'=>false];$route=sms_pricing_route_for_sender($originator,sms_pricing_normalize_message_type($messageType));$resolved=gateway_for_route($route);if(!$resolved['ok'])return ['ok'=>false,'per_recipient_content'=>false];return ['ok'=>true,'per_recipient_content'=>gateway_connector_supports_per_recipient_content($resolved['connector'])];}
-function gateway_send_for_dispatch(array $user,string $originator,array $destinations,string $content,?string $messageType=null,?array $perDestinationContent=null,?array $perDestinationIdempotencyKeys=null):?array{if(!gateway_transport_enabled())return null;$singleDestination=count($destinations)===1?(string)reset($destinations):null;$route=sms_pricing_route_for_sender($originator,sms_pricing_normalize_message_type($messageType),$singleDestination);$resolved=gateway_for_route($route);if(!$resolved['ok']){Logger::warning('gateway.dispatch.falling_back_to_legacy',['reason'=>$resolved['reason'],'route_id'=>$route['route_id']??null,'user_id'=>$user['id']??null]);Metrics::increment('gateway_dispatch_fallback',1,['reason'=>$resolved['reason']]);return null;}$connector=$resolved['connector'];$result=gateway_send($connector,['sender'=>$originator,'recipients'=>array_values(array_map('strval',$destinations)),'message'=>$content,'messages'=>$perDestinationContent,'idempotency_keys'=>$perDestinationIdempotencyKeys,'message_type'=>sms_pricing_normalize_message_type($messageType),'sender_user_id'=>(int)($user['id']??0),'organization_id'=>$user['organization_id']??'','route_code'=>(string)($route['route_code']??'')],isset($route['route_id'])?(int)$route['route_id']:null);$result['gateway_id']=$connector['gateway_id'];$result['gateway_config_version']=$connector['config_version'];$result['route_id']=isset($route['route_id'])?(int)$route['route_id']:null;
-// Issue #10: reachability, not per-message business outcome -- $sent!==[] means the gateway was
-// reachable regardless of how many destinations it accepted; $retryable (only true when nothing at
-// all was sent AND the failure was network/5xx-classified) means it genuinely was not.
-if($result['sent']!==[]){provider_health_record_success(provider_health_key_for_gateway((int)$connector['gateway_id']));}elseif($result['retryable']??false){provider_health_record_failure(provider_health_key_for_gateway((int)$connector['gateway_id']),(string)($result['error_class']??$result['error']??'unknown'));}
-return $result;}
+/**
+ * Sends one already-resolved route's share of a (possibly multi-group) dispatch. Identical to what
+ * gateway_send_for_dispatch() did inline before issue #8: resolve the route's connector, call
+ * gateway_send(), stamp gateway/route identity onto the result, record provider health. Returns
+ * null exactly when the route has no usable connector, so a caller composing several groups can
+ * detect "this group cannot go through the gateway" without having partially sent anything yet.
+ */
+function gateway_send_for_dispatch_group(array $user, string $originator, array $destinations, string $content, string $normalizedType, ?array $perDestinationContent, ?array $perDestinationIdempotencyKeys, ?array $route): ?array {
+    $resolved = gateway_for_route($route);
+    if (!$resolved['ok']) {
+        Logger::warning('gateway.dispatch.falling_back_to_legacy', ['reason' => $resolved['reason'], 'route_id' => $route['route_id'] ?? null, 'user_id' => $user['id'] ?? null]);
+        Metrics::increment('gateway_dispatch_fallback', 1, ['reason' => $resolved['reason']]);
+        return null;
+    }
+    $connector = $resolved['connector'];
+    $result = gateway_send(
+        $connector,
+        [
+            'sender' => $originator, 'recipients' => array_values(array_map('strval', $destinations)), 'message' => $content,
+            'messages' => $perDestinationContent, 'idempotency_keys' => $perDestinationIdempotencyKeys,
+            'message_type' => $normalizedType, 'sender_user_id' => (int)($user['id'] ?? 0),
+            'organization_id' => $user['organization_id'] ?? '', 'route_code' => (string)($route['route_code'] ?? ''),
+        ],
+        isset($route['route_id']) ? (int)$route['route_id'] : null
+    );
+    $result['gateway_id'] = $connector['gateway_id'];
+    $result['gateway_config_version'] = $connector['config_version'];
+    $result['route_id'] = isset($route['route_id']) ? (int)$route['route_id'] : null;
+
+    // Issue #10: reachability, not per-message business outcome -- $sent!==[] means the gateway was
+    // reachable regardless of how many destinations it accepted; $retryable (only true when nothing
+    // at all was sent AND the failure was network/5xx-classified) means it genuinely was not.
+    if ($result['sent'] !== []) {
+        provider_health_record_success(provider_health_key_for_gateway((int)$connector['gateway_id']));
+    } elseif ($result['retryable'] ?? false) {
+        provider_health_record_failure(provider_health_key_for_gateway((int)$connector['gateway_id']), (string)($result['error_class'] ?? $result['error'] ?? 'unknown'));
+    }
+    return $result;
+}
+
+/**
+ * Issue #8: a multi-destination batch (bulk campaigns, mainly) is partitioned into homogeneous
+ * route groups BEFORE dispatch, using the exact same sender > destination-operator > default
+ * precedence a single-destination send already used — see
+ * sms_pricing_route_groups_for_destinations(). Each group is then sent through its own resolved
+ * route via gateway_send_for_dispatch_group(), and the per-destination results (sent, provider
+ * message ids, resolved operator, AND now resolved route/gateway) are merged back into one result
+ * shaped exactly like a single-route call always returned, so every existing caller
+ * (dispatch_gateway_result(), bulk_send_group()) needs no changes beyond reading the new
+ * $result['route_ids']/$result['gateway_ids'] per-destination maps where they used to assume one
+ * route for the whole call.
+ *
+ * All-or-nothing at the CONNECTOR-RESOLUTION step, exactly like the single-group case always was:
+ * if any group's route has no usable connector, the entire call returns null and every destination
+ * falls back to the legacy transport together -- never a silent partial split where some
+ * destinations quietly get treated as "gateway rejected" when they were actually never attempted.
+ */
+function gateway_send_for_dispatch(array $user,string $originator,array $destinations,string $content,?string $messageType=null,?array $perDestinationContent=null,?array $perDestinationIdempotencyKeys=null):?array{
+    if(!gateway_transport_enabled())return null;
+    $normalizedType = sms_pricing_normalize_message_type($messageType);
+    $destinations = array_values(array_map('strval', $destinations));
+
+    $groups = sms_pricing_route_groups_for_destinations($originator, $normalizedType, $destinations);
+    if (count($groups) <= 1) {
+        $route = $groups[0]['route'] ?? null;
+        return gateway_send_for_dispatch_group($user, $originator, $destinations, $content, $normalizedType, $perDestinationContent, $perDestinationIdempotencyKeys, $route);
+    }
+
+    $groupResults = [];
+    foreach ($groups as $group) {
+        $groupSet = array_flip($group['destinations']);
+        $groupContent = $perDestinationContent !== null ? array_intersect_key($perDestinationContent, $groupSet) : null;
+        $groupKeys = $perDestinationIdempotencyKeys !== null ? array_intersect_key($perDestinationIdempotencyKeys, $groupSet) : null;
+        $result = gateway_send_for_dispatch_group($user, $originator, $group['destinations'], $content, $normalizedType, $groupContent, $groupKeys, $group['route']);
+        if ($result === null) {
+            // One group could not resolve a connector -- fall back to legacy for the WHOLE batch,
+            // never a silent partial gateway/legacy split (see docblock above).
+            return null;
+        }
+        $groupResults[] = ['destinations' => $group['destinations'], 'result' => $result];
+    }
+
+    $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = [];
+    $anyOk = false; $lastError = null; $lastErrorClass = null; $lastHttp = 0; $retryable = false;
+    $lastGatewayId = null; $lastRouteId = null; $lastConfigVersion = null;
+    foreach ($groupResults as $g) {
+        $result = $g['result'];
+        $anyOk = $anyOk || $result['ok'];
+        foreach ($result['sent'] as $destination) { $sent[] = $destination; }
+        foreach ($result['message_ids'] as $destination => $id) { $messageIds[$destination] = $id; }
+        foreach ($result['operators'] as $destination => $operatorId) { $operators[$destination] = $operatorId; }
+        foreach ($g['destinations'] as $destination) {
+            $routeIds[$destination] = $result['route_id'];
+            $gatewayIds[$destination] = $result['gateway_id'];
+        }
+        $lastGatewayId = $result['gateway_id'];
+        $lastRouteId = $result['route_id'];
+        $lastConfigVersion = $result['gateway_config_version'];
+        if (!$result['ok']) {
+            $lastError = $result['error']; $lastErrorClass = $result['error_class'];
+            $lastHttp = $result['http']; $retryable = $retryable || ($result['retryable'] ?? false);
+        }
+    }
+
+    return [
+        'ok' => $anyOk, 'sent' => $sent, 'message_ids' => $messageIds, 'operators' => $operators,
+        'route_ids' => $routeIds, 'gateway_ids' => $gatewayIds,
+        'error' => $anyOk ? null : $lastError, 'error_class' => $anyOk ? null : $lastErrorClass,
+        'http' => $lastHttp, 'retryable' => $anyOk ? false : $retryable, 'groups' => count($groupResults),
+        'gateway_id' => $lastGatewayId, 'gateway_config_version' => $lastConfigVersion, 'route_id' => $lastRouteId,
+    ];
+}
 
 function gateway_endpoint_allowed(string $url):array{
     $refuse=static fn(string $reason):array=>['ok'=>false,'reason'=>$reason,'resolve'=>[],'addresses'=>[]];$parts=parse_url($url);if($parts===false||empty($parts['host']))return $refuse('endpoint_invalid');$scheme=strtolower((string)($parts['scheme']??''));if(!in_array($scheme,['http','https'],true))return $refuse('endpoint_scheme_not_allowed');$host=(string)$parts['host'];$port=isset($parts['port'])?(int)$parts['port']:($scheme==='https'?443:80);$production=app_env()==='production';if($production&&$scheme!=='https')return $refuse('endpoint_requires_https');foreach(gateway_internal_host_allowlist() as $allowed)if(strcasecmp($host,$allowed)===0)return ['ok'=>true,'reason'=>'','resolve'=>[],'addresses'=>[]];$addresses=gateway_resolve_host($host);if($addresses===[])return $refuse('endpoint_unresolvable');if($production||gateway_enforce_address_rules())foreach($addresses as $address)if(!gateway_address_is_public($address))return $refuse('endpoint_private_address_not_allowed');return ['ok'=>true,'reason'=>'','resolve'=>[$host.':'.$port.':'.$addresses[0]],'addresses'=>$addresses];

@@ -432,6 +432,55 @@ function sms_pricing_route_for_sender(string $sender, string $messageType, ?stri
     return is_array($route) ? $route : null;
 }
 
+/**
+ * Same precedence as sms_pricing_route_for_sender() (sender assignment -> destination-operator
+ * route -> default), but for an entire multi-destination batch, partitioned into homogeneous
+ * route groups instead of collapsing straight to sender/default the way a single call with
+ * $destinationMsisdn = null does.
+ *
+ * A sender-specific route does not depend on the destination at all, so when one exists every
+ * destination in the batch shares it — resolved with exactly the SAME ONE cached lookup
+ * sms_pricing_route_for_sender() already does for a single destination, not a per-destination
+ * check. Only when the sender has NO dedicated route does a destination's own operator matter, and
+ * even then sms_resolve_operator()/sms_pricing_route_for_sender() are both TTL-cached per
+ * (sender, message type, operator) — a campaign spanning thousands of recipients across Iran's
+ * handful of real mobile operators costs at most one route lookup PER DISTINCT OPERATOR seen, never
+ * one per recipient (issue #8's "no N+1 DB queries" requirement).
+ *
+ * No provider health, price, or load signal ever influences which group a destination lands in --
+ * this is pure precedence routing, identical in shape to the single-destination case.
+ *
+ * @param list<string> $destinations
+ * @return list<array{route:?array,destinations:list<string>}> one entry per distinct resolved route
+ *         (a null route means "no route resolved -- caller's existing no-route/legacy fallback
+ *         applies to these destinations")
+ */
+function sms_pricing_route_groups_for_destinations(string $sender, string $messageType, array $destinations): array {
+    if ($destinations === []) {
+        return [];
+    }
+
+    // The sender-route case never depends on the destination, so resolving it once first with NO
+    // destination is exactly as cheap as today's single-destination call, and short-circuits every
+    // destination into one group without ever touching operator resolution.
+    $senderOnly = sms_pricing_route_for_sender($sender, $messageType, null);
+    if ($senderOnly !== null && ($senderOnly['selection'] ?? null) === 'sender_assignment') {
+        return [['route' => $senderOnly, 'destinations' => array_values($destinations)]];
+    }
+
+    $groups = [];
+    foreach ($destinations as $destination) {
+        $route = sms_pricing_route_for_sender($sender, $messageType, $destination);
+        $key = $route['route_id'] ?? 'none';
+        if (!isset($groups[$key])) {
+            $groups[$key] = ['route' => $route, 'destinations' => []];
+        }
+        $groups[$key]['destinations'][] = $destination;
+    }
+
+    return array_values($groups);
+}
+
 /* ==========================================================================
    Price resolution (STEP 10/11)
    ========================================================================== */
