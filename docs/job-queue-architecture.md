@@ -323,6 +323,28 @@ Full methodology and numbers: `docs/observability-and-performance.md` and
   `docs/phase-9-final-report.md` §24-25 — no measured bottleneck this document's design has, that a
   different queue technology would fix.
 
+## Durability audit (issue #6)
+
+Acceptance criteria and their evidence, audited 2026-08-31:
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Durable queue semantics documented and tested | Met | This document; `tests/Integration/BulkItemConcurrencyTest.php` |
+| Worker crash/restart does not silently lose accepted messages | Met | `tests/Integration/BulkWorkerCrashRecoveryTest.php` (new) — a real `kill -9` on a real worker subprocess mid-dispatch, proving the claimed row survives and a fresh worker completes it. Previously this was only a one-off manual run (`docs/phase-9-final-report.md`), not a repeatable automated test — same gap `tests/Integration/StatusWorkerTest.php` already closed for the *other* worker (delivery-status polling). |
+| Poison/slow messages do not block the main queue | Met | Structural, not just tested: the claim query's `WHERE status='pending'` means a row that reaches a terminal `'failed'` state (poison, max attempts exhausted) simply stops matching future claims — it cannot block anything by construction. The provider-batch-level version of this (one bad recipient inside a shared HTTP batch) is covered by the pre-existing `tests/Integration/BulkProviderBatchingTest::testAPartialBatchFailureSettlesOnlyTheAffectedRecipients`. |
+| Separate paths for normal / ambiguous-reconciliation / terminal-manual-review work | **Deferred to issue #29** | The "ambiguous/reconciliation" half of this is explicitly issue #29's own scope ("UNKNOWN/reconciliation path for ambiguous timeouts") — not duplicated here. The "terminal" half already exists: `status='failed'` + `error` column per item, `job.failed_permanent` structured log line, now also a `queue.terminal_failed` counter (tagged `job_type`+`reason`) added in this pass for every terminal-failure site (bulk item, schedule, autoreply) — see below. No dedicated "manual review" UI queue exists yet; `reports.php`/`cron/jobs-status.php` are today's visibility surfaces. |
+| Queue state transitions atomic/idempotent where required | Met | Pre-existing (Phase 4): every claim is a single atomic `UPDATE`, every financial side effect goes through the wallet ledger's idempotency primitives (`docs/wallet-architecture.md`). Unchanged by this pass. |
+| Metrics expose queue depth, oldest age, processing rate and failures | Met | Depth/oldest-age: `cron/jobs-status.php`, plus issue #3's per-class `queue.bulk.depth`/`queue.bulk.oldest_age_seconds` gauges. Processing rate: `queue.claim.bulk_items` timing. Failures: `bulk.provider_batch.failure`, and the new `queue.terminal_failed` counter closing the one gap found — a terminal failure was already logged (`job.failed_permanent`) but not previously counted through the `Metrics::` façade the same way successes are. |
+| Crash/restart/concurrency tests pass | Met | `tests/Integration/BulkWorkerCrashRecoveryTest.php` (new, crash), `BulkItemConcurrencyTest.php` (pre-existing, concurrency) — both pass. |
+
+**A genuine architectural tradeoff, stated plainly, not hidden:** this is an **at-least-once**
+delivery model, not exactly-once. The crash-recovery test above proves messages are never *lost*,
+but a crash landing in the narrow window after the provider actually received a request and before
+the local worker recorded that outcome DOES cause one real, visible retry (`attempt_count` goes to
+2, a second real provider request happens). That is a deliberate, accepted tradeoff most SMS gateways
+themselves don't offer better than either — "no silent loss" is the guarantee this codebase makes,
+not "provably never re-sent."
+
 ## Message classes and priority isolation (issue #3)
 
 Six agreed message classes, highest priority first: **OTP > Transactional > Notification >

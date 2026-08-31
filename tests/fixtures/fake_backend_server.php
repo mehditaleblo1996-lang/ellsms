@@ -36,6 +36,17 @@
  *                                   the same seeded items, without relying on any state persisting
  *                                   between requests (PHP's built-in server re-executes this script
  *                                   fresh per request; nothing here assumes otherwise)
+ *   FAKE_BACKEND_CAPTURE_FILE       when set, appends one JSON line per received request (path,
+ *                                   destinations, timestamp) BEFORE the simulated latency delay —
+ *                                   so a request killed mid-flight (a crash-recovery test's SIGKILL
+ *                                   landing after the provider "received" it but before the local
+ *                                   worker got the response) still shows up here even though the
+ *                                   worker process never saw a reply. Same pattern as
+ *                                   tests/fixtures/fake_webhook_receiver.php's WEBHOOK_CAPTURE_FILE.
+ *                                   Lets a crash-recovery test tell "the provider was asked to send
+ *                                   this destination N times" (silent duplication, if N>1 with no
+ *                                   crash to explain it) apart from "never asked at all" (silent
+ *                                   loss) — issue #6.
  *
  * A success response mirrors the request's own destinations/originator/content back in the shape
  * the real backend returns, so dispatch_message_raw()'s sentCount/total accounting works exactly
@@ -79,6 +90,16 @@ if (preg_match('#^/status/(\d{3})(?:/.*)?$#', $path, $m)) {
 /* ---------- Phase 9 load-test mode (catch-all, including the real /api/messages/send path) ---------- */
 
 $rawBody = file_get_contents('php://input') ?: '';
+
+$captureFile = getenv('FAKE_BACKEND_CAPTURE_FILE');
+if ($captureFile !== false && $captureFile !== '') {
+    $capturedBody = json_decode($rawBody, true) ?: [];
+    file_put_contents($captureFile, json_encode([
+        'path'         => $path,
+        'destinations' => is_array($capturedBody['destinations'] ?? null) ? $capturedBody['destinations'] : [],
+        'received_at'  => microtime(true),
+    ]) . "\n", FILE_APPEND | LOCK_EX);
+}
 
 $seed = (int)(getenv('FAKE_BACKEND_SEED') !== false ? getenv('FAKE_BACKEND_SEED') : 0);
 mt_srand($seed + crc32($path . '|' . $rawBody));
