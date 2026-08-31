@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/Backend/report_dimension_summary.php';
+require_once __DIR__ . '/../app/Reports/MessageDetail.php';
 $me = require_login();
 $pageTitle = 'گزارش ارسال حجیم';
 $active = 'reports_bulk';
@@ -83,6 +85,27 @@ $summarySt->execute($params);
 $S = $summarySt->fetch() ?: ['total'=>0,'ok_count'=>0,'delivered_count'=>0,'failed_count'=>0,'pending_count'=>0];
 $cnt = (int)$S['total'];
 
+// Tenant/type/provider/sender/operator breakdown from the daily dimensioned aggregate (issue #12) --
+// never a live scan. Only shown when no free-text/destination/user drill-down filter is active,
+// since (like the undimensioned daily cache before it) the aggregate deliberately does not carry
+// those as dimensions -- precomputing arbitrary text search would recreate the scan problem it exists
+// to avoid.
+$dimensionBreakdown = [];
+if ($dest === '' && $text === '' && $userId === 0) {
+    $dimFilters = [];
+    if (!is_admin()) {
+        $orgId = (int)($me['organization_id'] ?? 0);
+        $dimFilters['organization_id'] = $orgId > 0 ? $orgId : 0;
+    }
+    if ($status !== '' && in_array($status, ['sent','failed'], true)) {
+        $dimFilters['status'] = $status;
+    }
+    $dimensionBreakdown = report_dimension_summary_query($from, $to, $dimFilters);
+    if ($dimensionBreakdown !== []) {
+        $names = report_resolve_names([], array_column($dimensionBreakdown, 'route_id'), array_column($dimensionBreakdown, 'operator_id'));
+    }
+}
+
 $beforeId = isset($_GET['before_bulk_id']) && $_GET['before_bulk_id'] !== '' ? (int)$_GET['before_bulk_id'] : null;
 $afterId  = isset($_GET['after_bulk_id']) && $_GET['after_bulk_id'] !== '' ? (int)$_GET['after_bulk_id'] : null;
 $page = max(1, (int)($_GET['page'] ?? 1));
@@ -147,6 +170,26 @@ require __DIR__ . '/../app/views/header.php';
   <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['failed_count'])) ?></div></div>
   <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['delivered_count'])) ?></div></div>
 </div>
+
+<?php if ($dimensionBreakdown !== []): ?>
+<div class="card" style="margin-top:14px">
+  <h2>تفکیک بر اساس نوع پیام، ارائه‌دهنده و اپراتور</h2>
+  <p class="muted">داده‌ی از پیش تجمیع‌شده‌ی روزانه (issue #12) — بدون اسکن مستقیم پیام‌ها.</p>
+  <div class="table-wrap"><table>
+    <tr><th>نوع پیام</th><th>خط ارسال‌کننده</th><th>ارائه‌دهنده</th><th>اپراتور مقصد</th><th>وضعیت</th><th>تعداد</th></tr>
+    <?php foreach ($dimensionBreakdown as $d): ?>
+    <tr>
+      <td><?= e((string)$d['message_type']) ?></td>
+      <td class="ltr"><?= e((string)$d['sender_number']) ?></td>
+      <td class="ltr"><?= (int)$d['route_id'] === 0 ? 'قدیمی (Legacy)' : e($names['routes'][(int)$d['route_id']] ?? ('#' . (int)$d['route_id'])) ?></td>
+      <td><?= (int)$d['operator_id'] === 0 ? 'نامشخص' : e($names['operators'][(int)$d['operator_id']] ?? ('#' . (int)$d['operator_id'])) ?></td>
+      <td><span class="badge badge-<?= $statusClass[$d['status']] ?? 'pending' ?>"><?= e($statusFa[$d['status']] ?? (string)$d['status']) ?></span></td>
+      <td class="ltr"><?= to_persian_digits(number_format((int)$d['message_count'])) ?></td>
+    </tr>
+    <?php endforeach; ?>
+  </table></div>
+</div>
+<?php endif; ?>
 
 <div class="card" style="margin-top:22px">
   <form method="get" class="toolbar">
