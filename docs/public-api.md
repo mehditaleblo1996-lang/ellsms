@@ -106,8 +106,13 @@ forwarded-for values from an untrusted source has no effect.
 
 ## Idempotency
 
-Required (not merely supported) for `POST /messages` and `POST /bulk-jobs` — both can have real
-financial/messaging side effects if executed twice.
+Two related but distinct features share the same underlying mechanism (a real database-level
+`UNIQUE` lock, not an in-process cache — it holds correctly across multiple app server
+processes/containers):
+
+### Required — `POST /bulk-jobs` (and `POST /messages` via the header)
+
+Both can have real financial/messaging side effects if executed twice.
 
 ```
 Idempotency-Key: <your-own-unique-string, 1-200 chars, [A-Za-z0-9_.:-]>
@@ -119,12 +124,39 @@ Idempotency-Key: <your-own-unique-string, 1-200 chars, [A-Za-z0-9_.:-]>
 - A second, genuinely concurrent request with the same key while the first is still running → the
   server waits briefly for the first to finish and replays its result; if it doesn't finish quickly
   enough, `409 conflict` asking the caller to retry.
-- Missing the header on an endpoint that requires it → `400 invalid_request`.
+- Missing the header on `POST /bulk-jobs` → `400 invalid_request`.
 - Idempotency records are retained for `API_IDEMPOTENCY_TTL_HOURS` (default 48) — see
   `cron/idempotency-prune.php`. Design your retry window accordingly.
 
-This is enforced by a real database-level lock (a `UNIQUE` constraint), not an in-process cache — it
-holds correctly across multiple app server processes/containers.
+### Optional — `client_message_id` on `POST /messages`
+
+Unlike `POST /bulk-jobs`, a single message is often genuinely fire-and-forget (an OTP, a one-off
+notification) where forcing every caller to mint an idempotency key adds friction for no benefit.
+`client_message_id` is **optional**:
+
+```
+POST /api/v1/messages
+{"destinations": ["09120000000"], "content": "...", "client_message_id": "your-own-id"}
+```
+
+or equivalently, the same `Idempotency-Key` header the required feature above uses — both spellings
+are accepted and behave identically; use whichever fits your integration.
+
+- **Not supplied** → an ordinary message is sent every time, never deduplicated. This is the
+  default, and does not require any change to existing integrations.
+- **Supplied, same tenant + same value, same request body, within 24 hours** → the original message
+  is not sent again; the original response is replayed.
+- **Supplied, same tenant + same value, a *different* request body, within 24 hours** →
+  `409 conflict`.
+- **Different tenants may reuse the exact same `client_message_id`** — the uniqueness scope is
+  (tenant, `client_message_id`), never global.
+- **After 24 hours**, the same `client_message_id` is treated as brand new — reusing it (even with
+  identical content) sends a fresh message rather than replaying the old one. This 24-hour window is
+  precise and independent of `API_IDEMPOTENCY_TTL_HOURS`/the prune cron above (which governs the
+  *required* feature's much longer, operator-configurable retention) — see
+  `app/Idempotency.php`'s `IDEMPOTENCY_CLIENT_MESSAGE_ID_WINDOW_HOURS`.
+- To intentionally resend identical text as a genuinely new message, use a new `client_message_id`
+  (or none at all).
 
 ## Errors
 

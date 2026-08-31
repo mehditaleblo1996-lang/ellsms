@@ -15,11 +15,36 @@ declare(strict_types=1);
 
 const API_MAX_MESSAGE_DESTINATIONS = 100;
 
-/** Builds+stores+emits a response for a CLAIMED idempotency lock — the one path every outcome (validation failure, business rejection, or real success) below funnels through, so the lock is always resolved. */
-function api_messages_finish(int $lockId, int $status, array $body, ?string $resourceId = null): void {
+/**
+ * Builds+emits a response, and — only when a $lockId was actually claimed — resolves that
+ * idempotency lock. $lockId is null (issue #7) when the caller supplied no client_message_id /
+ * Idempotency-Key at all: an ordinary, non-deduplicated send has no lock to resolve, and skipping
+ * this is exactly what "missing client_message_id remains valid and creates a normal new message"
+ * means in practice.
+ */
+function api_messages_finish(?int $lockId, int $status, array $body, ?string $resourceId = null): void {
     $json = json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    idempotency_complete($lockId, $status, $json, 'api_message', $resourceId);
+    if ($lockId !== null) {
+        idempotency_complete($lockId, $status, $json, 'api_message', $resourceId);
+    }
     ApiResponse::raw($status, $json);
+}
+
+/**
+ * Issue #7: client_message_id is OPTIONAL and may arrive either the way every other idempotent
+ * endpoint already accepts it (the `Idempotency-Key` header — checked first, so an existing
+ * integration using that convention needs no change) or as a `client_message_id` field in the
+ * request body (the name this issue's agreed contract actually uses). Both funnel into the exact
+ * same underlying mechanism (app/Idempotency.php) — one concept, two accepted spellings, not two
+ * parallel dedup systems.
+ */
+function api_messages_resolve_client_message_id(array $body): ?string {
+    $header = ApiRequest::idempotencyKey();
+    if ($header !== null) {
+        return $header;
+    }
+    $fromBody = $body['client_message_id'] ?? null;
+    return is_string($fromBody) ? idempotency_normalize_key($fromBody) : null;
 }
 
 function api_messages_error_body(string $code, string $message, array $fields = []): array {
@@ -59,27 +84,31 @@ function api_handle_messages_send(array $ctx): void {
         return;
     }
 
-    $idempotencyKey = ApiRequest::idempotencyKey();
-    if ($idempotencyKey === null) {
-        ApiResponse::error(400, ApiResponse::CODE_INVALID_REQUEST, 'A valid Idempotency-Key header is required for this endpoint.');
-        return;
+    // Issue #7: OPTIONAL (unlike bulk-jobs' still-required Idempotency-Key — that endpoint is out of
+    // this issue's scope and unchanged). No key at all -> $lockId stays null and this send simply
+    // proceeds as an ordinary, non-deduplicated message, exactly like the web panel's own Send page.
+    $clientMessageId = api_messages_resolve_client_message_id($body);
+    $lockId = null;
+    if ($clientMessageId !== null) {
+        $requestHash = idempotency_request_hash($ctx['raw']);
+        $lock = idempotency_begin(
+            $principal['organization_id'], $principal['api_key_id'], 'POST /api/v1/messages',
+            $clientMessageId, $requestHash, IDEMPOTENCY_CLIENT_MESSAGE_ID_WINDOW_HOURS
+        );
+        if ($lock['action'] === 'replay') {
+            ApiResponse::raw($lock['status'], $lock['body']);
+            return;
+        }
+        if ($lock['action'] === 'conflict') {
+            ApiResponse::error(409, ApiResponse::CODE_CONFLICT, 'This client_message_id was already used with a different request body within the last 24 hours.');
+            return;
+        }
+        if ($lock['action'] === 'in_progress') {
+            ApiResponse::error(409, ApiResponse::CODE_CONFLICT, 'A request with this client_message_id is still being processed. Retry shortly.');
+            return;
+        }
+        $lockId = $lock['id'];
     }
-
-    $requestHash = idempotency_request_hash($ctx['raw']);
-    $lock = idempotency_begin($principal['organization_id'], $principal['api_key_id'], 'POST /api/v1/messages', $idempotencyKey, $requestHash);
-    if ($lock['action'] === 'replay') {
-        ApiResponse::raw($lock['status'], $lock['body']);
-        return;
-    }
-    if ($lock['action'] === 'conflict') {
-        ApiResponse::error(409, ApiResponse::CODE_CONFLICT, 'This Idempotency-Key was already used with a different request body.');
-        return;
-    }
-    if ($lock['action'] === 'in_progress') {
-        ApiResponse::error(409, ApiResponse::CODE_CONFLICT, 'A request with this Idempotency-Key is still being processed. Retry shortly.');
-        return;
-    }
-    $lockId = $lock['id'];
 
     if ($principal['organization_status'] === 'suspended') {
         api_messages_finish($lockId, 403, api_messages_error_body(ApiResponse::CODE_FORBIDDEN, 'This organization is suspended — sending and new financial commitments are blocked until it is reinstated.'));
@@ -120,10 +149,12 @@ function api_handle_messages_send(array $ctx): void {
     }
 
     // walletRefType/RefId tie this send's own reservation idempotency (app/wallet.php) to the SAME
-    // Idempotency-Key already guarding this call at the API layer — belt-and-suspenders, not the
-    // primary guard (the ellsms_idempotency_keys UNIQUE constraint above already made this whole
-    // handler execute at most once for this key).
-    [$ok, $info, , $sentCount, $totalCount, $parts] = dispatch_message($user, $originator, $destinations, trim($content), null, 'api_message', $idempotencyKey);
+    // client_message_id already guarding this call above (belt-and-suspenders when one was
+    // supplied — the ellsms_idempotency_keys UNIQUE constraint already made this whole handler
+    // execute at most once for that id). When $clientMessageId is null, dispatch_message() itself
+    // falls back to its own dispatch_direct_send_dedup_key() — the same behavior public/send.php
+    // gets for an ordinary, non-deduplicated send.
+    [$ok, $info, , $sentCount, $totalCount, $parts] = dispatch_message($user, $originator, $destinations, trim($content), null, 'api_message', $clientMessageId);
 
     $status = $ok ? ($sentCount === $totalCount ? 'sent' : 'partially_sent') : 'failed';
     db()->prepare(
@@ -133,7 +164,7 @@ function api_handle_messages_send(array $ctx): void {
     )->execute([
         $principal['organization_id'], $principal['api_key_id'], $user['id'], $originator,
         json_encode($destinations), trim($content), $status, $sentCount, $totalCount, $parts,
-        $ok ? null : 'send_failed', $idempotencyKey,
+        $ok ? null : 'send_failed', $clientMessageId,
     ]);
     $resourceId = (string)db()->lastInsertId();
 
