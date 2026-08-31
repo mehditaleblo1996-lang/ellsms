@@ -33,6 +33,7 @@ require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/jobqueue.php';
 require_once __DIR__ . '/MessageClass.php';
 require_once __DIR__ . '/QueueFairness.php';
+require_once __DIR__ . '/Slo.php';
 require_once __DIR__ . '/tenant.php';
 require_once __DIR__ . '/rbac.php';
 // Platform-admin support impersonation (docs/admin-impersonation.md). Loaded after the identity,
