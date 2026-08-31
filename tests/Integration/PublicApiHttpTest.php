@@ -362,10 +362,60 @@ final class PublicApiHttpTest extends TestCase
 
     /* ---------- Idempotency over real HTTP (STEP 17/18) ---------- */
 
-    public function testMessagesSendRequiresIdempotencyKeyHeader(): void
+    /**
+     * Issue #7: client_message_id (Idempotency-Key header or client_message_id body field) is
+     * OPTIONAL for this endpoint — a call with neither must proceed as an ordinary, non-deduplicated
+     * send, never a 400. (bulk-jobs' own Idempotency-Key requirement is unrelated to this issue and
+     * unchanged.)
+     */
+    public function testMessagesSendWithNoClientMessageIdSendsNormallyAndIsNeverDeduplicated(): void
     {
-        $r = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, json_encode(['destinations' => ['09120000000'], 'content' => 'hi']));
-        $this->assertSame(400, $r['code']);
+        // This class's API_BASE_URL is deliberately unreachable (setUpBeforeClass) — every send
+        // here fails at the transport level, exactly like testMessagesSendIsIdempotentAcrossRepeatedRealRequests
+        // below already relies on. That's irrelevant to what THIS test checks: whether the endpoint
+        // accepts the call at all (never 400) and whether it creates one ellsms_api_messages row
+        // PER CALL when there is no dedup key to collapse them — a failed send still writes a row.
+        $content = 'no dedup key ' . bin2hex(random_bytes(4));
+        $body = json_encode(['destinations' => ['09120000000'], 'content' => $content]);
+        $first = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, $body);
+        $second = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, $body);
+
+        $this->assertNotSame(400, $first['code'], 'missing client_message_id must not be rejected');
+        $this->assertNotSame(400, $second['code']);
+
+        $count = self::$db->query("SELECT COUNT(*) c FROM ellsms_api_messages WHERE content = " . self::$db->quote($content))->fetch()['c'];
+        $this->assertSame('2', (string)$count, 'two calls with no client_message_id at all must each create their own message row, never be deduplicated against each other');
+    }
+
+    public function testMessagesSendClientMessageIdBodyFieldDeduplicatesTheSameWayTheHeaderDoes(): void
+    {
+        $clientMessageId = 'cmid-' . bin2hex(random_bytes(6));
+        $body = json_encode(['destinations' => ['09120000000'], 'content' => 'body field dedup', 'client_message_id' => $clientMessageId]);
+
+        $first = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, $body);
+        $second = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, $body);
+
+        $this->assertSame($first['code'], $second['code']);
+        $this->assertSame($first['body'], $second['body'], 'a replayed client_message_id must return byte-identical output');
+
+        $count = self::$db->query("SELECT COUNT(*) c FROM ellsms_api_messages WHERE idempotency_key = " . self::$db->quote($clientMessageId))->fetch()['c'];
+        $this->assertSame('1', (string)$count, 'exactly one ellsms_api_messages row for two identical calls sharing one client_message_id');
+    }
+
+    public function testMessagesSendDifferentTenantsMayReuseTheSameClientMessageId(): void
+    {
+        $orgBKey = api_key_create(self::$orgB['organization_id'], self::$orgB['owner_id'], 'send', [\ApiScopes::MESSAGES_SEND]);
+        $clientMessageId = 'cross-tenant-' . bin2hex(random_bytes(6));
+        $body = json_encode(['destinations' => ['09120000000'], 'content' => 'shared id, different tenants', 'client_message_id' => $clientMessageId]);
+
+        $fromOrgA = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, $body);
+        $fromOrgB = $this->request('POST', '/api/v1/messages', $orgBKey['raw_key'], $body);
+
+        $this->assertNotSame(409, $fromOrgA['code']);
+        $this->assertNotSame(409, $fromOrgB['code'], 'a different tenant reusing the same client_message_id must not be treated as a duplicate');
+
+        $count = self::$db->query("SELECT COUNT(*) c FROM ellsms_api_messages WHERE idempotency_key = " . self::$db->quote($clientMessageId))->fetch()['c'];
+        $this->assertSame('2', (string)$count, 'each tenant must get its own independent message row despite sharing one client_message_id');
     }
 
     public function testMessagesSendIsIdempotentAcrossRepeatedRealRequests(): void
