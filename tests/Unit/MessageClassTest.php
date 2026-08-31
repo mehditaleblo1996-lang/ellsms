@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -55,7 +56,7 @@ final class MessageClassTest extends TestCase
         $this->assertSame(MESSAGE_CLASS_BULK_CAMPAIGN, normalize_message_class('nonsense'));
     }
 
-    /** @dataProvider pricingTypeMappings */
+    #[DataProvider('pricingTypeMappings')]
     public function testMessageClassFromPricingType(?string $pricingType, string $expectedClass): void
     {
         $this->assertSame($expectedClass, message_class_from_pricing_type($pricingType));

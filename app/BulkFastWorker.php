@@ -126,7 +126,11 @@ function run_bulk_send_pass_fast(): int {
     if ($doneIds) {
         $placeholders = implode(',', array_fill(0, count($doneIds), '?'));
         $db->prepare("UPDATE ellsms_bulk_jobs SET status='done' WHERE id IN ({$placeholders})")->execute($doneIds);
-        $doneRows = $db->prepare("SELECT id, organization_id, title, sent_rows, failed_rows, total_rows FROM ellsms_bulk_jobs WHERE id IN ({$placeholders})");
+        $doneRows = $db->prepare(
+            "SELECT id, organization_id, title, sent_rows, failed_rows, total_rows, message_class,
+                    TIMESTAMPDIFF(SECOND, created_at, NOW()) AS elapsed_seconds
+             FROM ellsms_bulk_jobs WHERE id IN ({$placeholders})"
+        );
         $doneRows->execute($doneIds);
         $doneJobs = $doneRows->fetchAll();
 
@@ -135,6 +139,22 @@ function run_bulk_send_pass_fast(): int {
         }
 
         foreach ($doneJobs as $job) {
+            // SLI (issue #5): the derived-throughput check against the agreed "5,000,000-message
+            // campaign in <=30 minutes" target (app/Slo.php) — independent of the webhook/org
+            // handling below, so it's recorded for every completed job regardless of tenancy.
+            $class = normalize_bulk_message_class($job['message_class']);
+            $elapsedSeconds = (float)$job['elapsed_seconds'];
+            $totalRows = (int)$job['total_rows'];
+            Metrics::timing('bulk.job.completion_seconds', $elapsedSeconds * 1000, [
+                'message_class' => $class, 'total_rows' => $totalRows,
+            ]);
+            $rateBreach = slo_classify_bulk_job_rate($totalRows, $elapsedSeconds);
+            if ($rateBreach !== null) {
+                Metrics::increment('sli.latency_breach', 1, [
+                    'message_class' => $class, 'severity' => $rateBreach, 'total_rows' => $totalRows,
+                ]);
+            }
+
             $organizationId = $job['organization_id'] !== null ? (int)$job['organization_id'] : null;
             if ($organizationId === null) {
                 continue;

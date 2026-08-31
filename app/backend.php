@@ -433,7 +433,17 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     // the FIRST acceptance's price is the one history keeps (Invariant G).
     sms_price_snapshot_record($priced, $organizationId ?: null, $userId, $refType, $refId);
 
+    // SLI (issue #5): this is the "accept -> provider" round trip the OTP/Transactional/
+    // Notification latency targets are defined against (docs/slo-latency-targets.md). $messageType
+    // is the SMS_MESSAGE_TYPES pricing vocabulary, translated to a queue message class purely for
+    // this measurement's tagging — dispatch_message() never queues.
+    $dispatchStartedAt = microtime(true);
     [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations] = dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId);
+    sli_record_dispatch_latency(
+        'dispatch.accept_to_provider_seconds',
+        message_class_from_pricing_type($messageType),
+        microtime(true) - $dispatchStartedAt
+    );
 
     // Settlement reads the ALREADY-ACCEPTED per-recipient prices; it never re-resolves a rate, so an
     // admin price change between acceptance and the gateway's reply cannot alter what this send
@@ -623,7 +633,11 @@ function run_due_schedules(): int {
     // has expired — a crashed worker's claim becomes reclaimable here automatically, no separate
     // recovery step required for the common case (Invariant D).
     $claimStartedAt = microtime(true);
-    $due = $db->query('SELECT * FROM ellsms_schedule WHERE ' . schedule_due_condition_sql() . '
+    // due_delay_seconds computed in SQL (TIMESTAMPDIFF against the DB's own NOW()), not in PHP via
+    // strtotime() — matching cron/jobs-status.php's established oldest-pending-age pattern, and
+    // avoiding any PHP/MySQL session timezone mismatch a client-side date parse would risk.
+    $due = $db->query('SELECT *, TIMESTAMPDIFF(SECOND, COALESCE(next_attempt_at, run_at), NOW()) AS due_delay_seconds
+                       FROM ellsms_schedule WHERE ' . schedule_due_condition_sql() . '
                        ORDER BY run_at ASC LIMIT 20')->fetchAll();
     Metrics::timing('queue.claim.schedule_lookup', (microtime(true) - $claimStartedAt) * 1000, ['found' => count($due)]);
     $n = 0;
@@ -712,6 +726,18 @@ function run_due_schedules(): int {
                 // is an ordinary user-composed message, and no schedule field states otherwise.
                 // Scheduled occurrences are priced at EXECUTION, not at scheduling — the pre-existing
                 // behavior, retained deliberately and documented in docs/sms-pricing.md §Scheduled.
+                // SLI (issue #5): Scheduled's target is queueing delay (how long past the due
+                // moment the worker actually got to this occurrence), NOT the API round-trip
+                // dispatch_message_retryable() itself takes — that's the same magnitude as
+                // Notification's target and would conflate two different things. due_delay_seconds
+                // came from the SELECT above (TIMESTAMPDIFF against COALESCE(next_attempt_at,
+                // run_at)), matching schedule_due_condition_sql()'s own definition of "due" exactly.
+                sli_record_dispatch_latency(
+                    'schedule.dispatch_delay_seconds',
+                    MESSAGE_CLASS_SCHEDULED,
+                    max(0.0, (float)$s['due_delay_seconds'])
+                );
+
                 [$ok, $info, $retryable] = dispatch_message_retryable(
                     $user, $s['originator'], $dests, $s['content'],
                     'schedule', $s['id'] . ':' . $s['run_count'], $attemptCount, (int)$s['id'], null
@@ -1484,8 +1510,12 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
 function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array {
     $classes = [MESSAGE_CLASS_BULK_CAMPAIGN, MESSAGE_CLASS_ADVERTISING];
 
+    // oldest_age_seconds computed in SQL (TIMESTAMPDIFF against the DB's own NOW()), not in PHP via
+    // strtotime() — matching cron/jobs-status.php's established oldest-pending-age pattern, and
+    // avoiding any PHP/MySQL session timezone mismatch a client-side date parse would risk.
     $depthStmt = $db->prepare(
-        "SELECT bj.message_class, COUNT(*) AS depth, MIN(i.created_at) AS oldest_created_at
+        "SELECT bj.message_class, COUNT(*) AS depth,
+                TIMESTAMPDIFF(SECOND, MIN(i.created_at), NOW()) AS oldest_age_seconds
          FROM ellsms_bulk_items i
          JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
          WHERE bj.status = 'processing' AND bj.throttle_count IS NULL
@@ -1494,19 +1524,16 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
     );
     $depthStmt->execute();
     $depthByClass = array_fill_keys($classes, 0);
-    $oldestByClass = [];
+    $oldestAgeByClass = [];
     foreach ($depthStmt->fetchAll() as $row) {
         $class = normalize_bulk_message_class($row['message_class']);
         $depthByClass[$class] = (int)$row['depth'];
-        $oldestByClass[$class] = $row['oldest_created_at'];
+        $oldestAgeByClass[$class] = (int)$row['oldest_age_seconds'];
     }
 
     foreach ($classes as $class) {
         Metrics::gauge('queue.bulk.depth', $depthByClass[$class], ['message_class' => $class]);
-        $ageSeconds = isset($oldestByClass[$class])
-            ? max(0, time() - strtotime($oldestByClass[$class] . ' UTC'))
-            : 0;
-        Metrics::gauge('queue.bulk.oldest_age_seconds', $ageSeconds, ['message_class' => $class]);
+        Metrics::gauge('queue.bulk.oldest_age_seconds', $oldestAgeByClass[$class] ?? 0, ['message_class' => $class]);
     }
 
     $quota = allocate_priority_quota($depthByClass, $totalBudget);
