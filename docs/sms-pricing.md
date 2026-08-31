@@ -155,15 +155,32 @@ enforced by the database, so "which one?" can never arise. **Auto failover betwe
 explicitly not part of this** — a step either resolves or it doesn't; nothing here ever picks a
 different provider because one is faster, cheaper, or healthier.
 
-**Step 2 only applies to a single-destination send.** `sms_pricing_route_for_sender()` resolves ONE
-route per call — a multi-destination batch (bulk sends: `sms_pricing_resolve_batch()` deliberately
-resolves the route once for the whole batch, the no-N+1 design in §STEP 18) has no single "the"
-destination operator to check, so it skips straight from sender to default, exactly as it always
-has. `gateway_send_for_dispatch()` only passes a destination when `count($destinations) === 1`
-(covering the OTP/Transactional/single-recipient case, the majority of traffic with a meaningful
-per-message operator). Splitting one batch across routes by each recipient's own operator is a
-documented, intentional follow-up, not a silent gap — see `tests/Integration/SmsPricingTest.php`'s
-`testOperatorRoutingOnlyAppliesToASingleDestinationNeverABatch`.
+**Step 2 also applies to a multi-destination batch (re-audit fix, issue #8).** `sms_pricing_route_for_sender()`
+itself still resolves exactly ONE route per call, and genuinely cannot guess an operator with no
+destination given (see `SmsPricingTest::testASingleCallWithNoDestinationSkipsStraightToDefault`).
+What changed is that a multi-destination send no longer calls it that way: `gateway_send_for_dispatch()`
+(`app/Sms/GatewayTransport.php`) now partitions the batch through
+`sms_pricing_route_groups_for_destinations()` (`app/Sms/Pricing.php`) FIRST —
+
+1. if the sender has a dedicated route, it never depends on the destination, so the whole batch
+   stays in one group with a single cached lookup (no behavior change from before for the common
+   "dedicated sender number" case);
+2. otherwise, every destination resolves its OWN operator route (or falls to default), and
+   destinations are partitioned into one group per distinct resolved route;
+3. each group is then sent through `gateway_send_for_dispatch_group()` with only its own
+   destinations, own per-destination content/idempotency keys, and its own resolved route/gateway —
+   never blended into a single call that could only ever use one connector.
+
+Still **no N+1**: `sms_pricing_route_for_sender()` is TTL-cached per `(sender, message type,
+operator)`, so a campaign spanning thousands of recipients across a handful of real operators costs
+at most one route lookup per DISTINCT operator seen, not one per recipient — proven in
+`tests/Integration/SmsPricingRouteGroupsTest.php::testGroupingThousandsOfRecipientsAcrossTwoOperatorsDoesNotIssueOneQueryPerNumber`.
+Still **no automatic failover**: grouping is pure precedence, never provider health/price/load — if
+ANY group's resolved route has no usable connector, the ENTIRE batch falls back to the legacy
+transport together (never a silent partial gateway/legacy split for some destinations only).
+Per-destination accounting (provider message id, resolved operator, and now resolved route/gateway)
+is preserved exactly: `ellsms_message_attempts`/`ellsms_bulk_items` record each destination's own
+`route_id`/`gateway_id`, not the batch's first group's.
 
 **Auditability/observability:** the resolved route always carries a `selection` field
 (`sender_assignment` / `operator_route` / `default_route`), surfaced in `cron/sms-pricing-status.php`

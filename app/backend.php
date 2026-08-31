@@ -115,7 +115,16 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         // Route/operator as ACTUALLY resolved for this send. Bulk items persist these onto their own
         // row (bulk_send_one_item()) so a later report can describe what happened rather than
         // re-resolving today's sender configuration, which may have changed since.
+        //
+        // Issue #8: a multi-destination batch partitioned across several routes (see
+        // sms_pricing_route_groups_for_destinations()) has no single route/gateway for the WHOLE
+        // call any more -- gateway_send_for_dispatch() now also returns 'route_ids'/'gateway_ids',
+        // keyed by destination, which callers below use per-destination. 'route_id'/'gateway_id'
+        // here fall back to "the last group processed" purely for the summary log line above; they
+        // are never used for per-destination accounting once a per-destination map exists.
         'route_id'               => $result['route_id'] ?? null,
+        'route_ids'              => $result['route_ids'] ?? null,
+        'gateway_ids'            => $result['gateway_ids'] ?? null,
         'operators'              => $result['operators'] ?? [],
     ];
 
@@ -163,9 +172,9 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                 $destination,
                 [
                     'provider_message_id'    => $result['message_ids'][$destination] ?? '',
-                    'gateway_id'             => $meta['gateway_id'],
+                    'gateway_id'             => $meta['gateway_ids'][$destination] ?? $meta['gateway_id'],
                     'gateway_config_version' => $meta['gateway_config_version'],
-                    'route_id'               => $result['route_id'] ?? null,
+                    'route_id'               => $meta['route_ids'][$destination] ?? $meta['route_id'],
                     'operator_id'            => $result['operators'][$destination] ?? null,
                     'request_id'             => Logger::currentRequestId(),
                 ]
@@ -1701,15 +1710,19 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
                  delivery_status = IF(? IS NULL, delivery_status, 'sent')
              WHERE id=?"
         )->execute([
-            $gatewayMeta['gateway_id'] ?? null,
+            // Issue #8: gateway_id/route_id are read per-destination when the dispatch spanned
+            // multiple route groups (sms_pricing_route_groups_for_destinations()) — falling back to
+            // the single summary value only for a single-group call, where every destination shares
+            // it anyway. Never the first recipient's identity leaking onto a different recipient's row.
+            $gatewayMeta['gateway_ids'][$destination] ?? $gatewayMeta['gateway_id'] ?? null,
             $gatewayMeta['gateway_config_version'] ?? null,
             // Keyed by THIS item's destination. gateway_send() returns a destination-keyed map, so a
             // batched send still gives every row its own provider reference — never the first
             // recipient's, and never one id shared across rows.
             $gatewayMeta['provider_message_ids'][$destination] ?? null,
-            $gatewayMeta['route_id'] ?? null,
+            $gatewayMeta['route_ids'][$destination] ?? $gatewayMeta['route_id'] ?? null,
             $gatewayMeta['operators'][$destination] ?? null,
-            $gatewayMeta['gateway_id'] ?? null,
+            $gatewayMeta['gateway_ids'][$destination] ?? $gatewayMeta['gateway_id'] ?? null,
             $item['id'],
         ]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET sent_rows = sent_rows + 1 WHERE id=?')->execute([$item['job_id']]);
