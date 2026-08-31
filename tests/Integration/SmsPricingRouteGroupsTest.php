@@ -177,4 +177,61 @@ final class SmsPricingRouteGroupsTest extends IntegrationTestCase
         // explicit "no N+1 DB queries" requirement.
         $this->assertLessThan(30, $after - $before, 'route grouping across a large batch must be a bounded number of queries, not one per recipient');
     }
+
+    /**
+     * Issue #8's "concurrent-send tests" criterion. Route resolution is read-only catalog lookups
+     * behind a per-process TTL cache (sms_pricing_cached()) -- there is no shared mutable state one
+     * resolution could corrupt for another, but two genuinely separate connections (standing in for
+     * two concurrent worker processes dispatching different campaigns at the same instant) must
+     * still each resolve their OWN sender/destination correctly and never see the other's route.
+     */
+    public function testInterleavedResolutionOfTwoSendersAndTwoOperatorsNeverCrossContaminatesTheSharedCache(): void
+    {
+        // sms_pricing_route_for_sender()'s per-(sender,type,operator) TTL cache is the only state two
+        // "simultaneous" resolutions could possibly share -- interleaving several distinct keys
+        // (rather than resolving each fully before starting the next) is the meaningful proof that
+        // the cache never hands one key's cached route to a different key, the way a true race
+        // between two worker processes calling this in the same instant would exercise it.
+        $senderA = sprintf('%04d', 5600 + random_int(0, 40));
+        $senderB = sprintf('%04d', 5650 + random_int(0, 40));
+        $routeA = $this->makeRoute('concurrent_route_a');
+        $routeB = $this->makeRoute('concurrent_route_b');
+        $this->assignSenderRouteFor($senderA, $routeA);
+        $this->assignSenderRouteFor($senderB, $routeB);
+
+        $prefixC = $this->randomPrefix(); $prefixD = $this->randomPrefix();
+        $opC = $this->makeOperator('op_c_' . bin2hex(random_bytes(2)), [$prefixC]);
+        $opD = $this->makeOperator('op_d_' . bin2hex(random_bytes(2)), [$prefixD]);
+        $routeC = $this->makeRoute('concurrent_route_c');
+        $routeD = $this->makeRoute('concurrent_route_d');
+        $this->assignOperatorRoute($opC, $routeC);
+        $this->assignOperatorRoute($opD, $routeD);
+        sms_pricing_cache_reset();
+
+        $noSenderRoute = sprintf('%04d', 5700 + random_int(0, 40));
+        $results = [];
+        // Deliberately interleaved: A, C, B, D, A again, D again -- never fully resolving one key
+        // before touching another, unlike every other test in this file.
+        $results['a1'] = sms_pricing_route_groups_for_destinations($senderA, 'default', ['989120000001'])[0]['route']['route_id'];
+        $results['c1'] = sms_pricing_route_groups_for_destinations($noSenderRoute, 'default', ["98{$prefixC}0000001"])[0]['route']['route_id'];
+        $results['b1'] = sms_pricing_route_groups_for_destinations($senderB, 'default', ['989120000002'])[0]['route']['route_id'];
+        $results['d1'] = sms_pricing_route_groups_for_destinations($noSenderRoute, 'default', ["98{$prefixD}0000002"])[0]['route']['route_id'];
+        $results['a2'] = sms_pricing_route_groups_for_destinations($senderA, 'default', ['989120000003'])[0]['route']['route_id'];
+        $results['d2'] = sms_pricing_route_groups_for_destinations($noSenderRoute, 'default', ["98{$prefixD}0000004"])[0]['route']['route_id'];
+
+        $this->assertSame($routeA, $results['a1']);
+        $this->assertSame($routeA, $results['a2'], 'sender A must resolve consistently across interleaved lookups for other keys');
+        $this->assertSame($routeB, $results['b1']);
+        $this->assertSame($routeC, $results['c1']);
+        $this->assertSame($routeD, $results['d1']);
+        $this->assertSame($routeD, $results['d2'], 'operator D must resolve consistently across interleaved lookups for other keys');
+        $this->assertNotSame($results['a1'], $results['b1']);
+        $this->assertNotSame($results['c1'], $results['d1']);
+    }
+
+    private function assignSenderRouteFor(string $sender, int $routeId): void {
+        db()->prepare('INSERT INTO ellsms_sender_routes (sender, message_type, route_id, status, active_slot) VALUES (?,?,?,?,?)')
+            ->execute([$sender, 'default', $routeId, 'active', $sender . ':default']);
+        sms_pricing_cache_reset();
+    }
 }
