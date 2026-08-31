@@ -70,6 +70,7 @@ if ($json) {
         'schedules'       => $schedules,
         'autoreply_log'   => $autoreply,
         'active_workers'  => $activeWorkers,
+        'provider_health' => provider_health_snapshot(),
     ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) . "\n";
     exit(0);
 }
@@ -113,6 +114,20 @@ if (!$autoreply) echo "  (no rows)\n";
 foreach ($autoreply as $r) {
     $extra = (int)$r['expired_lease'] > 0 ? " (expired-lease: {$r['expired_lease']})" : '';
     echo "  {$r['status']}: {$r['total']}{$extra}\n";
+}
+
+section('Provider health (issue #10)');
+$providerHealth = provider_health_snapshot();
+if (!$providerHealth) {
+    echo "  (no dispatch attempts recorded yet)\n";
+}
+foreach ($providerHealth as $p) {
+    $marker = $p['status'] === 'outage' ? 'OUTAGE' : 'healthy';
+    $line = "  {$p['provider_key']}: {$marker} (consecutive failures: {$p['consecutive_failures']})";
+    if ($p['status'] === 'outage') {
+        $line .= " -- last error: {$p['last_error']}, since: {$p['last_failure_at']}";
+    }
+    echo "{$line}\n";
 }
 
 section('Workers');

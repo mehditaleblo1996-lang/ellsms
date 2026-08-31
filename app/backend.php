@@ -256,6 +256,9 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
             'error_class'      => $apiResult['error_class'],
             'destination_count' => $total,
         ]);
+        // Issue #10: the queue/no-auto-failover/manual-only-switch behavior is unaffected by this —
+        // this call only tracks and alerts, it never changes what happens to the message itself.
+        provider_health_record_failure(provider_health_key_legacy_backend(), (string)($apiResult['error_class'] ?? $err));
         $referenceType = $scheduleId !== null ? 'schedule' : 'direct_send';
         $referenceId   = $scheduleId !== null ? (string)$scheduleId : dispatch_direct_send_dedup_key((int)($user['id'] ?? 0), $originator, $destinations, $content);
         backend_record_message_attempt_failure(
@@ -278,6 +281,11 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
         $retryable = BackendError::isRetryable((string)$apiResult['error_class']);
         return [false, describe_api_error($http, $err) . ' جزئیات در گزارش موجود است.', 0, $total, $parts, $retryable, []];
     }
+
+    // Issue #10: reachability, not per-message outcome — the provider had a real opportunity to
+    // answer, which is what "not in outage" means here. A destination it explicitly rejected
+    // (invalid number, etc.) is a business outcome, not a provider-health signal.
+    provider_health_record_success(provider_health_key_legacy_backend());
 
     $sentCount = 0;
     $sentDestinations = [];
