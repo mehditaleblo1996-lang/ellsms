@@ -69,6 +69,7 @@ require_once __DIR__ . '/Payment/PaymentGateway.php';
 require_once __DIR__ . '/Sms/OperatorResolution.php';
 require_once __DIR__ . '/Sms/Pricing.php';
 require_once __DIR__ . '/Sms/ProviderHealth.php';
+require_once __DIR__ . '/BulkCancellation.php';
 // SMS gateway connectors — admin-configurable provider send/status APIs
 // (docs/sms-gateway-connectors.md). Strict load order: the secret vault first (the connector engine
 // resolves secret-backed parameters at compile time), then the safety engine that validates and
