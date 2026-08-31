@@ -26,21 +26,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = bulk_archive_request($me, $cutoff, $reason);
             flash('success', "درخواست آرشیو #{$result['run_id']} ثبت شد — {$result['count']} پیام واجد شرایط. برای اجرا نیاز به تأیید دارد.");
         }
-        redirect('/bulk-archive.php');
+        redirect('/admin/bulk-archive');
     }
 
     if ($do === 'approve') {
         $runId = (int)($_POST['run_id'] ?? 0);
         $result = bulk_archive_approve($me, $runId);
         flash($result['ok'] ? 'success' : 'error', $result['ok'] ? "اجرای #{$runId} تأیید شد و در نوبت اجرا قرار گرفت." : 'تأیید ممکن نشد.');
-        redirect('/bulk-archive.php');
+        redirect('/admin/bulk-archive');
     }
 
     if ($do === 'cancel') {
         $runId = (int)($_POST['run_id'] ?? 0);
         $result = bulk_archive_cancel($me, $runId);
         flash($result['ok'] ? 'success' : 'error', $result['ok'] ? "اجرای #{$runId} لغو شد." : 'لغو ممکن نشد.');
-        redirect('/bulk-archive.php');
+        redirect('/admin/bulk-archive');
     }
 
     if ($do === 'restore') {
@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $jobId = (int)($_POST['job_id'] ?? 0);
         $result = bulk_archive_restore($me, $runId, $jobId > 0 ? $jobId : null);
         flash($result['ok'] ? 'success' : 'error', $result['ok'] ? "{$result['restored']} پیام از آرشیو بازگردانده شد." : 'بازگردانی ممکن نشد.');
-        redirect('/bulk-archive.php');
+        redirect('/admin/bulk-archive');
     }
 }
 
