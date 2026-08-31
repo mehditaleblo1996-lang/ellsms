@@ -338,19 +338,29 @@ same list instead of re-declaring it.
 | Scheduled | Its own table, its own claim query, its own worker pass (`run_due_schedules()`), which runs *before* the bulk pass every tick. | `ellsms_schedule` |
 | Bulk Campaign, Advertising | Share `ellsms_bulk_jobs`/`ellsms_bulk_items` (tagged by the new `message_class` column) — the only two classes that actually contend for one claim budget. | `ellsms_bulk_jobs`, `ellsms_bulk_items` |
 
-**Where real contention exists (Bulk Campaign vs. Advertising), priority is enforced two ways:**
+**Where real contention exists (Bulk Campaign vs. Advertising), priority is enforced by a per-tick
+quota, deliberately NOT by ordering a mixed-class claim:**
 
-1. **Claim ordering** — `bulk_claim_items()`'s `UPDATE ... ORDER BY` now sorts
-   `FIELD(bj.message_class, 'otp', 'transactional', ..., 'advertising')` before `id`, so within any
-   claim spanning multiple classes, higher-priority rows are claimed first.
-2. **Per-tick quota** — `bulk_claim_unthrottled_items_by_class()` (`app/backend.php`) measures the
-   current pending depth of each class, then calls `allocate_priority_quota()`
-   (`app/QueueFairness.php`) to split `WORKER_BULK_BATCH_SIZE` between them: each non-empty class
-   is first guaranteed a floor share (`queue_class_min_share()` — Advertising's floor is
-   deliberately the smallest nonzero share), and only the leftover budget is handed out strictly by
-   priority. This is what prevents a huge Advertising backlog from starving a newer, smaller Bulk
-   Campaign job to zero throughput indefinitely — see
-   `tests/Unit/QueueFairnessTest.php::testAdvertisingIsNeverStarvedToZeroUnderSustainedBulkCampaignOverload`.
+`bulk_claim_unthrottled_items_by_class()` (`app/backend.php`) measures the current pending depth of
+each class, then calls `allocate_priority_quota()` (`app/QueueFairness.php`) to split
+`WORKER_BULK_BATCH_SIZE` between them: each non-empty class is first guaranteed a floor share
+(`queue_class_min_share()` — Advertising's floor is deliberately the smallest nonzero share), and
+only the leftover budget is handed out strictly by priority. It then calls `bulk_claim_items()`
+**once per class**, each call already filtered to that one class via `$jobFilterSql` — so no single
+claim ever spans multiple classes, and `bulk_claim_items()` itself needs no class-aware ordering at
+all. This is what prevents a huge Advertising backlog from starving a newer, smaller Bulk Campaign
+job to zero throughput indefinitely — see
+`tests/Unit/QueueFairnessTest.php::testAdvertisingIsNeverStarvedToZeroUnderSustainedBulkCampaignOverload`.
+
+An earlier version of this instead joined `ellsms_bulk_jobs` directly onto `bulk_claim_items()`'s
+claim `UPDATE` so one call could `ORDER BY` priority across classes. A real load test (issue #4,
+`cron/load-test.php`, 4 concurrent worker processes) caught it leaving ~3% of claimed items stuck in
+`processing` forever — the join pulls `ellsms_bulk_jobs` into the claim's lock scope, creating lock
+contention with whatever else concurrently touches that table, which the original single-table
+`UPDATE ... ORDER BY id LIMIT n` never had. Reverted; see `bulk_claim_items()`'s own docblock in
+`app/backend.php` for the full account. The lesson generalizes: this function's claim query must
+stay single-table, full stop — any future need to order by something other than `id` should be
+solved by more/smarter calls to it (as above), never by joining another table onto it.
 
 **Tuning without a code rewrite:** `WORKER_BULK_BATCH_SIZE` (`.env`) still controls the total
 per-tick budget shared across classes; `queue_class_min_share()`'s floors are a code-level policy
@@ -379,4 +389,4 @@ dedicated advertising/broadcast page) is a follow-up, not part of this change.
 - `queue_class_min_share()`'s floors are fixed in code rather than `.env`-configurable per class;
   `WORKER_BULK_BATCH_SIZE` remains the one live-tunable knob for this budget.
 - No UI yet lets an operator create an explicit Advertising-class job — the plumbing (column,
-  claim ordering, quota) is in place for whichever future page needs it.
+  per-class quota) is in place for whichever future page needs it.
