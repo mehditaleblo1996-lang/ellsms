@@ -770,10 +770,12 @@ function run_due_schedules(): int {
             }
 
             if (!$ok) {
+                $reason = $retryable ? 'max_attempts_reached' : 'permanent';
                 Logger::warning('job.failed_permanent', [
                     'job_type' => 'schedule', 'schedule_id' => $s['id'], 'worker_id' => $workerId,
-                    'attempt' => $attemptCount, 'reason' => $retryable ? 'max_attempts_reached' : 'permanent',
+                    'attempt' => $attemptCount, 'reason' => $reason,
                 ]);
+                Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'schedule', 'reason' => $reason]);
             } else {
                 Logger::info('job.completed', ['job_type' => 'schedule', 'schedule_id' => $s['id'], 'worker_id' => $workerId]);
             }
@@ -1065,7 +1067,9 @@ function autoreply_process_one(PDO $db, array $msg, int &$sent): void {
 
     $db->prepare("UPDATE ellsms_autoreply_log SET reply_content=?, ok=0, info=?, status='failed_permanent', claimed_by=NULL, lease_expires_at=NULL WHERE id=?")
        ->execute([$rendered, $info, $logId]);
-    Logger::warning('job.failed_permanent', ['job_type' => 'autoreply', 'inbound_message_id' => $msg['id'], 'worker_id' => $workerId, 'attempt' => $attemptCount, 'reason' => $retryable ? 'max_attempts_reached' : 'permanent']);
+    $reason = $retryable ? 'max_attempts_reached' : 'permanent';
+    Logger::warning('job.failed_permanent', ['job_type' => 'autoreply', 'inbound_message_id' => $msg['id'], 'worker_id' => $workerId, 'attempt' => $attemptCount, 'reason' => $reason]);
+    Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'autoreply', 'reason' => $reason]);
 }
 
 function autoreply_matches(string $content, string $keyword, string $matchType): bool {
@@ -1609,6 +1613,7 @@ function bulk_item_preflight(PDO $db, array $item): array {
            ->execute(['سازمان مربوط به این ارسال معلق یا غیرفعال شده است.', $item['id']]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::warning('job.failed_permanent', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'reason' => 'organization_' . $orgStatus]);
+        Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'bulk_item', 'reason' => 'organization_' . $orgStatus]);
         return ['ok' => false];
     }
 
@@ -1618,6 +1623,7 @@ function bulk_item_preflight(PDO $db, array $item): array {
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::warning('job.failed_permanent', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'reason' => 'subscription_not_serviceable']);
         Metrics::increment('billing.worker.blocked', 1, ['job_type' => 'bulk_item']);
+        Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'bulk_item', 'reason' => 'subscription_not_serviceable']);
         return ['ok' => false];
     }
 
@@ -1627,6 +1633,7 @@ function bulk_item_preflight(PDO $db, array $item): array {
            ->execute(['حساب مالک ارسال غیرفعال است یا دیگر دسترسی پنل ندارد.', $item['id']]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::warning('job.failed_permanent', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'reason' => 'owner_unauthorized']);
+        Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'bulk_item', 'reason' => 'owner_unauthorized']);
         return ['ok' => false];
     }
 
@@ -1713,10 +1720,12 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
     $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL WHERE id=?")
        ->execute([$info, $item['id']]);
     $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
+    $reason = $retryable ? 'max_attempts_reached' : 'permanent';
     Logger::warning('job.failed_permanent', [
         'job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId,
-        'attempt' => $attemptCount, 'reason' => $retryable ? 'max_attempts_reached' : 'permanent',
+        'attempt' => $attemptCount, 'reason' => $reason,
     ]);
+    Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'bulk_item', 'reason' => $reason]);
     return false;
 }
 
