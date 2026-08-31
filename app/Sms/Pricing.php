@@ -284,11 +284,26 @@ function sms_pricing_match_prefix(array $rules, string $normalizedMsisdn): ?arra
 /**
  * Resolve the configured operator classification for an already-normalized MSISDN.
  *
+ * Public entry point, unchanged signature/return shape (issue #9: introducing an operator-
+ * resolution abstraction must not change current behavior for any of this function's many callers —
+ * pricing, routing, analytics). The actual dispatch now goes through operator_resolve()
+ * (app/Sms/OperatorResolution.php), which today always selects the prefix strategy below; that seam
+ * is what lets a future MNP lookup be added without touching this function or any of its callers.
+ */
+function sms_resolve_operator(string $normalizedMsisdn): array {
+    return operator_resolve($normalizedMsisdn);
+}
+
+/**
+ * The prefix-matching strategy — everything sms_resolve_operator() did before issue #9's seam was
+ * introduced, moved here verbatim so operator_resolve() (app/Sms/OperatorResolution.php) can
+ * dispatch to it by name.
+ *
  * Returns operator_id = null / operator_code = 'unknown' when nothing matches — never a guessed
  * carrier (STEP 22). `operator_source` is always 'prefix': this is what the admin configured, not a
  * verified live carrier (STEP 6).
  */
-function sms_resolve_operator(string $normalizedMsisdn): array {
+function operator_resolve_via_prefix(string $normalizedMsisdn): array {
     $rule = sms_pricing_match_prefix(sms_pricing_prefix_rules(), $normalizedMsisdn);
     if ($rule === null) {
         return [

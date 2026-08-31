@@ -66,6 +66,7 @@ require_once __DIR__ . '/Payment/PaymentGateway.php';
 // SMS pricing — admin-managed operators/providers/routes/prices and the one resolution pipeline
 // every send and every preview prices through (docs/sms-pricing.md). Loaded before the estimator
 // because the estimator composes it; it in turn only needs setting()/db()/Logger/Metrics, all above.
+require_once __DIR__ . '/Sms/OperatorResolution.php';
 require_once __DIR__ . '/Sms/Pricing.php';
 // SMS gateway connectors — admin-configurable provider send/status APIs
 // (docs/sms-gateway-connectors.md). Strict load order: the secret vault first (the connector engine
