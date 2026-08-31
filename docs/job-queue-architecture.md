@@ -322,3 +322,61 @@ Full methodology and numbers: `docs/observability-and-performance.md` and
 - **Queue technology decision: KEEP MYSQL.** Full reasoning in
   `docs/phase-9-final-report.md` §24-25 — no measured bottleneck this document's design has, that a
   different queue technology would fix.
+
+## Message classes and priority isolation (issue #3)
+
+Six agreed message classes, highest priority first: **OTP > Transactional > Notification >
+Scheduled > Bulk Campaign > Advertising** — declared once in `app/MessageClass.php`
+(`message_classes_by_priority()`), so every place that orders or labels by class reads from the
+same list instead of re-declaring it.
+
+**Isolation today is mostly structural, not a shared queue with priority flags:**
+
+| Class | How it's isolated | Table |
+|---|---|---|
+| OTP, Transactional, Notification | Never queued — sent synchronously inside the web request via `dispatch_message()`. Cannot be blocked by worker/queue backlog because they never touch the worker. | none (direct `outbound_message` write via the backend API) |
+| Scheduled | Its own table, its own claim query, its own worker pass (`run_due_schedules()`), which runs *before* the bulk pass every tick. | `ellsms_schedule` |
+| Bulk Campaign, Advertising | Share `ellsms_bulk_jobs`/`ellsms_bulk_items` (tagged by the new `message_class` column) — the only two classes that actually contend for one claim budget. | `ellsms_bulk_jobs`, `ellsms_bulk_items` |
+
+**Where real contention exists (Bulk Campaign vs. Advertising), priority is enforced two ways:**
+
+1. **Claim ordering** — `bulk_claim_items()`'s `UPDATE ... ORDER BY` now sorts
+   `FIELD(bj.message_class, 'otp', 'transactional', ..., 'advertising')` before `id`, so within any
+   claim spanning multiple classes, higher-priority rows are claimed first.
+2. **Per-tick quota** — `bulk_claim_unthrottled_items_by_class()` (`app/backend.php`) measures the
+   current pending depth of each class, then calls `allocate_priority_quota()`
+   (`app/QueueFairness.php`) to split `WORKER_BULK_BATCH_SIZE` between them: each non-empty class
+   is first guaranteed a floor share (`queue_class_min_share()` — Advertising's floor is
+   deliberately the smallest nonzero share), and only the leftover budget is handed out strictly by
+   priority. This is what prevents a huge Advertising backlog from starving a newer, smaller Bulk
+   Campaign job to zero throughput indefinitely — see
+   `tests/Unit/QueueFairnessTest.php::testAdvertisingIsNeverStarvedToZeroUnderSustainedBulkCampaignOverload`.
+
+**Tuning without a code rewrite:** `WORKER_BULK_BATCH_SIZE` (`.env`) still controls the total
+per-tick budget shared across classes; `queue_class_min_share()`'s floors are a code-level policy
+today (a config surface for them is a natural follow-up, not yet built — see Known limitations
+below).
+
+**Metrics** (via `Metrics::gauge`, tagged `message_class`): `queue.bulk.depth` (pending rows) and
+`queue.bulk.oldest_age_seconds` (age of the oldest claimable row), emitted once per worker tick from
+`bulk_claim_unthrottled_items_by_class()`. Per-claim throughput/lag were already emitted by
+`bulk_claim_items()` as `queue.claim.bulk_items` timing/gauges; calling it once per class (instead
+of once for the whole budget) means those are now implicitly per-class too, distinguishable by the
+`job_type`/timing context each call site logs.
+
+**Assigning a class:** `bulk_queue_job()` takes an optional trailing `$messageClass` argument
+(`normalize_bulk_message_class()` restricts it to `'bulk_campaign'`/`'advertising'`, defaulting to
+`'bulk_campaign'` for anything else). No current UI page passes anything but the default — every
+existing نظیر به نظیر / پیامک هوشمند / ارسال تدریجی job is `bulk_campaign`, matching prior
+behavior exactly. Wiring an actual "این یک ارسال تبلیغاتی است" toggle into `new-send.php` (or a
+dedicated advertising/broadcast page) is a follow-up, not part of this change.
+
+**Known limitations / follow-ups:**
+- The legacy, non-"fast" `run_bulk_send_pass()` (used only by `cron/load-test-worker-runner.php`,
+  not by the production worker loop) was not updated to use per-class quotas — the production path
+  (`run_bulk_send_pass_fast()`, what `cron/worker.php` actually calls) is the one this section
+  describes.
+- `queue_class_min_share()`'s floors are fixed in code rather than `.env`-configurable per class;
+  `WORKER_BULK_BATCH_SIZE` remains the one live-tunable knob for this budget.
+- No UI yet lets an operator create an explicit Advertising-class job — the plumbing (column,
+  claim ordering, quota) is in place for whichever future page needs it.

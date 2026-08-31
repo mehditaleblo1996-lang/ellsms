@@ -399,6 +399,26 @@ CREATE TABLE IF NOT EXISTS ellsms_ticket_replies (
   KEY (ticket_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Migration (issue #3): tag every bulk job with its message class so the worker can allocate
+-- claim capacity per class instead of one flat FIFO across everything sharing this table
+-- (see app/MessageClass.php, app/QueueFairness.php, docs/job-queue-architecture.md). Existing rows
+-- default to 'bulk_campaign' — the only class real jobs have ever used so far; 'advertising' is
+-- available to any future caller that wants a lower-priority, still-isolated lane on the same
+-- table. Guarded so it's safe to re-run on installs that already have ellsms_bulk_jobs.
+SET @col_exists = (
+  SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'ellsms_bulk_jobs' AND column_name = 'message_class'
+);
+SET @sql = IF(@col_exists = 0,
+  'ALTER TABLE ellsms_bulk_jobs
+     ADD COLUMN message_class ENUM(''bulk_campaign'',''advertising'') NOT NULL DEFAULT ''bulk_campaign'' AFTER type,
+     ADD KEY idx_message_class_status (message_class, status)',
+  'SELECT 1'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- Seed default settings — EDIT THESE in Settings after first login, or
 -- override via env vars (see .env.example) which win if the row is
 -- still empty.
