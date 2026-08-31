@@ -22,21 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($do === 'cancel') {
         $id = (int)($_POST['id'] ?? 0);
-        $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
-        $affected = db()->exec("UPDATE ellsms_bulk_jobs SET status='cancelled' WHERE id={$id} AND type='smart' AND status IN ('pending','processing'){$own}");
-        if ($affected > 0) {
-            // Give back whatever the job's worst-case reservation still
-            // holds — a cancelled job must not strand reserved credit
-            // (Phase 3, STEP 9). Idempotent no-op if nothing was reserved
-            // (an admin's job never reserves) or already released.
-            wallet_release_reservation('bulk_job', (string)$id);
-            // Only rows still 'pending' — an item a worker already claimed
-            // ('processing') is left alone; its own fresh cancellation
-            // re-check in bulk_send_one_item() decides its fate safely
-            // (Phase 4, STEP 21) instead of this racing directly against
-            // whatever that worker is doing with it right now.
-            db()->exec("UPDATE ellsms_bulk_items SET status='cancelled' WHERE job_id={$id} AND status='pending'");
-        }
+        // bulk_cancel_campaign() (issue #11) — chunked item cancellation (safe for a large queue),
+        // wallet reservation release, and audit logging (actor/scope/count/reason/outcome), all in
+        // one shared, tested function instead of this page's own inline SQL.
+        bulk_cancel_campaign($id, $me, 'admin panel: smart-send cancel', 'smart');
         flash('info', 'ارسال لغو شد.');
         redirect('/smart-send.php');
     }

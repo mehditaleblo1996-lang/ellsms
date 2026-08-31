@@ -18,12 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($do === 'cancel') {
         $id = (int)($_POST['id'] ?? 0);
-        $own = is_admin() ? '' : ' AND user_id = ' . (int)$me['id'];
-        $affected = db()->exec("UPDATE ellsms_bulk_jobs SET status='cancelled' WHERE id={$id} AND type='p2p' AND status IN ('pending','processing'){$own}");
-        if ($affected > 0) {
-            wallet_release_reservation('bulk_job', (string)$id);
-            db()->exec("UPDATE ellsms_bulk_items SET status='cancelled' WHERE job_id={$id} AND status='pending'");
-        }
+        // bulk_cancel_campaign() (issue #11) — chunked item cancellation (safe for a large queue),
+        // wallet reservation release, and audit logging, all in one shared, tested function.
+        bulk_cancel_campaign($id, $me, 'admin panel: p2p-send cancel', 'p2p');
         flash('info', 'ارسال لغو شد.');
         redirect('/p2p-send.php');
     }
