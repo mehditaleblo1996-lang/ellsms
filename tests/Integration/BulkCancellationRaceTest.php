@@ -29,6 +29,8 @@ final class BulkCancellationRaceTest extends TestCase
     private string $captureFile;
     private string $fakeBackendLogPath;
     private int $fakeBackendPort = 0;
+    private ?string $originalOriginatorSetting = null;
+    private ?string $originalApiBaseUrlSetting = null;
 
     protected function setUp(): void
     {
@@ -38,6 +40,12 @@ final class BulkCancellationRaceTest extends TestCase
         }
         IntegrationTestCase::ensureSchemaLoaded();
         $this->db = \db();
+
+        // A real worker subprocess reads these global settings from its own DB connection, so they
+        // can't be set inside this test's (nonexistent) transaction -- but that means they must be
+        // restored explicitly too, or they leak into every test that runs after this one.
+        $this->originalOriginatorSetting = \setting('default_originator', null);
+        $this->originalApiBaseUrlSetting = \setting('api_base_url', null);
 
         $this->captureFile = sys_get_temp_dir() . '/ellsms_cancel_race_capture_' . bin2hex(random_bytes(6)) . '.ndjson';
         $this->startFakeBackend();
@@ -76,6 +84,17 @@ final class BulkCancellationRaceTest extends TestCase
         $this->db->prepare('DELETE FROM ellsms_wallet_accounts WHERE user_id = ?')->execute([$this->userId]);
         $this->db->prepare('DELETE FROM ellsms_meta WHERE user_id = ?')->execute([$this->userId]);
         $this->db->prepare('DELETE FROM user_ WHERE id = ?')->execute([$this->userId]);
+
+        if ($this->originalOriginatorSetting === null) {
+            $this->db->prepare("DELETE FROM ellsms_settings WHERE skey = 'default_originator'")->execute();
+        } else {
+            \set_setting('default_originator', $this->originalOriginatorSetting);
+        }
+        if ($this->originalApiBaseUrlSetting === null) {
+            $this->db->prepare("DELETE FROM ellsms_settings WHERE skey = 'api_base_url'")->execute();
+        } else {
+            \set_setting('api_base_url', $this->originalApiBaseUrlSetting);
+        }
     }
 
     private function startFakeBackend(): void
