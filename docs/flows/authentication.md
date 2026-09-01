@@ -14,9 +14,11 @@
   backend platform's own placeholder scheme, not something ELLSMS chose); account must be
   `active`, not `deleted`, and have `ellsms_meta.panel_access = 1`.
 - `verify-2fa.php`: code must match `ellsms_2fa_codes` for the pending `twofa_uid`, be
-  unconsumed, and not expired (5-minute TTL, `TWOFA_CODE_TTL_SECONDS`); a per-session attempt
-  counter is checked against a bare magic number (`5`, `verify-2fa.php:35` — not a named
-  constant like its sibling TTL/cooldown values).
+  unconsumed, and not expired (3-minute TTL, `TWOFA_CODE_TTL_SECONDS` — shortened from 5 minutes
+  in issue #5's re-audit to match the SLO spec's "OTP validity 3m"; see that constant's own
+  comment in `app/bootstrap.php` for why this is a strictly safer change, not a weakened one);
+  a per-session attempt counter is checked against a bare magic number (`5`, `verify-2fa.php:35`
+  — not a named constant like its sibling TTL/cooldown values).
 - `bootstrap-admin.php`: same password check as login, plus `ellsms_has_admin()` must be false
   both before showing the form and again immediately before the insert (see Race-condition
   risks below).

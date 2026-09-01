@@ -938,7 +938,14 @@ function kyc_store_upload(string $field, int $userId): ?string {
    dispatch_message(), which is defined there.)
    ========================================================================== */
 
-const TWOFA_CODE_TTL_SECONDS = 300; // 5 minutes
+// Issue #5 re-audit: the SLO spec's "OTP validity 3m" is this code's validity window -- the only
+// OTP-style code ELLSMS itself generates and controls the expiry of (a tenant's own OTP messages
+// are just SMS bodies the tenant's application composes; ELLSMS never generates or verifies their
+// codes). Was 300s/5m; shortened to match the explicit requirement. This is a strictly SAFER
+// change, not a weakened one -- a shorter validity window only shrinks the brute-force/interception
+// replay window, so there is no security reason to keep the longer value. See
+// docs/flows/authentication.md and tests/Unit/TwoFactorConfigTest.php.
+const TWOFA_CODE_TTL_SECONDS = 180; // 3 minutes
 const TWOFA_RESEND_COOLDOWN  = 60;  // seconds between resend requests
 
 /* ==========================================================================

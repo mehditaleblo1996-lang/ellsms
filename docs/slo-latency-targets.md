@@ -22,13 +22,16 @@ Source of truth: `app/Slo.php` (`slo_latency_targets()`). Locked in by
 `tests/Unit/SloTest.php::testAgreedTargetsAreExactlyRepresented` — changing a number there without
 updating that test fails the suite on purpose.
 
-**"OTP validity 3m" from the issue is a separate concept, deliberately not represented here**: it's
-the OTP *code's* own expiry window (a security control), not a delivery-speed target — see
-`app/Slo.php`'s module docblock. It surfaced a real discrepancy worth a human decision: the existing
-SMS-2FA implementation (`app/TotpMfa.php`-adjacent 2FA flow, README "SMS-based 2FA") already uses a
-**5-minute** code expiry, not 3 minutes. Flagged here, not silently changed — shortening a live
-security control's window is a product/security decision, not a side effect of a queue-latency
-change.
+**"OTP validity 3m" from the issue is a separate concept from the table above**: it's the OTP
+*code's* own expiry window (a security control), not a delivery-speed target — see `app/Slo.php`'s
+module docblock. **Resolved in the issue #5 re-audit**: `TWOFA_CODE_TTL_SECONDS`
+(`app/bootstrap.php`) — ELLSMS's own SMS 2FA login code, the only OTP-style code ELLSMS itself
+generates and controls the expiry of (a tenant's own OTP *messages* sent through the platform are
+just SMS bodies the tenant's application composes; ELLSMS never generates or verifies their codes)
+— was shortened from 5 minutes to the required 3 minutes (180s). This is a strictly SAFER change,
+not a weakened one: a shorter validity window only shrinks the brute-force/interception replay
+window, so there was no security reason to keep the longer value once the requirement was traced to
+its actual target. Locked in by `tests/Unit/TwoFactorConfigTest.php`.
 
 ## How each is actually measured
 
@@ -75,13 +78,17 @@ works identically once a real metrics platform exists.
   calls `sli_record_dispatch_latency()` and reads the real log file it writes to (same pattern as
   `tests/Unit/LoggerTest.php`), confirming a within-target latency emits only the timing metric,
   while a breach additionally emits `sli.latency_breach` with the right severity and tags.
+- `tests/Unit/TwoFactorConfigTest.php` — locks `TWOFA_CODE_TTL_SECONDS` to exactly 180 seconds
+  (3 minutes), so the OTP-validity requirement can never silently drift back to the old 5-minute
+  default.
+- `tests/Integration/HighPriorityLatencyUnderBulkLoadTest.php` — the mixed-load proof, see below.
 
-**On "tests simulate queue pressure and verify high-priority classes meet targets"**: this pass
-covers the measurement/classification machinery with real tests as above. It does **not** include a
-dedicated queue-pressure simulation proving OTP/Transactional stay within target *while* a large
-Bulk/Advertising backlog is being drained — that claim is already structurally true (those three
-classes never share the queue Bulk/Advertising contend for, per `docs/job-queue-architecture.md`),
-and empirically consistent with issue #4's load-test findings, but wasn't re-verified as its own
-dedicated timed test in this pass. A natural follow-up: extend `cron/load-test.php` (issue #4) to
-seed a mixed OTP+Advertising workload and assert OTP's measured `dispatch.accept_to_provider_seconds`
-stays under target throughout.
+**On "tests simulate queue pressure and verify high-priority classes meet targets"**: resolved in
+the issue #5 re-audit by `tests/Integration/HighPriorityLatencyUnderBulkLoadTest.php` — a real,
+not merely structural, proof: a genuine 5,000-row Bulk backlog is drained by a REAL worker
+subprocess (`cron/load-test-worker-runner.php`, the same harness issue #4 uses) hammering the real
+`ellsms_bulk_items` claim query concurrently, while the test issues real OTP-class
+`dispatch_message()` calls against a real fake-backend HTTP server and measures actual wall-clock
+`dispatch.accept_to_provider_seconds` latency, asserting every measurement stays under the 5s normal
+SLO throughout. This doesn't just re-assert the structural argument (OTP/Transactional never share
+Bulk's queue) — it measures the outcome under genuine concurrent OS-process-level DB load.
