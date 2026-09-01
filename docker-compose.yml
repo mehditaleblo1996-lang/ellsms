@@ -49,6 +49,11 @@ services:
       ZARINPAL_SANDBOX: ${ZARINPAL_SANDBOX:-0}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # Unified alerting (issue #15) — see .env.example for defaults.
+      ALERT_REPEAT_SECONDS_WARNING: ${ALERT_REPEAT_SECONDS_WARNING:-}
+      ALERT_REPEAT_SECONDS_CRITICAL: ${ALERT_REPEAT_SECONDS_CRITICAL:-}
+      ALERT_REPEAT_SECONDS_EMERGENCY: ${ALERT_REPEAT_SECONDS_EMERGENCY:-}
+      ALERT_EMAIL_RECIPIENT: ${ALERT_EMAIL_RECIPIENT:-}
       # Public API / webhooks (Phase 12) — OFF by default, see .env.example.
       API_ENABLED: ${API_ENABLED:-0}
       API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-60}
@@ -116,6 +121,14 @@ services:
       API_BASE_URL: ${API_BASE_URL:-}
       BACKEND_SERVICE_ID: ${BACKEND_SERVICE_ID:-}
       BACKEND_SERVICE_SECRET: ${BACKEND_SERVICE_SECRET:-}
+      # Provider-health alerts (issue #16) can fire from this process via issue #15's unified
+      # alerting -- without these, a real outage detected here never reaches an admin.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ALERT_REPEAT_SECONDS_WARNING: ${ALERT_REPEAT_SECONDS_WARNING:-}
+      ALERT_REPEAT_SECONDS_CRITICAL: ${ALERT_REPEAT_SECONDS_CRITICAL:-}
+      ALERT_REPEAT_SECONDS_EMERGENCY: ${ALERT_REPEAT_SECONDS_EMERGENCY:-}
+      ALERT_EMAIL_RECIPIENT: ${ALERT_EMAIL_RECIPIENT:-}
     volumes:
       - ./:/var/www/html
     networks:
@@ -231,6 +244,14 @@ services:
       API_BASE_URL: ${API_BASE_URL:-}
       BACKEND_SERVICE_ID: ${BACKEND_SERVICE_ID:-}
       BACKEND_SERVICE_SECRET: ${BACKEND_SERVICE_SECRET:-}
+      # Provider-health alerts (issue #16) can fire from this process via issue #15's unified
+      # alerting -- without these, a real outage detected here never reaches an admin.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ALERT_REPEAT_SECONDS_WARNING: ${ALERT_REPEAT_SECONDS_WARNING:-}
+      ALERT_REPEAT_SECONDS_CRITICAL: ${ALERT_REPEAT_SECONDS_CRITICAL:-}
+      ALERT_REPEAT_SECONDS_EMERGENCY: ${ALERT_REPEAT_SECONDS_EMERGENCY:-}
+      ALERT_EMAIL_RECIPIENT: ${ALERT_EMAIL_RECIPIENT:-}
     volumes:
       - ./:/var/www/html
     networks:

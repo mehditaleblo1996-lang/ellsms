@@ -74,6 +74,9 @@ require_once __DIR__ . '/BulkArchive.php';
 require_once __DIR__ . '/Reports/SendDimensionLog.php';
 require_once __DIR__ . '/Observability/QueueSnapshot.php';
 require_once __DIR__ . '/Observability/PrometheusExporter.php';
+require_once __DIR__ . '/telegram.php';
+require_once __DIR__ . '/NotificationCenter.php';
+require_once __DIR__ . '/Alerting/AlertManager.php';
 // SMS gateway connectors — admin-configurable provider send/status APIs
 // (docs/sms-gateway-connectors.md). Strict load order: the secret vault first (the connector engine
 // resolves secret-backed parameters at compile time), then the safety engine that validates and

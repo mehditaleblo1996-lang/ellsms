@@ -47,6 +47,7 @@ final class PrometheusExporter
         self::appendProviderHealthMetrics($lines, $db);
         self::appendBulkJobMetrics($lines, $db);
         self::appendSendDimensionMetrics($lines, $db);
+        self::appendAlertMetrics($lines, $db);
         return implode("\n", $lines) . "\n";
     }
 
@@ -260,6 +261,69 @@ final class PrometheusExporter
      * per-tenant value that grows forever, exactly what this file's own cardinality rule forbids.
      * message_type and status are both small fixed enums, so those alone are safe as labels.
      */
+    /**
+     * Issue #15's alert/incident subsystem. All labels are bounded ENUM columns
+     * (ellsms_alert_incidents.severity, ellsms_alert_dispatch_log.channel/outcome) -- never
+     * alert_key itself (which, while code-defined per call site, is not enumerated here to avoid
+     * having to keep this file's own allow-list in lockstep with every alert source that will ever
+     * exist; the per-key detail is available in the admin UI's incident list, not the scrape).
+     */
+    private static function appendAlertMetrics(array &$lines, PDO $db): void {
+        if (!$db->query("SHOW TABLES LIKE 'ellsms_alert_incidents'")->fetch()) {
+            return;
+        }
+        $severities = ['warning', 'critical', 'emergency'];
+
+        $activeHeaders = [];
+        $activeByServerity = array_fill_keys($severities, 0);
+        foreach ($db->query("SELECT severity, COUNT(*) AS c FROM ellsms_alert_incidents WHERE status IN ('open','acknowledged') GROUP BY severity")->fetchAll() as $row) {
+            $activeByServerity[self::boundedLabel((string)$row['severity'], $severities)] = (int)$row['c'];
+        }
+        foreach ($severities as $severity) {
+            self::sample($lines, 'ellsms_alert_incidents_active', 'gauge', 'Currently open or acknowledged incidents, per severity.', (float)$activeByServerity[$severity], ['severity' => $severity], $activeHeaders);
+        }
+
+        $firedHeaders = [];
+        $firedByServerity = array_fill_keys($severities, 0);
+        foreach ($db->query('SELECT severity, COUNT(*) AS c FROM ellsms_alert_incidents GROUP BY severity')->fetchAll() as $row) {
+            $firedByServerity[self::boundedLabel((string)$row['severity'], $severities)] = (int)$row['c'];
+        }
+        foreach ($severities as $severity) {
+            self::sample($lines, 'ellsms_alert_incidents_total', 'counter', 'Cumulative incidents ever raised, per severity.', (float)$firedByServerity[$severity], ['severity' => $severity], $firedHeaders);
+        }
+
+        $recoveredHeaders = [];
+        $recoveredByServerity = array_fill_keys($severities, 0);
+        foreach ($db->query("SELECT severity, COUNT(*) AS c FROM ellsms_alert_incidents WHERE status = 'resolved' GROUP BY severity")->fetchAll() as $row) {
+            $recoveredByServerity[self::boundedLabel((string)$row['severity'], $severities)] = (int)$row['c'];
+        }
+        foreach ($severities as $severity) {
+            self::sample($lines, 'ellsms_alert_incidents_recovered_total', 'counter', 'Cumulative incidents resolved (recovered), per severity.', (float)$recoveredByServerity[$severity], ['severity' => $severity], $recoveredHeaders);
+        }
+
+        $ackHeaders = [];
+        $ackByServerity = array_fill_keys($severities, 0);
+        foreach ($db->query("SELECT severity, COUNT(*) AS c FROM ellsms_alert_incidents WHERE acknowledged_at IS NOT NULL GROUP BY severity")->fetchAll() as $row) {
+            $ackByServerity[self::boundedLabel((string)$row['severity'], $severities)] = (int)$row['c'];
+        }
+        foreach ($severities as $severity) {
+            self::sample($lines, 'ellsms_alert_incidents_acknowledged_total', 'counter', 'Cumulative incidents ever acknowledged, per severity.', (float)$ackByServerity[$severity], ['severity' => $severity], $ackHeaders);
+        }
+
+        $dispatchHeaders = [];
+        $channels = ['telegram', 'email'];
+        $outcomes = ['sent', 'failed'];
+        $dispatchCounts = [];
+        foreach ($db->query('SELECT channel, outcome, COUNT(*) AS c FROM ellsms_alert_dispatch_log GROUP BY channel, outcome')->fetchAll() as $row) {
+            $dispatchCounts[$row['channel']][$row['outcome']] = (int)$row['c'];
+        }
+        foreach ($channels as $channel) {
+            foreach ($outcomes as $outcome) {
+                self::sample($lines, 'ellsms_alert_dispatch_total', 'counter', 'Cumulative alert dispatch attempts, per channel and outcome.', (float)($dispatchCounts[$channel][$outcome] ?? 0), ['channel' => $channel, 'outcome' => $outcome], $dispatchHeaders);
+            }
+        }
+    }
+
     private static function appendSendDimensionMetrics(array &$lines, PDO $db): void {
         $headers = [];
         $exists = $db->query("SHOW TABLES LIKE 'ellsms_report_daily_dimension_summary'")->fetch();

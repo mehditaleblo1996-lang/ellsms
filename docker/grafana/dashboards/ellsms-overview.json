@@ -68,9 +68,27 @@
       "id": 7,
       "title": "Bulk jobs by status",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "targets": [
         { "expr": "ellsms_bulk_jobs", "legendFormat": "{{status}}" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Active alert incidents by severity",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        { "expr": "ellsms_alert_incidents_active", "legendFormat": "{{severity}}" }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Alert dispatch outcome rate (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 32 },
+      "targets": [
+        { "expr": "rate(ellsms_alert_dispatch_total[5m])", "legendFormat": "{{channel}} {{outcome}}" }
       ]
     }
   ]

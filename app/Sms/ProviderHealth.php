@@ -220,26 +220,37 @@ function provider_health_record_success(string $providerKey, ?float $latencyMs =
 }
 
 /**
- * The alert itself: always a structured log line (so an admin sees it even with no alert channel
- * configured), plus Telegram when configured. Issue #15 is where a real multi-channel/severity/
- * escalation system belongs -- this stays the same minimal alert issue #10 built, now firing on
- * DOWN/recovered instead of outage/recovered.
+ * The alert itself: always a structured log line (so an admin sees it even with every channel
+ * unconfigured), plus routing into issue #15's unified incident subsystem
+ * (app/Alerting/AlertManager.php) for real multi-channel delivery, severity, repeat-until-
+ * acknowledged, and recovery notification. Upgraded in place from issue #10's original
+ * Telegram-only call -- same trigger (a DOWN/recovered transition, still gated by this file's own
+ * cooldown above so a sustained outage doesn't spam), now dispatched through the one shared
+ * incident model every other alert source in this codebase also uses, instead of a second parallel
+ * notification path.
  */
 function provider_health_alert(string $providerKey, string $type, array $context): void {
     $event = $type === 'recovered' ? 'provider_health.recovered' : 'provider_health.down_detected';
     Logger::critical($event, array_merge(['provider_key' => $providerKey], $context));
     Metrics::increment('provider_health.alert', 1, ['provider_key' => $providerKey, 'type' => $type]);
 
-    if (function_exists('telegram_configured') && telegram_configured()) {
-        $text = $type === 'recovered'
-            ? "✅ بازیابی ارائه‌دهنده پیامک: {$providerKey} دوباره در دسترس است."
-            : "⚠️ قطعی ارائه‌دهنده پیامک: {$providerKey} — " . (int)($context['consecutive_failures'] ?? 0) . ' شکست پیاپی. پیام‌ها در صف باقی می‌مانند؛ سوییچ ارائه‌دهنده فقط دستی است.';
-        try {
-            telegram_send_message($text);
-        } catch (Throwable $t) {
-            Logger::error('provider_health.alert_delivery_failed', ['provider_key' => $providerKey, 'exception' => $t]);
-        }
+    if (!class_exists('AlertManager')) {
+        return; // defensive only -- bootstrap.php always loads it in every real entrypoint.
     }
+
+    $alertKey = 'provider_down:' . $providerKey;
+    if ($type === 'recovered') {
+        \AlertManager::recover($alertKey, "ارائه‌دهنده پیامک {$providerKey} دوباره در دسترس است.");
+        return;
+    }
+
+    \AlertManager::fire(
+        $alertKey,
+        \AlertManager::SEVERITY_CRITICAL,
+        "قطعی ارائه‌دهنده پیامک: {$providerKey}",
+        (int)($context['consecutive_failures'] ?? 0) . ' شکست پیاپی. پیام‌ها در صف باقی می‌مانند؛ سوییچ ارائه‌دهنده فقط دستی است.',
+        ['provider_key' => $providerKey, 'consecutive_failures' => $context['consecutive_failures'] ?? null, 'reason' => $context['reason'] ?? null]
+    );
 }
 
 /** Shared Persian label/CSS-color for one health status -- the one place every UI/CLI consumer
