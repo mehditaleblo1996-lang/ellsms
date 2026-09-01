@@ -1,0 +1,15 @@
+# ELLSMS — Prometheus scrape config (issue #14).
+#
+# Scrapes the app container's own /metrics endpoint (public/metrics.php) directly over the
+# internal Docker network -- never through the publicly published APP_PORT, since this compose
+# file keeps Prometheus on the same backend_net as `app` and never publishes Prometheus's own port
+# outside the host by default (see docker-compose.yml's `observability` profile).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: ellsms_app
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["app:80"]

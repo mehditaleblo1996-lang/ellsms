@@ -98,6 +98,18 @@ abstract class IntegrationTestCase extends TestCase
                        ON DUPLICATE KEY UPDATE svalue = VALUES(svalue)')
             ->execute(['default_originator', self::DEFAULT_ORIGINATOR]);
 
+        // backend_api_base_url() (app/Backend/ApiClient.php) resolves setting('api_base_url', ...)
+        // BEFORE ever consulting API_BASE_URL's env value -- a DB-stored setting always wins over
+        // putenv(), by design (an admin can repoint the API endpoint from the settings UI without a
+        // redeploy). That is correct in production but a landmine for this shared, long-lived test
+        // database: any earlier test/tool that ever called set_setting('api_base_url', ...) (or
+        // crashed before restoring it -- see cron/load-test.php's own re-audit fix for issue #4)
+        // leaves a row that silently overrides every subsequent test's own putenv('API_BASE_URL=...'),
+        // with no exception -- just every "real HTTP dispatch" test failing as if the fake backend
+        // never responded. Clearing it here, once per test process, guarantees every run starts from
+        // the same clean slate regardless of what a previous session's manual debugging left behind.
+        $pdo->exec("DELETE FROM ellsms_settings WHERE skey = 'api_base_url'");
+
         self::$schemaLoaded = true;
     }
 

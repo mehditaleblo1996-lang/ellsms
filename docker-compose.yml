@@ -316,7 +316,53 @@ services:
     # half-written CSV behind.
     stop_grace_period: 30s
 
+  # Issue #14 — Prometheus + Grafana observability stack. Behind the "observability" profile so a
+  # plain `docker compose up` never starts them: bring them up explicitly with
+  # `docker compose --profile observability up -d prometheus grafana`. Both stay on backend_net only
+  # (Prometheus reaches `app:80/metrics` directly) and neither publishes a port to the host by
+  # default beyond Grafana's own UI, which an operator is expected to put behind their own
+  # auth/reverse-proxy before exposing outside a trusted network -- same posture as this compose
+  # file already takes for the app's own APP_PORT.
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: ellsms-prometheus
+    restart: unless-stopped
+    profiles: ["observability"]
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ellsms_prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - backend_net
+    depends_on:
+      - app
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: ellsms-grafana
+    restart: unless-stopped
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards/files:ro
+      - ellsms_grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - backend_net
+    depends_on:
+      - prometheus
+
 networks:
   backend_net:
     external: true
     name: ${BACKEND_NETWORK:?set BACKEND_NETWORK in .env to the backend stack's Docker network name}
+
+volumes:
+  ellsms_prometheus_data:
+  ellsms_grafana_data:

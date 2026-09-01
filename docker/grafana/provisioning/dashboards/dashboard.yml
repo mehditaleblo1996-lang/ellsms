@@ -1,0 +1,13 @@
+# ELLSMS — Grafana dashboard provisioning (issue #14): auto-loads every dashboard JSON in
+# docker/grafana/dashboards/ on startup, so the operational dashboard exists without a manual import.
+apiVersion: 1
+
+providers:
+  - name: ellsms
+    orgId: 1
+    folder: ELLSMS
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/files

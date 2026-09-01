@@ -1553,13 +1553,23 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
     // oldest_age_seconds computed in SQL (TIMESTAMPDIFF against the DB's own NOW()), not in PHP via
     // strtotime() — matching cron/jobs-status.php's established oldest-pending-age pattern, and
     // avoiding any PHP/MySQL session timezone mismatch a client-side date parse would risk.
+    // Eligibility here MUST match bulk_claim_items()'s own claim predicate exactly (pending-and-due,
+    // OR processing-with-an-expired-lease) -- issue #3's re-audit found and fixed a real bug where
+    // this only counted 'pending' rows: a class whose only claimable work was a crashed worker's
+    // expired-lease row (still 'processing') measured zero depth, so allocate_priority_quota() gave
+    // it a zero share and bulk_claim_items() for that class was never even called, leaving the row
+    // stuck 'processing' forever -- a genuine silent-loss-adjacent bug (issue #6's own concern),
+    // caught by tests/Integration/BulkWorkerCrashRecoveryTest.php's reclaim test.
     $depthStmt = $db->prepare(
         "SELECT bj.message_class, COUNT(*) AS depth,
                 TIMESTAMPDIFF(SECOND, MIN(i.created_at), NOW()) AS oldest_age_seconds
          FROM ellsms_bulk_items i
          JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
          WHERE bj.status = 'processing' AND bj.throttle_count IS NULL
-           AND i.status = 'pending' AND (i.next_attempt_at IS NULL OR i.next_attempt_at <= NOW())
+           AND (
+             (i.status = 'pending' AND (i.next_attempt_at IS NULL OR i.next_attempt_at <= NOW()))
+             OR (i.status = 'processing' AND i.lease_expires_at IS NOT NULL AND i.lease_expires_at < NOW())
+           )
          GROUP BY bj.message_class"
     );
     $depthStmt->execute();

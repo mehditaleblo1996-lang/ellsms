@@ -1,0 +1,77 @@
+{
+  "title": "ELLSMS Overview",
+  "uid": "ellsms-overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Bulk queue depth by message class",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "ellsms_queue_bulk_depth", "legendFormat": "{{message_class}}" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Oldest claimable bulk item age (seconds)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "ellsms_queue_bulk_oldest_age_seconds", "legendFormat": "{{message_class}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Provider health status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "ellsms_provider_health_status == 1", "legendFormat": "{{provider_key}} = {{status}}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Provider consecutive failures / timeouts",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "ellsms_provider_health_consecutive_failures", "legendFormat": "{{provider_key}} failures" },
+        { "expr": "ellsms_provider_health_consecutive_timeouts", "legendFormat": "{{provider_key}} timeouts" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Bulk messages sent/failed rate (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        { "expr": "rate(ellsms_bulk_messages_sent_total[5m])", "legendFormat": "sent {{message_class}}" },
+        { "expr": "rate(ellsms_bulk_messages_failed_total[5m])", "legendFormat": "failed {{message_class}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Active workers / DB up",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        { "expr": "ellsms_queue_active_workers", "legendFormat": "active workers" },
+        { "expr": "ellsms_db_up", "legendFormat": "db up" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Bulk jobs by status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        { "expr": "ellsms_bulk_jobs", "legendFormat": "{{status}}" }
+      ]
+    }
+  ]
+}

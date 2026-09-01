@@ -1,0 +1,11 @@
+# ELLSMS — Grafana datasource provisioning (issue #14). Auto-registers Prometheus so a fresh
+# `docker compose --profile observability up` needs no manual "add data source" click-through.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
