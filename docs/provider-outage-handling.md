@@ -1,5 +1,11 @@
 # Provider outage handling (issue #10)
 
+**Superseded by `docs/provider-health-model.md` (issue #16)**: the binary `healthy`/`outage` model
+described below was upgraded in place into the full `UP`/`DEGRADED`/`DOWN`/`UNKNOWN` model with
+active checks. This file is kept as the historical record of issue #10's own audit/decisions (which
+still hold — messages stay queued, no automatic substitution, manual-only switching); see the newer
+doc for the current state model and thresholds.
+
 ## Agreed behavior
 
 When the selected provider is unavailable/degraded: messages stay queued, the admin is notified,

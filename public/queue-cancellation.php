@@ -79,7 +79,8 @@ require __DIR__ . '/../app/views/header.php';
     <tr>
       <td class="ltr"><?= e($key) ?></td>
       <td class="ltr"><?= (int)$count ?></td>
-      <td><?= $health !== null && $health['status'] === 'outage' ? '<strong style="color:#c0392b">قطعی</strong>' : 'سالم' ?></td>
+      <?php $healthLabel = provider_health_status_label($health['status'] ?? 'unknown'); ?>
+      <td><strong style="color:<?= e($healthLabel['color']) ?>"><?= e($healthLabel['label']) ?></strong></td>
       <td>
         <form method="post" style="display:inline">
           <?= csrf_field() ?><input type="hidden" name="do" value="cancel_provider">

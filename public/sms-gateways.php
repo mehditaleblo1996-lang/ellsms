@@ -410,10 +410,8 @@ require __DIR__ . '/../app/views/header.php';
         <td>
           <?php if ($health === null): ?>
             <span class="muted">بدون سابقه ارسال</span>
-          <?php elseif ($health['status'] === 'outage'): ?>
-            <strong style="color:#c0392b">قطعی — <?= (int)$health['consecutive_failures'] ?> شکست پیاپی</strong>
-          <?php else: ?>
-            سالم
+          <?php else: $healthLabel = provider_health_status_label($health['status']); ?>
+            <strong style="color:<?= e($healthLabel['color']) ?>"><?= e($healthLabel['label']) ?><?= in_array($health['status'], ['degraded', 'down'], true) ? ' — ' . (int)$health['consecutive_failures'] . ' شکست پیاپی' : '' ?></strong>
           <?php endif; ?>
         </td>
         <td>

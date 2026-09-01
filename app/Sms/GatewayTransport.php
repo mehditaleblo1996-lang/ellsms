@@ -187,6 +187,7 @@ function gateway_send_for_dispatch_group(array $user, string $originator, array 
         return null;
     }
     $connector = $resolved['connector'];
+    $healthStartedAt = microtime(true);
     $result = gateway_send(
         $connector,
         [
@@ -197,17 +198,25 @@ function gateway_send_for_dispatch_group(array $user, string $originator, array 
         ],
         isset($route['route_id']) ? (int)$route['route_id'] : null
     );
+    $healthElapsedMs = (microtime(true) - $healthStartedAt) * 1000;
     $result['gateway_id'] = $connector['gateway_id'];
     $result['gateway_config_version'] = $connector['config_version'];
     $result['route_id'] = isset($route['route_id']) ? (int)$route['route_id'] : null;
 
-    // Issue #10: reachability, not per-message business outcome -- $sent!==[] means the gateway was
-    // reachable regardless of how many destinations it accepted; $retryable (only true when nothing
-    // at all was sent AND the failure was network/5xx-classified) means it genuinely was not.
+    // Issue #10/#16: reachability, not per-message business outcome -- $sent!==[] means the gateway
+    // was reachable regardless of how many destinations it accepted; $retryable (only true when
+    // nothing at all was sent AND the failure was network/5xx-classified) means it genuinely was
+    // not. $healthElapsedMs covers the whole (possibly multi-destination) call, an acceptable
+    // aggregate signal for health purposes -- this is not a per-message accounting value.
     if ($result['sent'] !== []) {
-        provider_health_record_success(provider_health_key_for_gateway((int)$connector['gateway_id']));
+        provider_health_record_success(provider_health_key_for_gateway((int)$connector['gateway_id']), $healthElapsedMs);
     } elseif ($result['retryable'] ?? false) {
-        provider_health_record_failure(provider_health_key_for_gateway((int)$connector['gateway_id']), (string)($result['error_class'] ?? $result['error'] ?? 'unknown'));
+        $errorClass = (string)($result['error_class'] ?? $result['error'] ?? 'unknown');
+        if ($errorClass === BackendError::TIMEOUT) {
+            provider_health_record_timeout(provider_health_key_for_gateway((int)$connector['gateway_id']), $errorClass);
+        } else {
+            provider_health_record_failure(provider_health_key_for_gateway((int)$connector['gateway_id']), $errorClass);
+        }
     }
     return $result;
 }

@@ -116,15 +116,15 @@ foreach ($autoreply as $r) {
     echo "  {$r['status']}: {$r['total']}{$extra}\n";
 }
 
-section('Provider health (issue #10)');
+section('Provider health (issue #16 full model)');
 $providerHealth = provider_health_snapshot();
 if (!$providerHealth) {
     echo "  (no dispatch attempts recorded yet)\n";
 }
 foreach ($providerHealth as $p) {
-    $marker = $p['status'] === 'outage' ? 'OUTAGE' : 'healthy';
-    $line = "  {$p['provider_key']}: {$marker} (consecutive failures: {$p['consecutive_failures']})";
-    if ($p['status'] === 'outage') {
+    $marker = strtoupper((string)$p['status']);
+    $line = "  {$p['provider_key']}: {$marker} (consecutive failures: {$p['consecutive_failures']}, timeouts: {$p['consecutive_timeouts']}, avg latency: " . ($p['avg_latency_ms'] !== null ? round((float)$p['avg_latency_ms']) . 'ms' : 'n/a') . ", source: {$p['last_check_source']})";
+    if (in_array($p['status'], ['degraded', 'down'], true)) {
         $line .= " -- last error: {$p['last_error']}, since: {$p['last_failure_at']}";
     }
     echo "{$line}\n";
