@@ -384,17 +384,25 @@ contention with whatever else concurrently touches that table, which the origina
 stay single-table, full stop — any future need to order by something other than `id` should be
 solved by more/smarter calls to it (as above), never by joining another table onto it.
 
-**Tuning without a code rewrite:** `WORKER_BULK_BATCH_SIZE` (`.env`) still controls the total
-per-tick budget shared across classes; `queue_class_min_share()`'s floors are a code-level policy
-today (a config surface for them is a natural follow-up, not yet built — see Known limitations
-below).
+**Tuning without a code rewrite (re-audit, issue #3):** `WORKER_BULK_BATCH_SIZE` (`.env`) controls
+the total per-tick budget shared across classes; `queue_class_min_share()` reads each class's floor
+from `QUEUE_CLASS_MIN_SHARE_<CLASS>` (e.g. `QUEUE_CLASS_MIN_SHARE_ADVERTISING=0.20`), falling back to
+the built-in default (unchanged from before this re-audit) when the variable is unset, empty, or not
+a finite number in `[0, 1]` — a bad value is logged (`queue.fairness.invalid_min_share`) and never
+crashes claiming or silently zeroes a class's floor. Retuning fairness for a deployment's traffic mix
+is now a worker restart with a changed environment, never a PHP edit. See
+`tests/Unit/QueueFairnessTest.php` (env-parsing edge cases) and
+`tests/Integration/BulkClaimFairnessTest.php` (real claim query honoring a custom floor end-to-end,
+and no starvation across a real multi-tick sustained backlog).
 
-**Metrics** (via `Metrics::gauge`, tagged `message_class`): `queue.bulk.depth` (pending rows) and
-`queue.bulk.oldest_age_seconds` (age of the oldest claimable row), emitted once per worker tick from
-`bulk_claim_unthrottled_items_by_class()`. Per-claim throughput/lag were already emitted by
-`bulk_claim_items()` as `queue.claim.bulk_items` timing/gauges; calling it once per class (instead
-of once for the whole budget) means those are now implicitly per-class too, distinguishable by the
-`job_type`/timing context each call site logs.
+**Metrics** (via `Metrics::gauge`, tagged `message_class`): `queue.bulk.depth` (pending rows),
+`queue.bulk.oldest_age_seconds` (age of the oldest claimable row), and `queue.bulk.claimed` (rows
+actually claimed this tick — added in the same re-audit, since depth/age were already per-class but
+the actual claim rate per class was only visible in the untagged `queue.claim.bulk_items` timing
+below). All three are emitted once per worker tick from `bulk_claim_unthrottled_items_by_class()`.
+Per-claim throughput/lag were already emitted by `bulk_claim_items()` as `queue.claim.bulk_items`
+timing/gauges; calling it once per class (instead of once for the whole budget) means those are now
+implicitly per-class too, distinguishable by the `job_type`/timing context each call site logs.
 
 **Assigning a class:** `bulk_queue_job()` takes an optional trailing `$messageClass` argument
 (`normalize_bulk_message_class()` restricts it to `'bulk_campaign'`/`'advertising'`, defaulting to
@@ -408,7 +416,5 @@ dedicated advertising/broadcast page) is a follow-up, not part of this change.
   not by the production worker loop) was not updated to use per-class quotas — the production path
   (`run_bulk_send_pass_fast()`, what `cron/worker.php` actually calls) is the one this section
   describes.
-- `queue_class_min_share()`'s floors are fixed in code rather than `.env`-configurable per class;
-  `WORKER_BULK_BATCH_SIZE` remains the one live-tunable knob for this budget.
 - No UI yet lets an operator create an explicit Advertising-class job — the plumbing (column,
   per-class quota) is in place for whichever future page needs it.

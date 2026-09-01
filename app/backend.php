@@ -1571,6 +1571,11 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
             [$class],
             $share
         );
+        // Per-class throughput (issue #3 re-audit: depth/oldest-age were already tagged by
+        // message_class above; claimed-per-tick was not, so a class's actual claim rate could not
+        // be told apart from another's in the metrics even though allocate_priority_quota() was
+        // already splitting the budget between them).
+        Metrics::gauge('queue.bulk.claimed', count($claimed), ['message_class' => $class]);
         if ($claimed) {
             $items = array_merge($items, $claimed);
         }

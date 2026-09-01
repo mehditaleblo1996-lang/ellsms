@@ -25,9 +25,16 @@ declare(strict_types=1);
  * make SOME progress under a flood of higher-priority work, just not much. Scheduled/Notification/
  * Transactional/OTP don't currently contend for this specific budget (see MessageClass.php) but
  * get sane floors too so this function stays correct if a future class starts sharing it.
+ *
+ * Runtime-configurable (issue #3 re-audit): each floor reads QUEUE_CLASS_MIN_SHARE_<CLASS> (e.g.
+ * QUEUE_CLASS_MIN_SHARE_ADVERTISING=0.10), so an operator can retune fairness for a specific
+ * deployment's traffic mix by restarting the bulk worker with a changed environment -- no PHP edit,
+ * no deploy. A value that fails to parse as a finite float in [0, 1] is logged and the built-in
+ * default is used for that one class instead of failing the whole allocation -- one bad
+ * environment variable must never crash queue claiming or silently zero out a class's floor.
  */
 function queue_class_min_share(): array {
-    return [
+    $defaults = [
         MESSAGE_CLASS_OTP => 0.30,
         MESSAGE_CLASS_TRANSACTIONAL => 0.20,
         MESSAGE_CLASS_NOTIFICATION => 0.15,
@@ -35,6 +42,31 @@ function queue_class_min_share(): array {
         MESSAGE_CLASS_BULK_CAMPAIGN => 0.15,
         MESSAGE_CLASS_ADVERTISING => 0.05,
     ];
+
+    $shares = [];
+    foreach ($defaults as $class => $default) {
+        $shares[$class] = queue_class_min_share_from_env($class, $default);
+    }
+    return $shares;
+}
+
+/** @internal exposed only for QueueFairnessTest; not part of the public allocation API. */
+function queue_class_min_share_from_env(string $class, float $default): float {
+    $envKey = 'QUEUE_CLASS_MIN_SHARE_' . strtoupper($class);
+    $raw = env($envKey, null);
+    if ($raw === null || trim((string)$raw) === '') {
+        return $default;
+    }
+    if (!is_numeric($raw)) {
+        Logger::warning('queue.fairness.invalid_min_share', ['class' => $class, 'env_key' => $envKey, 'raw' => (string)$raw, 'fallback' => $default]);
+        return $default;
+    }
+    $value = (float)$raw;
+    if (!is_finite($value) || $value < 0.0 || $value > 1.0) {
+        Logger::warning('queue.fairness.invalid_min_share', ['class' => $class, 'env_key' => $envKey, 'raw' => (string)$raw, 'fallback' => $default]);
+        return $default;
+    }
+    return $value;
 }
 
 /**
