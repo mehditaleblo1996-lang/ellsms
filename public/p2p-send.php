@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // wallet reservation release, and audit logging, all in one shared, tested function.
         bulk_cancel_campaign($id, $me, 'admin panel: p2p-send cancel', 'p2p');
         flash('info', 'ارسال لغو شد.');
-        redirect('/p2p-send.php');
+        redirect('/messages/p2p');
     }
 
     if ($do === 'upload') {
@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-        redirect('/p2p-send.php');
+        redirect('/messages/p2p');
     }
 }
 
@@ -182,7 +182,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
         <td><span class="badge badge-<?= e($j['status']) ?>"><?= e($statusFa[$j['status']] ?? $j['status']) ?></span></td>
         <td class="num"><?= jdate($j['created_at']) ?></td>
         <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <a class="btn btn-sm" href="/bulk-job.php?id=<?= (int)$j['id'] ?>">جزئیات</a>
+          <a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a>
           <?php if (in_array($j['status'], ['pending', 'processing'], true)): ?>
           <form method="post" onsubmit="return confirm('این ارسال لغو شود؟')" style="display:inline">
             <?= csrf_field() ?>

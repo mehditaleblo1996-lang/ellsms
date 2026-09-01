@@ -203,7 +203,7 @@ require __DIR__ . '/../app/views/header.php';
         <td><span class="badge badge-<?= e((string)$j['status']) ?>"><?= e($bulkStatusFa[(string)$j['status']] ?? (string)$j['status']) ?></span></td>
         <td class="num"><?php if(!empty($j['throttle_count'])): ?><?= to_persian_digits(number_format((int)$j['throttle_count'])) ?> هر <?= to_persian_digits((string)(int)$j['throttle_minutes']) ?> دقیقه<?php else: ?>—<?php endif; ?></td>
         <td class="num"><?= report_v2_jdate((string)$j['created_at']) ?></td>
-        <td><a class="btn btn-sm" href="/bulk-job.php?id=<?= (int)$j['id'] ?>">جزئیات</a></td>
+        <td><a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a></td>
       </tr>
     <?php endforeach; ?>
     <?php if(!$bulkJobs): ?><tr><td colspan="13" class="empty">ارسال حجیمی در این بازه وجود ندارد.</td></tr><?php endif; ?>

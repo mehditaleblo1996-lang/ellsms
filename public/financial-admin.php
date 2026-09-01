@@ -35,8 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/financial-admin.php?tab=invoices');
     }
 
-    if (in_array($do, ['invoice_unpaid', 'invoice_disable'], true)) {
-        $state = $do === 'invoice_unpaid' ? 'approved' : 'disabled';
+    if (in_array($do, ['invoice_approve', 'invoice_disable'], true)) {
+        $state = $do === 'invoice_approve' ? 'approved' : 'disabled';
         $result = invoice_admin_set_state($invoiceId, $state, (int)$me['id'], $note);
         $reasonFa = [
             'note_required' => 'برای غیرفعال کردن فاکتور، ذکر دلیل الزامی است.',
@@ -129,7 +129,7 @@ require __DIR__ . '/../app/views/header.php';
         <td><div class="toolbar">
           <?php if ($r['status']==='issued'): ?>
             <?php if ($adminState==='disabled'): ?>
-              <form method="post"><input type="hidden" name="do" value="invoice_unpaid"><input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>"><?= csrf_field() ?><button class="btn btn-sm btn-primary">پرداخت‌نشده / فعال</button></form>
+              <form method="post"><input type="hidden" name="do" value="invoice_approve"><input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>"><?= csrf_field() ?><button class="btn btn-sm btn-primary">پرداخت‌نشده / فعال</button></form>
             <?php else: ?>
               <form method="post" onsubmit="var n=prompt('توضیح تأیید دستی پرداخت را وارد کنید:');if(n===null||!n.trim())return false;this.note.value=n.trim();return confirm('پرداخت این فاکتور دستی تأیید شود؟ اعتبار/اشتراک کاربر نیز اعمال می‌شود.');"><input type="hidden" name="do" value="invoice_mark_paid"><input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="note" value=""><?= csrf_field() ?><button class="btn btn-sm btn-primary">تأیید پرداخت</button></form>
               <form method="post" onsubmit="var n=prompt('دلیل غیرفعال کردن را وارد کنید:');if(n===null||!n.trim())return false;this.note.value=n.trim();return confirm('فاکتور غیرفعال شود؟');"><input type="hidden" name="do" value="invoice_disable"><input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>"><input type="hidden" name="note" value=""><?= csrf_field() ?><button class="btn btn-sm btn-danger">غیرفعال</button></form>

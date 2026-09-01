@@ -65,6 +65,10 @@ final class CleanUrlRoutingTest extends TestCase
             // Internal POST-only command endpoint. It immediately redirects back to a clean user URL
             // and is deliberately not given a public canonical GET route.
             'send-queue.php',
+            'import-cancel.php',
+            // Pure implementation file for reports.php's own stable route (`require`d directly, no
+            // wrapping) -- reports.php already owns the canonical /messages/reports URL.
+            'reports-v2.php',
         ];
 
         $missing = [];

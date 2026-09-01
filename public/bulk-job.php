@@ -128,8 +128,8 @@ if (!empty($job['throttle_count']) && !empty($job['throttle_minutes'])) {
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-  <a class="btn btn-ghost" href="/p2p-send.php">بازگشت به ارسال‌های نظیر به نظیر</a>
-  <a class="btn btn-ghost" href="/reports-bulk.php?job_id=<?= (int)$jobId ?>">گزارش حجیم</a>
+  <a class="btn btn-ghost" href="/messages/p2p">بازگشت به ارسال‌های نظیر به نظیر</a>
+  <a class="btn btn-ghost" href="/messages/reports/bulk?job_id=<?= (int)$jobId ?>">گزارش حجیم</a>
 </div>
 
 <div class="card">

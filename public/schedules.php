@@ -116,7 +116,7 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= to_persian_digits(number_format((int)$b['start_row'])) ?> تا <?= to_persian_digits(number_format((int)$b['end_row'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$b['size'])) ?></td>
         <td><span class="badge badge-<?= e((string)$b['status']) ?>"><?= e($batchStatusFa[(string)$b['status']] ?? (string)$b['status']) ?></span></td>
-        <td><a class="btn btn-sm" href="/bulk-job.php?id=<?= (int)$b['job_id'] ?>">مشاهده پیام‌ها</a></td>
+        <td><a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$b['job_id'] ?>">مشاهده پیام‌ها</a></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$gradualBatches): ?><tr><td colspan="10" class="empty">ارسال تدریجی فعالی وجود ندارد.</td></tr><?php endif; ?>

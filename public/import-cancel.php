@@ -25,6 +25,6 @@ if ($back === 'detail') {
     redirect('/contacts/import?id=' . $jobId);
 }
 if ($back === 'p2p') {
-    redirect('/p2p-send.php');
+    redirect('/messages/p2p');
 }
 redirect('/contacts/import');

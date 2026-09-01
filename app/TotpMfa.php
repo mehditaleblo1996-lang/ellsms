@@ -149,8 +149,9 @@ function totp_provisioning_uri(string $username, string $secretBase32): string {
 
 /**
  * Render the provisioning URI as a QR code locally with qrencode. The secret never leaves the
- * ELLSMS container: no Google Chart/QuickChart/CDN request is used. Returns a data: SVG URI that is
- * already permitted by the panel CSP, or null if the local qrencode binary is unavailable.
+ * ELLSMS container: no third-party chart-rendering API or CDN request is used. Returns a data: SVG
+ * URI that is already permitted by the panel CSP, or null if the local qrencode binary is
+ * unavailable.
  */
 function totp_qr_svg_data_uri(string $provisioningUri): ?string {
     if ($provisioningUri === '' || !function_exists('proc_open')) return null;

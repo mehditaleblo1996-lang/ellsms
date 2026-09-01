@@ -6,7 +6,7 @@ $me = require_login();
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     flash('error', 'درخواست نامعتبر است.');
-    redirect('/p2p-send.php');
+    redirect('/messages/p2p');
 }
 
 csrf_check();

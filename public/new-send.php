@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($ok) {
             audit((int)$me['id'], 'new_send.gradual', count($dests) . " dest, {$throttleCount}/{$throttleMinutes}min");
             flash('success', $info . " — {$throttleCount} پیام هر {$throttleMinutes} دقیقه." . $blockedNote);
-            redirect('/p2p-send.php');
+            redirect('/messages/p2p');
         } else {
             flash('error', $info);
         }
