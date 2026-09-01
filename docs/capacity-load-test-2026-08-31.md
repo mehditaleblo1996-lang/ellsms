@@ -141,6 +141,103 @@ LOAD_TEST_ITEMS=300000 LOAD_TEST_WORKERS=8 LOAD_TEST_BATCH_SIZE=200 \
   LOAD_TEST_TIMEOUT_SECONDS=90 LOAD_TEST_LABEL="issue-4-burst" php cron/load-test.php
 ```
 
+## Re-audit addendum (2026-09-01)
+
+Re-opened this issue to actually run the harness rather than re-assert the numbers above. Found and
+fixed three real bugs in the harness itself — all now fixed and verified on `main` — before any
+capacity number below could be trusted:
+
+1. **`cron/load-test-worker-runner.php` called the wrong pass function.** Its own docblock claimed
+   it called "the same function the real worker calls," but it actually called the legacy
+   `run_bulk_send_pass()` (`app/backend.php`); the real worker (`cron/worker.php`) calls
+   `run_bulk_send_pass_fast()` (`app/BulkFastWorker.php`). Fixed the call and added the missing
+   `require_once` for `app/BulkFastWorker.php` (a second bug: without it, `run_bulk_send_pass_fast()`
+   was undefined, which the tick loop's `catch (Throwable)` silently swallowed as a logged critical
+   error, producing a misleading "0 items/sec, correctness: OK" result with no visible crash).
+   **Re-measured impact: modest, not the dominant factor** — see finding 3.
+2. **A pre-existing leftover `ellsms_numbers` row and stray `ellsms_bulk_jobs` rows** from earlier
+   interrupted debug runs (duplicate-key crashes before this session's own fixes) blocked reseeding
+   until manually cleared. Not a harness bug — a reminder that a run which dies before its own
+   cleanup section (line ~340) leaves disposable seed data behind; `LOAD_TEST_KEEP=1` intentionally
+   does the same on purpose, on request.
+3. **The actual root cause of the harness reporting 0 items/sec even after fix #1: a stale
+   `ellsms_settings.api_base_url` database row silently overrides the harness's own
+   `putenv('API_BASE_URL=...')`.** `backend_api_base_url()` (`app/Backend/ApiClient.php`) resolves
+   `setting('api_base_url', env('API_BASE_URL', ...))` — the DB-stored admin setting wins whenever
+   it's non-empty, since `env()` is only ever consulted as `setting()`'s own default, never as an
+   override. Any prior write to that setting (a previous load-test run, or an admin actually
+   configuring the field on a shared dev DB) permanently redirects every subsequent load-test run's
+   workers to that stale URL/port — usually long dead — with no exception surfacing (the workers'
+   own retry/backoff path classifies the resulting connection failure as an ordinary retryable
+   error and reschedules, exactly mimicking "queue is being throttled," not "misconfigured"). Fixed
+   `cron/load-test.php` to call `set_setting('api_base_url', $fakeBackendUrl)` itself (in addition to
+   the `putenv()`, which still matters for any code path that reads the env var directly) and to
+   restore whatever was there before on its way out. This was the actual reason every run this
+   session returned `sent=0, throughput: 0 items/sec` regardless of which pass function was called.
+
+**Real measured throughput after all three fixes** (same sandbox class as the original pass —
+4-core VM, local MariaDB, zero simulated backend latency, `php -S`-served fake backend):
+
+| Scenario | Workers | Items | Elapsed | Throughput | Result |
+|---|---|---|---|---|---|
+| Single-worker sanity | 1 | 200 | 1.2s | 168 items/s | sent=200, 0 failed, OK |
+| 4-worker | 4 | 5,000 | 9.9s | 506 items/s | sent=5000, 0 failed, OK |
+| 8-worker | 8 | 10,000 | 15.1s | 664 items/s | sent=10000, 0 failed, OK |
+| 16-worker | 16 | 15,000 | 22.3s | 673 items/s | sent=15000, 0 failed, OK |
+| 8-worker, ~1 minute sustained | 8 | 30,000 | 58.2s | 515 items/s | sent=30000, 0 failed, OK |
+
+Throughput plateaus around **~650-670 items/s** past 8 workers on this sandbox — essentially the
+same ceiling as the original ~520-549 items/s figure, confirming finding 1's fix was not the
+dominant factor: this class of sandbox (single-process `php -S` fake backend handling one
+connection at a time, plus this VM's own DB/CPU round-trip overhead at near-zero simulated
+latency) is itself the bottleneck being measured, exactly as `docs/phase-9-final-report.md`
+already concluded. **This is still not a certified production number** — a real backend/provider
+integration and real production-class hardware would sit at a different point on the same
+`throughput(latency, workers)` curve.
+
+### Honest status against the five required targets
+
+| Target | Result |
+|---|---|
+| ~1,000 msg/s sustained (normal traffic) | **FAIL on this sandbox** (~500-670 msg/s measured, plateaus below target regardless of worker count tried up to 16). Not yet tested against production-class hardware/a real backend, where the bottleneck may differ. |
+| ≥3,000 msg/s campaign, 30 minutes | **NOT RUN.** Requires a dedicated disposable environment and ~30 wall-clock minutes this sandbox session cannot commit to safely; command below. Already known to fail on this sandbox's own ceiling (~670 msg/s max observed) — would need to run on different infrastructure to mean anything. |
+| 5,000 msg/s burst, 60 seconds | **NOT RUN**, same reason; this sandbox's ceiling is already ~7x below this target. |
+| 5,000,000-message campaign ≤ 30 minutes | **NOT RUN** — needs dedicated infra/time; command below. |
+| OTP/Transactional protected under Bulk load | **PASS.** Structural isolation (unchanged, see above) plus a real concurrent test added in issue #5's own re-audit: `tests/Integration/HighPriorityLatencyUnderBulkLoadTest.php` drives a real 5,000-item Bulk backlog with a real worker subprocess claiming/sending concurrently, then issues real synchronous OTP dispatches and asserts each stays under the OTP SLO latency target. |
+
+**Conclusion: issue #4 stays OPEN.** The harness is now honestly reproducible and no longer
+silently broken, and OTP/Transactional protection has real evidence. The three throughput targets
+remain unverified on real infrastructure and the one number that IS measured (sustained sandbox
+throughput) does not meet the 1,000 msg/s bar — on this sandbox specifically, which this report has
+never claimed represents production capacity. Closing this issue would require either running the
+commands below on real target infrastructure, or a documented decision that this sandbox's ceiling
+is an accepted, understood limitation unrelated to the queue design (which the flat 505-673 items/s
+plateau across 4x the worker count is consistent with, but is not the same as proving production
+hardware clears the bar).
+
+### Commands to actually clear this issue (unchanged from above, still not run)
+
+```bash
+# 30-minute sustained campaign at target rate — needs a real disposable DB + backend, not this sandbox
+LOAD_TEST_ITEMS=5400000 LOAD_TEST_WORKERS=8 LOAD_TEST_BATCH_SIZE=200 \
+  LOAD_TEST_TIMEOUT_SECONDS=1800 LOAD_TEST_LABEL="issue-4-sustained-30min" php cron/load-test.php
+
+# 5,000,000-message max-campaign size check
+LOAD_TEST_ITEMS=5000000 LOAD_TEST_WORKERS=8 LOAD_TEST_BATCH_SIZE=200 \
+  LOAD_TEST_TIMEOUT_SECONDS=3600 LOAD_TEST_LABEL="issue-4-max-campaign" php cron/load-test.php
+
+# Burst: short high-rate window
+LOAD_TEST_ITEMS=300000 LOAD_TEST_WORKERS=8 LOAD_TEST_BATCH_SIZE=200 \
+  LOAD_TEST_TIMEOUT_SECONDS=90 LOAD_TEST_LABEL="issue-4-burst" php cron/load-test.php
+```
+
+Note for whoever runs these against real infrastructure: point `LOAD_TEST_BACKEND_LATENCY_MS` at
+the real backend/provider's observed p50 latency first — this sandbox's fake backend runs at 0ms
+simulated latency, so even its own ~670 items/s ceiling is optimistic relative to a real network
+hop. Also see issue #32 for the broader load-test tooling backlog item this harness partially
+addresses — this session's fixes are scoped to making the existing harness honest, not to building
+new tooling duplicate of what #32 tracks.
+
 ## Other findings (pre-existing, out of scope for this pass, flagged not fixed)
 
 The now-clean integration suite (773 tests) has 10 failures unrelated to issues #3/#4:

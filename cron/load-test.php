@@ -181,6 +181,18 @@ echo "Seeded {$totalSeeded} items across " . count($jobIds) . " job(s) / " . cou
 
 /* ---------- 3. Run workers ---------- */
 
+// backend_api_base_url() (app/Backend/ApiClient.php) resolves setting('api_base_url', env('API_BASE_URL', ...))
+// -- the DB-stored admin setting, when present, ALWAYS wins over the env var, since env() is only
+// consulted as setting()'s own default. Issue #4 re-audit finding: any prior real run of this same
+// database (a previous load-test invocation, or an admin actually configuring api_base_url on a
+// shared dev DB) leaves that setting row in place, which then silently overrides this harness's
+// putenv() on every subsequent run -- every worker keeps calling out to a long-dead port from a
+// PAST run while this run's own fresh fake backend never receives a single real request, producing
+// a false "0 items/sec" result with no exception (the worker's own retry/backoff path swallows the
+// resulting BackendUnavailable as an ordinary retryable failure). Must set the row itself, not just
+// the env var, and restore whatever was there before on the way out.
+$originalApiBaseUrlSetting = setting('api_base_url', null);
+set_setting('api_base_url', $fakeBackendUrl);
 putenv("API_BASE_URL={$fakeBackendUrl}");
 putenv("WORKER_BULK_BATCH_SIZE={$batchSize}");
 if ($failureRate > 0) {
@@ -328,6 +340,8 @@ echo "artifact: {$artifactPath}\n";
 proc_terminate($fakeBackendProcess);
 proc_close($fakeBackendProcess);
 @unlink($fakeBackendLogPath);
+
+set_setting('api_base_url', (string)($originalApiBaseUrlSetting ?? ''));
 
 if (!$keep) {
     try {
