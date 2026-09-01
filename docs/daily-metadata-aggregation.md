@@ -32,13 +32,23 @@ actually has at send time. Auditing where that data lives:
   sender-number column on this table at all, and no route/operator for the single largest category of
   traffic on an install with no gateway configured.
 
-**This issue's scope is therefore bulk sends** (`app/Backend/report_dimension_summary.php`,
-`ellsms_report_daily_dimension_summary`) — the one place all six dimensions are genuinely available
-without inventing data. **Known gap, not silently dropped**: direct/scheduled/auto-reply single sends
-have no dimensional breakdown here; they remain counted (without dimensions) in the pre-existing
-`ellsms_report_daily_summary`. Closing this gap for real would mean instrumenting
-`dispatch_message_raw()`'s legacy-success branch to record its own dimensional row somewhere ELLSMS
-owns — a change to the core send path, not a reporting-aggregation change, and out of scope here.
+**Original scope was bulk sends only** (`app/Backend/report_dimension_summary.php`,
+`ellsms_report_daily_dimension_summary`) — the one place all six dimensions were originally available
+without inventing data.
+
+**Re-audit update: the direct/scheduled/auto-reply gap is now closed** via
+`app/Reports/SendDimensionLog.php` — an ELLSMS-owned sidecar table
+(`ellsms_send_dimension_log`) written at dispatch time from `dispatch_message()` and
+`dispatch_message_retryable()` (`app/backend.php`), covering both the legacy transport (route_id 0,
+destination operator resolved purely for reporting via the same prefix matching issue #8's routing
+uses — this NEVER feeds back into route selection) and the gateway path (route/operator as ACTUALLY
+used, from `dispatch_message_raw()`'s existing `$gatewayMeta`). It never duplicates authoritative
+message storage: no content, no destination numbers, no provider identifiers — only the six
+reporting dimensions, grouped by (route, operator, outcome) so a multi-destination call costs at
+most a handful of rows, not one per recipient. `send_dimension_summary_worker_pass()` folds it into
+the *same* `ellsms_report_daily_dimension_summary` table the bulk pass already maintains — one
+aggregate table, one read path (`report_dimension_summary_query()`), regardless of send origin.
+`outbound_message` (backend-owned) is never written to or modified.
 
 ## Design (mirrors the existing report_summary_cache shape)
 
@@ -89,3 +99,7 @@ default 5000) exactly like `report_summary_cache`, so it never holds a long-runn
   `IntegrationTestCase`, for the same reason `WalletConcurrencyTest`/`BulkWorkerCrashRecoveryTest`
   don't: that base class's own enclosing transaction would make the assertion vacuous (see the test's
   docblock).
+- `tests/Integration/SendDimensionLogTest.php` — legacy-path grouping (route_id 0), gateway-path
+  per-destination route/operator from `$gatewayMeta`, sent/failed split, the no-op empty case,
+  idempotent/restart-safe folding into `ellsms_report_daily_dimension_summary`, and multi-tenant
+  isolation in the aggregated result.

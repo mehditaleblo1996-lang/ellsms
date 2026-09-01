@@ -455,12 +455,18 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     // is the SMS_MESSAGE_TYPES pricing vocabulary, translated to a queue message class purely for
     // this measurement's tagging — dispatch_message() never queues.
     $dispatchStartedAt = microtime(true);
-    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations] = dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId);
+    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId), 8, null);
     sli_record_dispatch_latency(
         'dispatch.accept_to_provider_seconds',
         message_class_from_pricing_type($messageType),
         microtime(true) - $dispatchStartedAt
     );
+    // Issue #12 re-audit: dimensional reporting metadata for this direct/scheduled send, covering
+    // both the legacy transport (route_id 0, operator resolved purely for reporting) and the
+    // gateway path (route/operator as ACTUALLY used, from $gatewayMeta) -- see
+    // app/Reports/SendDimensionLog.php. Never influences routing; write failure never affects the
+    // send outcome above.
+    send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta);
 
     // Settlement reads the ALREADY-ACCEPTED per-recipient prices; it never re-resolves a rate, so an
     // admin price change between acceptance and the gateway's reply cannot alter what this send
@@ -584,9 +590,15 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
 
     sms_price_snapshot_record($priced, $organizationId ?: null, $userId, $refType, $refId);
 
-    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations] = dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId);
+    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId), 8, null);
 
     $isTerminal = $ok || !$retryable || $attemptCount >= job_max_attempts();
+    // Issue #12 re-audit: only once terminal, matching the wallet/usage-commit gating just below --
+    // an in-flight retry is not yet a final outcome, and logging every attempt would double-count
+    // one logical send across its retries.
+    if ($isTerminal) {
+        send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta);
+    }
     $settlement = sms_pricing_settlement($priced, $sentDestinations, $sentCount);
     if ($worstCaseCost > 0 && $isTerminal) {
         $actualCost = $settlement['cost'];
