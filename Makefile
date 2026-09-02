@@ -387,8 +387,8 @@ db-schema-show:
 # and that database container to already be reachable.
 db-tables:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
-	docker exec -i "$${BACKEND_DB_HOST}" \
-	  mysql -u"$${BACKEND_DB_USER}" -p"$${BACKEND_DB_PASS}" "$${BACKEND_DB_NAME}" \
+	docker compose exec -T app \
+	  mysql -h"$${BACKEND_DB_HOST}" -P"$${BACKEND_DB_PORT:-3306}" -u"$${BACKEND_DB_USER}" -p"$${BACKEND_DB_PASS}" "$${BACKEND_DB_NAME}" \
 	  -e "SHOW TABLES LIKE 'ellsms\_%';"
 
 # MUTATION. Every statement in db/ellsms_extra.sql is CREATE TABLE IF NOT
@@ -400,8 +400,8 @@ db-tables:
 # filesystem, never the database).
 db-schema-apply:
 	@set -a; [ -f .env ] && . ./.env; set +a; \
-	docker exec -i "$${BACKEND_DB_HOST}" \
-	  mysql -u"$${BACKEND_DB_USER}" -p"$${BACKEND_DB_PASS}" "$${BACKEND_DB_NAME}" \
+	docker compose exec -T app \
+	  mysql -h"$${BACKEND_DB_HOST}" -P"$${BACKEND_DB_PORT:-3306}" -u"$${BACKEND_DB_USER}" -p"$${BACKEND_DB_PASS}" "$${BACKEND_DB_NAME}" \
 	  < db/ellsms_extra.sql
 	@echo "Schema applied (or already up to date)."
 

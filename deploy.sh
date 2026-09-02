@@ -29,19 +29,27 @@ echo "==> Rebuilding and restarting containers..."
 docker compose build
 docker compose up -d
 
+# Run the mysql CLI from INSIDE the app container (which already has default-mysql-client -- see
+# docker/Dockerfile) and connects to BACKEND_DB_HOST over the network, rather than `docker exec`ing
+# directly into a container assumed to BE the database. `docker exec -i "$BACKEND_DB_HOST"` only
+# ever worked when the backend DB happened to be a local container sharing this host's Docker
+# daemon and named exactly by BACKEND_DB_HOST -- it fails outright ("No such container: <ip>") for
+# the equally common case of a separate/managed/remote database host, which is exactly what
+# BACKEND_DB_HOST is FOR (a hostname or IP, not a container name). Also now honors
+# BACKEND_DB_PORT, silently ignored before.
 echo "==> Applying ELLSMS supplementary schema (safe to re-run)..."
-docker exec -i "${BACKEND_DB_HOST}" \
-  mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
+docker compose exec -T app \
+  mysql -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/ellsms_extra.sql
 
 echo "==> Applying report-summary cache schema (safe to re-run)..."
-docker exec -i "${BACKEND_DB_HOST}" \
-  mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
+docker compose exec -T app \
+  mysql -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/migrations/2026_08_25_report_summary_cache.sql
 
 echo "==> Applying registration onboarding schema (safe to re-run)..."
-docker exec -i "${BACKEND_DB_HOST}" \
-  mysql -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
+docker compose exec -T app \
+  mysql -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/migrations/2026_08_26_registration_requests.sql
 
 echo "==> Applying versioned DB migrations..."

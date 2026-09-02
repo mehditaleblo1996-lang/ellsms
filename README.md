@@ -55,7 +55,7 @@ cp .env.example .env
 docker compose up -d --build
 
 # Apply ELLSMS's supplementary tables into the shared database (safe to re-run):
-docker exec -i "$BACKEND_DB_HOST" mysql -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
+docker compose exec -T app mysql -h"$BACKEND_DB_HOST" -P"${BACKEND_DB_PORT:-3306}" -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
 ```
 
 Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: type the username/password of any *existing* account and it becomes the first ELLSMS admin. After that, log in normally at `/login.php`, and grant access to other accounts from **Users**.
@@ -88,7 +88,7 @@ On the server (first time, after the backend's own stack is already up):
 git clone git@github.com:YOURNAME/ellsms.git /opt/ellsms
 cd /opt/ellsms && cp .env.example .env && nano .env
 docker compose up -d --build
-docker exec -i "$BACKEND_DB_HOST" mysql -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
+docker compose exec -T app mysql -h"$BACKEND_DB_HOST" -P"${BACKEND_DB_PORT:-3306}" -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
 ```
 
 Every later update:
