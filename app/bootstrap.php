@@ -234,11 +234,29 @@ function db(): PDO {
         $user = env('BACKEND_DB_USER', 'change_me');
         $pass = env('BACKEND_DB_PASS', '');
         $dsn  = "mysql:host={$host};port={$port};dbname={$name};charset=utf8mb4";
-        $pdo  = new PDO($dsn, $user, $pass, [
+        $options = [
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES   => false,
-        ]);
+        ];
+        // A self-signed/internal-CA server certificate must never crash every DB connection in the
+        // app -- mysqlnd/PDO_MYSQL will opportunistically negotiate TLS whenever the server offers
+        // it at all (independent of the server's own require_secure_transport, which only controls
+        // whether TLS is MANDATORY, not whether the client attempts it), then throws on an
+        // unverifiable certificate chain. Verification off by default (still encrypted when TLS is
+        // negotiated, just not chain-validated) matches this deployment's own choice to run a
+        // self-signed cert on an internal network; set BACKEND_DB_SSL_VERIFY=1 to require a real,
+        // trusted certificate instead (pair with BACKEND_DB_SSL_CA if it's not in the system store).
+        if ((env('BACKEND_DB_SSL_VERIFY', '0') ?? '0') === '1') {
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            $sslCa = env('BACKEND_DB_SSL_CA', '');
+            if ($sslCa !== '') {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+            }
+        } else {
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+        }
+        $pdo = new PDO($dsn, $user, $pass, $options);
     }
     return $pdo;
 }

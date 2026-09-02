@@ -55,7 +55,7 @@ cp .env.example .env
 docker compose up -d --build
 
 # Apply ELLSMS's supplementary tables into the shared database (safe to re-run):
-docker compose exec -T app mysql -h"$BACKEND_DB_HOST" -P"${BACKEND_DB_PORT:-3306}" -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
+docker compose exec -T app mysql --ssl-verify-server-cert=0 -h"$BACKEND_DB_HOST" -P"${BACKEND_DB_PORT:-3306}" -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
 ```
 
 Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: type the username/password of any *existing* account and it becomes the first ELLSMS admin. After that, log in normally at `/login.php`, and grant access to other accounts from **Users**.
@@ -88,19 +88,16 @@ On the server (first time, after the backend's own stack is already up):
 git clone git@github.com:YOURNAME/ellsms.git /opt/ellsms
 cd /opt/ellsms && cp .env.example .env && nano .env
 docker compose up -d --build
-docker compose exec -T app mysql -h"$BACKEND_DB_HOST" -P"${BACKEND_DB_PORT:-3306}" -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
+docker compose exec -T app mysql --ssl-verify-server-cert=0 -h"$BACKEND_DB_HOST" -P"${BACKEND_DB_PORT:-3306}" -u"$BACKEND_DB_USER" -p"$BACKEND_DB_PASS" "$BACKEND_DB_NAME" < db/ellsms_extra.sql
 ```
 
 Every later update:
 ```bash
 cd /opt/ellsms && ./deploy.sh
 ```
-`deploy.sh` pulls, rebuilds, restarts the containers, and re-applies `db/ellsms_extra.sql` (harmless if nothing changed — every statement is `CREATE TABLE IF NOT EXISTS` / `ON DUPLICATE KEY UPDATE`).
+`deploy.sh` pulls, rebuilds, restarts the containers, and re-applies `db/ellsms_extra.sql` (harmless if nothing changed — every statement is `CREATE TABLE IF NOT EXISTS` / `ON DUPLICATE KEY UPDATE`). It runs the `mysql` CLI from inside the already-running `app` container and connects to `BACKEND_DB_HOST` over the network, so this works the same whether that's a local container on the same Docker network or a separate/managed/remote database host — no special-casing needed either way.
 
-If MySQL isn't reachable via `docker exec` (e.g. it's a managed/remote server, not a local container), apply the schema directly instead:
-```bash
-mysql -h <host> -u <user> -p <database> < db/ellsms_extra.sql
-```
+If `BACKEND_DB_HOST` presents a self-signed or internal-CA TLS certificate (common for an internal-network database), `deploy.sh` and the snippets above already pass `--ssl-verify-server-cert=0` by default — the connection is still encrypted whenever the server offers TLS, just not certificate-chain-validated. Set `BACKEND_DB_SSL_VERIFY=1` in `.env` (and `BACKEND_DB_SSL_CA=<path-inside-the-container>` if the CA isn't in the system trust store) to require a properly verified certificate instead; `app/bootstrap.php`'s own database connection honors the same two variables.
 
 ## Language & calendar
 

@@ -37,19 +37,29 @@ docker compose up -d
 # the equally common case of a separate/managed/remote database host, which is exactly what
 # BACKEND_DB_HOST is FOR (a hostname or IP, not a container name). Also now honors
 # BACKEND_DB_PORT, silently ignored before.
+#
+# --ssl-verify-server-cert=0 by default, same reasoning and same BACKEND_DB_SSL_VERIFY=1 opt-out as
+# app/bootstrap.php's db(): the server may offer TLS with a self-signed/internal-CA certificate
+# (common on an internal network) independent of whether it's mandatory, and the client otherwise
+# aborts on an unverifiable chain rather than just connecting encrypted-but-unverified.
+MYSQL_SSL_OPTS=()
+if [ "${BACKEND_DB_SSL_VERIFY:-0}" != "1" ]; then
+  MYSQL_SSL_OPTS=(--ssl-verify-server-cert=0)
+fi
+
 echo "==> Applying ELLSMS supplementary schema (safe to re-run)..."
 docker compose exec -T app \
-  mysql -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
+  mysql "${MYSQL_SSL_OPTS[@]}" -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/ellsms_extra.sql
 
 echo "==> Applying report-summary cache schema (safe to re-run)..."
 docker compose exec -T app \
-  mysql -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
+  mysql "${MYSQL_SSL_OPTS[@]}" -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/migrations/2026_08_25_report_summary_cache.sql
 
 echo "==> Applying registration onboarding schema (safe to re-run)..."
 docker compose exec -T app \
-  mysql -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
+  mysql "${MYSQL_SSL_OPTS[@]}" -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/migrations/2026_08_26_registration_requests.sql
 
 echo "==> Applying versioned DB migrations..."
