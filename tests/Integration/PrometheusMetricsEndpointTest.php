@@ -89,6 +89,7 @@ final class PrometheusMetricsEndpointTest extends TestCase
         $this->assertStringContainsString('ellsms_provider_health_status{provider_key="legacy_backend"', $resp['body']);
         $this->assertStringContainsString('ellsms_alert_incidents_active{severity="critical"}', $resp['body']);
         $this->assertStringContainsString('ellsms_alert_dispatch_total{channel="telegram",outcome="sent"}', $resp['body']);
+        $this->assertStringContainsString('ellsms_mysql_threads_connected', $resp['body']);
 
         foreach (explode("\n", trim($resp['body'])) as $line) {
             if ($line === '' || str_starts_with($line, '#')) {

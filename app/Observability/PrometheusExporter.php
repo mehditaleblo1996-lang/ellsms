@@ -48,6 +48,8 @@ final class PrometheusExporter
         self::appendBulkJobMetrics($lines, $db);
         self::appendSendDimensionMetrics($lines, $db);
         self::appendAlertMetrics($lines, $db);
+        self::appendApiRequestMetrics($lines, $db);
+        self::appendDatabaseEngineMetrics($lines, $db);
         return implode("\n", $lines) . "\n";
     }
 
@@ -116,6 +118,42 @@ final class PrometheusExporter
             $up = 0;
         }
         self::sample($lines, 'ellsms_db_up', 'gauge', 'Whether the shared backend database was reachable at scrape time (1) or not (0).', (float)$up, [], $headers);
+    }
+
+    /**
+     * Basic MySQL engine metrics (issue #14's own "Minimum coverage" list: "MySQL connections/query
+     * latency/locks/IO where available"). Deliberately minimal -- SHOW [GLOBAL] STATUS counters this
+     * app's own DB user can always read without extra grants, never performance_schema (which needs
+     * separate privileges this app's DB user may not have "where available" is doing real work in
+     * the issue's own wording). No labels at all on any of these -- each is a single scalar, so
+     * cardinality is a non-issue here by construction.
+     */
+    private static function appendDatabaseEngineMetrics(array &$lines, PDO $db): void {
+        $wanted = [
+            'Threads_connected' => ['ellsms_mysql_threads_connected', 'gauge', 'Current number of open connections, from SHOW GLOBAL STATUS.'],
+            'Questions' => ['ellsms_mysql_questions_total', 'counter', 'Cumulative statements executed, from SHOW GLOBAL STATUS.'],
+            'Slow_queries' => ['ellsms_mysql_slow_queries_total', 'counter', 'Cumulative queries exceeding long_query_time, from SHOW GLOBAL STATUS.'],
+            'Innodb_row_lock_current_waits' => ['ellsms_mysql_innodb_row_lock_current_waits', 'gauge', 'Current InnoDB row locks being waited on, from SHOW GLOBAL STATUS.'],
+            'Innodb_row_lock_time' => ['ellsms_mysql_innodb_row_lock_time_ms_total', 'counter', 'Cumulative time (ms) spent waiting on InnoDB row locks, from SHOW GLOBAL STATUS.'],
+        ];
+        try {
+            $stmt = $db->prepare('SHOW GLOBAL STATUS WHERE Variable_name IN (' . implode(',', array_fill(0, count($wanted), '?')) . ')');
+            $stmt->execute(array_keys($wanted));
+            $rows = $stmt->fetchAll();
+        } catch (Throwable $t) {
+            // A restricted DB user without SHOW STATUS privilege must never break the scrape --
+            // these metrics are simply absent, same "where available" posture the issue itself states.
+            return;
+        }
+        $headers = [];
+        foreach ($rows as $row) {
+            $def = $wanted[$row['Variable_name']] ?? null;
+            if ($def === null) {
+                continue;
+            }
+            $localHeaders = [];
+            self::sample($lines, $def[0], $def[1], $def[2], (float)$row['Value'], [], $localHeaders);
+        }
     }
 
     /**
@@ -321,6 +359,26 @@ final class PrometheusExporter
             foreach ($outcomes as $outcome) {
                 self::sample($lines, 'ellsms_alert_dispatch_total', 'counter', 'Cumulative alert dispatch attempts, per channel and outcome.', (float)($dispatchCounts[$channel][$outcome] ?? 0), ['channel' => $channel, 'outcome' => $outcome], $dispatchHeaders);
             }
+        }
+    }
+
+    /**
+     * Public API request volume/latency/error (issue #14's own "Minimum coverage" list, closed in
+     * the 2026-09-02 final audit). Source table (ellsms_api_request_metrics) is itself bounded --
+     * one row per (route, method, status_bucket), all three bounded enums -- so every row is read
+     * back directly, no further label-bounding needed on top of what already constrained the writes
+     * in public/api/index.php / app/Observability/ApiRequestMetrics.php.
+     */
+    private static function appendApiRequestMetrics(array &$lines, PDO $db): void {
+        if (!$db->query("SHOW TABLES LIKE 'ellsms_api_request_metrics'")->fetch()) {
+            return;
+        }
+        $countHeaders = [];
+        $durationHeaders = [];
+        foreach ($db->query('SELECT route, method, status_bucket, request_count, total_duration_ms FROM ellsms_api_request_metrics')->fetchAll() as $row) {
+            $labels = ['route' => $row['route'], 'method' => $row['method'], 'status' => $row['status_bucket']];
+            self::sample($lines, 'ellsms_api_requests_total', 'counter', 'Cumulative public API requests, per route/method/status class.', (float)$row['request_count'], $labels, $countHeaders);
+            self::sample($lines, 'ellsms_api_request_duration_ms_sum_total', 'counter', 'Cumulative request duration in milliseconds -- divide by ellsms_api_requests_total for the average (no percentile buckets in this pass).', (float)$row['total_duration_ms'], $labels, $durationHeaders);
         }
     }
 

@@ -90,6 +90,35 @@
       "targets": [
         { "expr": "rate(ellsms_alert_dispatch_total[5m])", "legendFormat": "{{channel}} {{outcome}}" }
       ]
+    },
+    {
+      "id": 10,
+      "title": "API request rate by route/status (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "targets": [
+        { "expr": "rate(ellsms_api_requests_total[5m])", "legendFormat": "{{route}} {{status}}" }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "API average request duration (5m)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "targets": [
+        { "expr": "rate(ellsms_api_request_duration_ms_sum_total[5m]) / rate(ellsms_api_requests_total[5m])", "legendFormat": "{{route}}" }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "MySQL connections / slow queries",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
+      "targets": [
+        { "expr": "ellsms_mysql_threads_connected", "legendFormat": "connections" },
+        { "expr": "rate(ellsms_mysql_slow_queries_total[5m])", "legendFormat": "slow queries/s" },
+        { "expr": "ellsms_mysql_innodb_row_lock_current_waits", "legendFormat": "row lock waits" }
+      ]
     }
   ]
 }

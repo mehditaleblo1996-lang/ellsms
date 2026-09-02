@@ -47,6 +47,10 @@ if ((env('API_ENABLED', '0') ?? '0') !== '1') {
 
 $path = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
 $method = (string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
+// Bounded for metrics only (issue #14) -- the raw REQUEST_METHOD header is client-controlled and a
+// caller could send an arbitrary token; every route this router actually registers only ever uses
+// one of these five, so anything else collapses to 'other' rather than becoming a new label value.
+$metricMethod = in_array($method, ['GET', 'POST', 'PATCH', 'DELETE', 'PUT'], true) ? $method : 'other';
 
 $router = new ApiRouter();
 $router->map('GET',   '/api/v1/me',                          'api_handle_me');
@@ -78,9 +82,27 @@ if (!$route['matched']) {
     // STEP 5's status-code table has no entry for 405 — both "unknown path" and "known path, wrong
     // method" collapse to the same 404 not_found here, deliberately (also avoids confirming to a
     // caller that a path exists but their method choice was wrong).
+    // Issue #14 final audit: 'route' is the fixed literal 'unmatched', never the raw request path
+    // (which could carry an arbitrary/attacker-supplied string) -- bounded cardinality preserved.
+    Metrics::increment('api.request', 1, ['route' => 'unmatched', 'method' => $metricMethod, 'status' => '404']);
+    api_request_metric_record('unmatched', $metricMethod, '4xx', (microtime(true) - $startedAt) * 1000);
     ApiResponse::error(404, ApiResponse::CODE_NOT_FOUND, 'Route not found.');
     exit;
 }
+
+// Registered once the route is known, so EVERY exit from here on (rate limit, auth, scope,
+// subscription/feature gates, body-parse error, the handler itself, or the uncaught-exception
+// branch) is counted exactly once, regardless of which `exit` statement actually runs -- rather
+// than hand-instrumenting each of those branches individually and risking one being missed.
+$metricRoute = is_string($route['handler']) ? $route['handler'] : 'closure';
+register_shutdown_function(static function () use ($metricRoute, $metricMethod, $startedAt): void {
+    $statusCode = http_response_code();
+    $statusBucket = is_int($statusCode) ? ((int)($statusCode / 100) . 'xx') : 'unknown';
+    $durationMs = (microtime(true) - $startedAt) * 1000;
+    Metrics::increment('api.request', 1, ['route' => $metricRoute, 'method' => $metricMethod, 'status' => $statusBucket]);
+    Metrics::timing('api.request.duration', $durationMs, ['route' => $metricRoute]);
+    api_request_metric_record($metricRoute, $metricMethod, $statusBucket, $durationMs);
+});
 
 $principal = ApiAuth::authenticate();
 $authFailureCategory = $principal === null ? (ApiAuth::authorizationHeader() === null ? 'no_credentials' : 'invalid_credentials') : null;
@@ -156,6 +178,10 @@ try {
         ApiResponse::error(500, ApiResponse::CODE_INTERNAL_ERROR, 'An unexpected error occurred. Reference the request id if you contact support.');
     }
 }
+
+// Metric recording for this request happens in the register_shutdown_function() registered right
+// after the route was matched above -- it fires exactly once regardless of which exit path (this
+// success path, or any of the earlier gate failures) actually ran.
 
 Logger::info('api.request.completed', [
     'method'          => $method,

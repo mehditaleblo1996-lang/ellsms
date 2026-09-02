@@ -454,6 +454,43 @@ services:
       - backend_net
     depends_on:
       - app
+      - node-exporter
+      - cadvisor
+
+  # Host CPU/RAM/disk/network (issue #14's own "Minimum coverage" list, closed 2026-09-02). Standard
+  # off-the-shelf exporter -- deliberately not reimplemented in application code. Read-only bind
+  # mounts of the host's own /proc, /sys, / -- never writes anything back.
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: ellsms-node-exporter
+    restart: unless-stopped
+    profiles: ["observability"]
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - backend_net
+
+  # Per-container CPU/RAM/network/IO (same "Minimum coverage" item, the per-container half of it).
+  # Read-only access to the Docker socket and host cgroup/filesystem info only -- never starts,
+  # stops, or modifies a container.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: ellsms-cadvisor
+    restart: unless-stopped
+    profiles: ["observability"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - backend_net
 
   grafana:
     image: grafana/grafana:11.3.1

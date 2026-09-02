@@ -76,6 +76,11 @@ Prometheus labels.
 | `ellsms_bulk_jobs` | gauge | `status` | Bulk campaign job counts |
 | `ellsms_bulk_messages_sent_total` / `_failed_total` | counter | `message_class` | `SUM(sent_rows)`/`SUM(failed_rows)` across `ellsms_bulk_jobs` — see the caveat below |
 | `ellsms_send_dimension_total` | counter | `message_type`, `status` | Issue #12's daily dimension summary, aggregated across tenants |
+| `ellsms_alert_incidents_active` / `_total` / `_recovered_total` / `_acknowledged_total` | gauge / counter | `severity` | Issue #15's incident subsystem |
+| `ellsms_alert_dispatch_total` | counter | `channel`, `outcome` | Issue #15's per-channel dispatch outcomes |
+| `ellsms_api_requests_total` | counter | `route`, `method`, `status` | `route` is the matched handler's own function name (a fixed string from `public/api/index.php`'s own `router.map()` calls), never the raw request path — added 2026-09-02, closing part of issue #14's own "Minimum coverage: API latency/error/traffic" |
+| `ellsms_api_request_duration_ms_sum_total` | counter | `route` | Divide by `ellsms_api_requests_total`'s matching series for the average; no percentile buckets in this pass |
+| `ellsms_mysql_threads_connected` / `_questions_total` / `_slow_queries_total` / `_innodb_row_lock_current_waits` / `_innodb_row_lock_time_ms_total` | gauge/counter | none | Straight from `SHOW GLOBAL STATUS` — closes issue #14's "MySQL connections/query latency/locks/IO where available"; absent entirely if the DB user lacks `SHOW STATUS` privilege, never breaks the scrape |
 
 ### Honest caveat on the "counters"
 
@@ -112,6 +117,11 @@ docker compose --profile observability up -d prometheus grafana
   rate, active workers, job counts).
 - Neither service is required for the app to run; nothing in `app/`, `public/`, or `cron/` depends
   on them being up.
+- `node-exporter` and `cadvisor` (host/container CPU/RAM/disk/network, added 2026-09-02) are also in
+  this profile, `backend_net`-only, no host port published. **Security note**: `cadvisor` mounts
+  `/var/run/docker.sock` read-only to enumerate containers — a standard, widely-used pattern for
+  this exact purpose, but it does grant container-introspection visibility to whatever can reach
+  `cadvisor` on the internal network. Confined to the opt-in `observability` profile for that reason.
 
 ## Tests
 
@@ -121,6 +131,10 @@ docker compose --profile observability up -d prometheus grafana
   Prometheus line grammar; the optional bearer-token gate rejects missing/wrong tokens with an
   empty body and accepts the correct one) plus a real-data test seeding an actual bulk job and
   asserting the rendered `ellsms_queue_bulk_depth` reflects it exactly.
+- `tests/Integration/ApiRequestMetricsTest.php` — an unmatched route and an early-auth-gate
+  rejection are both counted exactly once via `register_shutdown_function()` regardless of which
+  exit path fired; repeated requests to the same route increment one bounded row, never one row per
+  request; the exporter reads back the same table.
 - Compose/provisioning files are validated as parseable YAML/JSON (`python3 -c 'import yaml...'`,
   `docker compose --profile observability config`) as part of this issue's own verification pass —
   see the parent re-audit's final report for the exact commands run.
