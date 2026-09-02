@@ -52,16 +52,15 @@ docker compose exec -T app \
   mysql "${MYSQL_SSL_OPTS[@]}" -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/ellsms_extra.sql
 
-echo "==> Applying report-summary cache schema (safe to re-run)..."
-docker compose exec -T app \
-  mysql "${MYSQL_SSL_OPTS[@]}" -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
-  < db/migrations/2026_08_25_report_summary_cache.sql
-
-echo "==> Applying registration onboarding schema (safe to re-run)..."
-docker compose exec -T app \
-  mysql "${MYSQL_SSL_OPTS[@]}" -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
-  < db/migrations/2026_08_26_registration_requests.sql
-
+# cron/db-migrate.php --apply globs db/migrations/*.sql by each file's ACTUAL current name and
+# tracks what's applied in a ledger table -- it fully replaced the two hardcoded
+# "docker exec ... < db/migrations/<specific file>.sql" steps that used to live here (see the
+# script's own docblock: "Replaces the previous bash loop"). Those two lines were never removed
+# after that migration, and one of them (2026_08_26_registration_requests.sql) had gone stale --
+# the file was later renamed to 2026_08_25_registration_requests.sql to fix migration ordering,
+# breaking `./deploy.sh` outright for anyone who hadn't already applied it by the old name.
+# Removed rather than fixed the filename again: a hardcoded filename here will only go stale the
+# same way again on the next rename; the glob below is what's supposed to be the source of truth.
 echo "==> Applying versioned DB migrations..."
 docker compose exec -T app php cron/db-migrate.php --apply
 
