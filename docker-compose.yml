@@ -519,7 +519,7 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./docker/grafana/dashboards:/etc/grafana/provisioning/dashboards/files:ro
+      - ./docker/grafana/dashboards:/etc/grafana/dashboards-files:ro
       - ellsms_grafana_data:/var/lib/grafana
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
