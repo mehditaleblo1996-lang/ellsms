@@ -149,8 +149,12 @@ status connector configured.
 `REPORT_EXPORT_LEASE_SECONDS`, `REPORT_EXPORT_MAX_ROWS`, `REPORT_EXPORT_TTL_HOURS`.
 
 **Workers**: no dedicated "enable" flags — `docker-compose.yml`'s `worker`/`webhook-worker`/
-`import-worker`/`status-worker`/`export-worker` services are separate containers; which are running
-is an operational decision, not an env toggle (see `docs/production-runbook.md` §11).
+`import-worker`/`status-worker`/`export-worker`/`report-summary-worker`/`provider-health-checker`
+services are separate containers; which are running is an operational decision, not an env toggle
+(see `docs/production-runbook.md` §11). `report-summary-worker` and `provider-health-checker` were
+added in the 2026-09-02 final audit — both scripts existed and were tested well before that, but
+had no compose service to actually run continuously, so #7/#12's report aggregation and #16's active
+health probing never ran in a `docker compose up` deployment before this fix.
 
 ## Deployment sequence
 
@@ -175,7 +179,8 @@ is an operational decision, not an env toggle (see `docs/production-runbook.md` 
     step
 12. Config validation: `make config-check`
 13. Restart/update remaining services: `docker compose up -d worker webhook-worker import-worker
-    status-worker export-worker` (per the actual service inventory from step 7)
+    status-worker export-worker report-summary-worker provider-health-checker` (per the actual
+    service inventory from step 7)
 14. Confirm worker processes are running: `docker compose ps`
 
 ### Post-deploy

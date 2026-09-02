@@ -269,6 +269,102 @@ services:
     # cron/sms-status-worker.php) rather than being SIGKILLed mid-poll.
     stop_grace_period: 30s
 
+  # Persistent report-summary/dimension-aggregation worker (issues #7/#12) -- 2026-09-02 final audit
+  # finding: this cron script was documented as "a persistent worker" but had NO compose service to
+  # actually run it continuously, so #7's report_summary_cache, #12's daily dimension summary, and
+  # this re-audit's own send-dimension-log sidecar (app/Reports/SendDimensionLog.php) would never
+  # populate in the documented deployment -- every report reading from them would stay empty
+  # forever. Added rather than left as a documented gap, matching status-worker's own shape exactly.
+  report-summary-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ellsms-report-summary-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/report-summary-worker.php
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      REPORT_SUMMARY_WORKER_INTERVAL_SECONDS: ${REPORT_SUMMARY_WORKER_INTERVAL_SECONDS:-60}
+      REPORT_SUMMARY_CHUNK_ROWS: ${REPORT_SUMMARY_CHUNK_ROWS:-5000}
+      REPORT_SUMMARY_MAX_ROWS_PER_PASS: ${REPORT_SUMMARY_MAX_ROWS_PER_PASS:-50000}
+      REPORT_SUMMARY_FULL_REBUILD_SECONDS: ${REPORT_SUMMARY_FULL_REBUILD_SECONDS:-3600}
+      REPORT_DIMENSION_SUMMARY_CHUNK_ROWS: ${REPORT_DIMENSION_SUMMARY_CHUNK_ROWS:-5000}
+      REPORT_DIMENSION_SUMMARY_MAX_ROWS_PER_PASS: ${REPORT_DIMENSION_SUMMARY_MAX_ROWS_PER_PASS:-50000}
+      REPORT_DIMENSION_SUMMARY_FULL_REBUILD_SECONDS: ${REPORT_DIMENSION_SUMMARY_FULL_REBUILD_SECONDS:-3600}
+      SEND_DIMENSION_LOG_CHUNK_ROWS: ${SEND_DIMENSION_LOG_CHUNK_ROWS:-5000}
+      SEND_DIMENSION_LOG_MAX_ROWS_PER_PASS: ${SEND_DIMENSION_LOG_MAX_ROWS_PER_PASS:-50000}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    # Enough time to finish the current bounded chunk and exit cleanly rather than being SIGKILLed
+    # mid-aggregation (each chunk is its own atomic transaction, per docs/daily-metadata-aggregation.md,
+    # so a hard kill can never corrupt the aggregate -- this is just to avoid discarding in-flight work).
+    stop_grace_period: 30s
+
+  # Active provider-health probing (issue #16) -- 2026-09-02 final audit finding: cron/provider-health-check.php
+  # supports a --loop mode specifically so it can run as a persistent service, but had no compose
+  # service either, so the "active" half of issue #16's passive+active health model never actually
+  # ran in the documented deployment (passive recording from real dispatch still worked via
+  # worker/status-worker/app). Strictly sequential, bounded-timeout TCP probes only -- touches no
+  # resource the send workers use (see docs/provider-health-model.md), so it cannot contend with or
+  # overload them.
+  provider-health-checker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: ellsms-provider-health-checker
+    restart: unless-stopped
+    command: php /var/www/html/cron/provider-health-check.php --loop
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      PROVIDER_HEALTH_CHECK_INTERVAL_SECONDS: ${PROVIDER_HEALTH_CHECK_INTERVAL_SECONDS:-60}
+      PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS: ${PROVIDER_HEALTH_CHECK_TIMEOUT_SECONDS:-3}
+      PROVIDER_HEALTH_DEGRADED_THRESHOLD: ${PROVIDER_HEALTH_DEGRADED_THRESHOLD:-3}
+      PROVIDER_HEALTH_DOWN_THRESHOLD: ${PROVIDER_HEALTH_DOWN_THRESHOLD:-5}
+      PROVIDER_HEALTH_UP_MIN_SUCCESSES: ${PROVIDER_HEALTH_UP_MIN_SUCCESSES:-5}
+      PROVIDER_HEALTH_RECOVERY_MIN_SUCCESSES: ${PROVIDER_HEALTH_RECOVERY_MIN_SUCCESSES:-2}
+      PROVIDER_HEALTH_DEGRADED_LATENCY_MS: ${PROVIDER_HEALTH_DEGRADED_LATENCY_MS:-3000}
+      PROVIDER_HEALTH_ALERT_COOLDOWN_SECONDS: ${PROVIDER_HEALTH_ALERT_COOLDOWN_SECONDS:-900}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      # Alerting (issue #15) fires from here on a DOWN/recovered transition.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      ALERT_REPEAT_SECONDS_WARNING: ${ALERT_REPEAT_SECONDS_WARNING:-}
+      ALERT_REPEAT_SECONDS_CRITICAL: ${ALERT_REPEAT_SECONDS_CRITICAL:-}
+      ALERT_REPEAT_SECONDS_EMERGENCY: ${ALERT_REPEAT_SECONDS_EMERGENCY:-}
+      ALERT_EMAIL_RECIPIENT: ${ALERT_EMAIL_RECIPIENT:-}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    stop_grace_period: 15s
+
   # Fake/Sandbox SMS gateway for development and load testing.
   # No external egress: it only answers the /send and /status endpoints.
   # It is reachable from other ELLSMS containers as http://ellsms-mock-sms-gateway:8080.

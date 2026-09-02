@@ -11,6 +11,13 @@
  * time (never message content, never destination numbers, never provider identifiers), then fold
  * those rows into the SAME ellsms_report_daily_dimension_summary table issue #12 already built and
  * public/reports-bulk.php already reads from -- no second aggregate table, no second UI.
+ *
+ * KNOWN GAP (2026-09-02 audit, undocumented until now, not fixed here): 'status' below is
+ * PROVIDER-SUBMISSION outcome (sent/failed at dispatch time), not final delivery outcome -- a row
+ * recorded 'sent' here is never revisited if a later delivery report says otherwise. Same
+ * limitation as the bulk-side aggregation this folds into; see
+ * docs/daily-metadata-aggregation.md's own note on this for the full explanation and why it isn't
+ * fixed in this pass.
  */
 
 declare(strict_types=1);

@@ -363,7 +363,7 @@ charged, because the estimator reuses the send path's own arithmetic rather than
 
 ## 11. Worker roles
 
-`docker-compose.yml` runs six distinct long-lived processes plus one dev-only fake provider. Each
+`docker-compose.yml` runs eight distinct long-lived processes plus one dev-only fake provider. Each
 is its own container specifically so a slow or wedged workload of one kind never competes with, or
 blocks, another:
 
@@ -374,6 +374,8 @@ blocks, another:
 | `import-worker` | `cron/import-worker.php` | Large-file import pass 1 (analyze/dedupe/price) and pass 2 (insert) — see §12. Its own container so parsing/pricing a large upload never competes with the send worker or web requests; multiple instances are safe but not required |
 | `status-worker` | (separate from `worker`) | Delivery-status polling against gateways that have a status connector configured |
 | `export-worker` | (separate from `worker`) | Off-request-path CSV report export generation — a multi-million-row export must never delay a scheduled send or a delivery-status poll, and a wedged export must not take the send pipeline down with it |
+| `report-summary-worker` | `cron/report-summary-worker.php` | Issue #7/#12's report-summary and daily-dimension aggregation, plus the send-dimension-log sidecar fold-in — added 2026-09-02 (existed and was tested well before, but had no compose service, so these aggregates never populated in a real `docker compose up` deployment) |
+| `provider-health-checker` | `cron/provider-health-check.php --loop` | Issue #16's active health probing (bounded-timeout TCP connect per configured gateway) — added 2026-09-02, same reason: the script and its tests predate this, but nothing ran it continuously |
 | `mock-sms-gateway` | `mock/Dockerfile` | **Development/load-testing only — see §13.** Not part of the production send path |
 
 All workers (except the mock gateway) rely on the same atomic per-row claim/lease pattern

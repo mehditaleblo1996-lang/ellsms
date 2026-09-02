@@ -32,11 +32,23 @@ this key also becomes a Prometheus label if a future metric ever needs it.
 ## Severities and repeat intervals
 
 `warning` (default 1800s), `critical` (default 300s), `emergency` (default 120s). All three are
-env-configurable (`ALERT_REPEAT_SECONDS_WARNING`/`_CRITICAL`/`_EMERGENCY`), never hardcoded —
-deliberately env-only rather than an `ellsms_settings` row, matching issue #3's own
-`queue_class_min_share_from_env()` precedent: `setting()`'s cache is a process-wide static
-populated once and never refreshed, which would make a DB-stored interval both untestable and, in a
-long-running worker process, unable to take effect without a restart.
+**admin-configurable from `/admin/alerts`** (`ellsms_settings` rows
+`ALERT_REPEAT_SECONDS_WARNING`/`_CRITICAL`/`_EMERGENCY`, editable via a form on that page), never
+hardcoded — the same `setting(key, env(key, default))` precedence `app/telegram.php`'s own
+`telegram_bot_token()`/`telegram_chat_id()` already use, so the env var still works as a
+per-deployment default wherever no admin setting has been saved yet.
+`tests/Integration/AlertManagerTest::testDbConfiguredRepeatIntervalTakesEffectInAFreshProcess`
+proves a value saved through `set_setting()` (what the admin form calls) is actually read back by a
+separate process, not just by the same request that saved it.
+
+(2026-09-01 note, superseded above: an earlier version of this file kept these env-only, reasoning
+that `setting()`'s process-wide cache would make a DB-stored value both untestable and, in a
+long-running worker, unable to take effect without a restart. That reasoning conflated a testing
+inconvenience with a real production limitation — this is the exact same caching behavior every
+other `setting()`-backed value in this codebase already accepts, and the 2026-09-02 final audit
+found "env-only" does not actually satisfy the issue's own "admin configurable" acceptance
+criterion. Fixed by switching precedence and adding the subprocess test above, rather than leaving
+this open as a documented gap.)
 
 ## Channels
 
@@ -57,7 +69,8 @@ than silently swallowed.
 ## Admin UI
 
 `/admin/alerts` (`public/alerts.php`) — active incidents (severity, title, status, first/last fired,
-fire count, an "acknowledge" button for open ones) plus recent resolved history. Platform-admin
+fire count, an "acknowledge" button for open ones), recent resolved history, and a settings form to
+change the three repeat intervals and the alert email recipient without a redeploy. Platform-admin
 only (`require_admin()`), same guard every other global-configuration page uses.
 
 ## Metrics

@@ -207,17 +207,54 @@ final class AlertManagerTest extends IntegrationTestCase
         $this->assertSame(['failed', 'failed'], $log);
     }
 
-    public function testRepeatIntervalIsAdminConfigurableViaEnvironmentAndOverridesTheDefault(): void
+    public function testRepeatIntervalIsAdminConfigurableViaTheEnvironmentDefaultAsAFallback(): void
     {
-        // Env-only by design (never setting()) -- see repeatIntervalSeconds()'s own docblock for
-        // why: setting()'s cache is a process-wide static populated once and never refreshed, which
-        // would make this both untestable here and unable to pick up a change without a worker
-        // restart in production.
+        // setting() (ellsms_settings, admin-editable from /admin/alerts) wins when set -- see the
+        // subprocess test below for that path. The env var remains a real, working per-deployment
+        // default/override for whenever no admin setting exists yet, exactly like
+        // telegram_bot_token()'s own env fallback.
         putenv('ALERT_REPEAT_SECONDS_CRITICAL=999');
         try {
             $this->assertSame(999, \AlertManager::repeatIntervalSeconds(\AlertManager::SEVERITY_CRITICAL));
         } finally {
             putenv('ALERT_REPEAT_SECONDS_CRITICAL');
+        }
+    }
+
+    /**
+     * The real admin-configurability path (issue #15's own acceptance criterion: env-only does not
+     * count as "admin configurable"). setting()'s cache is a process-wide static populated once and
+     * never refreshed, so proving a DB write actually takes effect needs a genuinely fresh PHP
+     * process to read it -- the same subprocess pattern ApiRateLimitHttpTest/ApiClientFailureModelTest
+     * already use for this exact class of process-boundary concern.
+     */
+    public function testDbConfiguredRepeatIntervalTakesEffectInAFreshProcess(): void
+    {
+        // IntegrationTestCase wraps every test in a transaction rolled back in tearDown -- a write
+        // made inside it is invisible to a genuinely separate process (a different DB connection),
+        // which is exactly what this test needs to prove. Commit for real, then clean up for real.
+        \set_setting('ALERT_REPEAT_SECONDS_EMERGENCY', '777');
+        \db()->commit();
+        try {
+            $script = 'require ' . var_export(dirname(__DIR__, 2) . '/app/backend.php', true) . ';'
+                . 'echo AlertManager::repeatIntervalSeconds(AlertManager::SEVERITY_EMERGENCY);';
+            $env = [
+                'APP_ENV' => 'testing',
+                'BACKEND_DB_HOST' => (string)getenv('BACKEND_DB_HOST'),
+                'BACKEND_DB_PORT' => (string)getenv('BACKEND_DB_PORT'),
+                'BACKEND_DB_NAME' => (string)getenv('BACKEND_DB_NAME'),
+                'BACKEND_DB_USER' => (string)getenv('BACKEND_DB_USER'),
+                'BACKEND_DB_PASS' => (string)getenv('BACKEND_DB_PASS'),
+            ];
+            $proc = proc_open([PHP_BINARY, '-r', $script], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, $env);
+            $this->assertNotFalse($proc);
+            $out = stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($proc);
+            $this->assertSame('777', trim($out), 'a value saved via set_setting() (what the /admin/alerts settings form calls) must be read back by a fresh process');
+        } finally {
+            \set_setting('ALERT_REPEAT_SECONDS_EMERGENCY', '');
         }
     }
 

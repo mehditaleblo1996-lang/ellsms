@@ -58,13 +58,17 @@ final class AlertManager
     }
 
     /**
-     * Admin-configurable, never hardcoded -- deliberately env-only (never setting()), matching
-     * issue #3's own queue_class_min_share_from_env() precedent exactly, and for the same reason:
-     * setting()'s cache is a process-wide static populated once and never refreshed (see
-     * IntegrationTestCase's own docblock), so a DB-backed value would be effectively untestable
-     * and, in a long-running worker process, unable to pick up an admin's change without a
-     * restart -- an env var (settable per-deployment, e.g. via docker-compose.yml like every other
-     * *_SECONDS tunable in this codebase) is both simpler and actually configurable at runtime.
+     * Admin-configurable, never hardcoded. `setting()` (ellsms_settings, editable from
+     * /admin/alerts) wins over the env var default, exactly the same precedence
+     * `telegram_bot_token()`/`telegram_chat_id()` (app/telegram.php) already use for their own
+     * admin-editable values -- an admin can retune repeat cadence from the settings UI without a
+     * redeploy, the env var remains available as a per-deployment default/override.
+     *
+     * `setting()`'s cache is a process-wide static populated once per process and never refreshed
+     * (see IntegrationTestCase's own docblock) -- in a long-running worker process, a change made
+     * through the UI takes effect on that process's next restart, same as every other
+     * `setting()`-backed value in this codebase (e.g. telegram_bot_token itself). This is an
+     * accepted, pre-existing characteristic of `setting()`, not something specific to alerting.
      */
     public static function repeatIntervalSeconds(string $severity): int {
         $defaults = [
@@ -74,7 +78,7 @@ final class AlertManager
         ];
         $default = $defaults[$severity] ?? 1800;
         $envKey = 'ALERT_REPEAT_SECONDS_' . strtoupper($severity);
-        $raw = env($envKey, null);
+        $raw = setting($envKey, env($envKey, null));
         if ($raw === null || trim((string)$raw) === '') {
             return $default;
         }

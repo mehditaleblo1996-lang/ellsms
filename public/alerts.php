@@ -24,6 +24,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ok = AlertManager::acknowledge($incidentId, (int)$me['id']);
         flash($ok ? 'success' : 'error', $ok ? "هشدار #{$incidentId} تأیید شد؛ دیگر تکرار نمی‌شود." : 'این هشدار قابل تأیید نیست (یافت نشد یا قبلاً تأیید/برطرف شده).');
     }
+
+    // Admin-configurable repeat intervals + email recipient (issue #15's own acceptance criterion:
+    // env-only configuration does not satisfy "admin configurable" -- this form writes the same
+    // ellsms_settings keys AlertManager::repeatIntervalSeconds() / the email dispatch path read,
+    // exactly the same precedence app/telegram.php's own admin-editable settings already use).
+    if ($do === 'save_alert_settings') {
+        $fields = ['ALERT_REPEAT_SECONDS_WARNING', 'ALERT_REPEAT_SECONDS_CRITICAL', 'ALERT_REPEAT_SECONDS_EMERGENCY'];
+        $invalid = [];
+        foreach ($fields as $field) {
+            $raw = trim((string)($_POST[$field] ?? ''));
+            if ($raw === '') {
+                set_setting($field, '');
+                continue;
+            }
+            if (!ctype_digit($raw)) {
+                $invalid[] = $field;
+                continue;
+            }
+            set_setting($field, $raw);
+        }
+        $recipient = trim((string)($_POST['alert_email_recipient'] ?? ''));
+        if ($recipient !== '' && filter_var($recipient, FILTER_VALIDATE_EMAIL) === false) {
+            $invalid[] = 'alert_email_recipient';
+        } else {
+            set_setting('alert_email_recipient', $recipient);
+        }
+        flash($invalid === [] ? 'success' : 'error', $invalid === []
+            ? 'تنظیمات هشدار ذخیره شد.'
+            : ('مقدار نامعتبر برای: ' . implode(', ', $invalid)));
+    }
     redirect('/admin/alerts');
 }
 
@@ -33,6 +63,12 @@ $resolved = AlertManager::recentResolvedIncidents(30);
 $severityFa = ['warning' => 'هشدار', 'critical' => 'بحرانی', 'emergency' => 'اضطراری'];
 $severityColor = ['warning' => '#b7791f', 'critical' => '#c0392b', 'emergency' => '#8e0000'];
 $statusFa = ['open' => 'باز', 'acknowledged' => 'تأییدشده', 'resolved' => 'برطرف‌شده'];
+$currentRepeat = [
+    'warning' => AlertManager::repeatIntervalSeconds(AlertManager::SEVERITY_WARNING),
+    'critical' => AlertManager::repeatIntervalSeconds(AlertManager::SEVERITY_CRITICAL),
+    'emergency' => AlertManager::repeatIntervalSeconds(AlertManager::SEVERITY_EMERGENCY),
+];
+$currentRecipient = (string)(setting('alert_email_recipient', env('ALERT_EMAIL_RECIPIENT', '')) ?? '');
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -86,6 +122,19 @@ require __DIR__ . '/../app/views/header.php';
       <tr><td colspan="5" class="muted">هنوز هشداری برطرف نشده است.</td></tr>
     <?php endif; ?>
   </table></div>
+</div>
+
+<div class="card">
+  <h2>تنظیمات هشدار</h2>
+  <p class="muted">فاصله‌ی تکرار یادآوری برای هر سطح (ثانیه) و آدرس ایمیل دریافت‌کننده‌ی هشدارها — بدون نیاز به تغییر کد یا دیپلوی مجدد.</p>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="do" value="save_alert_settings">
+    <label>هشدار (پیش‌فرض ۱۸۰۰) <input type="number" name="ALERT_REPEAT_SECONDS_WARNING" min="0" value="<?= (int)$currentRepeat['warning'] ?>"></label>
+    <label>بحرانی (پیش‌فرض ۳۰۰) <input type="number" name="ALERT_REPEAT_SECONDS_CRITICAL" min="0" value="<?= (int)$currentRepeat['critical'] ?>"></label>
+    <label>اضطراری (پیش‌فرض ۱۲۰) <input type="number" name="ALERT_REPEAT_SECONDS_EMERGENCY" min="0" value="<?= (int)$currentRepeat['emergency'] ?>"></label>
+    <label>ایمیل دریافت‌کننده <input type="email" name="alert_email_recipient" value="<?= e($currentRecipient) ?>" size="30"></label>
+    <button class="btn btn-primary">ذخیره</button>
+  </form>
 </div>
 
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

@@ -64,10 +64,30 @@ aggregate table, one read path (`report_dimension_summary_query()`), regardless 
   `ReportDimensionSummaryPartialFailureTest`) leaves **zero** partial effect — neither the aggregate
   rows nor the pointer move — so a rerun always repeats the exact same range, never doubles it, never
   skips it.
-- **Late status changes**: only terminal item statuses (`sent`/`failed`/`cancelled`) are ever
-  aggregated. An item still `pending` when the incremental pass advances past its id is invisible to
-  that pass — the periodic full rebuild (same cadence knob as `report_summary_cache`,
-  `REPORT_DIMENSION_SUMMARY_FULL_REBUILD_SECONDS`, default 1h) is what reconciles it once it settles.
+- **Late status changes (queue-terminal, not delivery-final)**: only terminal item statuses
+  (`sent`/`failed`/`cancelled`) are ever aggregated. An item still `pending` when the incremental
+  pass advances past its id is invisible to that pass — the periodic full rebuild (same cadence knob
+  as `report_summary_cache`, `REPORT_DIMENSION_SUMMARY_FULL_REBUILD_SECONDS`, default 1h) is what
+  reconciles it once it settles.
+
+  **Unresolved semantic gap, found in the 2026-09-02 final audit, not fixed in this pass**: "status"
+  here means **provider-submission outcome** (did the queue/worker successfully hand the message to
+  the provider), not **final delivery outcome**. `ellsms_bulk_items` separately carries
+  `delivery_status`/`provider_status`/`delivered_at` (`2026_08_15_delivery_reporting.sql`), populated
+  later by delivery-report polling — a message can aggregate here as `status='sent'` and then have
+  its actual delivery report come back `undelivered` with no corresponding change to this table or
+  `ellsms_send_dimension_log` (`app/Reports/SendDimensionLog.php` has the identical limitation for
+  the non-bulk sidecar path: it records `sent`/`failed` at dispatch time only, from
+  `dispatch_message()`'s own return value, and never revisits a row). Anyone reading this table's
+  `status` column as "was this actually delivered" would be wrong. This was true of the original
+  issue #12 implementation and remains true after the re-audit's sidecar addition — a real,
+  previously undocumented gap, not a regression from either change. Closing it properly means either
+  re-bucketing a row's `status` on a later delivery-status transition (a second write path into
+  already-aggregated rows, non-trivial to keep idempotent/restart-safe) or adding a distinct
+  "delivered/undelivered" dimension fed from delivery polling — genuinely new work, intentionally
+  left unimplemented here rather than done partially/rushed. See `docs/delivery-runtime-reporting-closure.md`
+  (or the delivery-status columns above) for where the actual final-delivery data already lives,
+  outside this aggregate.
 - **Multi-tenant correctness**: every row carries `organization_id` as part of its key; two tenants
   with identical message type/sender number/route/operator/status never merge into one row
   (`ReportDimensionSummaryTest::testTwoTenantsWithIdenticalDimensionsOtherThanOrganizationAreNeverMergedOrCrossAttributed`).
