@@ -1,4 +1,14 @@
     </main>
+    <footer class="site-footer" style="margin:24px 24px 18px;padding:18px 22px;border-radius:18px;background:#151a24;color:#d8deea;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;line-height:1.9">
+        <strong style="color:#fff">ELLSMS</strong>
+        <span style="opacity:.78">سامانه مدیریت و ارسال پیامک</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap" aria-label="نشان‌های اعتماد و عضویت">
+        <img src="/assets/img/footer-image-1.png" alt="نشان اعتماد سامانه" loading="lazy" decoding="async" style="display:block;width:auto;height:92px;max-width:150px;object-fit:contain">
+        <img src="/assets/img/footer-image-2.png" alt="نشان عضویت سامانه" loading="lazy" decoding="async" style="display:block;width:auto;height:92px;max-width:150px;object-fit:contain">
+      </div>
+    </footer>
   </div>
 </div>
 <script>
