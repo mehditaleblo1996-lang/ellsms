@@ -2,18 +2,18 @@
 require_once __DIR__ . '/../app/bootstrap.php';
 $pageTitle = 'پنل هوشمند پیامک';
 $metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
-$videos   = db()->query('SELECT * FROM ellsms_landing_videos WHERE active = 1 ORDER BY sort_order ASC, id ASC LIMIT 2')->fetchAll();
+$videos   = db()->query('SELECT * FROM ellsms_landing_videos WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 require __DIR__ . '/../app/views/public_header.php';
 ?>
   <?php if ($videos): ?>
-    <section class="lp-video-showcase">
-      <div class="lp-video-grid lp-video-grid-<?= count($videos) ?>">
-        <?php foreach ($videos as $v):
+    <section class="lp-slider-full" id="lpVideoSlider">
+      <div class="lp-slider-viewport">
+        <?php foreach ($videos as $i => $v):
           $posterPath = $v['poster'] ? '/assets/img/landing-video-posters/' . $v['poster'] : '';
         ?>
-          <div class="lp-video-card" data-fallback="<?= e($posterPath) ?>">
-            <video autoplay muted loop playsinline preload="metadata"
+          <div class="lp-slide<?= $i === 0 ? ' is-active' : '' ?>" data-fallback="<?= e($posterPath) ?>">
+            <video <?= $i === 0 ? 'autoplay ' : '' ?>muted loop playsinline preload="metadata"
               <?php if ($posterPath): ?>poster="<?= e($posterPath) ?>"<?php endif; ?>>
               <source src="/assets/video/landing/<?= e($v['video']) ?>">
             </video>
@@ -22,8 +22,8 @@ require __DIR__ . '/../app/views/public_header.php';
             <?php endif; ?>
             <button type="button" class="lp-video-mute" aria-label="پخش صدا / بی‌صدا کردن ویدیو" aria-pressed="false">🔇</button>
             <?php if ($v['title'] || $v['body'] || $v['link_url']): ?>
-              <div class="lp-video-caption">
-                <div class="lp-video-caption-inner">
+              <div class="lp-slide-caption">
+                <div class="lp-slide-caption-inner">
                   <?php if ($v['title']): ?><h3><?= e($v['title']) ?></h3><?php endif; ?>
                   <?php if ($v['body']): ?><p><?= e($v['body']) ?></p><?php endif; ?>
                   <?php if ($v['link_url']): ?><a href="<?= e($v['link_url']) ?>" class="btn btn-primary btn-sm">مشاهده</a><?php endif; ?>
@@ -33,6 +33,15 @@ require __DIR__ . '/../app/views/public_header.php';
           </div>
         <?php endforeach; ?>
       </div>
+      <?php if (count($videos) > 1): ?>
+        <button type="button" class="lp-slider-nav lp-slider-prev" aria-label="ویدیوی قبلی">‹</button>
+        <button type="button" class="lp-slider-nav lp-slider-next" aria-label="ویدیوی بعدی">›</button>
+        <div class="lp-slider-dots">
+          <?php foreach ($videos as $i => $v): ?>
+            <button type="button" class="lp-dot<?= $i === 0 ? ' is-active' : '' ?>" data-slide="<?= $i ?>" aria-label="ویدیوی <?= $i + 1 ?>"></button>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
     </section>
   <?php endif; ?>
 
