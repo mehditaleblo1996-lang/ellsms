@@ -17,6 +17,9 @@ require __DIR__ . '/../app/views/public_header.php';
               <?php if ($posterPath): ?>poster="<?= e($posterPath) ?>"<?php endif; ?>>
               <source src="/assets/video/landing/<?= e($v['video']) ?>">
             </video>
+            <?php if ($posterPath): ?>
+              <img src="<?= e($posterPath) ?>" alt="" class="lp-video-hover-image">
+            <?php endif; ?>
             <button type="button" class="lp-video-mute" aria-label="پخش صدا / بی‌صدا کردن ویدیو" aria-pressed="false">🔇</button>
             <?php if ($v['title'] || $v['body'] || $v['link_url']): ?>
               <div class="lp-video-caption">
