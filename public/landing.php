@@ -64,6 +64,7 @@ require __DIR__ . '/../app/views/public_header.php';
           <div class="lp-hero-panel" aria-hidden="true">
             <div class="lp-hero-panel-bar">
               <span></span><span></span><span></span>
+              <span class="lp-hero-panel-tag">نمای نمونه</span>
             </div>
             <div class="lp-hero-panel-body">
               <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value">۱۲,۴۸۰</div></div>
