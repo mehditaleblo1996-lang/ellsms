@@ -93,6 +93,30 @@
 })();
 
 (function () {
+  var toggle = document.getElementById('lpNavToggle');
+  var links  = document.getElementById('lpNavLinks');
+  if (!toggle || !links) return;
+  function close() {
+    links.classList.remove('is-open');
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+  function open() {
+    links.classList.add('is-open');
+    toggle.setAttribute('aria-expanded', 'true');
+  }
+  toggle.addEventListener('click', function () {
+    if (links.classList.contains('is-open')) close(); else open();
+  });
+  links.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', close); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+  document.addEventListener('click', function (e) {
+    if (!links.classList.contains('is-open')) return;
+    if (links.contains(e.target) || toggle.contains(e.target)) return;
+    close();
+  });
+})();
+
+(function () {
   var bar = document.getElementById('lpScrollBar');
   if (bar) {
     var update = function () {

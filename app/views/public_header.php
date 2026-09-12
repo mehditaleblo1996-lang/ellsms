@@ -20,7 +20,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <header class="lp-nav">
   <div class="lp-nav-inner">
     <a href="/landing.php" class="lp-brand"><img src="/assets/img/logo.png" alt="ELLSMS"></a>
-    <nav class="lp-nav-links">
+    <nav class="lp-nav-links" id="lpNavLinks">
       <a href="/landing.php#features">امکانات</a>
       <a href="/landing.php#pricing">بسته‌های پیامک</a>
       <a href="/landing.php#how">نحوه‌ی کار</a>
@@ -28,6 +28,9 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
       <a href="/contact.php">تماس با ما</a>
     </nav>
     <a href="<?= e($primaryHref) ?>" class="btn btn-primary lp-nav-cta"><?= e($primaryLabel) ?></a>
+    <button type="button" class="lp-nav-toggle" id="lpNavToggle" aria-expanded="false" aria-controls="lpNavLinks" aria-label="باز کردن منو">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
   </div>
 </header>
 
