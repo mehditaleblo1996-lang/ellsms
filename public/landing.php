@@ -34,32 +34,48 @@ require __DIR__ . '/../app/views/public_header.php';
     </section>
   <?php endif; ?>
 
+  <div class="lp-scroll-progress" aria-hidden="true"><div class="lp-scroll-progress-bar" id="lpScrollBar"></div></div>
+
   <section class="lp-hero">
-    <p class="lp-eyebrow">پنل هوشمند پیامک</p>
-    <h1>ارسال پیامک انبوه، شخصی‌سازی‌شده و خودکار<br>همه در یک پنل</h1>
-    <p class="lp-hero-sub">
-      از ارسال ساده و زمان‌بندی‌شده تا پیامک هوشمند با قالب پویا، منشی پیامک خودکار
-      و گزارش لحظه‌ای وضعیت هر پیام — ELLSMS ابزار پیامک‌رسانی کسب‌وکار شماست.
-    </p>
-    <div class="lp-hero-cta">
-      <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
-      <a href="#features" class="btn btn-ghost">مشاهده‌ی امکانات</a>
-    </div>
-    <?php if (!$slides): ?>
-      <div class="lp-hero-panel" aria-hidden="true">
-        <div class="lp-hero-panel-bar">
-          <span></span><span></span><span></span>
+    <div class="lp-hero-inner">
+      <div class="lp-hero-copy">
+        <p class="lp-eyebrow">پنل هوشمند پیامک</p>
+        <h1>ارسال پیامک انبوه، شخصی‌سازی‌شده و خودکار<br>همه در یک پنل</h1>
+        <p class="lp-hero-sub">
+          از ارسال ساده و زمان‌بندی‌شده تا پیامک هوشمند با قالب پویا، منشی پیامک خودکار
+          و گزارش لحظه‌ای وضعیت هر پیام — ELLSMS ابزار پیامک‌رسانی کسب‌وکار شماست.
+        </p>
+        <div class="lp-hero-cta">
+          <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
+          <a href="#features" class="btn btn-ghost">مشاهده‌ی امکانات</a>
         </div>
-        <div class="lp-hero-panel-body">
-          <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value">۱۲,۴۸۰</div></div>
-          <div class="stat"><div class="stat-label">در صف زمان‌بندی</div><div class="stat-value">۳۶</div></div>
-          <div class="stat"><div class="stat-label">نرخ تحویل</div><div class="stat-value">۹۸٪</div></div>
+        <?php if (!$slides): ?>
+          <div class="lp-hero-panel" aria-hidden="true">
+            <div class="lp-hero-panel-bar">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="lp-hero-panel-body">
+              <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value">۱۲,۴۸۰</div></div>
+              <div class="stat"><div class="stat-label">در صف زمان‌بندی</div><div class="stat-value">۳۶</div></div>
+              <div class="stat"><div class="stat-label">نرخ تحویل</div><div class="stat-value">۹۸٪</div></div>
+            </div>
+          </div>
+        <?php endif; ?>
+      </div>
+      <div class="lp-hero-visual" aria-hidden="true">
+        <div class="lp-globe">
+          <div class="lp-globe-stars">
+            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <div class="lp-globe-orbit"><span class="lp-globe-dot"></span></div>
+          <div class="lp-globe-orbit lp-globe-orbit-alt"><span class="lp-globe-dot"></span></div>
+          <div class="lp-globe-sphere"></div>
         </div>
       </div>
-    <?php endif; ?>
+    </div>
   </section>
 
-  <section id="features" class="lp-section">
+  <section id="features" class="lp-section lp-reveal">
     <div class="lp-section-head">
       <h2>هر روش ارسالی که نیاز دارید</h2>
       <p>شش حالت ارسال، یک موتور واحد — بدون افزونه‌ی جداگانه و بدون هزینه‌ی اضافه.</p>
@@ -125,7 +141,7 @@ require __DIR__ . '/../app/views/public_header.php';
   </section>
 
   <?php if ($packages): ?>
-  <section id="pricing" class="lp-section">
+  <section id="pricing" class="lp-section lp-reveal">
     <div class="lp-section-head">
       <h2>بسته‌های پیامک</h2>
       <p>بسته‌ای متناسب با حجم ارسال خود انتخاب کنید.</p>
@@ -152,7 +168,7 @@ require __DIR__ . '/../app/views/public_header.php';
   </section>
   <?php endif; ?>
 
-  <section id="how" class="lp-section lp-how">
+  <section id="how" class="lp-section lp-how lp-reveal">
     <div class="lp-section-head">
       <h2>سه قدم تا اولین ارسال</h2>
       <p>بدون فرایند ثبت‌نام پیچیده، بدون نصب چیزی روی دستگاه شما.</p>
@@ -176,7 +192,7 @@ require __DIR__ . '/../app/views/public_header.php';
     </ol>
   </section>
 
-  <section id="trust" class="lp-section lp-trust">
+  <section id="trust" class="lp-section lp-trust lp-reveal">
     <div class="lp-section-head">
       <h2>ساخته‌شده برای اطمینان</h2>
     </div>
@@ -200,7 +216,7 @@ require __DIR__ . '/../app/views/public_header.php';
     </div>
   </section>
 
-  <section class="lp-cta">
+  <section class="lp-cta lp-reveal">
     <h2>آماده‌اید شروع کنید؟</h2>
     <p>به پنل وارد شوید و اولین ارسال خود را در کمتر از یک دقیقه انجام دهید.</p>
     <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>

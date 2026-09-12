@@ -568,6 +568,90 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
   .lp-section { padding: 50px 20px; }
   .lp-cta { border-radius: 20px; padding: 40px 20px; }
 }
+/* ---------- Landing hero: scroll progress + globe visual ---------- */
+.lp-scroll-progress {
+  position: fixed; top: 0; inset-inline: 0; height: 3px; z-index: 60;
+  background: rgba(230,228,245,.5); transform-origin: 0 0;
+}
+.lp-scroll-progress-bar {
+  height: 100%; width: 100%; background: var(--grad);
+  transform: scaleX(0); transform-origin: inline-start; transition: transform .1s linear;
+}
+
+.lp-hero-inner {
+  display: grid; grid-template-columns: 1.15fr .85fr; gap: 36px; align-items: center;
+  max-width: 1040px; margin: 0 auto; text-align: initial;
+}
+.lp-hero-inner .lp-eyebrow,
+.lp-hero-inner h1,
+.lp-hero-inner .lp-hero-sub { text-align: center; }
+.lp-hero-copy { display: flex; flex-direction: column; align-items: center; }
+.lp-hero-copy h1 { margin-inline: auto; }
+.lp-hero-visual { display: flex; align-items: center; justify-content: center; min-height: 260px; }
+
+.lp-globe { position: relative; width: 230px; height: 230px; }
+.lp-globe-stars { position: absolute; inset: -40px; pointer-events: none; }
+.lp-globe-stars span {
+  position: absolute; width: 3px; height: 3px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 6px 1px rgba(255,255,255,.7);
+  animation: lp-twinkle 3s ease-in-out infinite;
+}
+.lp-globe-stars span:nth-child(1) { top: 4%;  left: 10%; animation-duration: 2.6s; }
+.lp-globe-stars span:nth-child(2) { top: 18%; left: 88%; animation-duration: 3.4s; animation-delay: .4s; }
+.lp-globe-stars span:nth-child(3) { top: 82%; left: 6%;  animation-duration: 2.2s; animation-delay: .8s; }
+.lp-globe-stars span:nth-child(4) { top: 92%; left: 78%; animation-duration: 3.8s; animation-delay: .2s; }
+.lp-globe-stars span:nth-child(5) { top: 50%; left: -2%; animation-duration: 2.9s; animation-delay: 1.1s; }
+.lp-globe-stars span:nth-child(6) { top: 8%;  left: 55%; animation-duration: 3.1s; animation-delay: .6s; }
+.lp-globe-stars span:nth-child(7) { top: 60%; left: 102%; animation-duration: 2.4s; animation-delay: 1.4s; }
+@keyframes lp-twinkle { 0%, 100% { opacity: .15; } 50% { opacity: 1; } }
+
+.lp-globe-sphere {
+  position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(circle at 30% 24%, rgba(255,255,255,.4), transparent 42%),
+    repeating-linear-gradient(100deg, rgba(255,255,255,.16) 0 14px, transparent 14px 34px, rgba(255,255,255,.07) 34px 50px, transparent 50px 74px),
+    radial-gradient(circle at 38% 34%, #9fb2ff 0%, var(--blue) 45%, var(--indigo) 78%, #1c1560 100%);
+  background-size: 100% 100%, 340% 100%, 100% 100%;
+  box-shadow:
+    inset -20px -16px 50px rgba(0,0,0,.5),
+    inset 16px 12px 30px rgba(255,255,255,.22),
+    0 30px 80px rgba(74,50,232,.38);
+  animation: lp-globe-spin 22s linear infinite;
+}
+@keyframes lp-globe-spin {
+  from { background-position: 0 0, 0 0, 0 0; }
+  to   { background-position: 0 0, -340% 0, 0 0; }
+}
+
+.lp-globe-orbit {
+  position: absolute; inset: -28px; border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.35);
+  animation: lp-orbit-1 9s linear infinite;
+}
+.lp-globe-orbit.lp-globe-orbit-alt {
+  inset: -52px; border-color: rgba(46,99,246,.28);
+  animation: lp-orbit-2 15s linear infinite;
+}
+@keyframes lp-orbit-1 { from { transform: scaleY(.36) rotate(-6deg); } to { transform: scaleY(.36) rotate(354deg); } }
+@keyframes lp-orbit-2 { from { transform: scaleY(.46) rotate(16deg); } to { transform: scaleY(.46) rotate(-344deg); } }
+.lp-globe-dot {
+  position: absolute; top: -4px; left: 50%; margin-inline-start: -4px;
+  width: 8px; height: 8px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 10px 2px rgba(255,255,255,.85);
+}
+.lp-globe-orbit-alt .lp-globe-dot { background: var(--blue); box-shadow: 0 0 10px 2px rgba(46,99,246,.7); }
+
+.lp-reveal { opacity: 0; transform: translateY(22px); transition: opacity .6s ease, transform .6s ease; }
+.lp-reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+@media (max-width: 900px) {
+  .lp-hero-inner { grid-template-columns: 1fr; }
+  .lp-hero-visual { order: -1; min-height: 200px; }
+  .lp-globe { width: 170px; height: 170px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-globe-sphere, .lp-globe-orbit, .lp-globe-stars span { animation: none !important; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
 /* ---------- Contact page ---------- */
