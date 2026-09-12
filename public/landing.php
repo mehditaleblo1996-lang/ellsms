@@ -60,19 +60,12 @@ require __DIR__ . '/../app/views/public_header.php';
           <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
           <a href="#features" class="btn btn-ghost">مشاهده‌ی امکانات</a>
         </div>
-        <?php if (!$videos): ?>
-          <div class="lp-hero-panel" aria-hidden="true">
-            <div class="lp-hero-panel-bar">
-              <span></span><span></span><span></span>
-              <span class="lp-hero-panel-tag">نمای نمونه</span>
-            </div>
-            <div class="lp-hero-panel-body">
-              <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value">۱۲,۴۸۰</div></div>
-              <div class="stat"><div class="stat-label">در صف زمان‌بندی</div><div class="stat-value">۳۶</div></div>
-              <div class="stat"><div class="stat-label">نرخ تحویل</div><div class="stat-value">۹۸٪</div></div>
-            </div>
-          </div>
-        <?php endif; ?>
+        <ul class="lp-hero-stats">
+          <li><strong>۵</strong><span>حالت ارسال</span></li>
+          <li><strong>نامحدود</strong><span>قالب پویا</span></li>
+          <li><strong>۲۴/۷</strong><span>پردازش پس‌زمینه</span></li>
+          <li><strong>زرین‌پال</strong><span>پرداخت امن</span></li>
+        </ul>
       </div>
       <div class="lp-hero-visual" aria-hidden="true">
         <div class="lp-phone">
@@ -103,7 +96,7 @@ require __DIR__ . '/../app/views/public_header.php';
   <section id="features" class="lp-section lp-reveal">
     <div class="lp-section-head">
       <h2>هر روش ارسالی که نیاز دارید</h2>
-      <p>شش حالت ارسال، یک موتور واحد — بدون افزونه‌ی جداگانه و بدون هزینه‌ی اضافه.</p>
+      <p>پنج حالت ارسال، یک موتور واحد — بدون افزونه‌ی جداگانه و بدون هزینه‌ی اضافه.</p>
     </div>
     <div class="lp-bento">
       <article class="lp-card lp-bento-flag">
@@ -126,47 +119,86 @@ require __DIR__ . '/../app/views/public_header.php';
         <p>وضعیت هر پیامک، نمودار هفتگی ارسال، و آمار به تفکیک شماره، مشتری و اپراتور را لحظه‌ای ببینید.</p>
       </article>
       <article class="lp-card lp-bento-c1">
-        <span class="lp-icon">
+        <span class="lp-icon lp-icon-tint-b">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
         </span>
         <h3>منشی پیامک</h3>
         <p>به پیامک‌های دریافتی بر اساس قوانین از‌پیش‌تعیین‌شده، بدون دخالت دستی، پاسخ خودکار بدهید.</p>
       </article>
       <article class="lp-card lp-bento-c2">
-        <span class="lp-icon">
+        <span class="lp-icon lp-icon-tint-a">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
         </span>
         <h3>ورود دومرحله‌ای</h3>
         <p>حساب‌های حساس را با کد پیامکی یک‌بارمصرف محافظت کنید — قابل‌فعال‌سازی برای یک کاربر یا کل مجموعه.</p>
       </article>
       <article class="lp-card lp-bento-c3">
-        <span class="lp-icon">
+        <span class="lp-icon lp-icon-tint-d">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
         </span>
         <h3>ارسال مستقیم و دوره‌ای</h3>
         <p>پیامک را همین حالا بفرستید یا برای تاریخ و ساعت مشخص — با تقویم شمسی — زمان‌بندی کنید.</p>
       </article>
       <article class="lp-card lp-bento-c4">
-        <span class="lp-icon">
+        <span class="lp-icon lp-icon-tint-f">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
         </span>
         <h3>ارسال تدریجی</h3>
         <p>ارسال را به‌صورت پلکانی و با فاصله‌ی زمانی کنترل‌شده انجام دهید تا نرخ تحویل بالاتر بماند.</p>
       </article>
       <article class="lp-card lp-bento-c5">
-        <span class="lp-icon">
+        <span class="lp-icon lp-icon-tint-e">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
         </span>
         <h3>نظیر به نظیر</h3>
         <p>یک فایل اکسل یا CSV آپلود کنید و به هر مخاطب متنی کاملاً متفاوت، دقیقاً همان‌طور که نوشته‌اید، بفرستید.</p>
       </article>
       <article class="lp-card lp-bento-c6">
-        <span class="lp-icon">
+        <span class="lp-icon lp-icon-tint-c">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-2a3 3 0 1 0 0-6M6 8a3 3 0 1 0 0-6"/></svg>
         </span>
         <h3>مخاطبین و لیست سیاه</h3>
         <p>مخاطبین را گروه‌بندی کنید و با یک لیست سیاه، شماره‌های مسدود را پیش از هر ارسال به‌طور خودکار فیلتر کنید.</p>
       </article>
+    </div>
+  </section>
+
+  <section id="compare" class="lp-section lp-compare lp-reveal">
+    <div class="lp-section-head">
+      <h2>چرا به‌جای ارسال دستی؟</h2>
+      <p>همان کار را می‌شد با اکسل و گوشی هم انجام داد — فقط ساعت‌ها زمان و کنترل کمتری روی نتیجه.</p>
+    </div>
+    <div class="lp-compare-table">
+      <div class="lp-compare-row lp-compare-head">
+        <div></div>
+        <div>ارسال دستی / اکسل پراکنده</div>
+        <div class="lp-compare-highlight">ELLSMS</div>
+      </div>
+      <div class="lp-compare-row">
+        <div>شخصی‌سازی هر پیام</div>
+        <div class="lp-compare-no">کپی‌پیست تکی، وقت‌گیر</div>
+        <div class="lp-compare-yes">یک قالب، هزاران پیام متفاوت</div>
+      </div>
+      <div class="lp-compare-row">
+        <div>زمان‌بندی ارسال</div>
+        <div class="lp-compare-no">نیاز به حضور پای گوشی</div>
+        <div class="lp-compare-yes">تاریخ و ساعت را تعیین کنید، بقیه‌اش با پنل</div>
+      </div>
+      <div class="lp-compare-row">
+        <div>پاسخ به پیام‌های دریافتی</div>
+        <div class="lp-compare-no">دستی و با تأخیر</div>
+        <div class="lp-compare-yes">منشی پیامک، پاسخ خودکار و آنی</div>
+      </div>
+      <div class="lp-compare-row">
+        <div>گزارش وضعیت تحویل</div>
+        <div class="lp-compare-no">مشخص نیست کدام پیام رسیده</div>
+        <div class="lp-compare-yes">وضعیت لحظه‌ای هر پیامک</div>
+      </div>
+      <div class="lp-compare-row">
+        <div>فیلتر شماره‌های مسدود</div>
+        <div class="lp-compare-no">به عهده‌ی خود فرستنده</div>
+        <div class="lp-compare-yes">لیست سیاه، خودکار پیش از ارسال</div>
+      </div>
     </div>
   </section>
 
@@ -222,27 +254,104 @@ require __DIR__ . '/../app/views/public_header.php';
     </ol>
   </section>
 
+  <section id="use-cases" class="lp-section lp-reveal">
+    <div class="lp-section-head">
+      <h2>برای چه کسب‌وکارهایی مناسب است؟</h2>
+      <p>هر جا لازم باشد پیام درست، به آدم درست، سر وقت برسد.</p>
+    </div>
+    <div class="lp-grid">
+      <article class="lp-usecase">
+        <span class="lp-icon lp-icon-tint-a">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.6 13.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+        </span>
+        <h3>فروشگاه اینترنتی</h3>
+        <p>کد تخفیف، پیگیری سفارش و یادآوری سبد خرید رهاشده — با قالب پویا و به نام هر مشتری.</p>
+      </article>
+      <article class="lp-usecase">
+        <span class="lp-icon lp-icon-tint-b">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="M12 8v4l3 2"/></svg>
+        </span>
+        <h3>کلینیک و مطب</h3>
+        <p>یادآوری خودکار نوبت، پیش از ساعت مراجعه — بدون تماس تلفنی و بدون فراموشی.</p>
+      </article>
+      <article class="lp-usecase">
+        <span class="lp-icon lp-icon-tint-c">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-2a3 3 0 1 0 0-6M6 8a3 3 0 1 0 0-6"/></svg>
+        </span>
+        <h3>باشگاه مشتریان</h3>
+        <p>اطلاع‌رسانی تخفیف‌های ویژه و امتیاز وفاداری به گروه‌های مشخصی از مخاطبین.</p>
+      </article>
+      <article class="lp-usecase">
+        <span class="lp-icon lp-icon-tint-d">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
+        </span>
+        <h3>شرکت‌های خدماتی</h3>
+        <p>کد یک‌بارمصرف برای ورود امن، و اعلان وضعیت سفارش یا قرارداد به مشتریان.</p>
+      </article>
+    </div>
+  </section>
+
   <section id="trust" class="lp-section lp-trust lp-reveal">
     <div class="lp-section-head">
       <h2>ساخته‌شده برای اطمینان</h2>
     </div>
     <div class="lp-grid lp-grid-narrow">
       <div class="lp-trust-item">
+        <span class="lp-trust-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        </span>
         <h4>راست‌به‌چپ و تقویم شمسی</h4>
         <p>تمام پنل فارسی و راست‌به‌چپ است؛ تاریخ‌ها با تقویم جلالی و اعداد فارسی نمایش داده می‌شوند.</p>
       </div>
       <div class="lp-trust-item">
+        <span class="lp-trust-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="10" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg>
+        </span>
         <h4>پرداخت امن با زرین‌پال</h4>
         <p>خرید اعتبار مستقیماً از طریق API رسمی زرین‌پال انجام می‌شود؛ هر پرداخت فقط یک‌بار اعتبار می‌دهد.</p>
       </div>
       <div class="lp-trust-item">
+        <span class="lp-trust-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+        </span>
         <h4>پردازش پیوسته در پس‌زمینه</h4>
         <p>زمان‌بندی‌ها، منشی پیامک و ارسال‌های انبوه توسط یک پردازشگر پیوسته دنبال می‌شوند، نه فقط هنگام باز بودن مرورگر.</p>
       </div>
       <div class="lp-trust-item">
+        <span class="lp-trust-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-2a3 3 0 1 0 0-6M6 8a3 3 0 1 0 0-6"/></svg>
+        </span>
         <h4>مدیریت متمرکز کاربران</h4>
         <p>مدیر می‌تواند دسترسی، اعتبار و شماره‌های اختصاصی هر کاربر را از یک‌جا کنترل کند.</p>
       </div>
+    </div>
+  </section>
+
+  <section id="faq" class="lp-section lp-reveal">
+    <div class="lp-section-head">
+      <h2>سوالات پرتکرار</h2>
+    </div>
+    <div class="lp-guide-list">
+      <details class="lp-guide-item">
+        <summary>چطور به پنل دسترسی پیدا می‌کنم؟</summary>
+        <div class="lp-guide-body">حساب کاربری شما را مدیر مجموعه‌تان به پنل متصل می‌کند؛ نیازی به ثبت‌نام جداگانه نیست. برای اطلاعات بیشتر با ما <a href="/contact.php">تماس بگیرید</a>.</div>
+      </details>
+      <details class="lp-guide-item">
+        <summary>خرید اعتبار چقدر طول می‌کشد؟</summary>
+        <div class="lp-guide-body">پرداخت از طریق درگاه رسمی زرین‌پال انجام می‌شود و اعتبار بلافاصله پس از تأیید تراکنش در پنل شما فعال است.</div>
+      </details>
+      <details class="lp-guide-item">
+        <summary>آیا می‌توانم زمان‌بندی ارسال را لغو یا تغییر دهم؟</summary>
+        <div class="lp-guide-body">بله، تا پیش از رسیدن زمان ارسال می‌توانید هر ارسال زمان‌بندی‌شده را از صف حذف یا ویرایش کنید.</div>
+      </details>
+      <details class="lp-guide-item">
+        <summary>منشی پیامک روی چه اساسی پاسخ می‌دهد؟</summary>
+        <div class="lp-guide-body">بر اساس قوانینی که خودتان از پیش تعریف می‌کنید — مثلاً کلمات کلیدی خاص در پیامک دریافتی — بدون نیاز به دخالت دستی.</div>
+      </details>
+      <details class="lp-guide-item">
+        <summary>راهنمای کامل استفاده از پنل کجاست؟</summary>
+        <div class="lp-guide-body">در صفحه‌ی <a href="/guide.php">راهنمای استفاده</a> مرحله‌به‌مرحله همه‌ی بخش‌های پنل توضیح داده شده است.</div>
+      </details>
     </div>
   </section>
 

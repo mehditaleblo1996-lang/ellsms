@@ -24,6 +24,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
       <a href="/landing.php#features">امکانات</a>
       <a href="/landing.php#pricing">بسته‌های پیامک</a>
       <a href="/landing.php#how">نحوه‌ی کار</a>
+      <a href="/landing.php#faq">سوالات</a>
       <a href="/guide.php">راهنمای استفاده</a>
       <a href="/contact.php">تماس با ما</a>
     </nav>
