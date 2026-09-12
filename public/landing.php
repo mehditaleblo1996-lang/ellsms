@@ -20,9 +20,11 @@ require __DIR__ . '/../app/views/public_header.php';
             <button type="button" class="lp-video-mute" aria-label="پخش صدا / بی‌صدا کردن ویدیو" aria-pressed="false">🔇</button>
             <?php if ($v['title'] || $v['body'] || $v['link_url']): ?>
               <div class="lp-video-caption">
-                <?php if ($v['title']): ?><h3><?= e($v['title']) ?></h3><?php endif; ?>
-                <?php if ($v['body']): ?><p><?= e($v['body']) ?></p><?php endif; ?>
-                <?php if ($v['link_url']): ?><a href="<?= e($v['link_url']) ?>" class="btn btn-primary btn-sm">مشاهده</a><?php endif; ?>
+                <div class="lp-video-caption-inner">
+                  <?php if ($v['title']): ?><h3><?= e($v['title']) ?></h3><?php endif; ?>
+                  <?php if ($v['body']): ?><p><?= e($v['body']) ?></p><?php endif; ?>
+                  <?php if ($v['link_url']): ?><a href="<?= e($v['link_url']) ?>" class="btn btn-primary btn-sm">مشاهده</a><?php endif; ?>
+                </div>
               </div>
             <?php endif; ?>
           </div>

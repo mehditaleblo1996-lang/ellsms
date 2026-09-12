@@ -671,8 +671,13 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
   background: linear-gradient(0deg, rgba(11,16,35,.78), rgba(11,16,35,.08) 55%, transparent 75%);
   color: #fff; padding: 0 22px 24px; text-align: right;
 }
+.lp-video-caption-inner { display: flex; flex-direction: column; align-items: flex-start; width: 100%; }
 .lp-video-caption h3 { font-size: 19px; font-weight: 700; margin: 0 0 6px; }
-.lp-video-caption p { font-size: 13.5px; margin: 0 0 12px; color: rgba(255,255,255,.85); max-width: 420px; }
+.lp-video-caption p { font-size: 13.5px; margin: 0 0 14px; color: rgba(255,255,255,.85); max-width: 420px; }
+.lp-video-caption .btn-primary {
+  padding: 9px 22px; font-size: 13.5px; border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(74,50,232,.35);
+}
 
 @media (max-width: 900px) {
   .lp-video-grid, .lp-video-grid-1 { grid-template-columns: 1fr; }
