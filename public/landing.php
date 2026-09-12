@@ -68,25 +68,58 @@ require __DIR__ . '/../app/views/public_header.php';
         </ul>
       </div>
       <div class="lp-hero-visual" aria-hidden="true">
-        <div class="lp-phone">
-          <div class="lp-phone-notch"></div>
-          <div class="lp-phone-screen">
-            <div class="lp-thread-head">
-              <span class="lp-thread-avatar">ب</span>
-              <div>
-                <div class="lp-thread-name">باشگاه مشتریان</div>
-                <div class="lp-thread-sub">پیامک تبلیغاتی</div>
+        <!-- A faithful, if compact, reproduction of the actual logged-in
+             dashboard (see app/views/header.php for the real nav items/icons
+             and public/index.php for the real stat labels, weekly bar chart
+             and "latest messages" table) — not an invented illustration, so
+             what a visitor sees here is what they'll actually get. -->
+        <div class="lp-app-mock">
+          <div class="lp-app-chrome">
+            <span class="lp-app-dot"></span><span class="lp-app-dot"></span><span class="lp-app-dot"></span>
+            <span class="lp-app-url">panel.ellsms.ir</span>
+          </div>
+          <div class="lp-app-body">
+            <aside class="lp-app-side">
+              <div class="lp-app-brand">ELLSMS</div>
+              <a class="lp-app-nav is-active"><span>▦</span>داشبورد</a>
+              <a class="lp-app-nav"><span>🆕</span>پنل جدید ارسال</a>
+              <a class="lp-app-nav"><span>✦</span>پیامک هوشمند</a>
+              <a class="lp-app-nav"><span>🤖</span>منشی پیامک</a>
+              <a class="lp-app-nav"><span>≣</span>گزارش ارسال</a>
+            </aside>
+            <main class="lp-app-main">
+              <div class="lp-app-topbar">
+                <strong>داشبورد</strong>
+                <span class="lp-app-credit">۱۲۴,۰۰۰ اعتبار</span>
               </div>
-            </div>
-            <div class="lp-bubble lp-bubble-in" style="--d:.1s">کد تخفیف شما آماده شد 🎉</div>
-            <div class="lp-bubble lp-bubble-out" style="--d:.9s">
-              سارا عزیز، ۲۰٪ تخفیف ویژه‌ی شما تا امشب فعال است.
-              <span class="lp-bubble-tick">
-                <svg viewBox="0 0 16 16" fill="none"><path d="M1 8.5 4.5 12 9 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.2 8.5 9.7 12 15 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              </span>
-            </div>
-            <div class="lp-bubble lp-bubble-status" style="--d:1.7s">تحویل شد · همین الان</div>
-            <div class="lp-typing" style="--d:2.3s"><span></span><span></span><span></span></div>
+              <div class="lp-app-stats">
+                <div class="lp-app-stat is-accent"><span>ارسال امروز</span><b>۱۲,۴۸۰</b></div>
+                <div class="lp-app-stat"><span>در صف زمان‌بندی</span><b>۳۶</b></div>
+                <div class="lp-app-stat"><span>مجموع ارسال‌ها</span><b>۹۸,۲۱۰</b></div>
+              </div>
+              <div class="lp-app-card">
+                <h4>پیامک‌های ۷ روز اخیر</h4>
+                <div class="lp-app-bars">
+                  <div style="--h:38%"><i></i><em>ش</em></div>
+                  <div style="--h:62%"><i></i><em>ی</em></div>
+                  <div style="--h:48%"><i></i><em>د</em></div>
+                  <div style="--h:81%"><i></i><em>س</em></div>
+                  <div style="--h:57%"><i></i><em>چ</em></div>
+                  <div style="--h:97%"><i></i><em>پ</em></div>
+                  <div style="--h:70%"><i></i><em>ج</em></div>
+                </div>
+              </div>
+              <div class="lp-app-card">
+                <h4>آخرین پیامک‌ها</h4>
+                <table class="lp-app-table">
+                  <tr><th>گیرنده</th><th>وضعیت</th><th>زمان</th></tr>
+                  <tr><td>0912***4471</td><td><span class="lp-app-badge is-ok">تحویل شد</span></td><td>۱۰:۲۴</td></tr>
+                  <tr><td>0935***1187</td><td><span class="lp-app-badge is-ok">تحویل شد</span></td><td>۱۰:۲۱</td></tr>
+                  <tr><td>0919***0032</td><td><span class="lp-app-badge is-warn">در صف</span></td><td>۱۰:۱۹</td></tr>
+                  <tr><td>0901***7765</td><td><span class="lp-app-badge is-err">ناموفق</span></td><td>۱۰:۱۵</td></tr>
+                </table>
+              </div>
+            </main>
           </div>
         </div>
       </div>
