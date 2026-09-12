@@ -11,31 +11,17 @@
 
 <script>
 (function () {
-  var slider = document.getElementById('lpSlider');
-  if (!slider) return;
-  var slides = slider.querySelectorAll('.lp-slide');
-  var dots   = slider.querySelectorAll('.lp-dot');
-  var n      = slides.length;
-  var idx    = 0;
-  var timer  = null;
-
-  function show(i) {
-    idx = (i + n) % n;
-    slides.forEach(function (s, j) { s.classList.toggle('is-active', j === idx); });
-    dots.forEach(function (d, j) { d.classList.toggle('is-active', j === idx); });
-  }
-  function resetTimer() {
-    clearTimeout(timer);
-    if (n > 1) timer = setTimeout(function () { show(idx + 1); resetTimer(); }, 5000);
-  }
-
-  var prev = slider.querySelector('.lp-slider-prev');
-  var next = slider.querySelector('.lp-slider-next');
-  if (prev) prev.addEventListener('click', function () { show(idx - 1); resetTimer(); });
-  if (next) next.addEventListener('click', function () { show(idx + 1); resetTimer(); });
-  dots.forEach(function (d, j) { d.addEventListener('click', function () { show(j); resetTimer(); }); });
-
-  resetTimer();
+  document.querySelectorAll('.lp-video-card').forEach(function (card) {
+    var video = card.querySelector('video');
+    var btn   = card.querySelector('.lp-video-mute');
+    if (!video || !btn) return;
+    btn.addEventListener('click', function () {
+      video.muted = !video.muted;
+      if (!video.muted) video.play().catch(function () {});
+      btn.textContent = video.muted ? '🔇' : '🔊';
+      btn.setAttribute('aria-pressed', video.muted ? 'false' : 'true');
+    });
+  });
 })();
 
 (function () {

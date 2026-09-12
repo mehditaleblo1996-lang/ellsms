@@ -2,35 +2,30 @@
 require_once __DIR__ . '/../app/bootstrap.php';
 $pageTitle = 'پنل هوشمند پیامک';
 $metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
-$slides   = db()->query('SELECT * FROM ellsms_slides WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
+$videos   = db()->query('SELECT * FROM ellsms_landing_videos WHERE active = 1 ORDER BY sort_order ASC, id ASC LIMIT 2')->fetchAll();
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 require __DIR__ . '/../app/views/public_header.php';
 ?>
-  <?php if ($slides): ?>
-    <section class="lp-slider-full" id="lpSlider">
-      <div class="lp-slider-viewport">
-        <?php foreach ($slides as $i => $s): ?>
-          <div class="lp-slide<?= $i === 0 ? ' is-active' : '' ?>">
-            <img src="/assets/img/slides/<?= e($s['image']) ?>" alt="<?= e($s['title']) ?>" loading="<?= $i === 0 ? 'eager' : 'lazy' ?>">
-            <div class="lp-slide-caption">
-              <div class="lp-slide-caption-inner">
-                <h3><?= e($s['title']) ?></h3>
-                <?php if ($s['body']): ?><p><?= e($s['body']) ?></p><?php endif; ?>
-                <?php if ($s['link_url']): ?><a href="<?= e($s['link_url']) ?>" class="btn btn-primary btn-sm">مشاهده</a><?php endif; ?>
+  <?php if ($videos): ?>
+    <section class="lp-video-showcase">
+      <div class="lp-video-grid lp-video-grid-<?= count($videos) ?>">
+        <?php foreach ($videos as $v): ?>
+          <div class="lp-video-card">
+            <video autoplay muted loop playsinline preload="metadata"
+              <?php if ($v['poster']): ?>poster="/assets/img/landing-video-posters/<?= e($v['poster']) ?>"<?php endif; ?>>
+              <source src="/assets/video/landing/<?= e($v['video']) ?>">
+            </video>
+            <button type="button" class="lp-video-mute" aria-label="پخش صدا / بی‌صدا کردن ویدیو" aria-pressed="false">🔇</button>
+            <?php if ($v['title'] || $v['body'] || $v['link_url']): ?>
+              <div class="lp-video-caption">
+                <?php if ($v['title']): ?><h3><?= e($v['title']) ?></h3><?php endif; ?>
+                <?php if ($v['body']): ?><p><?= e($v['body']) ?></p><?php endif; ?>
+                <?php if ($v['link_url']): ?><a href="<?= e($v['link_url']) ?>" class="btn btn-primary btn-sm">مشاهده</a><?php endif; ?>
               </div>
-            </div>
+            <?php endif; ?>
           </div>
         <?php endforeach; ?>
       </div>
-      <?php if (count($slides) > 1): ?>
-        <button type="button" class="lp-slider-nav lp-slider-prev" aria-label="اسلاید قبلی">‹</button>
-        <button type="button" class="lp-slider-nav lp-slider-next" aria-label="اسلاید بعدی">›</button>
-        <div class="lp-slider-dots">
-          <?php foreach ($slides as $i => $s): ?>
-            <button type="button" class="lp-dot<?= $i === 0 ? ' is-active' : '' ?>" data-slide="<?= $i ?>" aria-label="اسلاید <?= $i + 1 ?>"></button>
-          <?php endforeach; ?>
-        </div>
-      <?php endif; ?>
     </section>
   <?php endif; ?>
 
@@ -49,7 +44,7 @@ require __DIR__ . '/../app/views/public_header.php';
           <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
           <a href="#features" class="btn btn-ghost">مشاهده‌ی امکانات</a>
         </div>
-        <?php if (!$slides): ?>
+        <?php if (!$videos): ?>
           <div class="lp-hero-panel" aria-hidden="true">
             <div class="lp-hero-panel-bar">
               <span></span><span></span><span></span>
