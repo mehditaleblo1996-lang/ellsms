@@ -33,11 +33,13 @@ function landing_video_store_upload(): ?string {
     if (!isset(LANDING_VIDEO_ALLOWED_MIME[$mime])) {
         throw new AppException('فرمت ویدیو باید MP4 یا WEBM باشد.');
     }
-    if (!is_dir(LANDING_VIDEO_DIR)) mkdir(LANDING_VIDEO_DIR, 0755, true);
+    if (!is_dir(LANDING_VIDEO_DIR) && !mkdir(LANDING_VIDEO_DIR, 0755, true) && !is_dir(LANDING_VIDEO_DIR)) {
+        throw new AppException('پوشه‌ی ذخیره‌ی ویدیو ساخته نشد — دسترسی نوشتن روی public/assets/video روی سرور را بررسی کنید.');
+    }
     $ext  = LANDING_VIDEO_ALLOWED_MIME[$mime];
     $name = 'video_' . bin2hex(random_bytes(8)) . '.' . $ext;
     if (!move_uploaded_file($f['tmp_name'], LANDING_VIDEO_DIR . '/' . $name)) {
-        throw new AppException('ذخیره‌ی ویدیو ممکن نشد.');
+        throw new AppException('ذخیره‌ی ویدیو ممکن نشد — دسترسی نوشتن روی public/assets/video/landing روی سرور را بررسی کنید.');
     }
     return $name;
 }
@@ -63,11 +65,13 @@ function landing_video_store_poster(): ?string {
     if (!isset(LANDING_VIDEO_POSTER_ALLOWED_MIME[$mime])) {
         throw new AppException('فرمت تصویر پیش‌نمایش باید JPG، PNG یا WEBP باشد.');
     }
-    if (!is_dir(LANDING_VIDEO_POSTER_DIR)) mkdir(LANDING_VIDEO_POSTER_DIR, 0755, true);
+    if (!is_dir(LANDING_VIDEO_POSTER_DIR) && !mkdir(LANDING_VIDEO_POSTER_DIR, 0755, true) && !is_dir(LANDING_VIDEO_POSTER_DIR)) {
+        throw new AppException('پوشه‌ی ذخیره‌ی تصویر پیش‌نمایش ساخته نشد — دسترسی نوشتن روی public/assets/img روی سرور را بررسی کنید.');
+    }
     $ext  = LANDING_VIDEO_POSTER_ALLOWED_MIME[$mime];
     $name = 'poster_' . bin2hex(random_bytes(8)) . '.' . $ext;
     if (!move_uploaded_file($f['tmp_name'], LANDING_VIDEO_POSTER_DIR . '/' . $name)) {
-        throw new AppException('ذخیره‌ی تصویر پیش‌نمایش ممکن نشد.');
+        throw new AppException('ذخیره‌ی تصویر پیش‌نمایش ممکن نشد — دسترسی نوشتن روی public/assets/img/landing-video-posters روی سرور را بررسی کنید.');
     }
     return $name;
 }

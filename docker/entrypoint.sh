@@ -9,4 +9,12 @@ mkdir -p /var/www/html/storage/kyc /var/www/html/storage/logs
 chown -R www-data:www-data /var/www/html/storage 2>/dev/null || true
 chmod -R u+rwX,g+rwX /var/www/html/storage 2>/dev/null || true
 
+# Same reasoning for public upload directories that don't ship pre-created in the
+# repo (public/assets/img/slides does, from earlier uploads, and already works;
+# these are new as of the landing-page video feature and would otherwise make
+# PHP's mkdir()+move_uploaded_file() fail on a fresh host checkout).
+mkdir -p /var/www/html/public/assets/video/landing /var/www/html/public/assets/img/landing-video-posters
+chown -R www-data:www-data /var/www/html/public/assets/video /var/www/html/public/assets/img/landing-video-posters 2>/dev/null || true
+chmod -R u+rwX,g+rwX /var/www/html/public/assets/video /var/www/html/public/assets/img/landing-video-posters 2>/dev/null || true
+
 exec docker-php-entrypoint "$@"

@@ -28,8 +28,8 @@ RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-avail
 RUN { \
       echo 'date.timezone = Asia/Tehran'; \
       echo 'memory_limit = 4G'; \
-      echo 'upload_max_filesize = 10M'; \
-      echo 'post_max_size = 24M'; \
+      echo 'upload_max_filesize = 20M'; \
+      echo 'post_max_size = 30M'; \
       echo 'expose_php = Off'; \
       echo 'display_errors = Off'; \
       echo 'log_errors = On'; \
