@@ -51,7 +51,7 @@ require __DIR__ . '/../app/views/public_header.php';
     <div class="lp-hero-inner">
       <div class="lp-hero-copy">
         <p class="lp-eyebrow">پنل هوشمند پیامک</p>
-        <h1>ارسال پیامک انبوه، شخصی‌سازی‌شده و خودکار<br>همه در یک پنل</h1>
+        <h1>ارسال پیامک انبوه، <span class="lp-heading-accent">شخصی‌سازی‌شده</span> و خودکار<br>همه در یک پنل</h1>
         <p class="lp-hero-sub">
           از ارسال ساده و زمان‌بندی‌شده تا پیامک هوشمند با قالب پویا، منشی پیامک خودکار
           و گزارش لحظه‌ای وضعیت هر پیام — ELLSMS ابزار پیامک‌رسانی کسب‌وکار شماست.
