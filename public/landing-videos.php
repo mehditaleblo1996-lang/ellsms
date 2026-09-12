@@ -166,6 +166,7 @@ require __DIR__ . '/../app/views/header.php';
     این ویدیوها به‌جای اسلایدر تصویری، در بالای صفحه‌ی فرود (<a href="/landing.php" target="_blank">/landing.php</a>) نمایش داده می‌شوند.
     فقط <strong>دو ویدیوی فعال</strong> با کمترین «ترتیب نمایش» به‌صورت هم‌زمان و کنار هم پخش می‌شوند؛ اگر بیش از دو ویدیو را فعال کنید، بقیه نمایش داده نمی‌شوند.
     برای بارگذاری سریع صفحه، ویدیو را کوتاه، بدون صدا و حداکثر ۱۵ مگابایت آماده کنید (MP4 یا WEBM).
+    اگر مرورگر بازدیدکننده به هر دلیلی نتواند ویدیو را پخش کند (فرمت پشتیبانی‌نشده، خطای بارگذاری و…)، به‌جای آن <strong>تصویر جایگزین</strong> نمایش داده می‌شود — پیشنهاد می‌کنیم همیشه یکی آپلود کنید، وگرنه یک پس‌زمینه‌ی ساده به‌جایش نشان داده می‌شود.
   </p>
   <?php if ($activeCount > 2): ?>
     <p class="hint" style="color:var(--warn)">در حال حاضر <?= to_persian_digits((string)$activeCount) ?> ویدیو فعال است؛ فقط دو مورد اول در صفحه‌ی اصلی نمایش داده می‌شود.</p>
@@ -189,7 +190,7 @@ require __DIR__ . '/../app/views/header.php';
       <label>فایل ویدیو (MP4 یا WEBM، حداکثر ۱۵ مگابایت)<?= $editing ? ' — خالی بگذارید تا ویدیوی فعلی حفظ شود' : '' ?>
         <input type="file" name="video" accept="video/mp4,video/webm"<?= $editing ? '' : ' required' ?>>
       </label>
-      <label>تصویر پیش‌نمایش (poster) — اختیاری
+      <label>تصویر جایگزین (poster) — اختیاری اما پیشنهادی
         <input type="file" name="poster" accept="image/jpeg,image/png,image/webp">
       </label>
     </div>

@@ -652,7 +652,10 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
 }
 .lp-video-grid-1 { grid-template-columns: 1fr; }
 .lp-video-card { position: relative; width: 100%; aspect-ratio: 16 / 10; overflow: hidden; background: #000; }
-.lp-video-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lp-video-card video, .lp-video-fallback-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Shown instead of the <video> when playback fails and no poster/fallback image was set. */
+.lp-video-card--placeholder { display: flex; align-items: center; justify-content: center; background: var(--grad); }
+.lp-video-card--placeholder::before { content: "🎬"; font-size: 42px; opacity: .85; }
 .lp-video-mute {
   position: absolute; top: 14px; inset-inline-end: 14px; z-index: 2;
   width: 34px; height: 34px; border-radius: 50%; border: 0; cursor: pointer;

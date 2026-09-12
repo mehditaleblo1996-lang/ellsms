@@ -9,10 +9,12 @@ require __DIR__ . '/../app/views/public_header.php';
   <?php if ($videos): ?>
     <section class="lp-video-showcase">
       <div class="lp-video-grid lp-video-grid-<?= count($videos) ?>">
-        <?php foreach ($videos as $v): ?>
-          <div class="lp-video-card">
+        <?php foreach ($videos as $v):
+          $posterPath = $v['poster'] ? '/assets/img/landing-video-posters/' . $v['poster'] : '';
+        ?>
+          <div class="lp-video-card" data-fallback="<?= e($posterPath) ?>">
             <video autoplay muted loop playsinline preload="metadata"
-              <?php if ($v['poster']): ?>poster="/assets/img/landing-video-posters/<?= e($v['poster']) ?>"<?php endif; ?>>
+              <?php if ($posterPath): ?>poster="<?= e($posterPath) ?>"<?php endif; ?>>
               <source src="/assets/video/landing/<?= e($v['video']) ?>">
             </video>
             <button type="button" class="lp-video-mute" aria-label="پخش صدا / بی‌صدا کردن ویدیو" aria-pressed="false">🔇</button>

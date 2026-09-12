@@ -13,6 +13,35 @@
 (function () {
   document.querySelectorAll('.lp-video-card').forEach(function (card) {
     var video = card.querySelector('video');
+    if (!video) return;
+    var showFallback = function () {
+      if (!video.isConnected) return; // already swapped out
+      var fallback = card.getAttribute('data-fallback');
+      var btn = card.querySelector('.lp-video-mute');
+      if (btn) btn.remove();
+      if (fallback) {
+        var img = document.createElement('img');
+        img.src = fallback;
+        img.alt = '';
+        img.className = 'lp-video-fallback-img';
+        video.replaceWith(img);
+      } else {
+        card.classList.add('lp-video-card--placeholder');
+        video.remove();
+      }
+    };
+    // The <video> error event doesn't bubble, so it's caught here directly;
+    // a source-level error (unsupported format) fires on the <source> instead.
+    video.addEventListener('error', showFallback);
+    video.querySelectorAll('source').forEach(function (s) {
+      s.addEventListener('error', showFallback);
+    });
+  });
+})();
+
+(function () {
+  document.querySelectorAll('.lp-video-card').forEach(function (card) {
+    var video = card.querySelector('video');
     var btn   = card.querySelector('.lp-video-mute');
     if (!video || !btn) return;
     btn.addEventListener('click', function () {
