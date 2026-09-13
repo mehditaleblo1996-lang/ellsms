@@ -132,7 +132,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <p>پنج حالت ارسال، یک موتور واحد — بدون افزونه‌ی جداگانه و بدون هزینه‌ی اضافه.</p>
     </div>
     <div class="lp-bento">
-      <article class="lp-card lp-bento-flag">
+      <article class="lp-card lp-bento-flag lp-reveal" style="--i:0">
         <span class="lp-icon lp-icon-light">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg>
         </span>
@@ -144,49 +144,49 @@ require __DIR__ . '/../app/views/public_header.php';
           <span class="lp-chip">کد {کد}</span>
         </div>
       </article>
-      <article class="lp-card lp-bento-wide">
+      <article class="lp-card lp-bento-wide lp-reveal" style="--i:1">
         <span class="lp-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
         </span>
         <h3>گزارش و آمار تفصیلی</h3>
         <p>وضعیت هر پیامک، نمودار هفتگی ارسال، و آمار به تفکیک شماره، مشتری و اپراتور را لحظه‌ای ببینید.</p>
       </article>
-      <article class="lp-card lp-bento-c1">
+      <article class="lp-card lp-bento-c1 lp-reveal" style="--i:2">
         <span class="lp-icon lp-icon-tint-b">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
         </span>
         <h3>منشی پیامک</h3>
         <p>به پیامک‌های دریافتی بر اساس قوانین از‌پیش‌تعیین‌شده، بدون دخالت دستی، پاسخ خودکار بدهید.</p>
       </article>
-      <article class="lp-card lp-bento-c2">
+      <article class="lp-card lp-bento-c2 lp-reveal" style="--i:3">
         <span class="lp-icon lp-icon-tint-a">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
         </span>
         <h3>ورود دومرحله‌ای</h3>
         <p>حساب‌های حساس را با کد پیامکی یک‌بارمصرف محافظت کنید — قابل‌فعال‌سازی برای یک کاربر یا کل مجموعه.</p>
       </article>
-      <article class="lp-card lp-bento-c3">
+      <article class="lp-card lp-bento-c3 lp-reveal" style="--i:4">
         <span class="lp-icon lp-icon-tint-d">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg>
         </span>
         <h3>ارسال مستقیم و دوره‌ای</h3>
         <p>پیامک را همین حالا بفرستید یا برای تاریخ و ساعت مشخص — با تقویم شمسی — زمان‌بندی کنید.</p>
       </article>
-      <article class="lp-card lp-bento-c4">
+      <article class="lp-card lp-bento-c4 lp-reveal" style="--i:5">
         <span class="lp-icon lp-icon-tint-f">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
         </span>
         <h3>ارسال تدریجی</h3>
         <p>ارسال را به‌صورت پلکانی و با فاصله‌ی زمانی کنترل‌شده انجام دهید تا نرخ تحویل بالاتر بماند.</p>
       </article>
-      <article class="lp-card lp-bento-c5">
+      <article class="lp-card lp-bento-c5 lp-reveal" style="--i:6">
         <span class="lp-icon lp-icon-tint-e">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
         </span>
         <h3>نظیر به نظیر</h3>
         <p>یک فایل اکسل یا CSV آپلود کنید و به هر مخاطب متنی کاملاً متفاوت، دقیقاً همان‌طور که نوشته‌اید، بفرستید.</p>
       </article>
-      <article class="lp-card lp-bento-c6">
+      <article class="lp-card lp-bento-c6 lp-reveal" style="--i:7">
         <span class="lp-icon lp-icon-tint-c">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-2a3 3 0 1 0 0-6M6 8a3 3 0 1 0 0-6"/></svg>
         </span>
@@ -242,8 +242,8 @@ require __DIR__ . '/../app/views/public_header.php';
       <p>بسته‌ای متناسب با حجم ارسال خود انتخاب کنید.</p>
     </div>
     <div class="lp-pricing-grid">
-      <?php foreach ($packages as $p): ?>
-        <div class="lp-price-card<?= $p['is_featured'] ? ' is-featured' : '' ?>">
+      <?php foreach ($packages as $i => $p): ?>
+        <div class="lp-price-card lp-reveal<?= $p['is_featured'] ? ' is-featured' : '' ?>" style="--i:<?= (int)$i ?>">
           <?php if ($p['is_featured']): ?><span class="lp-price-badge">پیشنهاد ویژه</span><?php endif; ?>
           <h3><?= e($p['name']) ?></h3>
           <div class="lp-price-amount"><?= to_persian_digits(number_format((int)$p['price_rial'])) ?> <span>ریال</span></div>
@@ -293,28 +293,28 @@ require __DIR__ . '/../app/views/public_header.php';
       <p>هر جا لازم باشد پیام درست، به آدم درست، سر وقت برسد.</p>
     </div>
     <div class="lp-grid">
-      <article class="lp-usecase">
+      <article class="lp-usecase lp-reveal" style="--i:0">
         <span class="lp-icon lp-icon-tint-a">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.6 13.4a2 2 0 0 0 2 1.6h9.8a2 2 0 0 0 2-1.6L23 6H6"/></svg>
         </span>
         <h3>فروشگاه اینترنتی</h3>
         <p>کد تخفیف، پیگیری سفارش و یادآوری سبد خرید رهاشده — با قالب پویا و به نام هر مشتری.</p>
       </article>
-      <article class="lp-usecase">
+      <article class="lp-usecase lp-reveal" style="--i:1">
         <span class="lp-icon lp-icon-tint-b">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="M12 8v4l3 2"/></svg>
         </span>
         <h3>کلینیک و مطب</h3>
         <p>یادآوری خودکار نوبت، پیش از ساعت مراجعه — بدون تماس تلفنی و بدون فراموشی.</p>
       </article>
-      <article class="lp-usecase">
+      <article class="lp-usecase lp-reveal" style="--i:2">
         <span class="lp-icon lp-icon-tint-c">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-2a3 3 0 1 0 0-6M6 8a3 3 0 1 0 0-6"/></svg>
         </span>
         <h3>باشگاه مشتریان</h3>
         <p>اطلاع‌رسانی تخفیف‌های ویژه و امتیاز وفاداری به گروه‌های مشخصی از مخاطبین.</p>
       </article>
-      <article class="lp-usecase">
+      <article class="lp-usecase lp-reveal" style="--i:3">
         <span class="lp-icon lp-icon-tint-d">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
         </span>

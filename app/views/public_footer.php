@@ -117,6 +117,14 @@
 })();
 
 (function () {
+  var nav = document.querySelector('.lp-nav');
+  if (!nav) return;
+  var update = function () { nav.classList.toggle('is-scrolled', window.scrollY > 8); };
+  window.addEventListener('scroll', update, { passive: true });
+  update();
+})();
+
+(function () {
   var bar = document.getElementById('lpScrollBar');
   if (bar) {
     var update = function () {
