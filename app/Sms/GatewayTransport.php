@@ -109,22 +109,245 @@ function gateway_status_context(array $input): array {
     return ['provider_message_id'=>(string)($input['provider_message_id']??($ids[0]??'')),'provider_message_ids'=>implode(',',array_map('strval',$ids)),'request_id'=>(string)($input['request_id']??Logger::currentRequestId()),'sender'=>(string)($input['sender']??''),'recipient'=>(string)($input['recipient']??''),'operator_code'=>(string)($input['operator_code']??''),'route_code'=>(string)($input['route_code']??''),'gateway_code'=>(string)($input['gateway_code']??''),'timestamp'=>(string)time()];
 }
 
+/* Issue #18: provider response normalization is a transport invariant, not admin configuration. */
+const PROVIDER_RESPONSE_SUCCESS = 'SUCCESS';
+const PROVIDER_RESPONSE_FAILED = 'FAILED';
+const PROVIDER_RESPONSE_UNKNOWN = 'UNKNOWN';
+
+/** A provider id may be numeric or opaque text, but never empty, boolean, float, negative sentinel or failure word. */
+function gateway_provider_message_id_normalize(mixed $value): ?string {
+    if ($value === null || is_bool($value) || is_float($value) || (!is_string($value) && !is_int($value))) return null;
+    $id = trim((string)$value);
+    if ($id === '' || mb_strlen($id) > 190 || preg_match('/[\x00-\x1F\x7F]/u', $id) === 1) return null;
+    if (preg_match('/^-\d+$/D', $id) === 1) return null;
+    if (in_array(strtolower($id), ['null','false','error','failed','failure','rejected','invalid'], true)) return null;
+    return $id;
+}
+
+function gateway_provider_value_at(mixed $decoded, array $segments): mixed {
+    return $segments === [] ? null : gateway_path_extract($segments, $decoded);
+}
+
+/** @param list<list<string>> $paths */
+function gateway_provider_first_value(mixed $decoded, array $paths): mixed {
+    foreach ($paths as $segments) {
+        $value = gateway_provider_value_at($decoded, $segments);
+        if ($value !== null) return $value;
+    }
+    return null;
+}
+
+function gateway_provider_message_id_candidate(array $section, mixed $decoded): mixed {
+    $configured = $section['response']['provider_message_id'] ?? [];
+    if ($configured !== []) {
+        $value = gateway_provider_value_at($decoded, $configured);
+        if ($value !== null) return $value;
+    }
+    return gateway_provider_first_value($decoded, [
+        ['provider_message_id'], ['providerMessageId'], ['message_id'], ['messageId'], ['reference_id'], ['referenceId'],
+        ['data','provider_message_id'], ['data','providerMessageId'], ['data','message_id'], ['data','messageId'], ['data','reference_id'], ['data','referenceId'], ['data','id'],
+        ['result','provider_message_id'], ['result','providerMessageId'], ['result','message_id'], ['result','messageId'], ['result','reference_id'], ['result','referenceId'], ['result','id'],
+        ['id'],
+    ]);
+}
+
+function gateway_provider_error_code_candidate(array $section, mixed $decoded): ?string {
+    $configured = $section['response']['error_code'] ?? [];
+    $value = $configured !== [] ? gateway_provider_value_at($decoded, $configured) : null;
+    if ($value === null) {
+        $value = gateway_provider_first_value($decoded, [
+            ['error_code'], ['errorCode'], ['data','error_code'], ['data','errorCode'], ['error','code'], ['result','error_code'], ['result','errorCode'],
+        ]);
+    }
+    if (!is_scalar($value) || is_bool($value)) return null;
+    $code = trim((string)$value);
+    return $code === '' ? null : mb_strimwidth($code, 0, 190, '');
+}
+
+function gateway_provider_error_detail_candidate(mixed $decoded): ?string {
+    $value = gateway_provider_first_value($decoded, [
+        ['error_message'], ['errorMessage'], ['error','message'], ['data','error_message'], ['data','errorMessage'], ['result','error_message'], ['result','errorMessage'], ['message'],
+    ]);
+    if (!is_scalar($value) || is_bool($value)) return null;
+    $detail = trim((string)$value);
+    return $detail === '' ? null : mb_strimwidth($detail, 0, 500, '…');
+}
+
+/** Built-in failure recognition. Admin mappings can reclassify a code, but cannot suppress these signals. */
+function gateway_provider_explicit_failure(mixed $decoded, ?string $providerErrorCode, mixed $messageIdCandidate): bool {
+    if (is_string($providerErrorCode) && preg_match('/^-\d+$/D', $providerErrorCode) === 1) return true;
+    if ((is_string($messageIdCandidate) || is_int($messageIdCandidate)) && preg_match('/^-\d+$/D', trim((string)$messageIdCandidate)) === 1) return true;
+    if (!is_array($decoded)) return false;
+    foreach ([['success'], ['ok'], ['data','success'], ['data','ok'], ['result','success'], ['result','ok']] as $path) {
+        $value = gateway_provider_value_at($decoded, $path);
+        if ($value === false || $value === 0 || $value === '0' || (is_string($value) && strtolower(trim($value)) === 'false')) return true;
+    }
+    foreach ([['status'], ['data','status'], ['result','status']] as $path) {
+        $value = gateway_provider_value_at($decoded, $path);
+        if (is_scalar($value) && in_array(strtolower(trim((string)$value)), ['error','failed','failure','rejected','invalid','denied'], true)) return true;
+    }
+    foreach ([['error'], ['errors']] as $path) {
+        $value = gateway_provider_value_at($decoded, $path);
+        if (is_array($value) && $value !== []) return true;
+        if (is_string($value) && trim($value) !== '' && !in_array(strtolower(trim($value)), ['0','false','none','null'], true)) return true;
+    }
+    return false;
+}
+
+/**
+ * Normalizes a send response into SUCCESS|FAILED|UNKNOWN.
+ *
+ * Built-in parsing is always evaluated. Admin success/response/error mappings are positive overrides:
+ * they may identify a custom provider field or reclassify a known provider code, but an absent or
+ * incomplete override never disables the built-in fallbacks and can never make an invalid message id
+ * successful. UNKNOWN is reserved for a transport ambiguity (timeout/network failure with no provider
+ * response); a malformed HTTP 2xx is FAILED/INVALID_RESPONSE.
+ */
+function gateway_normalize_provider_response(
+    array $section,
+    int $http,
+    string $raw,
+    mixed $decoded,
+    bool $bodyIsJson,
+    bool $requireMessageId = true,
+    ?string $transportErrorClass = null,
+    ?string $transportError = null
+): array {
+    if ($transportErrorClass !== null) {
+        $unknown = in_array($transportErrorClass, [BackendError::TIMEOUT, BackendError::UNAVAILABLE], true);
+        return [
+            'outcome' => $unknown ? PROVIDER_RESPONSE_UNKNOWN : PROVIDER_RESPONSE_FAILED,
+            'provider_message_id' => null,
+            'provider_error_code' => null,
+            'provider_error_detail' => $transportError !== null ? mb_strimwidth($transportError, 0, 500, '…') : null,
+            'error_class' => $transportErrorClass,
+            'reason' => $unknown ? 'transport_ambiguous' : 'transport_failed',
+            'raw_response' => '',
+        ];
+    }
+
+    $providerErrorCode = gateway_provider_error_code_candidate($section, $decoded);
+    $messageIdCandidate = gateway_provider_message_id_candidate($section, $decoded);
+    if ($providerErrorCode === null && (is_string($messageIdCandidate) || is_int($messageIdCandidate))) {
+        $candidate = trim((string)$messageIdCandidate);
+        if (preg_match('/^-\d+$/D', $candidate) === 1) $providerErrorCode = $candidate;
+    }
+    $providerErrorDetail = gateway_provider_error_detail_candidate($decoded);
+    $explicitFailure = gateway_provider_explicit_failure($decoded, $providerErrorCode, $messageIdCandidate);
+    $messageId = gateway_provider_message_id_normalize($messageIdCandidate);
+
+    if ($http < 200 || $http >= 300) {
+        return [
+            'outcome'=>PROVIDER_RESPONSE_FAILED,'provider_message_id'=>null,'provider_error_code'=>$providerErrorCode,
+            'provider_error_detail'=>$providerErrorDetail,'error_class'=>gateway_classify_failure($section,$http,$decoded,$bodyIsJson),
+            'reason'=>'http_error','raw_response'=>$raw,
+        ];
+    }
+    if (!$bodyIsJson) {
+        return [
+            'outcome'=>PROVIDER_RESPONSE_FAILED,'provider_message_id'=>null,'provider_error_code'=>$providerErrorCode,
+            'provider_error_detail'=>$providerErrorDetail,'error_class'=>BackendError::INVALID_RESPONSE,
+            'reason'=>'malformed_2xx','raw_response'=>$raw,
+        ];
+    }
+    if ($explicitFailure) {
+        return [
+            'outcome'=>PROVIDER_RESPONSE_FAILED,'provider_message_id'=>null,'provider_error_code'=>$providerErrorCode,
+            'provider_error_detail'=>$providerErrorDetail,'error_class'=>gateway_classify_failure($section,$http,$decoded,$bodyIsJson),
+            'reason'=>'provider_error','raw_response'=>$raw,
+        ];
+    }
+
+    $adminSuccess = gateway_success_rule_evaluate($section['success'] ?? gateway_success_rule_compile(null), $http, $decoded, $bodyIsJson);
+    if ($requireMessageId && $messageId === null) {
+        return [
+            'outcome'=>PROVIDER_RESPONSE_FAILED,'provider_message_id'=>null,'provider_error_code'=>$providerErrorCode,
+            'provider_error_detail'=>$providerErrorDetail,'error_class'=>BackendError::INVALID_RESPONSE,
+            'reason'=>'missing_or_invalid_provider_message_id','raw_response'=>$raw,
+        ];
+    }
+
+    return [
+        'outcome'=>PROVIDER_RESPONSE_SUCCESS,'provider_message_id'=>$messageId,'provider_error_code'=>null,
+        'provider_error_detail'=>null,'error_class'=>null,
+        'reason'=>$adminSuccess?'admin_or_default_success':'builtin_success','raw_response'=>$raw,
+    ];
+}
+
+function gateway_provider_response_raw_for_storage(string $raw): string {
+    return mb_strimwidth($raw, 0, 65535, '…');
+}
+
+/** Best-effort evidence persistence: an audit failure must never turn a provider send into a send failure. */
+function gateway_provider_response_audit(int $gatewayId, string $connectorKind, string $requestId, int $http, array $normalized): void {
+    if ($gatewayId <= 0 || !in_array($connectorKind, ['send','status'], true)) return;
+    try {
+        db()->prepare(
+            'INSERT INTO ellsms_provider_response_audit
+               (gateway_id, connector, request_id, http_status, normalized_outcome, provider_message_id,
+                provider_error_code, provider_error_detail, raw_response)
+             VALUES (?,?,?,?,?,?,?,?,?)'
+        )->execute([
+            $gatewayId,
+            $connectorKind,
+            mb_strimwidth($requestId, 0, 80, ''),
+            max(0, min(65535, $http)),
+            (string)($normalized['outcome'] ?? PROVIDER_RESPONSE_FAILED),
+            isset($normalized['provider_message_id']) ? mb_strimwidth((string)$normalized['provider_message_id'], 0, 190, '') : null,
+            isset($normalized['provider_error_code']) ? mb_strimwidth((string)$normalized['provider_error_code'], 0, 190, '') : null,
+            isset($normalized['provider_error_detail']) ? mb_strimwidth((string)$normalized['provider_error_detail'], 0, 500, '…') : null,
+            gateway_provider_response_raw_for_storage((string)($normalized['raw_response'] ?? '')),
+        ]);
+    } catch (Throwable $t) {
+        Logger::warning('gateway.response_audit_failed', ['gateway_id'=>$gatewayId,'connector'=>$connectorKind,'exception_class'=>get_class($t)]);
+        Metrics::increment('gateway.response_audit_failure', 1, ['connector'=>$connectorKind]);
+    }
+}
+
 function gateway_execute(array $connector, string $connectorKind, array $request): array {
     $section=$connectorKind==='status'?$connector['status']:$connector['send']; $requestId=Logger::currentRequestId();
     $endpointCheck=gateway_endpoint_allowed($request['url']);
-    if(!$endpointCheck['ok']){Logger::error('gateway.endpoint_rejected',['gateway_id'=>$connector['gateway_id'],'reason'=>$endpointCheck['reason']]);return ['ok'=>false,'http'=>0,'data'=>null,'error'=>$endpointCheck['reason'],'error_class'=>BackendError::PERMANENT,'request_id'=>$requestId,'raw'=>''];}
+    if(!$endpointCheck['ok']){
+        Logger::error('gateway.endpoint_rejected',['gateway_id'=>$connector['gateway_id'],'reason'=>$endpointCheck['reason']]);
+        return ['ok'=>false,'http'=>0,'data'=>null,'error'=>$endpointCheck['reason'],'error_class'=>BackendError::PERMANENT,'request_id'=>$requestId,'raw'=>'','normalized_outcome'=>PROVIDER_RESPONSE_FAILED,'provider_message_id'=>null,'provider_error_code'=>null,'provider_error_detail'=>$endpointCheck['reason']];
+    }
     $startedAt=microtime(true); $ch=curl_init($request['url']);
     $options=[CURLOPT_CUSTOMREQUEST=>$request['method'],CURLOPT_HTTPHEADER=>$request['headers'],CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>false,CURLOPT_CONNECTTIMEOUT_MS=>$section['connect_timeout_ms'],CURLOPT_TIMEOUT_MS=>$section['request_timeout_ms'],CURLOPT_SSL_VERIFYPEER=>$section['tls_verify'],CURLOPT_SSL_VERIFYHOST=>$section['tls_verify']?2:0,CURLOPT_FOLLOWLOCATION=>false];
     if($endpointCheck['resolve']!==[])$options[CURLOPT_RESOLVE]=$endpointCheck['resolve']; if($request['body']!==null)$options[CURLOPT_POSTFIELDS]=$request['body']; curl_setopt_array($ch,$options);
     $raw=curl_exec($ch); $curlErrno=curl_errno($ch); $curlError=curl_error($ch); $http=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE); curl_close($ch); $elapsedMs=(int)round((microtime(true)-$startedAt)*1000);
     $metricTags=['gateway'=>$connector['gateway_code'],'connector'=>$connectorKind];
-    if($raw===false){$errorClass=$curlErrno===CURLE_OPERATION_TIMEDOUT?BackendError::TIMEOUT:BackendError::UNAVAILABLE;Logger::error('gateway.request_failed',['gateway_id'=>$connector['gateway_id'],'config_version'=>$connector['config_version'],'connector'=>$connectorKind,'curl_errno'=>$curlErrno,'error_class'=>$errorClass,'elapsed_ms'=>$elapsedMs,'request_id'=>$requestId]);Metrics::increment('gateway_send_failure',1,$metricTags+['error_class'=>$errorClass]);return ['ok'=>false,'http'=>0,'data'=>null,'error'=>$curlError?:'connection failed','error_class'=>$errorClass,'request_id'=>$requestId,'raw'=>''];}
-    $decoded=json_decode((string)$raw,true,512,JSON_BIGINT_AS_STRING); $bodyIsJson=json_last_error()===JSON_ERROR_NONE; $success=gateway_success_rule_evaluate($section['success'],$http,$decoded,$bodyIsJson);
-    Logger::info('gateway.request_completed',['gateway_id'=>$connector['gateway_id'],'config_version'=>$connector['config_version'],'connector'=>$connectorKind,'http'=>$http,'success'=>$success,'elapsed_ms'=>$elapsedMs,'request_id'=>$requestId]);
-    Metrics::timing('gateway_request',$elapsedMs,$metricTags+['result'=>$success?'success':'failure']); Metrics::increment($connectorKind==='status'?'gateway_status_poll_total':'gateway_send_total',1,$metricTags);
-    if($success)return ['ok'=>true,'http'=>$http,'data'=>$decoded,'error'=>null,'error_class'=>null,'request_id'=>$requestId,'raw'=>(string)$raw];
-    $errorClass=gateway_classify_failure($section,$http,$decoded,$bodyIsJson); Metrics::increment($connectorKind==='status'?'gateway_status_poll_failure':'gateway_send_failure',1,$metricTags+['error_class'=>$errorClass]);
-    return ['ok'=>false,'http'=>$http,'data'=>$decoded,'error'=>mb_strimwidth((string)$raw,0,1000,'…'),'error_class'=>$errorClass,'request_id'=>$requestId,'raw'=>(string)$raw];
+    if($raw===false){
+        $errorClass=$curlErrno===CURLE_OPERATION_TIMEDOUT?BackendError::TIMEOUT:BackendError::UNAVAILABLE;
+        $normalized=gateway_normalize_provider_response($section,0,'',null,false,$connectorKind==='send'&&$connector['send_mode']!=='batch',$errorClass,$curlError?:'connection failed');
+        gateway_provider_response_audit((int)$connector['gateway_id'],$connectorKind,$requestId,0,$normalized);
+        Logger::error('gateway.request_failed',['gateway_id'=>$connector['gateway_id'],'config_version'=>$connector['config_version'],'connector'=>$connectorKind,'curl_errno'=>$curlErrno,'error_class'=>$errorClass,'normalized_outcome'=>$normalized['outcome'],'elapsed_ms'=>$elapsedMs,'request_id'=>$requestId]);
+        Metrics::increment('gateway_send_failure',1,$metricTags+['error_class'=>$errorClass]);
+        return ['ok'=>false,'http'=>0,'data'=>null,'error'=>$curlError?:'connection failed','error_class'=>$errorClass,'request_id'=>$requestId,'raw'=>'','normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>null,'provider_error_code'=>null,'provider_error_detail'=>$normalized['provider_error_detail']];
+    }
+    $raw=(string)$raw;
+    $decoded=json_decode($raw,true,512,JSON_BIGINT_AS_STRING); $bodyIsJson=json_last_error()===JSON_ERROR_NONE;
+    if($connectorKind==='send'){
+        $normalized=gateway_normalize_provider_response($section,$http,$raw,$decoded,$bodyIsJson,$connector['send_mode']!=='batch');
+        $success=$normalized['outcome']===PROVIDER_RESPONSE_SUCCESS;
+    }else{
+        $success=gateway_success_rule_evaluate($section['success'],$http,$decoded,$bodyIsJson);
+        $normalized=[
+            'outcome'=>$success?PROVIDER_RESPONSE_SUCCESS:PROVIDER_RESPONSE_FAILED,
+            'provider_message_id'=>null,
+            'provider_error_code'=>gateway_provider_error_code_candidate($section,$decoded),
+            'provider_error_detail'=>$success?null:gateway_provider_error_detail_candidate($decoded),
+            'error_class'=>$success?null:gateway_classify_failure($section,$http,$decoded,$bodyIsJson),
+            'reason'=>$success?'status_success':'status_failure',
+            'raw_response'=>$raw,
+        ];
+    }
+    gateway_provider_response_audit((int)$connector['gateway_id'],$connectorKind,$requestId,$http,$normalized);
+    Logger::info('gateway.request_completed',['gateway_id'=>$connector['gateway_id'],'config_version'=>$connector['config_version'],'connector'=>$connectorKind,'http'=>$http,'success'=>$success,'normalized_outcome'=>$normalized['outcome'],'elapsed_ms'=>$elapsedMs,'request_id'=>$requestId]);
+    Metrics::timing('gateway_request',$elapsedMs,$metricTags+['result'=>strtolower((string)$normalized['outcome'])]); Metrics::increment($connectorKind==='status'?'gateway_status_poll_total':'gateway_send_total',1,$metricTags);
+    if($success)return ['ok'=>true,'http'=>$http,'data'=>$decoded,'error'=>null,'error_class'=>null,'request_id'=>$requestId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>$normalized['provider_message_id'],'provider_error_code'=>null,'provider_error_detail'=>null];
+    $errorClass=(string)($normalized['error_class']??gateway_classify_failure($section,$http,$decoded,$bodyIsJson)); Metrics::increment($connectorKind==='status'?'gateway_status_poll_failure':'gateway_send_failure',1,$metricTags+['error_class'=>$errorClass]);
+    $error=$normalized['provider_error_detail']??mb_strimwidth($raw,0,1000,'…');
+    return ['ok'=>false,'http'=>$http,'data'=>$decoded,'error'=>$error,'error_class'=>$errorClass,'request_id'=>$requestId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>null,'provider_error_code'=>$normalized['provider_error_code'],'provider_error_detail'=>$normalized['provider_error_detail']];
 }
 
 function gateway_classify_failure(array $section,int $http,mixed $decoded,bool $bodyIsJson):string{
@@ -133,52 +356,73 @@ function gateway_classify_failure(array $section,int $http,mixed $decoded,bool $
     return match(true){$http===401,$http===403=>BackendError::UNAUTHORIZED,$http===409=>BackendError::CONFLICT,$http===429=>BackendError::UNAVAILABLE,$http===400,$http===404,$http===422=>BackendError::REJECTED,$http>=500=>BackendError::UNAVAILABLE,default=>BackendError::PERMANENT};
 }
 
-function gateway_extract_message_id(array $section,mixed $decoded):?string{$path=$section['response']['provider_message_id']??[];if($path===[])return null;$value=gateway_path_extract($path,$decoded);return is_scalar($value)?(string)$value:null;}
-function gateway_extract_batch_result(array $section,mixed $decoded):array{$batch=$section['batch']??null;if($batch===null)return ['sent'=>[],'message_ids'=>[]];$rows=$batch['rows_path']===[]?$decoded:gateway_path_extract($batch['rows_path'],$decoded);if(!is_array($rows))return ['sent'=>[],'message_ids'=>[]];$sent=[];$messageIds=[];foreach($rows as $row){if(!is_array($row))continue;$status=(string)($row[$batch['status_key']]??'');$destination=(string)($row[$batch['destination_key']]??'');if($destination===''||!in_array($status,$batch['success_values'],true))continue;$sent[]=$destination;if($batch['message_id_key']!==''&&isset($row[$batch['message_id_key']]))$messageIds[$destination]=(string)$row[$batch['message_id_key']];}return ['sent'=>$sent,'message_ids'=>$messageIds];}
+function gateway_extract_message_id(array $section,mixed $decoded):?string{
+    return gateway_provider_message_id_normalize(gateway_provider_message_id_candidate($section,$decoded));
+}
+
+function gateway_extract_batch_result(array $section,mixed $decoded):array{
+    $batch=$section['batch']??null;if($batch===null)return ['sent'=>[],'message_ids'=>[]];
+    $rows=$batch['rows_path']===[]?$decoded:gateway_path_extract($batch['rows_path'],$decoded);if(!is_array($rows))return ['sent'=>[],'message_ids'=>[]];
+    $sent=[];$messageIds=[];
+    foreach($rows as $row){
+        if(!is_array($row))continue;
+        $status=(string)($row[$batch['status_key']]??'');$destination=(string)($row[$batch['destination_key']]??'');
+        if($destination===''||!in_array($status,$batch['success_values'],true))continue;
+        $id=$batch['message_id_key']!==''?gateway_provider_message_id_normalize($row[$batch['message_id_key']]??null):null;
+        if($id===null){Logger::warning('gateway.correlation.invalid_provider_id',['mode'=>'keyed']);Metrics::increment('gateway.correlation_failure',1,['reason'=>'invalid_provider_id']);continue;}
+        $sent[]=$destination;$messageIds[$destination]=$id;
+    }
+    return ['sent'=>$sent,'message_ids'=>$messageIds];
+}
 
 function gateway_send(array $connector,array $input,?int $routeId,?int $operatorId=null):array{
     $destinations=array_values(array_map('strval',$input['recipients']??[])); if($destinations===[])return gateway_send_failure('no destinations',BackendError::REJECTED);
     $input['gateway_code']=$connector['gateway_code']; $perMessage=$connector['send_mode']!=='batch'; $groups=[];$unsupported=[];$resolvedOperators=[];
     foreach($destinations as $destination){$operator=$operatorId!==null?['operator_id'=>$operatorId,'operator_code'=>(string)($connector['operators'][$operatorId]??'')]:gateway_resolve_recipient_operator($destination);if(!gateway_supports_operator($connector,$operator['operator_id'])){$unsupported[]=$destination;continue;}$signature=gateway_parameter_signature($connector,'send',$routeId,$operator['operator_id']);$groupKey=implode('|',[$connector['gateway_id'],$connector['config_version'],$routeId??'-',$signature['signature'],(string)($input['sender']??''),(string)($input['message_type']??''),($perMessage||$signature['per_recipient'])?$destination:'']);$groups[$groupKey]??=['operator'=>$operator,'destinations'=>[]];$groups[$groupKey]['destinations'][]=$destination;$resolvedOperators[$destination]=$operator['operator_id'];}
     if($groups===[])return gateway_send_failure('gateway does not carry this operator',BackendError::REJECTED);
-    $sent=[];$messageIds=[];$lastError=null;$lastClass=null;$lastHttp=0;$retryable=false;
-    foreach($groups as $group){$groupDestinations=$group['destinations'];$operator=$group['operator'];$context=gateway_send_context(array_merge($input,['recipients'=>$groupDestinations,'recipient'=>$groupDestinations[0],'operator_code'=>$operator['operator_code']]));$request=gateway_build_request($connector,'send',$context,$routeId,$operator['operator_id']);$response=gateway_execute($connector,'send',$request);if(!$response['ok']){$lastError=$response['error'];$lastClass=$response['error_class'];$lastHttp=$response['http'];$retryable=$retryable||BackendError::isRetryable((string)$response['error_class']);continue;}$lastHttp=$response['http'];[$groupSent,$groupIds]=gateway_read_send_response($connector,$response,$groupDestinations);foreach($groupSent as $destination)$sent[]=$destination;foreach($groupIds as $destination=>$messageId)$messageIds[$destination]=$messageId;}
+    $sent=[];$messageIds=[];$lastError=null;$lastClass=null;$lastHttp=0;$retryable=false;$lastOutcome=PROVIDER_RESPONSE_FAILED;$lastProviderErrorCode=null;$lastProviderErrorDetail=null;
+    foreach($groups as $group){
+        $groupDestinations=$group['destinations'];$operator=$group['operator'];
+        $context=gateway_send_context(array_merge($input,['recipients'=>$groupDestinations,'recipient'=>$groupDestinations[0],'operator_code'=>$operator['operator_code']]));
+        $request=gateway_build_request($connector,'send',$context,$routeId,$operator['operator_id']);$response=gateway_execute($connector,'send',$request);
+        $lastOutcome=(string)($response['normalized_outcome']??PROVIDER_RESPONSE_FAILED);$lastProviderErrorCode=$response['provider_error_code']??null;$lastProviderErrorDetail=$response['provider_error_detail']??null;
+        if(!$response['ok']){$lastError=$response['error'];$lastClass=$response['error_class'];$lastHttp=$response['http'];$retryable=$retryable||BackendError::isRetryable((string)$response['error_class']);continue;}
+        $lastHttp=$response['http'];[$groupSent,$groupIds]=gateway_read_send_response($connector,$response,$groupDestinations);
+        if($groupSent===[]){$lastError='provider response did not contain valid per-recipient message ids';$lastClass=BackendError::INVALID_RESPONSE;$lastOutcome=PROVIDER_RESPONSE_FAILED;continue;}
+        foreach($groupSent as $destination)$sent[]=$destination;foreach($groupIds as $destination=>$messageId)$messageIds[$destination]=$messageId;
+    }
     if($unsupported!==[]){Logger::warning('gateway.send.operator_not_carried',['gateway_id'=>$connector['gateway_id'],'destination_count'=>count($unsupported)]);if($sent===[]&&$lastClass===null){$lastError='gateway does not carry this operator';$lastClass=BackendError::REJECTED;}}
     if($sent===[]&&$lastClass===null){$lastError='gateway rejected every destination';$lastClass=BackendError::REJECTED;}
-    return ['ok'=>$sent!==[],'sent'=>$sent,'message_ids'=>$messageIds,'error'=>$sent===[]?$lastError:null,'error_class'=>$sent===[]?$lastClass:null,'http'=>$lastHttp,'retryable'=>$sent===[]?$retryable:false,'groups'=>count($groups),'operators'=>$resolvedOperators];
+    return ['ok'=>$sent!==[],'sent'=>$sent,'message_ids'=>$messageIds,'error'=>$sent===[]?$lastError:null,'error_class'=>$sent===[]?$lastClass:null,'http'=>$lastHttp,'retryable'=>$sent===[]?$retryable:false,'groups'=>count($groups),'operators'=>$resolvedOperators,'normalized_outcome'=>$sent!==[]?PROVIDER_RESPONSE_SUCCESS:$lastOutcome,'provider_error_code'=>$sent===[]?$lastProviderErrorCode:null,'provider_error_detail'=>$sent===[]?$lastProviderErrorDetail:null];
 }
 
-function gateway_send_failure(string $error,string $errorClass):array{return ['ok'=>false,'sent'=>[],'message_ids'=>[],'error'=>$error,'error_class'=>$errorClass,'http'=>0,'retryable'=>false,'groups'=>0,'operators'=>[]];}
+function gateway_send_failure(string $error,string $errorClass):array{return ['ok'=>false,'sent'=>[],'message_ids'=>[],'error'=>$error,'error_class'=>$errorClass,'http'=>0,'retryable'=>false,'groups'=>0,'operators'=>[],'normalized_outcome'=>PROVIDER_RESPONSE_FAILED,'provider_error_code'=>null,'provider_error_detail'=>$error];}
 function gateway_resolve_recipient_operator(string $destination):array{$normalized=sms_pricing_normalize_prefix($destination)??'';$operator=sms_resolve_operator($normalized);return ['operator_id'=>$operator['operator_id']!==null?(int)$operator['operator_id']:null,'operator_code'=>(string)$operator['operator_code']];}
 
 function gateway_read_send_response(array $connector,array $response,array $groupDestinations):array{
     if($connector['send_mode']==='batch'&&$connector['send']['batch']!==null){
         $batch=$connector['send']['batch'];
-        if($batch['correlation_mode']==='position'){
-            $raw=trim((string)($response['raw']??''));$http=(int)($response['http']??0);
-            if(!empty($response['ok'])&&$http>=200&&$http<300&&$raw===''){
-                Logger::warning('gateway.correlation.empty_success_without_provider_ids',['destinations'=>count($groupDestinations),'http'=>$http]);
-                Metrics::increment('gateway.correlation_empty_success',1,['mode'=>'position']);
-                return [$groupDestinations,[]];
-            }
-            return gateway_extract_positional_result($connector['send'],$response['data'],$groupDestinations);
-        }
-        $batch=gateway_extract_batch_result($connector['send'],$response['data']);$accepted=array_values(array_intersect($batch['sent'],$groupDestinations));$ids=[];foreach($accepted as $destination)if(isset($batch['message_ids'][$destination]))$ids[$destination]=$batch['message_ids'][$destination];return [$accepted,$ids];
+        if($batch['correlation_mode']==='position') return gateway_extract_positional_result($connector['send'],$response['data'],$groupDestinations);
+        $batchResult=gateway_extract_batch_result($connector['send'],$response['data']);$accepted=array_values(array_intersect($batchResult['sent'],$groupDestinations));$ids=[];foreach($accepted as $destination)if(isset($batchResult['message_ids'][$destination]))$ids[$destination]=$batchResult['message_ids'][$destination];return [$accepted,$ids];
     }
-    $messageId=gateway_extract_message_id($connector['send'],$response['data']);$ids=$messageId===null?[]:array_fill_keys($groupDestinations,$messageId);return [$groupDestinations,$ids];
+    $messageId=gateway_provider_message_id_normalize($response['provider_message_id']??gateway_extract_message_id($connector['send'],$response['data']));
+    if($messageId===null){Logger::warning('gateway.response.invalid_provider_message_id',['mode'=>'per_message']);Metrics::increment('gateway.provider_reference_rejected',1,['reason'=>'invalid_or_missing']);return [[],[]];}
+    return [$groupDestinations,array_fill_keys($groupDestinations,$messageId)];
 }
 
-function gateway_extract_positional_result(array $section,mixed $decoded,array $groupDestinations):array{$batch=$section['batch']??null;if($batch===null||$batch['provider_ids_path']===[])return [[],[]];$ids=gateway_path_extract($batch['provider_ids_path'],$decoded);if(!is_array($ids)){Logger::warning('gateway.correlation.positional_not_array',['destinations'=>count($groupDestinations)]);return [[],[]];}if(count($ids)!==count($groupDestinations)){Logger::warning('gateway.correlation.positional_count_mismatch',['expected'=>count($groupDestinations),'actual'=>count($ids)]);Metrics::increment('gateway.correlation_failure',1,['reason'=>'count_mismatch']);return [[],[]];}$messageIds=[];foreach($groupDestinations as $index=>$destination){$id=$ids[$index]??null;if(!is_scalar($id)||(string)$id===''){Logger::warning('gateway.correlation.positional_empty_id',['index'=>$index]);Metrics::increment('gateway.correlation_failure',1,['reason'=>'empty_id']);return [[],[]];}$messageIds[$destination]=(string)$id;}return [$groupDestinations,$messageIds];}
+function gateway_extract_positional_result(array $section,mixed $decoded,array $groupDestinations):array{
+    $batch=$section['batch']??null;if($batch===null||$batch['provider_ids_path']===[])return [[],[]];
+    $ids=gateway_path_extract($batch['provider_ids_path'],$decoded);
+    if(!is_array($ids)){Logger::warning('gateway.correlation.positional_not_array',['destinations'=>count($groupDestinations)]);return [[],[]];}
+    if(count($ids)!==count($groupDestinations)){Logger::warning('gateway.correlation.positional_count_mismatch',['expected'=>count($groupDestinations),'actual'=>count($ids)]);Metrics::increment('gateway.correlation_failure',1,['reason'=>'count_mismatch']);return [[],[]];}
+    $messageIds=[];
+    foreach($groupDestinations as $index=>$destination){$id=gateway_provider_message_id_normalize($ids[$index]??null);if($id===null){Logger::warning('gateway.correlation.positional_invalid_id',['index'=>$index]);Metrics::increment('gateway.correlation_failure',1,['reason'=>'invalid_provider_id']);return [[],[]];}$messageIds[$destination]=$id;}
+    return [$groupDestinations,$messageIds];
+}
 
 function gateway_transport_enabled():bool{return (string)env('SMS_GATEWAY_TRANSPORT','0')==='1';}
 function gateway_connector_capability_for_sender(string $originator,?string $messageType):array{if(!gateway_transport_enabled())return ['ok'=>false,'per_recipient_content'=>false];$route=sms_pricing_route_for_sender($originator,sms_pricing_normalize_message_type($messageType));$resolved=gateway_for_route($route);if(!$resolved['ok'])return ['ok'=>false,'per_recipient_content'=>false];return ['ok'=>true,'per_recipient_content'=>gateway_connector_supports_per_recipient_content($resolved['connector'])];}
-/**
- * Sends one already-resolved route's share of a (possibly multi-group) dispatch. Identical to what
- * gateway_send_for_dispatch() did inline before issue #8: resolve the route's connector, call
- * gateway_send(), stamp gateway/route identity onto the result, record provider health. Returns
- * null exactly when the route has no usable connector, so a caller composing several groups can
- * detect "this group cannot go through the gateway" without having partially sent anything yet.
- */
+
 function gateway_send_for_dispatch_group(array $user, string $originator, array $destinations, string $content, string $normalizedType, ?array $perDestinationContent, ?array $perDestinationIdempotencyKeys, ?array $route): ?array {
     $resolved = gateway_for_route($route);
     if (!$resolved['ok']) {
@@ -203,41 +447,16 @@ function gateway_send_for_dispatch_group(array $user, string $originator, array 
     $result['gateway_config_version'] = $connector['config_version'];
     $result['route_id'] = isset($route['route_id']) ? (int)$route['route_id'] : null;
 
-    // Issue #10/#16: reachability, not per-message business outcome -- $sent!==[] means the gateway
-    // was reachable regardless of how many destinations it accepted; $retryable (only true when
-    // nothing at all was sent AND the failure was network/5xx-classified) means it genuinely was
-    // not. $healthElapsedMs covers the whole (possibly multi-destination) call, an acceptable
-    // aggregate signal for health purposes -- this is not a per-message accounting value.
     if ($result['sent'] !== []) {
         provider_health_record_success(provider_health_key_for_gateway((int)$connector['gateway_id']), $healthElapsedMs);
     } elseif ($result['retryable'] ?? false) {
         $errorClass = (string)($result['error_class'] ?? $result['error'] ?? 'unknown');
-        if ($errorClass === BackendError::TIMEOUT) {
-            provider_health_record_timeout(provider_health_key_for_gateway((int)$connector['gateway_id']), $errorClass);
-        } else {
-            provider_health_record_failure(provider_health_key_for_gateway((int)$connector['gateway_id']), $errorClass);
-        }
+        if ($errorClass === BackendError::TIMEOUT) provider_health_record_timeout(provider_health_key_for_gateway((int)$connector['gateway_id']), $errorClass);
+        else provider_health_record_failure(provider_health_key_for_gateway((int)$connector['gateway_id']), $errorClass);
     }
     return $result;
 }
 
-/**
- * Issue #8: a multi-destination batch (bulk campaigns, mainly) is partitioned into homogeneous
- * route groups BEFORE dispatch, using the exact same sender > destination-operator > default
- * precedence a single-destination send already used — see
- * sms_pricing_route_groups_for_destinations(). Each group is then sent through its own resolved
- * route via gateway_send_for_dispatch_group(), and the per-destination results (sent, provider
- * message ids, resolved operator, AND now resolved route/gateway) are merged back into one result
- * shaped exactly like a single-route call always returned, so every existing caller
- * (dispatch_gateway_result(), bulk_send_group()) needs no changes beyond reading the new
- * $result['route_ids']/$result['gateway_ids'] per-destination maps where they used to assume one
- * route for the whole call.
- *
- * All-or-nothing at the CONNECTOR-RESOLUTION step, exactly like the single-group case always was:
- * if any group's route has no usable connector, the entire call returns null and every destination
- * falls back to the legacy transport together -- never a silent partial split where some
- * destinations quietly get treated as "gateway rejected" when they were actually never attempted.
- */
 function gateway_send_for_dispatch(array $user,string $originator,array $destinations,string $content,?string $messageType=null,?array $perDestinationContent=null,?array $perDestinationIdempotencyKeys=null):?array{
     if(!gateway_transport_enabled())return null;
     $normalizedType = sms_pricing_normalize_message_type($messageType);
@@ -255,34 +474,25 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         $groupContent = $perDestinationContent !== null ? array_intersect_key($perDestinationContent, $groupSet) : null;
         $groupKeys = $perDestinationIdempotencyKeys !== null ? array_intersect_key($perDestinationIdempotencyKeys, $groupSet) : null;
         $result = gateway_send_for_dispatch_group($user, $originator, $group['destinations'], $content, $normalizedType, $groupContent, $groupKeys, $group['route']);
-        if ($result === null) {
-            // One group could not resolve a connector -- fall back to legacy for the WHOLE batch,
-            // never a silent partial gateway/legacy split (see docblock above).
-            return null;
-        }
+        if ($result === null) return null;
         $groupResults[] = ['destinations' => $group['destinations'], 'result' => $result];
     }
 
     $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = [];
     $anyOk = false; $lastError = null; $lastErrorClass = null; $lastHttp = 0; $retryable = false;
-    $lastGatewayId = null; $lastRouteId = null; $lastConfigVersion = null;
+    $lastGatewayId = null; $lastRouteId = null; $lastConfigVersion = null; $lastOutcome = PROVIDER_RESPONSE_FAILED; $lastProviderErrorCode = null; $lastProviderErrorDetail = null;
     foreach ($groupResults as $g) {
         $result = $g['result'];
         $anyOk = $anyOk || $result['ok'];
         foreach ($result['sent'] as $destination) { $sent[] = $destination; }
         foreach ($result['message_ids'] as $destination => $id) { $messageIds[$destination] = $id; }
         foreach ($result['operators'] as $destination => $operatorId) { $operators[$destination] = $operatorId; }
-        foreach ($g['destinations'] as $destination) {
-            $routeIds[$destination] = $result['route_id'];
-            $gatewayIds[$destination] = $result['gateway_id'];
-        }
-        $lastGatewayId = $result['gateway_id'];
-        $lastRouteId = $result['route_id'];
-        $lastConfigVersion = $result['gateway_config_version'];
-        if (!$result['ok']) {
-            $lastError = $result['error']; $lastErrorClass = $result['error_class'];
-            $lastHttp = $result['http']; $retryable = $retryable || ($result['retryable'] ?? false);
-        }
+        foreach ($g['destinations'] as $destination) { $routeIds[$destination] = $result['route_id']; $gatewayIds[$destination] = $result['gateway_id']; }
+        $lastGatewayId = $result['gateway_id']; $lastRouteId = $result['route_id']; $lastConfigVersion = $result['gateway_config_version'];
+        $lastOutcome = (string)($result['normalized_outcome'] ?? $lastOutcome);
+        $lastProviderErrorCode = $result['provider_error_code'] ?? $lastProviderErrorCode;
+        $lastProviderErrorDetail = $result['provider_error_detail'] ?? $lastProviderErrorDetail;
+        if (!$result['ok']) { $lastError = $result['error']; $lastErrorClass = $result['error_class']; $lastHttp = $result['http']; $retryable = $retryable || ($result['retryable'] ?? false); }
     }
 
     return [
@@ -291,6 +501,9 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         'error' => $anyOk ? null : $lastError, 'error_class' => $anyOk ? null : $lastErrorClass,
         'http' => $lastHttp, 'retryable' => $anyOk ? false : $retryable, 'groups' => count($groupResults),
         'gateway_id' => $lastGatewayId, 'gateway_config_version' => $lastConfigVersion, 'route_id' => $lastRouteId,
+        'normalized_outcome' => $anyOk ? PROVIDER_RESPONSE_SUCCESS : $lastOutcome,
+        'provider_error_code' => $anyOk ? null : $lastProviderErrorCode,
+        'provider_error_detail' => $anyOk ? null : $lastProviderErrorDetail,
     ];
 }
 
