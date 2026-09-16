@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
+use BackendError;
 use PHPUnit\Framework\TestCase;
 
 final class ProviderResponseNormalizerTest extends TestCase
