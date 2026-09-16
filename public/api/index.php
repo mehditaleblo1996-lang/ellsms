@@ -12,10 +12,11 @@
  *   2. route match (structural 404/405, independent of auth — STEP 4)
  *   3. bearer-token authentication (app/Api/Auth.php, Invariant C/L)
  *   4. rate limiting (app/Api/RateLimit.php, STEP 14)
- *   5. scope enforcement (Invariant D — fail closed for a missing/unknown scope)
- *   6. body parsing with size/content-type limits (app/Api/Request.php, STEP 15)
- *   7. handler dispatch (app/Api/Handlers/*.php)
- *   8. audit log line (STEP 25)
+ *   5. optional organization IP/CIDR allowlist (issue #24 — OFF by default)
+ *   6. scope enforcement (Invariant D — fail closed for a missing/unknown scope)
+ *   7. body parsing with size/content-type limits (app/Api/Request.php, STEP 15)
+ *   8. handler dispatch (app/Api/Handlers/*.php)
+ *   9. audit log line (STEP 25)
  */
 
 declare(strict_types=1);
@@ -90,8 +91,8 @@ if (!$route['matched']) {
     exit;
 }
 
-// Registered once the route is known, so EVERY exit from here on (rate limit, auth, scope,
-// subscription/feature gates, body-parse error, the handler itself, or the uncaught-exception
+// Registered once the route is known, so EVERY exit from here on (rate limit, auth, allowlist,
+// scope, subscription/feature gates, body-parse error, the handler itself, or the uncaught-exception
 // branch) is counted exactly once, regardless of which `exit` statement actually runs -- rather
 // than hand-instrumenting each of those branches individually and risking one being missed.
 $metricRoute = is_string($route['handler']) ? $route['handler'] : 'closure';
@@ -118,6 +119,18 @@ if (!$rateLimit['ok']) {
 if ($principal === null) {
     Logger::warning('api.auth_failed', ['path' => $path, 'method' => $method, 'category' => $authFailureCategory]);
     ApiResponse::error(401, ApiResponse::CODE_UNAUTHENTICATED, 'Missing or invalid API credentials.');
+    exit;
+}
+
+// Issue #24 — organization allowlist is deliberately evaluated only AFTER authentication. The
+// organization cannot be known safely before that point, and rate limiting stays ahead of this
+// database check so repeated denied calls remain bounded. client_ip() itself honors X-Forwarded-For
+// only when REMOTE_ADDR is a configured TRUSTED_PROXY_IPS peer; arbitrary forwarded headers never
+// influence this decision.
+$ipAccess = allowed_ip_access_decision((int)$principal['organization_id']);
+if (!$ipAccess['allowed']) {
+    allowed_ip_record_api_denial($principal, $ipAccess);
+    ApiResponse::error(403, ApiResponse::CODE_FORBIDDEN, 'Request source IP is not allowed for this organization.');
     exit;
 }
 

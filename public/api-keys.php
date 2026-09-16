@@ -1,6 +1,6 @@
 <?php
 /**
- * ELLSMS — organization API key management (Phase 12, STEP 9).
+ * ELLSMS — organization API key management (Phase 12, STEP 9 + issue #24 IP allowlist).
  *
  * Gated by Permissions::API_KEYS_VIEW/MANAGE (app/rbac.php — owner/admin by default, member never)
  * — a SEPARATE layer from the scopes a key itself carries (ApiScopes), same split app/ApiKeys.php's
@@ -28,8 +28,17 @@ $revealedSecret = null; // ['label' => string, 'raw_key' => string] — set only
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    // Integration secrets are not support-session material (STEP 28).
-    $impersonationAction = ['create' => 'apikey.create', 'rotate' => 'apikey.rotate', 'revoke' => 'apikey.revoke'][$_POST['do'] ?? ''] ?? null;
+    // Integration secrets/security policy are not support-session material (STEP 28).
+    $impersonationAction = [
+        'create' => 'apikey.create',
+        'rotate' => 'apikey.rotate',
+        'revoke' => 'apikey.revoke',
+        'ip_allowlist_enable' => 'apikey.ip_allowlist',
+        'ip_allowlist_disable' => 'apikey.ip_allowlist',
+        'allowed_ip_create' => 'apikey.ip_allowlist',
+        'allowed_ip_delete' => 'apikey.ip_allowlist',
+        'allowed_ip_toggle' => 'apikey.ip_allowlist',
+    ][$_POST['do'] ?? ''] ?? null;
     if ($impersonationAction !== null && impersonation_guard_post($impersonationAction)) {
         redirect('/api-keys.php');
     }
@@ -67,6 +76,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             flash('error', 'چرخش کلید ناموفق بود: ' . e($result['reason']));
         }
+    } elseif ($do === 'ip_allowlist_enable') {
+        $result = allowed_ip_set_enforcement($orgId, true, (int)$me['id']);
+        flash($result['ok'] ? 'success' : 'error', $result['ok']
+            ? 'محدودیت IP برای API فعال شد.'
+            : allowed_ip_error_message((string)$result['reason']));
+    } elseif ($do === 'ip_allowlist_disable') {
+        $result = allowed_ip_set_enforcement($orgId, false, (int)$me['id']);
+        flash($result['ok'] ? 'info' : 'error', $result['ok']
+            ? 'محدودیت IP برای API غیرفعال شد.'
+            : allowed_ip_error_message((string)$result['reason']));
+    } elseif ($do === 'allowed_ip_create') {
+        $result = allowed_ip_create(
+            $orgId,
+            (string)($_POST['ip_or_cidr'] ?? ''),
+            (string)($_POST['label'] ?? ''),
+            (int)$me['id']
+        );
+        flash($result['ok'] ? 'success' : 'error', $result['ok']
+            ? 'IP/CIDR مجاز اضافه شد.'
+            : allowed_ip_error_message((string)$result['reason']));
+    } elseif ($do === 'allowed_ip_delete') {
+        $result = allowed_ip_delete($orgId, (int)($_POST['id'] ?? 0), (int)$me['id']);
+        flash($result['ok'] ? 'info' : 'error', $result['ok']
+            ? 'IP/CIDR حذف شد.'
+            : allowed_ip_error_message((string)$result['reason']));
+    } elseif ($do === 'allowed_ip_toggle') {
+        $result = allowed_ip_toggle($orgId, (int)($_POST['id'] ?? 0), (int)$me['id']);
+        flash($result['ok'] ? 'info' : 'error', $result['ok']
+            ? 'وضعیت IP/CIDR به‌روزرسانی شد.'
+            : allowed_ip_error_message((string)$result['reason']));
     }
 
     if ($revealedSecret === null) {
@@ -75,6 +114,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $keys = api_key_list($orgId);
+$allowedIps = allowed_ip_list($orgId);
+$ipAllowlistEnabled = allowed_ip_enforcement_enabled($orgId);
+$currentSourceIp = client_ip();
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'apikey.create';
 require __DIR__ . '/../app/views/impersonation_notice.php';
@@ -112,6 +154,66 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
       <?php endforeach; ?>
     </div>
     <button class="btn btn-primary">ساخت کلید</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>محدودیت IP برای API</h2>
+  <p class="hint">
+    این محدودیت فقط روی <span class="ltr">/api/v1/*</span> اعمال می‌شود و ورود به پنل را مسدود نمی‌کند؛
+    بنابراین در صورت اشتباه می‌توانید از همین صفحه آن را اصلاح یا غیرفعال کنید.
+  </p>
+  <p>
+    وضعیت: <span class="badge <?= $ipAllowlistEnabled ? 'badge-ok' : 'badge-off' ?>"><?= $ipAllowlistEnabled ? 'فعال' : 'غیرفعال' ?></span>
+    &nbsp; IP تشخیص‌داده‌شده برای درخواست فعلی: <code class="ltr"><?= e($currentSourceIp) ?></code>
+  </p>
+  <p class="hint">هدرهای Forwarded فقط وقتی معتبرند که اتصال مستقیم از یکی از <span class="ltr">TRUSTED_PROXY_IPS</span> آمده باشد.</p>
+
+  <form method="post" style="display:inline-block;margin-bottom:12px" onsubmit="return confirm('<?= $ipAllowlistEnabled ? 'محدودیت IP غیرفعال شود؟' : 'محدودیت IP فعال شود؟ از این پس فقط IP/CIDRهای فعال به API دسترسی دارند.' ?>')">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="<?= $ipAllowlistEnabled ? 'ip_allowlist_disable' : 'ip_allowlist_enable' ?>">
+    <button class="btn <?= $ipAllowlistEnabled ? 'btn-danger' : 'btn-primary' ?>"><?= $ipAllowlistEnabled ? 'غیرفعال‌کردن محدودیت' : 'فعال‌کردن محدودیت' ?></button>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <tr><th>IP / CIDR</th><th>برچسب</th><th>وضعیت</th><th>تاریخ ثبت</th><th></th></tr>
+      <?php foreach ($allowedIps as $ip): ?>
+        <tr>
+          <td class="ltr"><?= e((string)$ip['ip_or_cidr']) ?></td>
+          <td><?= e((string)$ip['label']) ?: '—' ?></td>
+          <td><span class="badge <?= $ip['status'] === 'active' ? 'badge-ok' : 'badge-off' ?>"><?= $ip['status'] === 'active' ? 'فعال' : 'غیرفعال' ?></span></td>
+          <td><?= e(jdate((string)$ip['created_at'])) ?></td>
+          <td>
+            <form method="post" style="display:inline">
+              <?= csrf_field() ?>
+              <input type="hidden" name="do" value="allowed_ip_toggle">
+              <input type="hidden" name="id" value="<?= (int)$ip['id'] ?>">
+              <button class="btn btn-sm"><?= $ip['status'] === 'active' ? 'غیرفعال' : 'فعال' ?></button>
+            </form>
+            <form method="post" style="display:inline" onsubmit="return confirm('این IP/CIDR حذف شود؟')">
+              <?= csrf_field() ?>
+              <input type="hidden" name="do" value="allowed_ip_delete">
+              <input type="hidden" name="id" value="<?= (int)$ip['id'] ?>">
+              <button class="btn btn-sm btn-danger">حذف</button>
+            </form>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+      <?php if (!$allowedIps): ?><tr><td colspan="5" class="empty">هنوز IP یا CIDR ثبت نشده است. برای فعال‌کردن محدودیت حداقل یک مورد فعال لازم است.</td></tr><?php endif; ?>
+    </table>
+  </div>
+
+  <form method="post" class="toolbar" style="margin-top:12px">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="allowed_ip_create">
+    <label>IP / CIDR
+      <input class="ltr" type="text" name="ip_or_cidr" required placeholder="203.0.113.10 یا 2001:db8::/48">
+    </label>
+    <label>برچسب
+      <input type="text" name="label" maxlength="120" placeholder="مثلاً سرور اصلی">
+    </label>
+    <button class="btn btn-primary">افزودن</button>
   </form>
 </div>
 
