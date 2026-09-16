@@ -49,5 +49,5 @@ jobs:
           php -l app/Sms/GatewayTransport.php
           php -l tests/Unit/ProviderResponseNormalizerTest.php
           php -l tests/Integration/ProviderResponseAuditIntegrationTest.php
-      - name: Issue 18 PHPUnit coverage
-        run: vendor/bin/phpunit tests/Unit/ProviderResponseNormalizerTest.php tests/Unit/GatewayNumericListTest.php tests/Unit/MockGatewayContractTest.php tests/Integration/ProviderResponseAuditIntegrationTest.php
+      - name: Full PHPUnit regression suite
+        run: vendor/bin/phpunit
