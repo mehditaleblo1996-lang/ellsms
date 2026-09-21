@@ -71,9 +71,10 @@ function price_quote_save(array $data): void {
  * browser engine; regenerate it the same way if the design changes: open
  * the small standalone HTML this docblock's sibling data lives next to, or
  * ask for it to be redone). An image is something ANY renderer, however
- * old, can just place — no gradient/flexbox/shape support required. Only
- * the genuinely dynamic part (invoice title/subtitle) is real HTML text,
- * overlaid on top of that image via `.band`'s background-image.
+ * old, can just place — no gradient/flexbox/shape support required. The
+ * band is 100% static brand chrome (logo, ribbon, marketing headline); the
+ * actual invoice title/subtitle/meta are real HTML text in the plain white
+ * section below it, matching the reference flyer's two-column layout.
  */
 function price_quote_render_html(array $doc): string {
     $fontPath = 'file://' . APP_ROOT . '/public/assets/fonts';
@@ -104,14 +105,15 @@ function price_quote_render_html(array $doc): string {
         * { box-sizing: border-box; }
         body { font-family: Vazirmatn, sans-serif; color:#1a2036; margin:0; }
         /* background-color is the fallback if the image itself fails to load for some reason;
-           background-size:100% 100% stretches the (fixed 1000x170) artwork to fill whatever
+           background-size:100% 100% stretches the (fixed 1000x260) artwork to fill whatever
            width wkhtmltopdf actually lays out, keeping the ribbon/wordmark fully visible instead
            of risking a `cover` crop at unknown container widths. */
-        .band { background-color: #4b3fd6; background-image: url("' . $bandImagePath . '"); background-size: 100% 100%; background-repeat: no-repeat; color:#fff; padding: 74px 26px 14px; height: 128px; }
-        .title { font-size:20px; font-weight:700; }
-        .subtitle { font-size:11px; opacity:.9; margin-top:2px; }
-        .meta { display:flex; gap:16px; flex-wrap:wrap; padding:12px 26px; background:#f6f8ff; border-bottom:1px solid #e5e8f5; font-size:11px; color:#4a5170; }
-        .meta b { color:#8890ad; font-weight:400; }
+        .band { background-color: #4b3fd6; background-image: url("' . $bandImagePath . '"); background-size: 100% 100%; background-repeat: no-repeat; height: 158px; }
+        .titlebar { display:flex; justify-content:space-between; align-items:flex-start; padding:18px 26px; background:#f6f8ff; border-bottom:1px solid #e5e8f5; }
+        .titlebar .title { font-size:18px; font-weight:700; color:#1a2036; }
+        .titlebar .subtitle { font-size:11px; color:#6b7290; margin-top:3px; }
+        .titlebar .meta { text-align:left; font-size:11px; color:#4a5170; line-height:2; }
+        .titlebar .meta b { color:#8890ad; font-weight:400; }
         .body { padding: 16px 26px; }
         table { width:100%; border-collapse:collapse; border:1px solid #e5e8f5; }
         thead th { background:#5b3df0; color:#fff; font-size:11px; padding:8px 10px; text-align:right; }
@@ -130,15 +132,18 @@ function price_quote_render_html(array $doc): string {
         .features .feature { display:inline-block; width:23%; background:#f6f8ff; border:1px solid #e5e8f5; border-radius:6px; padding:8px; text-align:center; font-size:10px; color:#3a3f66; margin-inline-end:1%; }
         .foot { margin-top:16px; padding:12px 26px; background:#151a24; color:#d8deea; font-size:10.5px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px; }
     </style></head><body>
-        <div class="band">
-            <div class="title">' . e($doc['title']) . '</div>
-            <div class="subtitle">' . e($doc['subtitle']) . '</div>
-        </div>
-        <div class="meta">
-            <div><b>شماره فاکتور:</b> ' . e($doc['invoice_no']) . '</div>
-            <div><b>تاریخ:</b> ' . e($doc['date']) . '</div>
-            <div><b>اعتبار قیمت:</b> ' . e(to_persian_digits((string)$doc['validity_days'])) . ' روز</div>
-            <div><b>واحد قیمت:</b> ' . e($doc['price_unit']) . '</div>
+        <div class="band"></div>
+        <div class="titlebar">
+            <div>
+                <div class="title">' . e($doc['title']) . '</div>
+                <div class="subtitle">' . e($doc['subtitle']) . '</div>
+            </div>
+            <div class="meta">
+                <div><b>شماره فاکتور:</b> ' . e($doc['invoice_no']) . '</div>
+                <div><b>تاریخ:</b> ' . e($doc['date']) . '</div>
+                <div><b>اعتبار قیمت:</b> ' . e(to_persian_digits((string)$doc['validity_days'])) . ' روز</div>
+                <div><b>واحد قیمت:</b> ' . e($doc['price_unit']) . '</div>
+            </div>
         </div>
         <div class="body">
             <table>
