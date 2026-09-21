@@ -49,6 +49,7 @@ $adminNav = [
     'number_categories'     => ['/number-categories.php',     'دسته‌های شماره',      '🗂'],
     'landing_videos'        => ['/landing-videos.php',        'ویدیوهای صفحه‌ی اصلی', '🎬'],
     'pricing'               => ['/pricing.php',               'بسته‌های قیمتی',      '🏷'],
+    'price_quote'           => ['/price-quote.php',           'فاکتور / لیست قیمت', '🧾'],
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
