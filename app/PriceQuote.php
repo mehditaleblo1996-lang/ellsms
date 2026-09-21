@@ -59,6 +59,19 @@ function price_quote_save(array $data): void {
  * admin sees on screen. Fonts are referenced as local file:// paths (TTF,
  * not the browser's woff2 copies) since wkhtmltopdf's rendering engine
  * needs --enable-local-file-access to read them — see price_quote_render_pdf().
+ *
+ * wkhtmltopdf's bundled WebKit (an old, patched Qt WebKit — see the
+ * Dockerfile comment on why it is used at all) does not understand the
+ * unprefixed CSS `linear-gradient()` syntax the browser page freely uses.
+ * It does not fail loudly on that either: a `background` declaration it
+ * cannot parse is just dropped, silently keeping the DEFAULT (transparent)
+ * background — which left `.band`'s white heading text invisible on a white
+ * page. `.band`'s CSS below therefore layers background-color, then
+ * `-webkit-linear-gradient(...)`, then plain `linear-gradient(...)`: each
+ * later declaration only takes effect if the engine understood it, so
+ * whichever one this specific engine build supports "wins", and if it
+ * understands neither gradient function the solid background-color still
+ * applies instead of nothing.
  */
 function price_quote_render_html(array $doc): string {
     $fontPath = 'file://' . APP_ROOT . '/public/assets/fonts';
@@ -87,10 +100,13 @@ function price_quote_render_html(array $doc): string {
         @font-face { font-family: Vazirmatn; src: url("' . $fontPath . '/Vazirmatn-Bold.ttf"); font-weight: 700; }
         * { box-sizing: border-box; }
         body { font-family: Vazirmatn, sans-serif; color:#1a2036; margin:0; }
-        .band { background: linear-gradient(120deg,#1e3fd6 0%,#5b3df0 55%,#8b2fe0 100%); color:#fff; padding: 20px 26px 16px; }
-        .band-top { display:flex; justify-content:space-between; }
-        .tagline { font-size:11px; opacity:.9; text-align:left; line-height:1.7; }
-        .title { font-size:19px; font-weight:700; margin-top:16px; }
+        /* background-color fallback + prefixed/unprefixed gradient — see price_quote_render_html() docblock. */
+        .band { background-color: #4b3fd6; background: -webkit-linear-gradient(120deg,#1e3fd6 0%,#5b3df0 55%,#8b2fe0 100%); background: linear-gradient(120deg,#1e3fd6 0%,#5b3df0 55%,#8b2fe0 100%); color:#fff; padding: 20px 26px 18px; }
+        .band-top { display:flex; justify-content:space-between; align-items:flex-start; }
+        .brand-mark { font-size:16px; font-weight:700; letter-spacing:.5px; }
+        .brand-mark span { display:block; font-size:9px; font-weight:400; opacity:.85; margin-top:2px; letter-spacing:1px; }
+        .tagline { font-size:10.5px; opacity:.95; text-align:left; line-height:1.6; background-color:rgba(255,255,255,.16); border-radius:8px; padding:6px 10px; }
+        .title { font-size:20px; font-weight:700; margin-top:18px; }
         .subtitle { font-size:11px; opacity:.9; margin-top:2px; }
         .meta { display:flex; gap:16px; flex-wrap:wrap; padding:12px 26px; background:#f6f8ff; border-bottom:1px solid #e5e8f5; font-size:11px; color:#4a5170; }
         .meta b { color:#8890ad; font-weight:400; }
@@ -114,8 +130,8 @@ function price_quote_render_html(array $doc): string {
     </style></head><body>
         <div class="band">
             <div class="band-top">
-                <div></div>
-                <div class="tagline">پیامک<br>قدرت<br>ارتباط است</div>
+                <div class="brand-mark">ELLSMS<span>SMART SMS PANEL</span></div>
+                <div class="tagline">پیامک قدرت<br>ارتباط است</div>
             </div>
             <div class="title">' . e($doc['title']) . '</div>
             <div class="subtitle">' . e($doc['subtitle']) . '</div>
