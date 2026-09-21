@@ -12,6 +12,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get purge -y --auto-remove $PHPIZE_DEPS \
  && rm -rf /var/lib/apt/lists/*
 
+# wkhtmltopdf renders the ELLSMS-branded invoice/price-quote PDF (public/price-quote.php,
+# public/telegram-webhook.php's /invoice command — see app/PriceQuote.php) locally, the same
+# "shell out to one pinned local binary with a controlled argv" pattern qrencode already uses
+# above for TOTP QR codes. This project ships zero production Composer dependencies by design
+# (composer.json's require has none; PHPUnit is require-dev only, see Makefile's
+# composer-install target), so a PHP PDF library was deliberately not added for this.
+#
+# The official static-Qt "wkhtmltox" build is used instead of Debian's own wkhtmltopdf package:
+# it's self-contained (patched, headless-capable QtWebKit) and needs no Xvfb/X11 server, unlike
+# the plain apt package. Pinned by exact version + sha256 so a build never silently picks up a
+# different binary. Bump both together when intentionally upgrading:
+# https://github.com/wkhtmltopdf/packaging/releases
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates fontconfig libxrender1 libjpeg62-turbo libxext6 \
+ && curl -fsSL -o /tmp/wkhtmltox.deb \
+      "https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb" \
+ && echo "98ba0d157b50d36f23bd0dedf4c0aa28c7b0c50fcdcdc54aa5b6bbba81a3941d  /tmp/wkhtmltox.deb" | sha256sum -c - \
+ && apt-get install -y --no-install-recommends /tmp/wkhtmltox.deb \
+ && rm -f /tmp/wkhtmltox.deb \
+ && apt-get purge -y --auto-remove curl \
+ && rm -rf /var/lib/apt/lists/*
+
 # Serve from /public
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \

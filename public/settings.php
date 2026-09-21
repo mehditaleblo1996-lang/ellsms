@@ -74,6 +74,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'تنظیمات تماس با ما ذخیره شد.');
     }
 
+    if ($do === 'telegram_bot') {
+        set_setting('telegram_bot_allowed_chats', trim($_POST['telegram_bot_allowed_chats'] ?? ''));
+        audit((int)$me['id'], 'settings.telegram_bot_update');
+        flash('success', 'تنظیمات ربات فاکتور تلگرام ذخیره شد.');
+    }
+
+    if ($do === 'telegram_bot_regen_secret') {
+        set_setting('telegram_webhook_secret', bin2hex(random_bytes(24)));
+        audit((int)$me['id'], 'settings.telegram_webhook_secret_regen');
+        flash('success', 'رمز وب‌هوک تازه ساخته شد — حتماً دستور setWebhook زیر را دوباره اجرا کنید تا تلگرام رمز جدید را بداند.');
+    }
+
     if ($do === 'zarinpal') {
         set_setting('zarinpal_merchant_id',   trim($_POST['zarinpal_merchant_id'] ?? ''));
         set_setting('zarinpal_callback_url',  rtrim(trim($_POST['zarinpal_callback_url'] ?? ''), '/'));
@@ -279,6 +291,44 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     </div>
     <button class="btn btn-primary">ذخیره‌ی تنظیمات تماس با ما</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>ربات تلگرام فاکتور / لیست قیمت</h2>
+  <p class="hint">
+    با فرستادن دستور <code class="kbd">/invoice</code> به ربات (چه در چت خصوصی، چه از داخل یک گروه که ربات در آن عضو است)
+    همان قالب فاکتور تنظیم‌شده در <a href="/price-quote.php">فاکتور / لیست قیمت</a> به‌صورت PDF ساخته و همان‌جا ارسال می‌شود.
+    برای سفارشی‌سازی یک‌بارهٔ ردیف‌ها یا تاریخ، هر خط را به شکل <code class="kbd">برچسب: مقدار</code> زیر دستور اضافه کنید — مثال:
+  </p>
+  <pre style="background:#f6f8ff;border:1px solid #e5e8f5;border-radius:10px;padding:10px 14px;font-size:12px;direction:ltr;text-align:left;white-space:pre-wrap">/invoice
+شماره: ELL-1405-002
+تاریخ: 1405/07/05
+ردیف: پیامک تبلیغاتی | ارسال عمومی | هر پیامک | 120
+ردیف: پیامک بین‌المللی | ارسال برون‌مرزی | هر پیامک | 900
+نکته: این قیمت‌ها شامل مالیات نمی‌شود.</pre>
+  <p class="hint">هر خط ناشناخته نادیده گرفته می‌شود؛ بدون هیچ خط اضافه‌ای، همان ردیف‌ها و مشخصاتی که در «فاکتور / لیست قیمت» ذخیره کرده‌اید عیناً به PDF تبدیل می‌شود.</p>
+
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="telegram_bot">
+    <label>Chat ID های مجاز برای اجرای دستور (با کاما یا خط جدید جدا کنید)
+      <textarea name="telegram_bot_allowed_chats" rows="2" class="ltr" placeholder="123456789, -1009876543210"><?= e(setting('telegram_bot_allowed_chats', '')) ?></textarea>
+      <div class="hint">خالی بماند یعنی فقط همان Chat ID بالا (بخش «تماس با ما») مجاز است. Chat ID یک گروه با علامت منفی شروع می‌شود؛ آن را با فوروارد یک پیام از گروه به <a href="https://t.me/userinfobot" target="_blank" rel="noopener">userinfobot@</a> یا مشابه آن پیدا کنید.</div>
+    </label>
+    <button class="btn btn-primary">ذخیره‌ی تنظیمات ربات</button>
+  </form>
+
+  <div class="hint" style="margin-top:14px">
+    <strong>راه‌اندازی یک‌باره‌ی وب‌هوک:</strong> رمز وب‌هوک را بسازید، سپس دستور زیر را (با جای‌گذاری Bot Token) یک‌بار در ترمینال اجرا کنید تا تلگرام آدرس این سرور را برای دریافت پیام‌ها بشناسد.
+  </div>
+  <pre style="background:#151a24;color:#d8deea;border-radius:10px;padding:10px 14px;font-size:11.5px;direction:ltr;text-align:left;white-space:pre-wrap;margin-top:6px">curl "https://api.telegram.org/bot&lt;BOT_TOKEN&gt;/setWebhook" \
+  -d "url=<?= e(rtrim(app_url(), '/')) ?>/telegram-webhook.php" \
+  -d "secret_token=<?= e(setting('telegram_webhook_secret', '') ?: '—هنوز ساخته نشده—') ?>"</pre>
+  <form method="post" style="margin-top:10px" onsubmit="return confirm('رمز وب‌هوک عوض می‌شود و باید دوباره setWebhook را اجرا کنید. ادامه می‌دهید؟')">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="telegram_bot_regen_secret">
+    <button class="btn btn-ghost"><?= setting('telegram_webhook_secret', '') ? 'ساخت رمز وب‌هوک جدید' : 'ساخت رمز وب‌هوک' ?></button>
   </form>
 </div>
 

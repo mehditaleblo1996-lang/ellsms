@@ -4,51 +4,12 @@ $me = require_admin();
 $pageTitle = 'فاکتور / لیست قیمت پیامک';
 $active = 'price_quote';
 
-const PRICE_QUOTE_SETTING_KEY = 'price_quote_document';
-
-function price_quote_default(): array {
-    [$jy] = gregorian_to_jalali((int)date('Y'), (int)date('n'), (int)date('j'));
-    return [
-        'invoice_no'     => 'ELL-' . $jy . '-001',
-        'date'           => jdate(date('Y-m-d H:i:s'), false),
-        'validity_days'  => '7',
-        'price_unit'     => 'تومان',
-        'title'          => 'فاکتور / لیست قیمت خدمات پیامک',
-        'subtitle'       => 'ELLSMS Smart SMS Panel',
-        'rows' => [
-            ['title' => 'پیامک حقوقی',              'desc' => 'مناسب فاکتور رسمی / شرکتی',            'unit' => 'هر پیامک', 'price' => '115'],
-            ['title' => 'پیامک غیررسمی',             'desc' => 'مناسب فاکتور شخصی / غیررسمی',          'unit' => 'هر پیامک', 'price' => '110'],
-            ['title' => 'پیامک بالک منطقه‌ای',        'desc' => 'ارسال هدفمند بر اساس مناطق دارای دیتا (برای مناطقی که دیتا نداریم)', 'unit' => 'هر پیامک', 'price' => '145'],
-            ['title' => 'LBA',                        'desc' => 'ارسال مبتنی بر موقعیت مکانی',          'unit' => 'هر پیامک', 'price' => '400'],
-        ],
-        'notes' => [
-            'تمام قیمت‌ها به ازای هر پیامک محاسبه می‌شوند.',
-            'تعرفه‌ها ممکن است بر اساس حجم ارسال با شرایط همکاری تغییر کنند.',
-            'برای دریافت مشاوره و خرید پنل، با واحد فروش ELLSMS تماس بگیرید.',
-        ],
-        'features' => ['پایداری و امنیت', 'پشتیبانی حرفه‌ای', 'ارسال سریع', 'پوشش سراسری'],
-        'phone1'   => '۰۹۱۲۳۳۴۸۴۱۷',
-        'phone2'   => '۰۹۱۹۷۶۸۴۰۶۳',
-        'website'  => 'www.ellsms.ir',
-        'email'    => 'sales@ellsms.ir',
-        'footer_tagline' => 'با ELLSMS بیشتر دیده شوید ...',
-    ];
-}
-
-function price_quote_load(): array {
-    $raw = setting(PRICE_QUOTE_SETTING_KEY);
-    if (!$raw) return price_quote_default();
-    $data = json_decode($raw, true);
-    if (!is_array($data)) return price_quote_default();
-    return array_replace(price_quote_default(), $data);
-}
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = $_POST['do'] ?? '';
 
     if ($do === 'reset') {
-        set_setting(PRICE_QUOTE_SETTING_KEY, json_encode(price_quote_default(), JSON_UNESCAPED_UNICODE));
+        price_quote_save(price_quote_default());
         audit((int)$me['id'], 'price_quote.reset');
         flash('info', 'قالب فاکتور به حالت پیش‌فرض بازگردانده شد.');
         redirect('/price-quote.php');
@@ -97,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'footer_tagline' => trim((string)($_POST['footer_tagline'] ?? '')),
         ];
 
-        set_setting(PRICE_QUOTE_SETTING_KEY, json_encode($data, JSON_UNESCAPED_UNICODE));
+        price_quote_save($data);
         audit((int)$me['id'], 'price_quote.save');
         flash('success', 'فاکتور ذخیره شد.');
         redirect('/price-quote.php');
