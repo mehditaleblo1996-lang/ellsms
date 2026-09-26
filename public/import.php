@@ -22,9 +22,10 @@ $cancellableStatuses = ['uploaded', 'analyzing', 'ready_for_confirmation'];
 function import_recent_jobs_for_user(array $me, bool $isAdmin, int $limit = 20): array {
     $limit = max(1, min(50, $limit));
     $db = db();
+    $titleCol = import_jobs_have_title_column() ? 'title,' : '';
     if ($isAdmin) {
         $st = $db->prepare(
-            "SELECT id,user_id,organization_id,source_type,original_filename,status,total_rows,processed_rows,
+            "SELECT id,user_id,organization_id,source_type,original_filename,{$titleCol}status,total_rows,processed_rows,
                     valid_rows,invalid_rows,duplicate_rows,blacklisted_rows,priced_rows,unpriced_rows,
                     queued_rows,estimated_cost_credits,error_message,created_at,updated_at
              FROM ellsms_import_jobs
@@ -37,7 +38,7 @@ function import_recent_jobs_for_user(array $me, bool $isAdmin, int $limit = 20):
     }
 
     $st = $db->prepare(
-        "SELECT id,user_id,organization_id,source_type,original_filename,status,total_rows,processed_rows,
+        "SELECT id,user_id,organization_id,source_type,original_filename,{$titleCol}status,total_rows,processed_rows,
                 valid_rows,invalid_rows,duplicate_rows,blacklisted_rows,priced_rows,unpriced_rows,
                 queued_rows,estimated_cost_credits,error_message,created_at,updated_at
          FROM ellsms_import_jobs
@@ -66,7 +67,7 @@ if ($jobId <= 0) {
       <?php else: ?>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>#</th><th>فایل</th><th>وضعیت</th><th>پیشرفت</th><th>کل ردیف</th><th>معتبر</th><th>در صف</th><th>عملیات</th></tr></thead>
+            <thead><tr><th>#</th><th>عنوان</th><th>وضعیت</th><th>پیشرفت</th><th>کل ردیف</th><th>معتبر</th><th>در صف</th><th>عملیات</th></tr></thead>
             <tbody>
             <?php foreach ($recentJobs as $r):
                 $total = max(0, (int)$r['total_rows']);
@@ -76,7 +77,7 @@ if ($jobId <= 0) {
             ?>
               <tr>
                 <td><?= to_persian_digits((string)$r['id']) ?></td>
-                <td><?= e((string)$r['original_filename']) ?></td>
+                <td><?= e(import_job_display_title($r)) ?></td>
                 <td><?= e($statusFa[(string)$r['status']] ?? (string)$r['status']) ?></td>
                 <td><?= to_persian_digits((string)$pct) ?>٪</td>
                 <td><?= to_persian_digits(number_format($total)) ?></td>
@@ -116,6 +117,10 @@ if ($job === null || (!$isAdmin && (int)$job['user_id'] !== (int)$me['id'])) {
 }
 
 $pageTitle = 'وضعیت واردسازی #' . $jobId;
+$jobTitle = trim((string)($job['title'] ?? ''));
+if ($jobTitle !== '') {
+    $pageTitle .= ' — ' . $jobTitle;
+}
 $active = 'p2p';
 require __DIR__ . '/../app/views/header.php';
 
@@ -170,7 +175,7 @@ $canCancelCurrent = in_array((string)$job['status'], $cancellableStatuses, true)
 <div class="card" style="margin-top:16px">
   <h3>واردسازی‌های اخیر</h3>
   <div class="table-wrap"><table class="table">
-    <thead><tr><th>#</th><th>وضعیت</th><th>پیشرفت</th><th>کل ردیف</th><th>معتبر</th><th>در صف</th><th>عملیات</th></tr></thead>
+    <thead><tr><th>#</th><th>عنوان</th><th>وضعیت</th><th>پیشرفت</th><th>کل ردیف</th><th>معتبر</th><th>در صف</th><th>عملیات</th></tr></thead>
     <tbody>
     <?php foreach ($recentJobs as $r):
         $total = max(0, (int)$r['total_rows']);
@@ -179,7 +184,7 @@ $canCancelCurrent = in_array((string)$job['status'], $cancellableStatuses, true)
         $canCancel = in_array((string)$r['status'], $cancellableStatuses, true);
     ?>
       <tr<?= (int)$r['id'] === $jobId ? ' style="font-weight:700"' : '' ?>>
-        <td><?= to_persian_digits((string)$r['id']) ?></td><td><?= e($statusFa[(string)$r['status']] ?? (string)$r['status']) ?></td>
+        <td><?= to_persian_digits((string)$r['id']) ?></td><td><?= e(import_job_display_title($r)) ?></td><td><?= e($statusFa[(string)$r['status']] ?? (string)$r['status']) ?></td>
         <td><?= to_persian_digits((string)$pct) ?>٪</td><td><?= to_persian_digits(number_format($total)) ?></td>
         <td><?= to_persian_digits(number_format((int)$r['valid_rows'])) ?></td><td><?= to_persian_digits(number_format((int)$r['queued_rows'])) ?></td>
         <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">

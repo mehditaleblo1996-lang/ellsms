@@ -344,7 +344,7 @@ function import_job_reserve_and_stage(array $job): void {
             $bulkJobId = import_create_bulk_job(
                 $db, $jobId, $user,
                 (string)$job['originator'],
-                (string)$job['original_filename'],
+                import_job_display_title($job),
                 $job['throttle_count'] !== null ? (int)$job['throttle_count'] : null,
                 $job['throttle_minutes'] !== null ? (int)$job['throttle_minutes'] : null
             );

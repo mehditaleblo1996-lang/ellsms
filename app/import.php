@@ -31,6 +31,25 @@ function import_max_rows(): int {
     return max(1000, (int)(env('IMPORT_MAX_ROWS', '2000000') ?? '2000000'));
 }
 
+/** Whether ellsms_import_jobs.title exists (db/migrations/2026_09_26_import_job_title.sql). */
+function import_jobs_have_title_column(): bool {
+    static $has = null;
+    if ($has === null) {
+        $st = db()->query(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = 'ellsms_import_jobs' AND column_name = 'title'"
+        );
+        $has = (int)$st->fetchColumn() > 0;
+    }
+    return $has;
+}
+
+/** Display name for an import job row: the user's title, falling back to the stored filename. */
+function import_job_display_title(array $job): string {
+    $title = trim((string)($job['title'] ?? ''));
+    return $title !== '' ? $title : (string)($job['original_filename'] ?? '');
+}
+
 /**
  * Create an import job record and pre-create its chunks.
  *
@@ -100,6 +119,13 @@ function import_create_job(
                 $template, $variableHeaders !== null ? json_encode($variableHeaders, JSON_UNESCAPED_UNICODE) : null,
             ]);
             $jobId = (int)$db->lastInsertId();
+
+            // Separate UPDATE (not part of the INSERT) so an install that has not yet applied
+            // db/migrations/2026_09_26_import_job_title.sql keeps importing, just without a title.
+            if (import_jobs_have_title_column()) {
+                $db->prepare('UPDATE ellsms_import_jobs SET title = ? WHERE id = ?')
+                   ->execute([mb_substr($title, 0, 190), $jobId]);
+            }
 
             $chunkIns = $db->prepare(
                 'INSERT INTO ellsms_import_chunks (import_job_id, chunk_no, phase, byte_offset, first_row, last_row, status)
