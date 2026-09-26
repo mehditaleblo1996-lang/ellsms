@@ -137,7 +137,16 @@ do {
     if ($shuttingDown) break;
 
     try {
-        $b = Metrics::time('worker.pass.bulk', fn() => run_bulk_send_pass_fast());
+        // With the gateway transport on, a bulk item never falls back to the legacy backend API
+        // (that API sends through its own provider account, not this sender line's). Scoped to the
+        // bulk pass only; schedules, direct sends and auto-replies keep their existing behaviour.
+        $requireGatewayBefore = dispatch_require_gateway();
+        if ($gatewayReady) dispatch_require_gateway(true);
+        try {
+            $b = Metrics::time('worker.pass.bulk', fn() => run_bulk_send_pass_fast());
+        } finally {
+            dispatch_require_gateway($requireGatewayBefore);
+        }
         if ($b > 0) Logger::info('worker.bulk.sent', ['count' => $b]);
         Metrics::gauge('worker.pass.bulk.sent', $b);
         $workProcessed += max(0, (int)$b);
