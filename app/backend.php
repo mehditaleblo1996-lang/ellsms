@@ -1717,7 +1717,7 @@ function bulk_item_preflight(PDO $db, array $item): array {
  * existing policy — so one bad recipient in a batch never marks its neighbours sent, and never
  * causes an accepted neighbour to be resent.
  */
-function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, string $info, int $parts, bool $retryable, ?array $gatewayMeta, array $accepted): bool {
+function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, string $info, int $parts, bool $retryable, ?array $gatewayMeta, array $accepted, ?array &$deferred = null): bool {
     $workerId = worker_id();
     $destination = (string)$item['mobile'];
     $itemSent = $groupOk && in_array($destination, $accepted, true);
@@ -1736,6 +1736,22 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
     }
 
     $attemptCount = (int)$item['attempt_count']; // already incremented by the claim
+
+    if ($itemSent && $deferred !== null) {
+        // Batched settlement (bulk_send_group()): the item row and the job counter are written for
+        // the whole provider batch by bulk_flush_deferred_settlement() instead of 2 queries here.
+        $deferred['sent'][] = [
+            'id'          => (int)$item['id'],
+            'job_id'      => (int)$item['job_id'],
+            'gateway_id'  => $gatewayMeta['gateway_ids'][$destination] ?? $gatewayMeta['gateway_id'] ?? null,
+            'provider_id' => $gatewayMeta['provider_message_ids'][$destination] ?? null,
+            'route_id'    => $gatewayMeta['route_ids'][$destination] ?? $gatewayMeta['route_id'] ?? null,
+            'operator_id' => $gatewayMeta['operators'][$destination] ?? null,
+        ];
+        $deferred['config_version'] = $gatewayMeta['gateway_config_version'] ?? null;
+        Logger::info('job.completed', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId]);
+        return true;
+    }
 
     if ($itemSent) {
         $db->prepare(
@@ -1774,9 +1790,13 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
         return false;
     }
 
-    $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL WHERE id=?")
-       ->execute([$info, $item['id']]);
-    $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
+    if ($deferred !== null) {
+        $deferred['failed'][] = ['id' => (int)$item['id'], 'job_id' => (int)$item['job_id'], 'error' => $info];
+    } else {
+        $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL WHERE id=?")
+           ->execute([$info, $item['id']]);
+        $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
+    }
     $reason = $retryable ? 'max_attempts_reached' : 'permanent';
     Logger::warning('job.failed_permanent', [
         'job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId,
@@ -1784,6 +1804,64 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
     ]);
     Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'bulk_item', 'reason' => $reason]);
     return false;
+}
+
+/**
+ * Writes the item rows and job counters that bulk_finalize_item() deferred for one provider batch:
+ * a few set-based statements instead of two round trips per recipient (item row + job counter),
+ * which on a database across the network capped a batch at roughly 100 recipients per second.
+ * Values match the per-item path exactly.
+ */
+function bulk_flush_deferred_settlement(PDO $db, array $deferred): void {
+    $counters = [];
+    foreach (array_chunk($deferred['sent'] ?? [], 500) as $rows) {
+        $ids = [];
+        $cases = ['gateway_id' => [], 'provider_message_id' => [], 'route_id' => [], 'operator_id' => []];
+        $params = ['gateway_id' => [], 'provider_message_id' => [], 'route_id' => [], 'operator_id' => []];
+        foreach ($rows as $r) {
+            $ids[] = $r['id'];
+            $counters[$r['job_id']]['sent'] = ($counters[$r['job_id']]['sent'] ?? 0) + 1;
+            foreach (['gateway_id' => 'gateway_id', 'provider_message_id' => 'provider_id', 'route_id' => 'route_id', 'operator_id' => 'operator_id'] as $col => $key) {
+                $cases[$col][] = 'WHEN ? THEN ?';
+                array_push($params[$col], $r['id'], $r[$key]);
+            }
+        }
+        $case = static fn(string $col): string => 'CASE id ' . implode(' ', $cases[$col]) . ' END';
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        // delivery_status repeats the gateway CASE instead of reading gateway_id, so the result does
+        // not depend on the order the server evaluates SET assignments in.
+        $db->prepare(
+            "UPDATE ellsms_bulk_items
+             SET status='sent', error=NULL, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL,
+                 gateway_id = {$case('gateway_id')}, gateway_config_version = ?,
+                 provider_message_id = {$case('provider_message_id')},
+                 route_id = {$case('route_id')}, operator_id = {$case('operator_id')},
+                 delivery_status = IF(({$case('gateway_id')}) IS NULL, delivery_status, 'sent')
+             WHERE id IN ({$in})"
+        )->execute(array_merge(
+            $params['gateway_id'], [$deferred['config_version'] ?? null],
+            $params['provider_message_id'], $params['route_id'], $params['operator_id'],
+            $params['gateway_id'], $ids
+        ));
+    }
+
+    $failedByError = [];
+    foreach ($deferred['failed'] ?? [] as $r) {
+        $failedByError[$r['error']][] = $r['id'];
+        $counters[$r['job_id']]['failed'] = ($counters[$r['job_id']]['failed'] ?? 0) + 1;
+    }
+    foreach ($failedByError as $error => $ids) {
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $in = implode(',', array_fill(0, count($chunk), '?'));
+            $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL WHERE id IN ({$in})")
+               ->execute(array_merge([(string)$error], $chunk));
+        }
+    }
+
+    $bump = $db->prepare('UPDATE ellsms_bulk_jobs SET sent_rows = sent_rows + ?, failed_rows = failed_rows + ? WHERE id = ?');
+    foreach ($counters as $jobId => $c) {
+        $bump->execute([(int)($c['sent'] ?? 0), (int)($c['failed'] ?? 0), $jobId]);
+    }
 }
 
 /**
@@ -1850,17 +1928,23 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
 
     $accepted = is_array($sentDestinations) ? array_map('strval', $sentDestinations) : [];
 
-    $finalizeAll = static function () use ($db, $items, $ctx, $ok, $info, $retryable, $gatewayMeta, $accepted): int {
+    // $batched: defer each item's row/counter writes and flush them set-based at the end. Only safe
+    // inside the transaction below (all or nothing); the fallback path settles item by item.
+    $finalizeAll = static function (bool $batched) use ($db, $items, $ctx, $ok, $info, $retryable, $gatewayMeta, $accepted): int {
         $sent = 0;
+        $deferred = $batched ? ['sent' => [], 'failed' => []] : null;
         foreach ($items as $item) {
             // Segments for THIS item's own text, not the group's representative $parts — correctness
             // matters here even though it is a fallback: bulk_finalize_item() only falls back to it when
             // the row's frozen price is NULL (pre-migration rows), but a wrong count in that fallback
             // would misprice exactly the rows Phase 9C makes it possible to co-batch with different text.
             $itemParts = sms_parts((string)$item['content']);
-            if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, $itemParts, (bool)$retryable, $gatewayMeta, $accepted)) {
+            if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, $itemParts, (bool)$retryable, $gatewayMeta, $accepted, $deferred)) {
                 $sent++;
             }
+        }
+        if ($deferred !== null) {
+            bulk_flush_deferred_settlement($db, $deferred);
         }
         return $sent;
     };
@@ -1877,17 +1961,17 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
     // it is rolled back as a whole and the exact pre-existing per-item path runs instead. When a
     // caller already holds a transaction we cannot roll back independently, so we just use that path.
     if ($db->inTransaction()) {
-        $sent = $finalizeAll();
+        $sent = $finalizeAll(false);
     } else {
         try {
-            $sent = db_transaction(static fn(): int => $finalizeAll());
+            $sent = db_transaction(static fn(): int => $finalizeAll(true));
         } catch (Throwable $t) {
             Logger::warning('bulk.finalize.batched_transaction_failed', [
                 'job_id' => $items[0]['job_id'] ?? null,
                 'item_count' => count($items),
                 'exception' => $t,
             ]);
-            $sent = $finalizeAll();
+            $sent = $finalizeAll(false);
         }
     }
 
