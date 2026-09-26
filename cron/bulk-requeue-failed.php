@@ -78,16 +78,12 @@ foreach ($jobs->fetchAll() as $job) {
     $chargeOwner = empty($owner['is_admin']);
 
     $candidates = $db->prepare(
-        "SELECT i.id, i.content, i.price_cost_credits FROM ellsms_bulk_items i
+        "SELECT i.id, i.mobile, i.content, i.price_cost_credits FROM ellsms_bulk_items i
          WHERE i.job_id = ? AND i.status = 'failed' AND i.provider_message_id IS NULL
-           AND i.error LIKE ?
-           AND NOT EXISTS (
-             SELECT 1 FROM ellsms_bulk_items s
-             WHERE s.mobile = i.mobile AND s.content = i.content AND s.status = 'sent'
-           )"
+           AND i.error LIKE ?"
     );
     $candidates->execute([$jobId, '%' . addcslashes($errorNeedle, '%_\\') . '%']);
-    $rows = $candidates->fetchAll();
+    $rows = bulk_requeue_drop_already_sent($db, $candidates->fetchAll());
     $ids = array_map(static fn(array $r): int => (int)$r['id'], $rows);
     // The same unit price bulk_finalize_item() commits per item: the price frozen at acceptance,
     // or the segment count for rows that predate frozen prices.
@@ -138,4 +134,27 @@ function bulk_requeue_rows(PDO $db, int $jobId, array $ids): void {
          SET failed_rows = GREATEST(0, failed_rows - ?), status = IF(status = 'done', 'processing', status)
          WHERE id = ?"
     )->execute([count($ids), $jobId]);
+}
+
+/**
+ * Drop candidates whose mobile was already sent the same text in any bulk job (no duplicate SMS).
+ * ellsms_bulk_items has no index on mobile, so a per-row NOT EXISTS scanned the whole table once per
+ * candidate (hours on a large table). This reads the matching sent rows in a few chunked queries
+ * instead and compares mobile + exact text in PHP.
+ */
+function bulk_requeue_drop_already_sent(PDO $db, array $rows): array {
+    if ($rows === []) {
+        return [];
+    }
+    $sent = [];
+    $mobiles = array_values(array_unique(array_map(static fn(array $r): string => (string)$r['mobile'], $rows)));
+    foreach (array_chunk($mobiles, 5000) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $st = $db->prepare("SELECT mobile, content FROM ellsms_bulk_items WHERE status = 'sent' AND mobile IN ({$ph})");
+        $st->execute($chunk);
+        foreach ($st->fetchAll() as $r) {
+            $sent[(string)$r['mobile'] . "\0" . (string)$r['content']] = true;
+        }
+    }
+    return array_values(array_filter($rows, static fn(array $r): bool => !isset($sent[(string)$r['mobile'] . "\0" . (string)$r['content']])));
 }
