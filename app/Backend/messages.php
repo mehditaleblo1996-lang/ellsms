@@ -197,6 +197,20 @@ function backend_record_message_attempt_failure(
     )->execute([$organizationId, $userId, $referenceType, $referenceId, $idempotencyKey, $backendRequestId, 'failed', $errorCode, mb_strimwidth($errorMessage, 0, 500, '…')]);
 }
 
+/** Whether ellsms_message_attempts has originator/content (2026_09_26_message_attempt_report_columns.sql). */
+function backend_message_attempts_have_report_columns(): bool {
+    static $has = null;
+    if ($has === null) {
+        $st = db()->query(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = 'ellsms_message_attempts'
+               AND column_name IN ('originator','content')"
+        );
+        $has = (int)$st->fetchColumn() === 2;
+    }
+    return $has;
+}
+
 /**
  * Records a real provider identity for delivery polling.
  *
@@ -228,15 +242,20 @@ function backend_record_gateway_send(
         return false;
     }
 
+    // originator/content let the send report show this row (db/migrations/
+    // 2026_09_26_message_attempt_report_columns.sql); written only once that migration has run.
+    $withReportColumns = backend_message_attempts_have_report_columns();
     $statement = db()->prepare(
         "INSERT INTO ellsms_message_attempts
             (organization_id, user_id, reference_type, reference_id, backend_request_id, status,
              error_code, gateway_id, gateway_config_version, route_id, operator_id, destination,
-             provider_message_id, delivery_status, delivery_attempts, attempted_at, completed_at, provider_slot)
-         VALUES (?,?,?,?,?, 'accepted', '', ?,?,?,?,?,?, 'sent', 0, NOW(), NOW(), ?)
+             provider_message_id, delivery_status, delivery_attempts, attempted_at, completed_at, provider_slot"
+            . ($withReportColumns ? ', originator, content' : '') . ")
+         VALUES (?,?,?,?,?, 'accepted', '', ?,?,?,?,?,?, 'sent', 0, NOW(), NOW(), ?"
+            . ($withReportColumns ? ',?,?' : '') . ")
          ON DUPLICATE KEY UPDATE id = id"
     );
-    $statement->execute([
+    $values = [
         $organizationId, $userId, $referenceType, $referenceId,
         $transport['request_id'] ?? null,
         $gatewayId,
@@ -246,6 +265,11 @@ function backend_record_gateway_send(
         mb_strimwidth($destination, 0, 32, ''),
         $providerMessageId,
         $gatewayId . ':' . $providerMessageId,
-    ]);
+    ];
+    if ($withReportColumns) {
+        $values[] = isset($transport['originator']) ? mb_substr((string)$transport['originator'], 0, 20) : null;
+        $values[] = isset($transport['content']) ? (string)$transport['content'] : null;
+    }
+    $statement->execute($values);
     return $statement->rowCount() > 0;
 }

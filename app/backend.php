@@ -177,6 +177,8 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                     'route_id'               => $meta['route_ids'][$destination] ?? $meta['route_id'],
                     'operator_id'            => $result['operators'][$destination] ?? null,
                     'request_id'             => Logger::currentRequestId(),
+                    'originator'             => $originator,
+                    'content'                => $content,
                 ]
             );
         }
