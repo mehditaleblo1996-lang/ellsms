@@ -96,7 +96,7 @@ services:
     container_name: ellsms-worker
     restart: unless-stopped
     command: php /var/www/html/cron/worker.php
-    environment:
+    environment: &worker_environment
       APP_ENV: ${APP_ENV:-production}
       APP_DEBUG: ${APP_DEBUG:-0}
       APP_VERSION: ${APP_VERSION:-}
@@ -148,6 +148,25 @@ services:
       - backend_net
     # Give the worker time to finish its current pass and exit cleanly
     # (see cron/worker.php's SIGTERM handling) before Docker sends SIGKILL.
+    stop_grace_period: 30s
+
+  # Extra bulk-send capacity. Runs ONLY the bulk pass (cron/worker.php --bulk-only); schedules, the
+  # direct-send queue and the auto-responder stay on `worker` above. Bulk items are claimed atomically
+  # with a lease, so any number of these can drain the same jobs in parallel without sending a row
+  # twice. No container_name, so it can be scaled: set BULK_WORKER_REPLICAS in .env (default 0 = off)
+  # and run `docker compose up -d`. Mind the provider's own rate limit before raising it.
+  bulk-worker:
+    image: ellsms-app:latest
+    pull_policy: never
+    restart: unless-stopped
+    command: php /var/www/html/cron/worker.php --bulk-only
+    environment: *worker_environment
+    deploy:
+      replicas: ${BULK_WORKER_REPLICAS:-0}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
     stop_grace_period: 30s
 
   # Phase 12, STEP 33 — deliberately its OWN container, never sharing worker's poll loop: a slow or

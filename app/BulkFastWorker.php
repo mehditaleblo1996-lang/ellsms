@@ -123,9 +123,21 @@ function run_bulk_send_pass_fast(): int {
          )"
     )->fetchAll(PDO::FETCH_COLUMN);
 
+    // Compare-and-swap per job: with several bulk workers running, two can see the same job finish
+    // in the same moment. Only the one whose UPDATE actually flips it goes on to release the wallet
+    // reservation and emit the completion webhook, so a job is never reported done twice.
+    $finished = [];
+    $markDone = $db->prepare("UPDATE ellsms_bulk_jobs SET status='done' WHERE id = ? AND status='processing'");
+    foreach ($doneIds as $doneId) {
+        $markDone->execute([$doneId]);
+        if ($markDone->rowCount() > 0) {
+            $finished[] = $doneId;
+        }
+    }
+    $doneIds = $finished;
+
     if ($doneIds) {
         $placeholders = implode(',', array_fill(0, count($doneIds), '?'));
-        $db->prepare("UPDATE ellsms_bulk_jobs SET status='done' WHERE id IN ({$placeholders})")->execute($doneIds);
         $doneRows = $db->prepare(
             "SELECT id, organization_id, title, sent_rows, failed_rows, total_rows, message_class,
                     TIMESTAMPDIFF(SECOND, created_at, NOW()) AS elapsed_seconds

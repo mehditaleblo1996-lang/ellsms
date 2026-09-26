@@ -16,6 +16,10 @@ require_once __DIR__ . '/../app/DirectSendQueue.php';
 require_once __DIR__ . '/../app/BulkFastWorker.php';
 
 $once = in_array('--once', $argv ?? [], true);
+// --bulk-only: run ONLY the bulk-send pass. Used by the scalable `bulk-worker` compose service so
+// several processes can drain large bulk jobs in parallel (claims are atomic and leased), while
+// schedules, the direct-send queue and the auto-responder stay on the single `worker` service.
+$bulkOnly = in_array('--bulk-only', $argv ?? [], true);
 $pollIntervalSeconds = max(1, (int)(env('WORKER_POLL_INTERVAL_SECONDS', '8') ?? '8'));
 
 $shuttingDown = false;
@@ -46,6 +50,7 @@ Logger::info('worker.started', [
     'poll_interval_seconds' => $pollIntervalSeconds,
     'signal_handling'       => $pcntlAvailable ? 'enabled' : 'unavailable',
     'fast_bulk_path'        => true,
+    'bulk_only'             => $bulkOnly,
 ]);
 if (!$pcntlAvailable) {
     Logger::warning('worker.signal_handling_unavailable', [
@@ -68,38 +73,44 @@ do {
         continue;
     }
 
-    try {
-        $n = Metrics::time('worker.pass.schedules', fn() => run_due_schedules());
-        if ($n > 0) Logger::info('worker.schedules.processed', ['count' => $n]);
-        Metrics::gauge('worker.pass.schedules.processed', $n);
-        $workProcessed += max(0, (int)$n);
-    } catch (Throwable $t) {
-        Logger::critical('worker.schedules.failed', ['exception' => $t]);
-        Metrics::increment('worker.pass.failed', 1, ['pass' => 'schedules']);
+    if (!$bulkOnly) {
+        try {
+            $n = Metrics::time('worker.pass.schedules', fn() => run_due_schedules());
+            if ($n > 0) Logger::info('worker.schedules.processed', ['count' => $n]);
+            Metrics::gauge('worker.pass.schedules.processed', $n);
+            $workProcessed += max(0, (int)$n);
+        } catch (Throwable $t) {
+            Logger::critical('worker.schedules.failed', ['exception' => $t]);
+            Metrics::increment('worker.pass.failed', 1, ['pass' => 'schedules']);
+        }
     }
 
     if ($shuttingDown) break;
 
-    try {
-        $d = Metrics::time('worker.pass.direct_send_queue', fn() => run_direct_send_queue_pass());
-        if ($d > 0) Logger::info('worker.direct_send_queue.processed', ['count' => $d]);
-        Metrics::gauge('worker.pass.direct_send_queue.processed', $d);
-        $workProcessed += max(0, (int)$d);
-    } catch (Throwable $t) {
-        Logger::critical('worker.direct_send_queue.failed', ['exception' => $t]);
-        Metrics::increment('worker.pass.failed', 1, ['pass' => 'direct_send_queue']);
+    if (!$bulkOnly) {
+        try {
+            $d = Metrics::time('worker.pass.direct_send_queue', fn() => run_direct_send_queue_pass());
+            if ($d > 0) Logger::info('worker.direct_send_queue.processed', ['count' => $d]);
+            Metrics::gauge('worker.pass.direct_send_queue.processed', $d);
+            $workProcessed += max(0, (int)$d);
+        } catch (Throwable $t) {
+            Logger::critical('worker.direct_send_queue.failed', ['exception' => $t]);
+            Metrics::increment('worker.pass.failed', 1, ['pass' => 'direct_send_queue']);
+        }
     }
 
     if ($shuttingDown) break;
 
-    try {
-        $r = Metrics::time('worker.pass.autoreply', fn() => run_autoreply_pass());
-        if ($r > 0) Logger::info('worker.autoreply.sent', ['count' => $r]);
-        Metrics::gauge('worker.pass.autoreply.sent', $r);
-        $workProcessed += max(0, (int)$r);
-    } catch (Throwable $t) {
-        Logger::critical('worker.autoreply.failed', ['exception' => $t]);
-        Metrics::increment('worker.pass.failed', 1, ['pass' => 'autoreply']);
+    if (!$bulkOnly) {
+        try {
+            $r = Metrics::time('worker.pass.autoreply', fn() => run_autoreply_pass());
+            if ($r > 0) Logger::info('worker.autoreply.sent', ['count' => $r]);
+            Metrics::gauge('worker.pass.autoreply.sent', $r);
+            $workProcessed += max(0, (int)$r);
+        } catch (Throwable $t) {
+            Logger::critical('worker.autoreply.failed', ['exception' => $t]);
+            Metrics::increment('worker.pass.failed', 1, ['pass' => 'autoreply']);
+        }
     }
 
     if ($shuttingDown) break;

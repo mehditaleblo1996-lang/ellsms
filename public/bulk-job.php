@@ -33,6 +33,26 @@ if (!is_admin()) {
     }
 }
 
+// Cancel from the job's own page: a job queued behind others had no cancel control anywhere once
+// its import was confirmed (the import page only cancels before confirmation, and reports are
+// read-only). bulk_cancel_campaign() re-checks ownership and only stops rows still pending.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'cancel') {
+    csrf_check();
+    if (!is_admin()) {
+        require_permission(Permissions::MESSAGES_SEND);
+    }
+    $result = bulk_cancel_campaign($jobId, $me, 'admin panel: bulk-job page cancel');
+    if ($result['ok'] && $result['job_cancelled']) {
+        flash('success', 'ارسال لغو شد — ' . to_persian_digits(number_format((int)$result['cancelled_items'])) . ' پیامک ارسال‌نشده متوقف شد.');
+    } elseif ($result['ok']) {
+        flash('info', 'این ارسال قبلاً تمام یا لغو شده بود.');
+    } else {
+        flash('error', 'لغو این ارسال ممکن نشد.');
+    }
+    redirect('/messages/bulk-jobs?id=' . $jobId);
+}
+$canCancelJob = in_array((string)$job['status'], ['pending', 'processing'], true);
+
 $status = trim((string)($_GET['status'] ?? ''));
 $dest = trim((string)($_GET['dest'] ?? ''));
 $per = (int)($_GET['per_page'] ?? 100);
@@ -135,6 +155,13 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2><?= e((string)($job['title'] ?? ('ارسال #' . $jobId))) ?></h2>
   <p class="hint">Job #<?= to_persian_digits((string)$jobId) ?> · خط <?= e((string)$job['originator']) ?></p>
+  <?php if ($canCancelJob): ?>
+    <form method="post" style="margin:0 0 14px" onsubmit="return confirm('ارسال #<?= (int)$jobId ?> لغو شود؟ پیامک‌هایی که هنوز ارسال نشده‌اند دیگر ارسال نخواهند شد.');">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="cancel">
+      <button class="btn btn-sm btn-danger" type="submit">لغو این ارسال</button>
+    </form>
+  <?php endif; ?>
   <div class="grid grid-4">
     <div class="stat"><div class="stat-label">کل</div><div class="stat-value"><?= to_persian_digits(number_format($total)) ?></div></div>
     <div class="stat"><div class="stat-label">ارسال/تحویل</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['sent_count'] + (int)$summary['delivered_count'])) ?></div></div>
