@@ -20,6 +20,25 @@ $once = in_array('--once', $argv ?? [], true);
 // several processes can drain large bulk jobs in parallel (claims are atomic and leased), while
 // schedules, the direct-send queue and the auto-responder stay on the single `worker` service.
 $bulkOnly = in_array('--bulk-only', $argv ?? [], true);
+
+$gatewayReady = gateway_transport_enabled() && (string)env('SMS_GATEWAY_MASTER_KEY', '') !== '';
+if ($bulkOnly) {
+    // Never let the extra bulk capacity send through the legacy backend API (a different provider
+    // account). It must use exactly the gateway configured for each sender line, like `worker`.
+    dispatch_require_gateway(true);
+    if (!$gatewayReady) {
+        // Stay up but idle instead of exiting: an exit would just be restarted in a loop by Docker.
+        Logger::critical('worker.bulk_only.refused', [
+            'reason' => 'SMS_GATEWAY_TRANSPORT must be 1 and SMS_GATEWAY_MASTER_KEY set for bulk-worker; it sends nothing until they are',
+            'gateway_transport' => gateway_transport_enabled(),
+            'gateway_master_key_set' => (string)env('SMS_GATEWAY_MASTER_KEY', '') !== '',
+        ]);
+        fwrite(STDERR, "bulk-worker: SMS_GATEWAY_TRANSPORT=1 and SMS_GATEWAY_MASTER_KEY are required; not sending.\n");
+        while (true) {
+            sleep(300);
+        }
+    }
+}
 $pollIntervalSeconds = max(1, (int)(env('WORKER_POLL_INTERVAL_SECONDS', '8') ?? '8'));
 
 $shuttingDown = false;
@@ -51,6 +70,8 @@ Logger::info('worker.started', [
     'signal_handling'       => $pcntlAvailable ? 'enabled' : 'unavailable',
     'fast_bulk_path'        => true,
     'bulk_only'             => $bulkOnly,
+    // Which path sends: 'gateway' = the gateway configured per sender line; 'legacy' = the backend API.
+    'send_path'             => $gatewayReady ? 'gateway' : (gateway_transport_enabled() ? 'gateway_without_master_key' : 'legacy'),
 ]);
 if (!$pcntlAvailable) {
     Logger::warning('worker.signal_handling_unavailable', [

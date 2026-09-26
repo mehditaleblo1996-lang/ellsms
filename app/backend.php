@@ -196,6 +196,17 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
 }
 
 /**
+ * Process-wide switch: when on, dispatch_message_raw() refuses the legacy backend fallback and only
+ * sends through the gateway configured for the sender's route. Set by cron/worker.php --bulk-only.
+ */
+function dispatch_require_gateway(?bool $set = null): bool {
+    if ($set !== null) {
+        $GLOBALS['__ellsms_dispatch_require_gateway'] = $set;
+    }
+    return (bool)($GLOBALS['__ellsms_dispatch_require_gateway'] ?? false);
+}
+
+/**
  * $perDestinationContent (Phase 9C, optional): a destination-KEYED map of real per-recipient text.
  * $content stays required and remains the fallback for any destination absent from that map, the
  * value used for the legacy (non-gateway) path — which has no per-row content notion — and what
@@ -243,6 +254,18 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     $gatewayResult = gateway_send_for_dispatch($user, $originator, $destinations, $content, null, $perDestinationContent, $perDestinationIdempotencyKeys);
     if ($gatewayResult !== null) {
         return dispatch_gateway_result($user, $originator, $destinations, $content, $scheduleId, $gatewayResult, $parts, $total, $recordTransport);
+    }
+
+    // A process that must only ever send through the configured gateway (the bulk-worker service,
+    // see dispatch_require_gateway()) never falls back to the legacy backend API: that API sends
+    // through its OWN provider account, not the one configured for this sender line. The rows are
+    // left retryable, so they go out once the gateway is reachable again.
+    if (dispatch_require_gateway()) {
+        Logger::error('sms.send.gateway_required_but_unavailable', [
+            'user_id' => $user['id'] ?? null, 'originator' => $originator, 'destination_count' => $total,
+            'gateway_transport' => gateway_transport_enabled(),
+        ]);
+        return [false, 'ارسال از درگاه تنظیم‌شده‌ی این خط ممکن نشد؛ پیامک از مسیر دیگری ارسال نشد و دوباره تلاش می‌شود.', 0, $total, $parts, true, []];
     }
 
     $apiResult = backend_api_request('POST', '/api/messages/send', [
