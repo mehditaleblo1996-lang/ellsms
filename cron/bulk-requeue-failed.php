@@ -8,12 +8,17 @@
  * Only rows that are ALL of these are touched:
  *   - status 'failed' and no provider message id (the provider never accepted them),
  *   - whose error text contains --error (required, so a different failure is never swept in),
- *   - in a job that is not cancelled and whose owner is an admin (no wallet reservation to redo),
+ *   - in a job that is not cancelled,
  *   - whose mobile has NOT already been sent the same text in any bulk job (no duplicate SMS).
  *
  * Do NOT use it for rows marked failed although the provider delivered them (for example the
  * "گیت‌وی همه‌ی مقصدها را رد کرد" rows of a batch with one negative reference): those people
  * already have the message.
+ *
+ * Money: a non-admin owner is charged exactly as the first attempt would have been. The job's
+ * reservation (released when the job finished) is extended by the requeued rows' frozen price, so
+ * the worker commits against it again; if the balance is too low, that job is skipped and nothing
+ * changes. Admin-owned jobs are never charged, as before.
  *
  * Usage:
  *   php cron/bulk-requeue-failed.php --job=12,13                      # list failed rows by error text
@@ -66,13 +71,14 @@ foreach ($jobs->fetchAll() as $job) {
         printf("job %d (%s): cancelled — skipped\n", $jobId, $job['title']);
         continue;
     }
-    if (!$owner || empty($owner['is_admin'])) {
-        printf("job %d (%s): owner is not an admin — skipped (its wallet reservation would need to be redone)\n", $jobId, $job['title']);
+    if (!$owner) {
+        printf("job %d (%s): owner account not found — skipped\n", $jobId, $job['title']);
         continue;
     }
+    $chargeOwner = empty($owner['is_admin']);
 
     $candidates = $db->prepare(
-        "SELECT i.id FROM ellsms_bulk_items i
+        "SELECT i.id, i.content, i.price_cost_credits FROM ellsms_bulk_items i
          WHERE i.job_id = ? AND i.status = 'failed' AND i.provider_message_id IS NULL
            AND i.error LIKE ?
            AND NOT EXISTS (
@@ -81,29 +87,55 @@ foreach ($jobs->fetchAll() as $job) {
            )"
     );
     $candidates->execute([$jobId, '%' . addcslashes($errorNeedle, '%_\\') . '%']);
-    $ids = array_map('intval', $candidates->fetchAll(PDO::FETCH_COLUMN));
-    printf("job %d (%s): %d row(s) %s\n", $jobId, $job['title'], count($ids), $apply ? 'requeued' : 'would be requeued');
-    $total += count($ids);
+    $rows = $candidates->fetchAll();
+    $ids = array_map(static fn(array $r): int => (int)$r['id'], $rows);
+    // The same unit price bulk_finalize_item() commits per item: the price frozen at acceptance,
+    // or the segment count for rows that predate frozen prices.
+    $cost = 0;
+    foreach ($rows as $r) {
+        $cost += $r['price_cost_credits'] !== null ? (int)$r['price_cost_credits'] : sms_parts((string)$r['content']);
+    }
+    $costNote = $chargeOwner ? sprintf(', cost %d credit(s) charged to user #%d', $cost, (int)$job['user_id']) : ', admin-owned (not charged)';
     if (!$apply || $ids === []) {
+        printf("job %d (%s): %d row(s) would be requeued%s\n", $jobId, $job['title'], count($ids), $costNote);
+        $total += count($ids);
         continue;
     }
 
-    db_transaction(static function (PDO $db) use ($jobId, $ids): void {
-        foreach (array_chunk($ids, 1000) as $chunk) {
-            $ph = implode(',', array_fill(0, count($chunk), '?'));
-            $db->prepare(
-                "UPDATE ellsms_bulk_items
-                 SET status='pending', error=NULL, attempt_count=0, next_attempt_at=NULL, claimed_by=NULL, lease_expires_at=NULL
-                 WHERE id IN ({$ph}) AND status='failed' AND provider_message_id IS NULL"
-            )->execute($chunk);
-        }
-        $db->prepare(
-            "UPDATE ellsms_bulk_jobs
-             SET failed_rows = GREATEST(0, failed_rows - ?), status = IF(status = 'done', 'processing', status)
-             WHERE id = ?"
-        )->execute([count($ids), $jobId]);
-    });
-    audit(0, 'bulk.requeue_failed', "job {$jobId}: " . count($ids) . " rows (error contains: {$errorNeedle})");
+    try {
+        db_transaction(static function (PDO $db) use ($jobId, $ids, $chargeOwner, $cost, $job): void {
+            if ($chargeOwner) {
+                $extended = wallet_extend_reservation((int)$job['user_id'], $cost, 'bulk_job', (string)$jobId);
+                if (!($extended['ok'] ?? false)) {
+                    throw new RuntimeException('wallet: ' . (string)($extended['reason'] ?? 'failed'));
+                }
+            }
+            bulk_requeue_rows($db, $jobId, $ids);
+        });
+    } catch (RuntimeException $e) {
+        printf("job %d (%s): NOT requeued — %s (nothing changed)\n", $jobId, $job['title'], $e->getMessage());
+        continue;
+    }
+    printf("job %d (%s): %d row(s) requeued%s\n", $jobId, $job['title'], count($ids), $costNote);
+    $total += count($ids);
+    audit(0, 'bulk.requeue_failed', "job {$jobId}: " . count($ids) . " rows, cost {$cost}, charged=" . ($chargeOwner ? 'yes' : 'no') . " (error contains: {$errorNeedle})");
 }
 
 printf("%s: %d row(s) in total%s\n", $apply ? 'Requeued' : 'Dry run', $total, $apply ? '' : ' — add --apply to requeue them');
+
+/** Put the given failed rows back to pending and take them off the job's failed count. */
+function bulk_requeue_rows(PDO $db, int $jobId, array $ids): void {
+    foreach (array_chunk($ids, 1000) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $db->prepare(
+            "UPDATE ellsms_bulk_items
+             SET status='pending', error=NULL, attempt_count=0, next_attempt_at=NULL, claimed_by=NULL, lease_expires_at=NULL
+             WHERE id IN ({$ph}) AND status='failed' AND provider_message_id IS NULL"
+        )->execute($chunk);
+    }
+    $db->prepare(
+        "UPDATE ellsms_bulk_jobs
+         SET failed_rows = GREATEST(0, failed_rows - ?), status = IF(status = 'done', 'processing', status)
+         WHERE id = ?"
+    )->execute([count($ids), $jobId]);
+}

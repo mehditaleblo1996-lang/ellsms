@@ -232,6 +232,45 @@ function wallet_reserve(int $userId, int $amount, string $refType, string $refId
 }
 
 /**
+ * Add $amount to the reservation for ($refType, $refId), re-opening it if it already ended, and
+ * move that amount from available to reserved -- the same balance movement wallet_reserve() makes.
+ *
+ * Exists for putting already-settled work back in the queue (cron/bulk-requeue-failed.php): a bulk
+ * job's reservation is one row per job (uniq_reference), released when the job finished, so
+ * wallet_reserve() would only "replay" it and the requeued rows would then be sent without being
+ * charged. Checks the balance under the account lock and changes nothing if it is insufficient.
+ *
+ * @return array{ok:bool, reason?:string, reservation_id?:int}
+ */
+function wallet_extend_reservation(int $userId, int $amount, string $refType, string $refId): array {
+    if ($amount <= 0) {
+        return ['ok' => true, 'skipped' => true];
+    }
+    return db_transaction(function (PDO $db) use ($userId, $amount, $refType, $refId): array {
+        $available = wallet_lock_account($db, $userId);
+        $rst = $db->prepare('SELECT id, user_id FROM ellsms_wallet_reservations WHERE reference_type = ? AND reference_id = ? FOR UPDATE');
+        $rst->execute([$refType, $refId]);
+        $res = $rst->fetch();
+        if (!$res) {
+            return ['ok' => false, 'reason' => 'no_reservation'];
+        }
+        if ((int)$res['user_id'] !== $userId) {
+            return ['ok' => false, 'reason' => 'reservation_owner_mismatch'];
+        }
+        if ($available < $amount) {
+            return ['ok' => false, 'reason' => 'insufficient_balance'];
+        }
+        $db->prepare('UPDATE ellsms_wallet_accounts SET available_balance = available_balance - ?, reserved_balance = reserved_balance + ? WHERE user_id = ?')
+           ->execute([$amount, $amount, $userId]);
+        $db->prepare("UPDATE ellsms_wallet_reservations SET amount = amount + ?, remaining_amount = remaining_amount + ?, status = 'active' WHERE id = ?")
+           ->execute([$amount, $amount, $res['id']]);
+        wallet_sync_legacy_currentcredit($db, $userId);
+        Logger::info('wallet.reservation.extended', ['user_id' => $userId, 'amount' => $amount, 'reference_type' => $refType, 'reference_id' => $refId]);
+        return ['ok' => true, 'reservation_id' => (int)$res['id']];
+    });
+}
+
+/**
  * Spend part (or all) of an active reservation. Moves reserved -> gone (a real ledger debit);
  * available_balance (and therefore currentcredit) does NOT change here — that credit already left
  * "available" the moment it was reserved. Can be called multiple times against the same
