@@ -28,6 +28,9 @@ services:
       APP_URL: ${APP_URL:-}
       APP_VERSION: ${APP_VERSION:-}
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
+      SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
       ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
       SESSION_IDLE_TIMEOUT_SECONDS: ${SESSION_IDLE_TIMEOUT_SECONDS:-1800}
@@ -110,6 +113,14 @@ services:
       # .env had no effect on the worker at all.
       SMS_PROVIDER_BATCH_SIZE: ${SMS_PROVIDER_BATCH_SIZE:-200}
       WORKER_BULK_BATCH_SIZE: ${WORKER_BULK_BATCH_SIZE:-200}
+      # The worker (and bulk-worker, which shares this block) sends through the configured gateway
+      # only when these are present. Without SMS_GATEWAY_TRANSPORT it silently falls back to the
+      # legacy backend API, and without SMS_GATEWAY_MASTER_KEY it cannot decrypt the gateway's
+      # stored credentials -- either way messages leave through a different account than configured.
+      SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
+      SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
       ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       # Phase 13 — the worker enforces subscription state at execution time (a suspended
       # organization's queued job must not keep sending), so it needs the same billing config.
@@ -271,6 +282,9 @@ services:
       # The poller talks to providers through the same transport the send path uses, so it needs the
       # same transport switch — with SMS_GATEWAY_TRANSPORT unset it would never reach a gateway.
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
+      SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
       ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
       BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
