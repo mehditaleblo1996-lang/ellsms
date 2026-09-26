@@ -105,6 +105,11 @@ services:
       JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-5}
       JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
       JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-1800}
+      # Bulk throughput knobs (app/backend.php sms_provider_batch_size(), app/jobqueue.php
+      # worker_bulk_batch_size()). Read with getenv() only, so without these lines setting them in
+      # .env had no effect on the worker at all.
+      SMS_PROVIDER_BATCH_SIZE: ${SMS_PROVIDER_BATCH_SIZE:-200}
+      WORKER_BULK_BATCH_SIZE: ${WORKER_BULK_BATCH_SIZE:-200}
       ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       # Phase 13 — the worker enforces subscription state at execution time (a suspended
       # organization's queued job must not keep sending), so it needs the same billing config.
