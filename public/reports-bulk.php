@@ -40,8 +40,10 @@ $canonicalStatusSql = "CASE
     ELSE 'pending'
 END";
 
-$where = ['bi.created_at >= ?', 'bi.created_at < DATE_ADD(?, INTERVAL 1 DAY)'];
-$params = [$from, $to];
+// bi.created_at is a UTC timestamp; the picked days are Tehran days.
+[$fromUtc, $toUtcExclusive] = local_day_range_to_utc($from, $to);
+$where = ['bi.created_at >= ?', 'bi.created_at < ?'];
+$params = [$fromUtc, $toUtcExclusive];
 if (is_admin()) {
     if ($userId > 0) {
         $where[] = 'bj.user_id = ?';

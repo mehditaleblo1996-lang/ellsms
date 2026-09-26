@@ -878,6 +878,22 @@ function jalali_request_to_gregorian(string $name): ?string {
     return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
 }
 
+/**
+ * Convert an inclusive range of Tehran-local calendar days ('Y-m-d') into the half-open UTC
+ * [start, end) bounds to compare against TIMESTAMP columns written with NOW() (the database session
+ * runs in UTC). Comparing the local date strings directly shifted every day by 3:30 — sends between
+ * 00:00 and 03:30 Tehran time landed on the previous day.
+ *
+ * @return array{0:string,1:string} ['Y-m-d H:i:s' UTC start, 'Y-m-d H:i:s' UTC end (exclusive)]
+ */
+function local_day_range_to_utc(string $fromDate, string $toDate, string $localTz = 'Asia/Tehran'): array {
+    $tz = new DateTimeZone($localTz);
+    $utc = new DateTimeZone('UTC');
+    $start = (new DateTimeImmutable($fromDate . ' 00:00:00', $tz))->setTimezone($utc);
+    $end = (new DateTimeImmutable($toDate . ' 00:00:00', $tz))->modify('+1 day')->setTimezone($utc);
+    return [$start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s')];
+}
+
 /** Render hour/minute <select> boxes named "{$name}_h" / "{$name}_i". */
 function time_select(string $name, ?string $defaultHi = null): string {
     [$dh, $di] = $defaultHi ? array_map('intval', explode(':', $defaultHi)) : [(int)date('H'), 0];

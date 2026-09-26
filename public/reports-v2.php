@@ -31,6 +31,8 @@ function report_v2_status_class(string $s): string {
 
 $from   = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-29 day'));
 $to     = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
+// sent_at / created_at are UTC timestamps; the picked days are Tehran days.
+[$fromUtc, $toUtcExclusive] = local_day_range_to_utc($from, $to);
 $status = trim((string)($_GET['status'] ?? ''));
 $dest   = trim((string)($_GET['dest'] ?? ''));
 $sender = trim((string)($_GET['sender'] ?? ''));
@@ -49,8 +51,8 @@ if (!is_admin()) {
 }
 
 /* ---------------- Detailed direct/API messages ---------------- */
-$dw = ['m.sent_at >= ?', 'm.sent_at < DATE_ADD(?, INTERVAL 1 DAY)'];
-$dp = [$from, $to];
+$dw = ['m.sent_at >= ?', 'm.sent_at < ?'];
+$dp = [$fromUtc, $toUtcExclusive];
 if (is_admin() && $userId > 0) {
     $dw[] = 'm.sender_user_id = ?'; $dp[] = $userId;
 } elseif (!is_admin()) {
@@ -68,8 +70,8 @@ $ds = db()->prepare("SELECT COUNT(*) total, SUM(($directCanonical) IN ('sent','d
 $ds->execute($dp); $D = $ds->fetch() ?: [];
 
 /* ---------------- Bulk jobs: aggregate only, never fetch 850k rows ---------------- */
-$bw = ['bj.created_at >= ?', 'bj.created_at < DATE_ADD(?, INTERVAL 1 DAY)'];
-$bp = [$from, $to];
+$bw = ['bj.created_at >= ?', 'bj.created_at < ?'];
+$bp = [$fromUtc, $toUtcExclusive];
 if (is_admin() && $userId > 0) {
     $bw[]='bj.user_id = ?'; $bp[]=$userId;
 } elseif (!is_admin()) {
