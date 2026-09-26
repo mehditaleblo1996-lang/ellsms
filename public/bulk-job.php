@@ -155,6 +155,9 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2><?= e((string)($job['title'] ?? ('ارسال #' . $jobId))) ?></h2>
   <p class="hint">Job #<?= to_persian_digits((string)$jobId) ?> · خط <?= e((string)$job['originator']) ?></p>
+  <?php if ((string)$job['status'] === 'staged' && !empty($job['source_import_job_id'])): ?>
+    <p style="margin:0 0 14px"><a class="btn btn-sm btn-primary" href="/contacts/import?id=<?= (int)$job['source_import_job_id'] ?>">این ارسال منتظر تأیید است — تأیید و ارسال</a></p>
+  <?php endif; ?>
   <?php if ($canCancelJob): ?>
     <form method="post" style="margin:0 0 14px" onsubmit="return confirm('ارسال #<?= (int)$jobId ?> لغو شود؟ پیامک‌هایی که هنوز ارسال نشده‌اند دیگر ارسال نخواهند شد.');">
       <?= csrf_field() ?>

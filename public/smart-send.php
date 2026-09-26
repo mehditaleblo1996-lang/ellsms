@@ -191,6 +191,10 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
         <td class="num"><?= jdate_from_utc($j['created_at']) ?></td>
         <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a>
+          <?php if ($j['status'] === 'staged' && !empty($j['source_import_job_id'])): ?>
+            <?php // A large-file job waits here until its import is confirmed on the import page. ?>
+            <a class="btn btn-sm btn-primary" href="/contacts/import?id=<?= (int)$j['source_import_job_id'] ?>">تأیید و ارسال</a>
+          <?php endif; ?>
           <?php if (in_array($j['status'], ['pending', 'processing'], true)): ?>
           <form method="post" onsubmit="return confirm('این ارسال لغو شود؟')">
             <?= csrf_field() ?>
