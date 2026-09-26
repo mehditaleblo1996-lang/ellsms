@@ -415,9 +415,15 @@ function gateway_extract_positional_result(array $section,mixed $decoded,array $
     $ids=gateway_path_extract($batch['provider_ids_path'],$decoded);
     if(!is_array($ids)){Logger::warning('gateway.correlation.positional_not_array',['destinations'=>count($groupDestinations)]);return [[],[]];}
     if(count($ids)!==count($groupDestinations)){Logger::warning('gateway.correlation.positional_count_mismatch',['expected'=>count($groupDestinations),'actual'=>count($ids)]);Metrics::increment('gateway.correlation_failure',1,['reason'=>'count_mismatch']);return [[],[]];}
-    $messageIds=[];
-    foreach($groupDestinations as $index=>$destination){$id=gateway_provider_message_id_normalize($ids[$index]??null);if($id===null){Logger::warning('gateway.correlation.positional_invalid_id',['index'=>$index]);Metrics::increment('gateway.correlation_failure',1,['reason'=>'invalid_provider_id']);return [[],[]];}$messageIds[$destination]=$id;}
-    return [$groupDestinations,$messageIds];
+    // The count matches, so position N still belongs to destination N. A non-id entry (typically a
+    // provider's negative per-recipient error code, e.g. -5 for a blocked number) fails ONLY its own
+    // destination. Rejecting the whole group here marked every neighbour failed although the provider
+    // had accepted and delivered them (1 bad entry in a 1000-recipient batch = 999 false failures),
+    // left them without a provider id so delivery was never polled, and never charged them.
+    $accepted=[];$messageIds=[];$rejected=0;
+    foreach($groupDestinations as $index=>$destination){$id=gateway_provider_message_id_normalize($ids[$index]??null);if($id===null){$rejected++;continue;}$accepted[]=$destination;$messageIds[$destination]=$id;}
+    if($rejected>0){Logger::warning('gateway.correlation.positional_invalid_id',['rejected'=>$rejected,'accepted'=>count($accepted)]);Metrics::increment('gateway.correlation_failure',$rejected,['reason'=>'invalid_provider_id']);}
+    return [$accepted,$messageIds];
 }
 
 function gateway_transport_enabled():bool{return (string)env('SMS_GATEWAY_TRANSPORT','0')==='1';}

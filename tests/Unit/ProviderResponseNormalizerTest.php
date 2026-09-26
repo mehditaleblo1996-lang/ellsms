@@ -158,7 +158,7 @@ final class ProviderResponseNormalizerTest extends TestCase
         self::assertSame('missing_or_invalid_provider_message_id', $result['reason']);
     }
 
-    public function testBatchPositionRejectsNegativeProviderReference(): void
+    public function testBatchPositionRejectsOnlyTheRecipientWithANegativeProviderReference(): void
     {
         $section = [
             'batch' => [
@@ -166,7 +166,26 @@ final class ProviderResponseNormalizerTest extends TestCase
             ],
         ];
 
-        [$sent, $ids] = gateway_extract_positional_result($section, ['ids' => ['1001', -103]], ['989121111111', '989121111112']);
+        [$sent, $ids] = gateway_extract_positional_result($section, ['ids' => ['1001', -103, 713138993595955263]], ['989121111111', '989121111112', '989121111113']);
+        self::assertSame(['989121111111', '989121111113'], $sent);
+        self::assertSame(['989121111111' => '1001', '989121111113' => '713138993595955263'], $ids);
+    }
+
+    public function testBatchPositionWithEveryReferenceInvalidAcceptsNobody(): void
+    {
+        $section = ['batch' => ['provider_ids_path' => gateway_path_compile('ids')]];
+
+        [$sent, $ids] = gateway_extract_positional_result($section, ['ids' => [-5, -103]], ['989121111111', '989121111112']);
+        self::assertSame([], $sent);
+        self::assertSame([], $ids);
+    }
+
+    public function testBatchPositionCountMismatchStillRejectsTheWholeGroup(): void
+    {
+        // With a missing entry, positions no longer line up with destinations, so no id can be trusted.
+        $section = ['batch' => ['provider_ids_path' => gateway_path_compile('ids')]];
+
+        [$sent, $ids] = gateway_extract_positional_result($section, ['ids' => ['1001']], ['989121111111', '989121111112']);
         self::assertSame([], $sent);
         self::assertSame([], $ids);
     }
