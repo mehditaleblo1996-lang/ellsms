@@ -11,9 +11,13 @@
 ########################################################################
 services:
   app:
+    # The ONE build of docker/Dockerfile. Every other PHP service below runs this same image instead
+    # of carrying its own `build:` — eight identical builds used to run in parallel, each compiling
+    # ext-mongodb from source, so a cold `docker compose build` took 8x the CPU/RAM it needed.
     build:
       context: .
       dockerfile: docker/Dockerfile
+    image: ellsms-app:latest
     container_name: ellsms-app
     restart: unless-stopped
     ports:
@@ -86,9 +90,9 @@ services:
       - backend_net
 
   worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
     container_name: ellsms-worker
     restart: unless-stopped
     command: php /var/www/html/cron/worker.php
@@ -147,9 +151,9 @@ services:
   # single throwaway pass (safe to run alongside this persistent service — same atomic-claim
   # guarantee as every other Phase 4-style claim query in this project).
   webhook-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
     container_name: ellsms-webhook-worker
     restart: unless-stopped
     command: php /var/www/html/cron/webhook-worker.php
@@ -182,9 +186,9 @@ services:
   # competes with the send worker or web requests. Claims import chunks atomically; multiple
   # import-worker containers are safe but not required.
   import-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
     container_name: ellsms-import-worker
     restart: unless-stopped
     command: php /var/www/html/cron/import-worker.php
@@ -224,9 +228,9 @@ services:
   # alongside this service (gateway_status_claim()'s compare-and-swap makes concurrent pollers safe,
   # exactly like every other claim in this project).
   status-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
     container_name: ellsms-status-worker
     restart: unless-stopped
     command: php /var/www/html/cron/sms-status-worker.php
@@ -286,9 +290,9 @@ services:
   # populate in the documented deployment -- every report reading from them would stay empty
   # forever. Added rather than left as a documented gap, matching status-worker's own shape exactly.
   report-summary-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
     container_name: ellsms-report-summary-worker
     restart: unless-stopped
     command: php /var/www/html/cron/report-summary-worker.php
@@ -335,9 +339,9 @@ services:
   # resource the send workers use (see docs/provider-health-model.md), so it cannot contend with or
   # overload them.
   provider-health-checker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
     container_name: ellsms-provider-health-checker
     restart: unless-stopped
     command: php /var/www/html/cron/provider-health-check.php --loop
@@ -405,9 +409,9 @@ services:
   # delay a scheduled send or a delivery-status poll, and a wedged export must not take the send
   # pipeline down with it.
   export-worker:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
     container_name: ellsms-export-worker
     restart: unless-stopped
     command: php /var/www/html/cron/export-worker.php
