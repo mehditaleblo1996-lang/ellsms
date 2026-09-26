@@ -346,7 +346,8 @@ function import_job_reserve_and_stage(array $job): void {
                 (string)$job['originator'],
                 import_job_display_title($job),
                 $job['throttle_count'] !== null ? (int)$job['throttle_count'] : null,
-                $job['throttle_minutes'] !== null ? (int)$job['throttle_minutes'] : null
+                $job['throttle_minutes'] !== null ? (int)$job['throttle_minutes'] : null,
+                (string)($job['source_type'] ?? 'p2p')
             );
 
             // Create insert chunks based on dedupe id ranges.

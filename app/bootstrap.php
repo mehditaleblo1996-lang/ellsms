@@ -894,6 +894,17 @@ function local_day_range_to_utc(string $fromDate, string $toDate, string $localT
     return [$start->format('Y-m-d H:i:s'), $end->format('Y-m-d H:i:s')];
 }
 
+/** jdate() for a TIMESTAMP written with NOW() by the UTC database session, shown in Tehran time. */
+function jdate_from_utc(?string $utcValue): string {
+    if ($utcValue === null || trim($utcValue) === '') return '';
+    try {
+        $local = (new DateTimeImmutable($utcValue, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('Asia/Tehran'));
+    } catch (Throwable) {
+        return jdate($utcValue);
+    }
+    return jdate($local->format('Y-m-d H:i:s'));
+}
+
 /** Render hour/minute <select> boxes named "{$name}_h" / "{$name}_i". */
 function time_select(string $name, ?string $defaultHi = null): string {
     [$dh, $di] = $defaultHi ? array_map('intval', explode(':', $defaultHi)) : [(int)date('H'), 0];

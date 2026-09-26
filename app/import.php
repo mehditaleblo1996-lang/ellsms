@@ -283,7 +283,12 @@ function import_chunk_failed(int $chunkId, string $error): void {
  *
  * @return int the bulk job id
  */
-function import_create_bulk_job(PDO $db, int $importJobId, array $user, string $originator, string $title, ?int $throttleCount, ?int $throttleMinutes): int {
+function import_create_bulk_job(PDO $db, int $importJobId, array $user, string $originator, string $title, ?int $throttleCount, ?int $throttleMinutes, string $type = 'p2p'): int {
+    // The import's source type decides which page lists the job (smart-send.php shows type='smart',
+    // p2p-send.php type='p2p'); anything unrecognised stays 'p2p', the pre-existing behaviour.
+    if (!in_array($type, ['p2p', 'smart', 'gradual'], true)) {
+        $type = 'p2p';
+    }
     $organizationId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
     $userId = (int)($user['id'] ?? 0);
 
@@ -293,7 +298,7 @@ function import_create_bulk_job(PDO $db, int $importJobId, array $user, string $
             throttle_count, throttle_minutes, status, total_rows)
          VALUES (?,?,?,?,?,?,?,?,?,0)"
     )->execute([
-        $userId, $organizationId, $importJobId, 'p2p', $title, $originator,
+        $userId, $organizationId, $importJobId, $type, $title, $originator,
         $throttleCount, $throttleMinutes, 'staged',
     ]);
     return (int)$db->lastInsertId();

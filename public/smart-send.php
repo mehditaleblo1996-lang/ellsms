@@ -128,7 +128,7 @@ foreach ($jobs as &$j) {
 }
 unset($j);
 
-$statusFa = ['pending' => 'در صف', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده'];
+$statusFa = ['pending' => 'در صف', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده', 'staged' => 'منتظر تأیید'];
 
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'send.bulk';
@@ -176,7 +176,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
   <table>
     <tr>
       <th>عنوان</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?>
-      <th>خط</th><th>کل</th><th>ارسال‌شده</th><th>ناموفق</th><th>وضعیت</th><th>تاریخ</th><th></th>
+      <th>خط</th><th>کل</th><th>ارسال‌شده</th><th>ناموفق</th><th>باقی‌مانده</th><th>وضعیت</th><th>تاریخ</th><th></th>
     </tr>
     <?php foreach ($jobs as $j): ?>
       <tr>
@@ -186,9 +186,11 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
         <td class="num"><?= to_persian_digits((string)$j['total_rows']) ?></td>
         <td class="num"><?= to_persian_digits((string)$j['sent_rows']) ?></td>
         <td class="num"><?= to_persian_digits((string)$j['failed_rows']) ?></td>
-        <td><span class="badge badge-<?= e($j['status']) ?>"><?= e($statusFa[$j['status']]) ?></span></td>
-        <td class="num"><?= jdate($j['created_at']) ?></td>
-        <td>
+        <td class="num"><?= to_persian_digits((string)max(0, (int)$j['total_rows'] - (int)$j['sent_rows'] - (int)$j['failed_rows'])) ?></td>
+        <td><span class="badge badge-<?= e($j['status']) ?>"><?= e($statusFa[$j['status']] ?? $j['status']) ?></span></td>
+        <td class="num"><?= jdate_from_utc($j['created_at']) ?></td>
+        <td style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a>
           <?php if (in_array($j['status'], ['pending', 'processing'], true)): ?>
           <form method="post" onsubmit="return confirm('این ارسال لغو شود؟')">
             <?= csrf_field() ?>
@@ -200,7 +202,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$jobs): ?><tr><td colspan="9" class="empty">هنوز ارسالی انجام نشده.</td></tr><?php endif; ?>
+    <?php if (!$jobs): ?><tr><td colspan="10" class="empty">هنوز ارسالی انجام نشده.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>
