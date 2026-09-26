@@ -1850,15 +1850,44 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
 
     $accepted = is_array($sentDestinations) ? array_map('strval', $sentDestinations) : [];
 
-    $sent = 0;
-    foreach ($items as $item) {
-        // Segments for THIS item's own text, not the group's representative $parts — correctness
-        // matters here even though it is a fallback: bulk_finalize_item() only falls back to it when
-        // the row's frozen price is NULL (pre-migration rows), but a wrong count in that fallback
-        // would misprice exactly the rows Phase 9C makes it possible to co-batch with different text.
-        $itemParts = sms_parts((string)$item['content']);
-        if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, $itemParts, (bool)$retryable, $gatewayMeta, $accepted)) {
-            $sent++;
+    $finalizeAll = static function () use ($db, $items, $ctx, $ok, $info, $retryable, $gatewayMeta, $accepted): int {
+        $sent = 0;
+        foreach ($items as $item) {
+            // Segments for THIS item's own text, not the group's representative $parts — correctness
+            // matters here even though it is a fallback: bulk_finalize_item() only falls back to it when
+            // the row's frozen price is NULL (pre-migration rows), but a wrong count in that fallback
+            // would misprice exactly the rows Phase 9C makes it possible to co-batch with different text.
+            $itemParts = sms_parts((string)$item['content']);
+            if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, $itemParts, (bool)$retryable, $gatewayMeta, $accepted)) {
+                $sent++;
+            }
+        }
+        return $sent;
+    };
+
+    // Settle the whole provider batch in ONE transaction. Each item's settlement is several writes
+    // (wallet commit, price-snapshot settlement, item row, job counter), each of which otherwise
+    // committed -- and flushed to disk -- on its own: ~4 commits per recipient capped a 1000-recipient
+    // batch at roughly 15-20 recipients/second on a real database. Nested db_transaction() calls join
+    // this one, and every per-item write is still keyed per item (the wallet commit's idempotency key
+    // is 'commit:bulk_item:{id}'), so the money semantics are unchanged.
+    //
+    // The provider has ALREADY accepted these messages, so a failure here must never leave them
+    // unsettled (the lease would expire and they would be re-sent). If the batched transaction fails
+    // it is rolled back as a whole and the exact pre-existing per-item path runs instead. When a
+    // caller already holds a transaction we cannot roll back independently, so we just use that path.
+    if ($db->inTransaction()) {
+        $sent = $finalizeAll();
+    } else {
+        try {
+            $sent = db_transaction(static fn(): int => $finalizeAll());
+        } catch (Throwable $t) {
+            Logger::warning('bulk.finalize.batched_transaction_failed', [
+                'job_id' => $items[0]['job_id'] ?? null,
+                'item_count' => count($items),
+                'exception' => $t,
+            ]);
+            $sent = $finalizeAll();
         }
     }
 
