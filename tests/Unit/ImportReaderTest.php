@@ -142,4 +142,48 @@ final class ImportReaderTest extends TestCase
         $this->assertTrue($result['ok']);
         $this->assertSame(2, $result['count']);
     }
+
+    public function testCountRowsCountsCsvRecordsNotLinesWhenCellsContainNewlines(): void
+    {
+        $path = $this->makeCsv("\xEF\xBB\xBFmobile,message,n\r\n09120000001,\"line1\nline2\n{n}\",3\r\n09120000002,\"a\nb\",4\r\n");
+        $storageKey = 'imports/test/' . basename($path);
+        $staged = $this->stagePath($storageKey);
+        copy($path, $staged);
+        $this->tmpFiles[] = $staged;
+
+        $result = import_count_rows($storageKey);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame(3, $result['count']);
+        $rows = import_read_row_range($storageKey, 1, $result['count']);
+        $this->assertCount(2, $rows);
+        $this->assertSame("line1\nline2\n{n}", $rows[0]['content']);
+    }
+
+    public function testReadHeaderCellsReturnsHeaderRowThatRowRangeSkips(): void
+    {
+        $path = $this->makeCsv("\xEF\xBB\xBFموبایل,متن,تعداد\n09120000001,x {تعداد},2");
+        $storageKey = 'imports/test/' . basename($path);
+        $staged = $this->stagePath($storageKey);
+        copy($path, $staged);
+        $this->tmpFiles[] = $staged;
+
+        $this->assertSame([], import_read_row_range($storageKey, 1, 1));
+        $this->assertSame(['موبایل', 'متن', 'تعداد'], import_read_header_cells($storageKey));
+    }
+
+    public function testReadHeaderCellsFromXlsx(): void
+    {
+        $sheet = '<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>'
+            . '<row r="1"><c r="A1" t="inlineStr"><is><t>mobile</t></is></c><c r="B1" t="inlineStr"><is><t>text</t></is></c><c r="C1" t="inlineStr"><is><t>n</t></is></c></row>'
+            . '<row r="2"><c r="A2" t="inlineStr"><is><t>09120000001</t></is></c><c r="B2" t="inlineStr"><is><t>hi {n}</t></is></c><c r="C2"><v>5</v></c></row>'
+            . '</sheetData></worksheet>';
+        $path = $this->makeXlsx($sheet);
+        $storageKey = 'imports/test/' . basename($path);
+        $staged = $this->stagePath($storageKey);
+        copy($path, $staged);
+        $this->tmpFiles[] = $staged;
+
+        $this->assertSame(['mobile', 'text', 'n'], import_read_header_cells($storageKey));
+    }
 }

@@ -55,9 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         flash('error', 'تعداد ردیف‌های فایل از سقف مجاز بیشتر است.');
                     } elseif ($countResult['count'] > import_sync_max_recipients()) {
                         // Large smart file: async import pipeline; worker renders each row's template.
-                        $headerRows = import_read_row_range($storageKey, 1, 1);
-                        $headerCells = $headerRows[0]['cells'] ?? [];
-                        $headers = array_map('trim', $headerCells);
+                        $headers = array_map('trim', import_read_header_cells($storageKey));
                         if (count($headers) < 2) {
                             import_delete_storage($storageKey);
                             flash('error', 'فایل هوشمند باید حداقل ستون موبایل و متن داشته باشد.');

@@ -136,8 +136,17 @@ function csv_count_rows(string $path): array {
         return ['ok' => false, 'count' => 0, 'error' => 'باز کردن فایل ممکن نشد.'];
     }
 
+    // Count logical CSV records with fgetcsv(), NOT physical lines with fgets(): a quoted cell
+    // may contain line breaks (e.g. a multi-line smart-send template in column B), and every
+    // reader below numbers rows by fgetcsv() records. Counting lines would inflate total_rows
+    // (and the chunk ranges built from it) by the number of embedded newlines.
+    $bom = fread($fh, 3);
+    if ($bom !== "\xEF\xBB\xBF") {
+        rewind($fh);
+    }
+
     $count = 0;
-    while (fgets($fh) !== false) {
+    while (fgetcsv($fh) !== false) {
         $count++;
     }
     fclose($fh);
@@ -219,6 +228,72 @@ function import_read_row_range(string $storageKey, int $firstRow, int $lastRow):
         return xlsx_read_row_range($path, $firstRow, $lastRow);
     }
     return csv_read_row_range($path, $firstRow, $lastRow);
+}
+
+/**
+ * Return the raw cells of the file's first row (the header row), without the header-skipping
+ * that import_read_row_range() applies — that function drops row 1 whenever its first cell is
+ * not a mobile number, so asking it for rows 1..1 returns nothing for a normal header row.
+ *
+ * @return list<string>
+ */
+function import_read_header_cells(string $storageKey): array {
+    $path = import_storage_path($storageKey);
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+    if ($ext === 'xlsx') {
+        return xlsx_read_header_cells($path);
+    }
+
+    $fh = fopen($path, 'r');
+    if (!$fh) {
+        throw new RuntimeException('باز کردن فایل ممکن نشد.');
+    }
+    $bom = fread($fh, 3);
+    if ($bom !== "\xEF\xBB\xBF") {
+        rewind($fh);
+    }
+    $row = fgetcsv($fh);
+    fclose($fh);
+    return $row === false ? [] : array_map(static fn($c): string => (string)$c, $row);
+}
+
+function xlsx_read_header_cells(string $path): array {
+    $zip = new ZipArchive();
+    if ($zip->open($path) !== true) {
+        throw new RuntimeException('فایل xlsx معتبر نیست.');
+    }
+
+    $sheetName = xlsx_first_sheet_name($zip);
+    if ($sheetName === null) {
+        $zip->close();
+        throw new RuntimeException('صفحه‌ای در فایل xlsx پیدا نشد.');
+    }
+
+    $stat = $zip->statName($sheetName);
+    if ($stat !== false && (int)$stat['size'] > MAX_XLSX_MEMBER_UNCOMPRESSED_BYTES) {
+        $zip->close();
+        throw new RuntimeException('فایل xlsx بیش از حد بزرگ است.');
+    }
+
+    $shared = xlsx_load_shared_strings($zip);
+    $sheetXml = $zip->getFromName($sheetName);
+    $zip->close();
+    if ($sheetXml === false) {
+        throw new RuntimeException('خواندن محتوای فایل xlsx ممکن نشد.');
+    }
+
+    $reader = new XMLReader();
+    $reader->xml($sheetXml);
+    $cells = [];
+    while ($reader->read()) {
+        if ($reader->nodeType === XMLReader::ELEMENT && $reader->name === 'row') {
+            $cells = array_map(static fn($c): string => (string)$c, xlsx_read_row_cells($reader, $shared));
+            break;
+        }
+    }
+    $reader->close();
+    return $cells;
 }
 
 function csv_read_row_range(string $path, int $firstRow, int $lastRow): array {
