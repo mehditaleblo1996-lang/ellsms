@@ -13,7 +13,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <title><?= e($pageTitle ?? 'ELLSMS') ?> — ELLSMS</title>
 <?php if (!empty($metaDescription)): ?><meta name="description" content="<?= e($metaDescription) ?>"><?php endif; ?>
 <link rel="icon" href="/assets/img/favicon.png">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="lp-body">
 

@@ -69,7 +69,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title><?= e($pageTitle ?? 'ELLSMS') ?> — ELLSMS</title>
 <link rel="icon" href="/assets/img/favicon.png">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <link rel="stylesheet" href="/assets/css/panel-layout-fixes.css">
 </head>
 <body>

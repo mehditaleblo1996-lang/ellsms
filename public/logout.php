@@ -3,7 +3,11 @@ require_once __DIR__ . '/../app/bootstrap.php';
 require_once __DIR__ . '/../app/Support/AuditMongo.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_check();
+    // A stale form (for example after the session was lost in a deploy) must not end on a bare
+    // error page: already signed out -> login; otherwise show the confirmation with a fresh token.
+    if (!hash_equals((string)($_SESSION['csrf'] ?? ''), (string)($_POST['_csrf'] ?? ''))) {
+        redirect(current_user() ? '/logout.php' : '/login.php');
+    }
     if (current_user()) {
         if (is_impersonating()) {
             $impersonationState = impersonation_state();
@@ -41,7 +45,7 @@ if (!current_user()) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>خروج — ELLSMS</title>
 <link rel="icon" href="/assets/img/favicon.png">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card">

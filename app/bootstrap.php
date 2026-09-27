@@ -165,6 +165,16 @@ function app_url(): string {
  * to change for installs that don't inject one; CI/CD can override it
  * with a git SHA or release tag without a source change.
  */
+/**
+ * A public asset URL with a version query (the file's modification time), so a deploy that changes
+ * the stylesheet is picked up at once instead of browsers keeping the cached old copy.
+ */
+function asset_url(string $path): string {
+    $file = __DIR__ . '/../public' . $path;
+    $version = is_file($file) ? (string)filemtime($file) : app_version();
+    return $path . '?v=' . rawurlencode($version);
+}
+
 function app_version(): string {
     return env('APP_VERSION', ELLSMS_VERSION) ?? ELLSMS_VERSION;
 }

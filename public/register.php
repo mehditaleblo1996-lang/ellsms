@@ -142,7 +142,7 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ثبت‌نام — ELLSMS</title>
 <link rel="icon" href="/assets/img/favicon.png">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card" style="max-width:680px;width:min(680px,calc(100% - 30px))">
