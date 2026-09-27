@@ -208,16 +208,31 @@ final class GatewayDispatchTest extends IntegrationTestCase
         $this->assertSame('/api/messages/send', $records[0]['path'], 'with the flag off, nothing may change about the live path');
     }
 
-    public function testARouteWithNoGatewayFallsBackToLegacyRatherThanFailing(): void {
+    public function testARouteWithNoGatewayFallsBackToLegacyOnlyWhenExplicitlyEnabled(): void {
         // Mid-rollout: the transport is on, but this route has not been pointed at a gateway yet.
-        // Refusing the send would turn incomplete configuration into an outage.
+        // The legacy backend may carry it only while SMS_LEGACY_BACKEND_ENABLED=1.
         $this->makeRoute(0);
-
-        [$ok] = dispatch_message_raw($this->actor(), $this->sender, ['989121234567'], 'no gateway yet');
+        putenv('SMS_LEGACY_BACKEND_ENABLED=1');
+        try {
+            [$ok] = dispatch_message_raw($this->actor(), $this->sender, ['989121234567'], 'no gateway yet');
+        } finally {
+            putenv('SMS_LEGACY_BACKEND_ENABLED');
+        }
 
         $this->assertTrue($ok);
         $records = $this->recordings();
         $this->assertSame('/api/messages/send', $records[0]['path']);
+    }
+
+    public function testWithTheTransportOnARouteWithNoGatewayIsNeverSentThroughTheLegacyBackend(): void {
+        // The legacy backend sends through its own provider account, not this line's gateway.
+        $this->makeRoute(0);
+
+        [$ok, , , , , $retryable] = dispatch_message_raw($this->actor(), $this->sender, ['989121234567'], 'no gateway yet');
+
+        $this->assertFalse($ok);
+        $this->assertTrue($retryable, 'left retryable so it goes out once a gateway is configured');
+        $this->assertSame([], $this->recordings(), 'nothing may reach the legacy endpoint');
     }
 
     public function testTwoRoutesReachTheirOwnGatewaysInTheSameProcess(): void {

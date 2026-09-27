@@ -94,8 +94,8 @@ require __DIR__ . '/../app/views/public_header.php';
               </div>
               <div class="lp-app-stats">
                 <div class="lp-app-stat is-accent"><span>ارسال امروز</span><b>۱۲,۴۸۰</b></div>
-                <div class="lp-app-stat"><span>در صف زمان‌بندی</span><b>۳۶</b></div>
-                <div class="lp-app-stat"><span>مجموع ارسال‌ها</span><b>۹۸,۲۱۰</b></div>
+                <div class="lp-app-stat"><span>تحویل‌شده امروز</span><b>۱۱,۹۰۲</b></div>
+                <div class="lp-app-stat"><span>در صف ارسال</span><b>۳,۶۰۰</b></div>
               </div>
               <div class="lp-app-card">
                 <h4>پیامک‌های ۷ روز اخیر</h4>
@@ -125,6 +125,76 @@ require __DIR__ . '/../app/views/public_header.php';
       </div>
     </div>
   </section>
+
+  <!-- How it works: one contacts file + one template -> a personal SMS per row, delivered.
+       Plain HTML/CSS with a tiny script below (no library); it pauses off-screen and shows a
+       still, fully-filled frame for visitors who prefer reduced motion. -->
+  <section id="flow" class="lp-section lp-reveal">
+    <div class="lp-section-head">
+      <h2>از فایل مخاطبین تا گوشی مشتری</h2>
+      <p>یک فایل و یک قالب کافی است؛ هر ردیف پیام مخصوص خودش را می‌گیرد و وضعیت تحویلش را همان لحظه می‌بینید.</p>
+    </div>
+    <div class="lp-flow" data-lp-flow aria-hidden="true">
+      <div class="lp-flow-card lp-flow-sheet">
+        <div class="lp-flow-card-title"><span class="lp-flow-file">XLSX</span>مخاطبین.xlsx</div>
+        <div class="lp-flow-row lp-flow-row-head"><span>نام</span><span>موبایل</span><span>شانس</span></div>
+        <div class="lp-flow-row is-active" data-row="0"><span>علی</span><span class="ltr">0912•••4471</span><span>۲</span></div>
+        <div class="lp-flow-row" data-row="1"><span>مریم</span><span class="ltr">0935•••1187</span><span>۵</span></div>
+        <div class="lp-flow-row" data-row="2"><span>رضا</span><span class="ltr">0919•••0032</span><span>۱</span></div>
+      </div>
+      <div class="lp-flow-link"><i></i><i></i><i></i></div>
+      <div class="lp-flow-card lp-flow-template">
+        <div class="lp-flow-card-title">قالب پیام</div>
+        <p class="lp-flow-text">سلام <b class="lp-flow-token" data-token="name">{نام}</b>، شما <b class="lp-flow-token" data-token="chance">{شانس}</b> شانس در قرعه‌کشی دارید.</p>
+      </div>
+      <div class="lp-flow-link"><i></i><i></i><i></i></div>
+      <div class="lp-flow-phone">
+        <div class="lp-flow-phone-notch"></div>
+        <div class="lp-flow-thread" data-thread>
+          <div class="lp-flow-bubble is-in"><span>سلام علی، شما ۲ شانس در قرعه‌کشی دارید.</span><em class="is-done">تحویل شد ✓</em></div>
+          <div class="lp-flow-bubble is-in"><span>سلام مریم، شما ۵ شانس در قرعه‌کشی دارید.</span><em class="is-done">تحویل شد ✓</em></div>
+          <div class="lp-flow-bubble is-in"><span>سلام رضا، شما ۱ شانس در قرعه‌کشی دارید.</span><em class="is-done">تحویل شد ✓</em></div>
+        </div>
+      </div>
+    </div>
+  </section>
+<script>
+(function () {
+  var root = document.querySelector('[data-lp-flow]');
+  if (!root || !window.matchMedia || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var people = [['علی', '۲'], ['مریم', '۵'], ['رضا', '۱']];
+  var rows = root.querySelectorAll('[data-row]');
+  var tokens = { name: root.querySelector('[data-token="name"]'), chance: root.querySelector('[data-token="chance"]') };
+  var thread = root.querySelector('[data-thread]');
+  var timers = [], running = false, visible = false;
+  function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+  function stop() { timers.forEach(clearTimeout); timers = []; running = false; }
+  function step(i) {
+    if (i === people.length) { later(function () { thread.innerHTML = ''; step(0); }, 2200); return; }
+    var p = people[i];
+    rows.forEach(function (r, k) { r.classList.toggle('is-active', k === i); });
+    tokens.name.textContent = p[0]; tokens.chance.textContent = p[1];
+    tokens.name.classList.add('is-filled'); tokens.chance.classList.add('is-filled');
+    root.classList.add('is-sending');
+    later(function () {
+      var b = document.createElement('div');
+      b.className = 'lp-flow-bubble';
+      b.innerHTML = '<span></span><em>در حال ارسال…</em>';
+      b.firstChild.textContent = 'سلام ' + p[0] + '، شما ' + p[1] + ' شانس در قرعه‌کشی دارید.';
+      thread.appendChild(b);
+      requestAnimationFrame(function () { b.classList.add('is-in'); });
+      later(function () { b.lastChild.textContent = 'تحویل شد ✓'; b.lastChild.classList.add('is-done'); root.classList.remove('is-sending'); }, 1100);
+    }, 900);
+    later(function () { step(i + 1); }, 2600);
+  }
+  function start() { if (running || !visible || document.hidden) return; running = true; thread.innerHTML = ''; step(0); }
+  new IntersectionObserver(function (entries) {
+    visible = entries[0].isIntersecting;
+    if (visible) start(); else stop();
+  }, { threshold: 0.25 }).observe(root);
+  document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); else start(); });
+})();
+</script>
 
   <section id="features" class="lp-section lp-reveal">
     <div class="lp-section-head">

@@ -318,6 +318,16 @@ tr:hover td { background: #f9f9ff; }
 .bar .bar-fill { background: var(--grad); border-radius: 6px 6px 0 0; min-height: 2px; }
 .bar .bar-x { font-size: 11.5px; color: var(--muted); margin-top: 6px; }
 .bar .bar-v { font-size: 11.5px; font-family: var(--mono); direction: ltr; color: var(--ink); margin-bottom: 4px; }
+/* Dashboard: recent bulk jobs with live progress */
+.dash-jobs { display: grid; gap: 10px; }
+.dash-job { display: block; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; color: inherit; text-decoration: none; transition: border-color .15s, background .15s; }
+.dash-job:hover { border-color: var(--indigo); background: var(--tint); }
+.dash-job-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.dash-job-title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-progress { display: flex; height: 8px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.dash-progress-ok { background: var(--grad); }
+.dash-progress-bad { background: var(--err); }
+.dash-job-meta { margin-top: 6px; font-size: 12px; }
 
 /* ---------- Login ---------- */
 .login-body {
@@ -717,6 +727,60 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
   .lp-section { padding: 50px 20px; }
   .lp-cta { border-radius: 20px; padding: 40px 20px; }
 }
+/* ---------- Landing: "how it works" flow (contacts file -> template -> phone) ---------- */
+.lp-flow { display: grid; grid-template-columns: 1.15fr 70px 1fr 70px 0.9fr; align-items: center; gap: 0; }
+.lp-flow-card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px;
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+}
+.lp-flow-card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; margin-bottom: 12px; }
+.lp-flow-file { font-size: 10px; font-weight: 800; color: #fff; background: #1d8f4e; border-radius: 5px; padding: 2px 6px; letter-spacing: .5px; }
+.lp-flow-row {
+  display: grid; grid-template-columns: 1fr 1.5fr .6fr; gap: 8px; padding: 9px 10px; border-radius: 10px;
+  font-size: 13px; color: var(--muted); transition: background .35s ease, color .35s ease, box-shadow .35s ease;
+}
+.lp-flow-row span:last-child { text-align: center; font-family: var(--font-num); }
+.lp-flow-row-head { font-size: 11.5px; font-weight: 700; padding-top: 0; }
+.lp-flow-row.is-active { background: rgba(167, 139, 250, .16); color: var(--ink); box-shadow: inset 0 0 0 1px rgba(167, 139, 250, .45); }
+.lp-flow-text { margin: 0; font-size: 15px; line-height: 2; color: var(--ink); }
+.lp-flow-token {
+  display: inline-block; padding: 0 8px; border-radius: 8px; background: var(--tint); color: var(--lp-accent);
+  font-weight: 800; transition: background .3s ease, color .3s ease, transform .3s ease;
+}
+.lp-flow-token.is-filled { background: var(--grad); color: #fff; transform: translateY(-1px); }
+.lp-flow-link { position: relative; height: 2px; margin: 0 8px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.lp-flow-link i {
+  position: absolute; top: -2px; right: -8px; width: 6px; height: 6px; border-radius: 50%; background: var(--lp-accent);
+  opacity: 0; animation: lp-flow-dot 1.6s linear infinite;
+}
+.lp-flow-link i:nth-child(2) { animation-delay: .53s; }
+.lp-flow-link i:nth-child(3) { animation-delay: 1.06s; }
+/* RTL: data moves from the file (right) toward the phone (left). */
+@keyframes lp-flow-dot { 0% { right: -8px; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { right: 100%; opacity: 0; } }
+.lp-flow-phone {
+  position: relative; justify-self: center; width: 100%; max-width: 230px; height: 300px; border-radius: 30px; padding: 30px 12px 14px;
+  background: linear-gradient(160deg, rgba(255,255,255,.10), rgba(255,255,255,.03)); border: 1px solid var(--line);
+  box-shadow: 0 20px 40px rgba(0,0,0,.35);
+}
+.lp-flow-phone-notch { position: absolute; top: 11px; left: 50%; width: 64px; height: 7px; margin-left: -32px; border-radius: 6px; background: rgba(255,255,255,.18); }
+.lp-flow-thread { display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; height: 100%; overflow: hidden; }
+.lp-flow-bubble {
+  align-self: flex-end; max-width: 92%; padding: 8px 10px; border-radius: 14px 14px 14px 4px; background: rgba(255,255,255,.09);
+  font-size: 12px; line-height: 1.7; color: var(--ink);
+  opacity: 0; transform: translateY(10px) scale(.97); transition: opacity .35s ease, transform .35s ease;
+}
+.lp-flow-bubble.is-in { opacity: 1; transform: none; }
+.lp-flow-bubble em { display: block; margin-top: 2px; font-style: normal; font-size: 10.5px; color: var(--muted); }
+.lp-flow-bubble em.is-done { color: var(--ok); }
+@media (max-width: 860px) {
+  .lp-flow { grid-template-columns: 1fr; gap: 0; max-width: 420px; margin: 0 auto; }
+  .lp-flow-link { width: 2px; height: 34px; margin: 6px auto; }
+  .lp-flow-link i { right: -2px; animation-name: lp-flow-dot-v; }
+  @keyframes lp-flow-dot-v { 0% { top: -8px; opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { top: 100%; opacity: 0; } }
+  .lp-flow-phone { height: 270px; }
+}
+@media (prefers-reduced-motion: reduce) { .lp-flow-link i { animation: none; } }
+
 /* ---------- Landing hero: scroll progress + SMS-thread visual ---------- */
 .lp-scroll-progress {
   position: fixed; top: 0; inset-inline: 0; height: 3px; z-index: 60;

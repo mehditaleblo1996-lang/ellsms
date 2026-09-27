@@ -93,12 +93,9 @@ function registration_system_sms(array $destinations, string $text): array {
 
     $senderUserId = max(1, (int)setting('registration_sms_sender_user_id', '1'));
     require_once __DIR__ . '/backend.php';
-    [$ok, $http, $rows] = backend_api_send($senderUserId, $originator, $normalized, $text);
-    if (!$ok || !is_array($rows)) return ['ok' => false, 'error' => 'ارسال پیامک سامانه ممکن نشد.', 'http' => $http];
-
-    $sent = 0;
-    foreach ($rows as $sentRow) if (is_array($sentRow) && (($sentRow['status'] ?? '') === 'sent')) $sent++;
-    return ['ok' => $sent > 0, 'sent' => $sent, 'total' => count($normalized), 'http' => $http];
+    $result = system_sms_send($senderUserId, $originator, $normalized, $text);
+    if (!$result['ok']) return ['ok' => false, 'error' => 'ارسال پیامک سامانه ممکن نشد.', 'http' => $result['http']];
+    return $result;
 }
 
 /** @return list<string> */

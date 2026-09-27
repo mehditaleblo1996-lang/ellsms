@@ -207,6 +207,47 @@ function dispatch_require_gateway(?bool $set = null): bool {
 }
 
 /**
+ * Whether the legacy backend API (POST {API_BASE_URL}/api/messages/send) may still carry a send.
+ * That API sends through its OWN provider account, not the gateway an admin configured for the
+ * sender line, so once the gateway transport is on it is off unless explicitly re-enabled:
+ *   SMS_LEGACY_BACKEND_ENABLED=1  always allowed (mid-migration fallback)
+ *   SMS_LEGACY_BACKEND_ENABLED=0  never
+ *   unset                         allowed only while SMS_GATEWAY_TRANSPORT is off (legacy-only install)
+ */
+function legacy_backend_send_enabled(): bool {
+    $flag = trim((string)env('SMS_LEGACY_BACKEND_ENABLED', ''));
+    if ($flag === '1') return true;
+    if ($flag === '0') return false;
+    return !gateway_transport_enabled();
+}
+
+/**
+ * System SMS (registration codes, notifications) from the default line: through the gateway
+ * configured for that line, and through the legacy backend API only while it is still enabled.
+ * Returns ['ok' => bool, 'sent' => int, 'total' => int, 'http' => ?int].
+ */
+function system_sms_send(int $senderUserId, string $originator, array $destinations, string $text): array {
+    $destinations = array_values(array_map('strval', $destinations));
+    $total = count($destinations);
+    $user = backend_find_user_by_id($senderUserId) ?: ['id' => $senderUserId];
+    $result = gateway_send_for_dispatch($user, $originator, $destinations, $text);
+    if ($result !== null) {
+        $sent = count($result['sent'] ?? []);
+        return ['ok' => $sent > 0, 'sent' => $sent, 'total' => $total, 'http' => isset($result['http']) ? (int)$result['http'] : null];
+    }
+    if (!legacy_backend_send_enabled()) {
+        Logger::error('sms.system.no_gateway', ['originator' => $originator, 'destination_count' => $total]);
+        return ['ok' => false, 'sent' => 0, 'total' => $total, 'http' => null];
+    }
+    [$ok, $http, $rows] = backend_api_send($senderUserId, $originator, $destinations, $text);
+    $sent = 0;
+    if ($ok && is_array($rows)) {
+        foreach ($rows as $row) if (is_array($row) && (($row['status'] ?? '') === 'sent')) $sent++;
+    }
+    return ['ok' => $sent > 0, 'sent' => $sent, 'total' => $total, 'http' => $http];
+}
+
+/**
  * $perDestinationContent (Phase 9C, optional): a destination-KEYED map of real per-recipient text.
  * $content stays required and remains the fallback for any destination absent from that map, the
  * value used for the legacy (non-gateway) path — which has no per-row content notion — and what
@@ -257,10 +298,11 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     }
 
     // A process that must only ever send through the configured gateway (the bulk-worker service,
-    // see dispatch_require_gateway()) never falls back to the legacy backend API: that API sends
+    // see dispatch_require_gateway()), or an install whose legacy backend is switched off (see
+    // legacy_backend_send_enabled()), never falls back to the legacy backend API: that API sends
     // through its OWN provider account, not the one configured for this sender line. The rows are
     // left retryable, so they go out once the gateway is reachable again.
-    if (dispatch_require_gateway()) {
+    if (dispatch_require_gateway() || !legacy_backend_send_enabled()) {
         Logger::error('sms.send.gateway_required_but_unavailable', [
             'user_id' => $user['id'] ?? null, 'originator' => $originator, 'destination_count' => $total,
             'gateway_transport' => gateway_transport_enabled(),
@@ -1619,12 +1661,7 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
         if ($share <= 0) {
             continue;
         }
-        $claimed = bulk_claim_items(
-            $db,
-            "j.status = 'processing' AND j.throttle_count IS NULL AND j.message_class = ?",
-            [$class],
-            $share
-        );
+        $claimed = bulk_claim_class_items_across_jobs($db, $class, $share);
         // Per-class throughput (issue #3 re-audit: depth/oldest-age were already tagged by
         // message_class above; claimed-per-tick was not, so a class's actual claim rate could not
         // be told apart from another's in the metrics even though allocate_priority_quota() was
@@ -1635,6 +1672,56 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
         }
     }
 
+    return $items;
+}
+
+/**
+ * Claim up to $share due items of one message class, spread over every running job of that class
+ * instead of strictly oldest-row-first. Oldest-first drained one job completely before the next got
+ * a single row, so parallel campaigns went out one after another. The job that goes first rotates
+ * every pass (so several bulk workers pick different jobs), and each job gets at least one full
+ * provider batch where the share allows, so spreading never shrinks provider requests. Whatever a
+ * job cannot fill is offered to the others in the next round.
+ */
+function bulk_claim_class_items_across_jobs(PDO $db, string $class, int $share): array {
+    $classFilter = "j.status = 'processing' AND j.throttle_count IS NULL AND j.message_class = ?";
+    $st = $db->prepare("SELECT j.id FROM ellsms_bulk_jobs j WHERE {$classFilter}");
+    $st->execute([$class]);
+    $jobIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    if (count($jobIds) <= 1) {
+        return bulk_claim_items($db, $classFilter, [$class], $share);
+    }
+    // Rotate the starting job every pass (from a random point per process, so several bulk
+    // workers start on different jobs): each running job gets its turn to go first.
+    static $rotation = null;
+    $rotation = $rotation === null ? random_int(0, 1 << 30) : $rotation + 1;
+    sort($jobIds);
+    $start = $rotation % count($jobIds);
+    $jobIds = array_merge(array_slice($jobIds, $start), array_slice($jobIds, 0, $start));
+
+    $items = [];
+    $remaining = $share;
+    $open = $jobIds;
+    $batch = sms_provider_batch_size();
+    while ($remaining > 0 && $open !== []) {
+        $perJob = max((int)ceil($remaining / count($open)), min($batch, $remaining));
+        $stillOpen = [];
+        foreach ($open as $jobId) {
+            if ($remaining <= 0) {
+                break;
+            }
+            $take = min($perJob, $remaining);
+            $got = bulk_claim_items($db, "j.id = ? AND {$classFilter}", [$jobId, $class], $take);
+            if ($got !== []) {
+                $items = array_merge($items, $got);
+                $remaining -= count($got);
+            }
+            if (count($got) === $take) {
+                $stillOpen[] = $jobId; // may have more rows due
+            }
+        }
+        $open = $stillOpen;
+    }
     return $items;
 }
 

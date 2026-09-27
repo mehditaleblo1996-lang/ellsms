@@ -85,10 +85,7 @@ function notification_send_sms(string $mobile, string $text): bool {
     if ($originator === '') return false;
     require_once __DIR__ . '/backend.php';
     $senderUserId = max(1, (int)setting('registration_sms_sender_user_id', '1'));
-    [$ok, , $rows] = backend_api_send($senderUserId, $originator, [$mobile], $text);
-    if (!$ok || !is_array($rows)) return false;
-    foreach ($rows as $row) if (is_array($row) && (($row['status'] ?? '') === 'sent')) return true;
-    return false;
+    return system_sms_send($senderUserId, $originator, [$mobile], $text)['ok'];
 }
 
 function notification_send_email(string $email, string $title, string $body): bool {

@@ -11,41 +11,23 @@ $active = 'dashboard';
 
 $onboarding = ($me['role'] !== 'admin' && onboarding_enabled()) ? onboarding_status($me) : null;
 
-$scope  = $me['role'] === 'admin' ? '' : ' AND sender_user_id = ' . (int)$me['id'];
-$scopeW = $me['role'] === 'admin' ? '1=1' : 'sender_user_id = ' . (int)$me['id'];
+require_once __DIR__ . '/../app/Dashboard.php';
 
-$q = fn(string $sql) => (int)db()->query($sql)->fetch()['c'];
+// Everything below reads ELLSMS's own send records (bulk items + gateway send attempts); see
+// app/Dashboard.php. The legacy backend's outbound_message is not used any more.
+$scopeUserIds = dashboard_scope_user_ids($me);
+$today      = dashboard_today_counts($scopeUserIds);
+$queued     = dashboard_queued_count($scopeUserIds);
+$pendingSch = (int)db()->query("SELECT COUNT(*) FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']))->fetchColumn();
 
-// Dashboard must stay cheap even with hundreds of thousands of historical rows. Exact canonical
-// provider-delivery resolution remains on the report/detail surfaces; these top-level dashboard cards
-// use the backend transport statuses directly so login never performs a full-history destination join.
-// The today predicate is a half-open range so the sent_at index remains usable.
-$todaySummary = backend_outbound_summary(
-    "sent_at >= CURDATE() AND sent_at < DATE_ADD(CURDATE(), INTERVAL 1 DAY) AND {$scopeW}",
-    []
-);
-$todaySent   = (int)($todaySummary['ok'] ?? 0);
-$todayFailed = (int)($todaySummary['bad'] ?? 0);
-$totalSummary = backend_outbound_summary($scopeW, []);
-$totalSent    = (int)($totalSummary['ok'] ?? 0);
-$pendingSch  = $q("SELECT COUNT(*) c FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']));
-$inboxToday  = $me['role'] === 'admin' ? backend_inbound_today_count() : null;
-
-/* Last 7 days volume */
-$days = [];
-for ($i = 6; $i >= 0; $i--) $days[date('Y-m-d', strtotime("-{$i} day"))] = 0;
-foreach (backend_outbound_daily_counts("sent_at >= CURDATE() - INTERVAL 6 DAY AND {$scopeW}") as $d => $c) {
-    $days[$d] = $c;
-}
+$days = dashboard_daily_sent($scopeUserIds, 7);
 $max = max(1, max($days));
-
 $weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','سه‌شنبه'=>'س','چهارشنبه'=>'چ','پنج‌شنبه'=>'پ','جمعه'=>'ج'];
 
-/* Recent messages */
-$recent = backend_outbound_rows($scopeW, [], 8);
-$dashOrgId  = !is_admin() ? (int)($me['organization_id'] ?? 0) ?: null : null;
-$dashUserId = !is_admin() && !$dashOrgId ? (int)$me['id'] : null;
-$recentDeliveryByDest = report_delivery_lookup_by_destination($recent, $dashOrgId, $dashUserId);
+$jobs = dashboard_recent_jobs($scopeUserIds, 5);
+$recent = dashboard_recent_messages($scopeUserIds, 10);
+$usernames = is_admin() ? backend_usernames_by_ids(array_merge(array_column($recent, 'user_id'), array_column($jobs, 'user_id'))) : [];
+$hasRunning = (bool)array_filter($jobs, static fn(array $j): bool => $j['status'] === 'processing');
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -66,15 +48,41 @@ require __DIR__ . '/../app/views/header.php';
 <?php endif; ?>
 
 <div class="grid grid-4">
-  <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value"><?= to_persian_digits(number_format($todaySent)) ?></div></div>
-  <div class="stat"><div class="stat-label">ناموفق امروز</div><div class="stat-value"><?= to_persian_digits(number_format($todayFailed)) ?></div></div>
-  <div class="stat"><div class="stat-label">در صف زمان‌بندی</div><div class="stat-value"><?= to_persian_digits(number_format($pendingSch)) ?></div></div>
-  <?php if ($inboxToday !== null): ?>
-    <div class="stat"><div class="stat-label">دریافتی امروز</div><div class="stat-value"><?= to_persian_digits(number_format($inboxToday)) ?></div></div>
-  <?php else: ?>
-    <div class="stat"><div class="stat-label">مجموع ارسال‌ها</div><div class="stat-value"><?= to_persian_digits(number_format($totalSent)) ?></div></div>
-  <?php endif; ?>
+  <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value"><?= to_persian_digits(number_format($today['sent'])) ?></div></div>
+  <div class="stat"><div class="stat-label">تحویل‌شده امروز</div><div class="stat-value"><?= to_persian_digits(number_format($today['delivered'])) ?></div></div>
+  <div class="stat"><div class="stat-label">ناموفق امروز</div><div class="stat-value"><?= to_persian_digits(number_format($today['failed'])) ?></div></div>
+  <div class="stat"><div class="stat-label">در صف ارسال<?php if ($pendingSch > 0): ?> <span class="hint">· <?= to_persian_digits((string)$pendingSch) ?> زمان‌بندی فعال</span><?php endif; ?></div><div class="stat-value"><?= to_persian_digits(number_format($queued)) ?></div></div>
 </div>
+
+<?php if ($jobs): ?>
+<div class="card" style="margin-top:22px">
+  <h2>ارسال‌های حجیم اخیر <a class="btn btn-sm btn-ghost" style="float:left" href="/reports-bulk.php">همه‌ی ارسال‌های حجیم ←</a></h2>
+  <div class="dash-jobs">
+    <?php foreach ($jobs as $j):
+      $total = max(1, (int)$j['total_rows']);
+      $sent = (int)$j['sent_rows']; $failed = (int)$j['failed_rows'];
+      $remaining = max(0, (int)$j['total_rows'] - $sent - $failed);
+      $jobStatus = match ($j['status']) { 'processing' => ['در حال ارسال', 'processing'], 'pending' => ['در انتظار', 'pending'], 'done' => ['تمام‌شده', 'done'], 'cancelled' => ['لغو شده', 'cancelled'], default => [$j['status'], 'unknown'] };
+    ?>
+      <a class="dash-job" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">
+        <div class="dash-job-head">
+          <span class="dash-job-title"><?= e($j['title'] ?: ('ارسال #' . $j['id'])) ?><?php if (is_admin()): ?> <span class="hint">· <?= e($usernames[(int)$j['user_id']] ?? ('#' . $j['user_id'])) ?></span><?php endif; ?></span>
+          <span class="badge badge-<?= e($jobStatus[1]) ?>"><?= e($jobStatus[0]) ?></span>
+        </div>
+        <div class="dash-progress" title="<?= to_persian_digits((string)round(($sent + $failed) / $total * 100)) ?>٪">
+          <span class="dash-progress-ok" style="width:<?= round($sent / $total * 100, 2) ?>%"></span><span class="dash-progress-bad" style="width:<?= round($failed / $total * 100, 2) ?>%"></span>
+        </div>
+        <div class="dash-job-meta hint">
+          ارسال‌شده <span class="num"><?= to_persian_digits(number_format($sent)) ?></span>
+          · ناموفق <span class="num"><?= to_persian_digits(number_format($failed)) ?></span>
+          · باقی‌مانده <span class="num"><?= to_persian_digits(number_format($remaining)) ?></span>
+          از <span class="num"><?= to_persian_digits(number_format((int)$j['total_rows'])) ?></span>
+        </div>
+      </a>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
 
 <div class="card" style="margin-top:22px">
   <h2>پیامک‌های ۷ روز اخیر</h2>
@@ -85,7 +93,7 @@ require __DIR__ . '/../app/views/header.php';
         $faWeekday = JALALI_WEEKDAYS[($wd + 1) % 7];
     ?>
       <div class="bar">
-        <div class="bar-v"><?= to_persian_digits((string)$c) ?></div>
+        <div class="bar-v"><?= to_persian_digits(number_format($c)) ?></div>
         <div class="bar-fill" style="height:<?= (int)round($c / $max * 110) ?>px"></div>
         <div class="bar-x"><?= e($weekdayShort[$faWeekday] ?? '') ?></div>
       </div>
@@ -97,22 +105,25 @@ require __DIR__ . '/../app/views/header.php';
   <h2>آخرین پیامک‌ها <a class="btn btn-sm btn-ghost" style="float:left" href="/reports.php">مشاهده‌ی گزارش کامل ←</a></h2>
   <div class="table-wrap">
   <table>
-    <tr><th>#</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>گیرنده</th><th>متن پیام</th><th>وضعیت</th><th>زمان</th></tr>
-    <?php foreach ($recent as $m):
-      $d = $recentDeliveryByDest[(string)$m['destination']] ?? null;
-      $canonical = report_canonical_status($d['delivery_status'] ?? null, (string)$m['status']);
-    ?>
+    <tr><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>گیرنده</th><th>متن پیام</th><th>نوع ارسال</th><th>وضعیت</th><th>زمان</th></tr>
+    <?php foreach ($recent as $m): ?>
       <tr>
-        <td class="num"><?= to_persian_digits((string)$m['id']) ?></td>
-        <?php if (is_admin()): ?><td><?= e($m['username']) ?></td><?php endif; ?>
-        <td class="msisdn"><?= e($m['destination']) ?></td>
-        <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e(mb_strimwidth($m['content'], 0, 60, '…')) ?></td>
-        <td><span class="badge badge-<?= e($canonical['class']) ?>"><?= e($canonical['label']) ?></span></td>
-        <td class="num"><?= jdate($m['sent_at']) ?></td>
+        <?php if (is_admin()): ?><td><?= e($usernames[$m['user_id']] ?? ('#' . $m['user_id'])) ?></td><?php endif; ?>
+        <td class="msisdn"><?= e($m['destination'] !== '' ? $m['destination'] : '—') ?></td>
+        <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e($m['content'] !== '' ? mb_strimwidth($m['content'], 0, 60, '…') : '—') ?></td>
+        <td><?php if ($m['source'] === 'bulk'): ?><a href="/messages/bulk-jobs?id=<?= (int)$m['job_id'] ?>"><?= e($m['job_title'] ?: ('ارسال #' . $m['job_id'])) ?></a><?php else: ?><?= e(report_reference_type_label($m['reference_type'])) ?><?php endif; ?></td>
+        <td><span class="badge badge-<?= e($m['status']['class']) ?>"><?= e($m['status']['label']) ?></span></td>
+        <td class="num"><?= jdate_from_utc($m['at']) ?></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$recent): ?><tr><td colspan="6" class="empty">هنوز پیامکی ارسال نشده — از <a href="/send.php">ارسال پیامک</a> شروع کنید.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>
+<?php if ($hasRunning): ?>
+<script>
+// A bulk job is sending: refresh the numbers every 30 seconds while the tab is visible.
+setInterval(function () { if (document.visibilityState === 'visible') location.reload(); }, 30000);
+</script>
+<?php endif; ?>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

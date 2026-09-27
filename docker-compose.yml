@@ -28,6 +28,7 @@ services:
       APP_URL: ${APP_URL:-}
       APP_VERSION: ${APP_VERSION:-}
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      SMS_LEGACY_BACKEND_ENABLED: ${SMS_LEGACY_BACKEND_ENABLED:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
       SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
@@ -114,10 +115,11 @@ services:
       SMS_PROVIDER_BATCH_SIZE: ${SMS_PROVIDER_BATCH_SIZE:-200}
       WORKER_BULK_BATCH_SIZE: ${WORKER_BULK_BATCH_SIZE:-200}
       # The worker (and bulk-worker, which shares this block) sends through the configured gateway
-      # only when these are present. Without SMS_GATEWAY_TRANSPORT it silently falls back to the
-      # legacy backend API, and without SMS_GATEWAY_MASTER_KEY it cannot decrypt the gateway's
-      # stored credentials -- either way messages leave through a different account than configured.
+      # only when these are present. Without SMS_GATEWAY_TRANSPORT it uses the legacy backend API,
+      # and without SMS_GATEWAY_MASTER_KEY it cannot decrypt the gateway's stored credentials. With the
+      # transport on, the legacy backend is never used unless SMS_LEGACY_BACKEND_ENABLED=1.
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      SMS_LEGACY_BACKEND_ENABLED: ${SMS_LEGACY_BACKEND_ENABLED:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
       SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
