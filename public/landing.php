@@ -2,48 +2,132 @@
 require_once __DIR__ . '/../app/bootstrap.php';
 $pageTitle = 'پنل هوشمند پیامک';
 $metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
-$videos   = db()->query('SELECT * FROM ellsms_landing_videos WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 require __DIR__ . '/../app/views/public_header.php';
 ?>
-  <?php if ($videos): ?>
-    <section class="lp-slider-full" id="lpVideoSlider">
-      <div class="lp-slider-viewport">
-        <?php foreach ($videos as $i => $v):
-          $posterPath = $v['poster'] ? '/assets/img/landing-video-posters/' . $v['poster'] : '';
-        ?>
-          <div class="lp-slide<?= $i === 0 ? ' is-active' : '' ?>" data-fallback="<?= e($posterPath) ?>">
-            <video <?= $i === 0 ? 'autoplay ' : '' ?>muted loop playsinline preload="metadata"
-              <?php if ($posterPath): ?>poster="<?= e($posterPath) ?>"<?php endif; ?>>
-              <source src="/assets/video/landing/<?= e($v['video']) ?>">
-            </video>
-            <?php if ($posterPath): ?>
-              <img src="<?= e($posterPath) ?>" alt="" class="lp-video-hover-image">
-            <?php endif; ?>
-            <button type="button" class="lp-video-mute" aria-label="پخش صدا / بی‌صدا کردن ویدیو" aria-pressed="false">🔇</button>
-            <?php if ($v['title'] || $v['body'] || $v['link_url']): ?>
-              <div class="lp-slide-caption">
-                <div class="lp-slide-caption-inner">
-                  <?php if ($v['title']): ?><h3><?= e($v['title']) ?></h3><?php endif; ?>
-                  <?php if ($v['body']): ?><p><?= e($v['body']) ?></p><?php endif; ?>
-                  <?php if ($v['link_url']): ?><a href="<?= e($v['link_url']) ?>" class="btn btn-primary btn-sm">مشاهده</a><?php endif; ?>
-                </div>
-              </div>
-            <?php endif; ?>
-          </div>
-        <?php endforeach; ?>
-      </div>
-      <?php if (count($videos) > 1): ?>
-        <button type="button" class="lp-slider-nav lp-slider-prev" aria-label="ویدیوی قبلی">‹</button>
-        <button type="button" class="lp-slider-nav lp-slider-next" aria-label="ویدیوی بعدی">›</button>
-        <div class="lp-slider-dots">
-          <?php foreach ($videos as $i => $v): ?>
-            <button type="button" class="lp-dot<?= $i === 0 ? ' is-active' : '' ?>" data-slide="<?= $i ?>" aria-label="ویدیوی <?= $i + 1 ?>"></button>
-          <?php endforeach; ?>
+  <!-- Top banner: three animated slides (plain HTML/CSS + a tiny script below, no video file).
+       Slide 1 reuses the tilted-phone shot of the ELLSMS promo video as one still (≈43 KB WebP);
+       everything else is drawn in CSS/SVG. Auto-advances, pauses on hover/off-screen, and stays on
+       the first slide without motion for prefers-reduced-motion. -->
+  <section class="lp-banner" data-lp-banner aria-roledescription="carousel" aria-label="معرفی ELLSMS">
+    <svg class="lp-banner-circuit" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <path d="M0 140h220l40 40h180"/><path d="M0 300h160l50-50h240"/><path d="M0 420h300l40-40h120"/>
+      <path d="M1200 110H980l-40 40H800"/><path d="M1200 260h-190l-50 50H760"/><path d="M1200 430H930l-40-40H780"/>
+      <path class="is-glow" d="M0 140h220l40 40h180"/><path class="is-glow" d="M1200 260h-190l-50 50H760" style="animation-delay:1.4s"/>
+      <path class="is-glow" d="M0 420h300l40-40h120" style="animation-delay:2.6s"/><path class="is-glow" d="M1200 110H980l-40 40H800" style="animation-delay:3.6s"/>
+    </svg>
+    <div class="lp-banner-track">
+
+      <article class="lp-banner-slide is-active" aria-roledescription="slide" aria-label="۱ از ۳">
+        <div class="lp-banner-visual lp-banner-phone" aria-hidden="true">
+          <picture>
+            <source srcset="/assets/img/landing/banner-phone.webp" type="image/webp">
+            <img src="/assets/img/landing/banner-phone.jpg" alt="" width="640" height="720" decoding="async" fetchpriority="high">
+          </picture>
+          <svg class="lp-banner-streaks" viewBox="0 0 640 720" preserveAspectRatio="none">
+            <path d="M-20 300C140 250 330 330 640 280"/><path d="M-20 360C170 330 360 420 640 360" style="animation-delay:1.1s"/><path d="M-20 420C120 420 300 470 640 450" style="animation-delay:2.2s"/>
+          </svg>
         </div>
-      <?php endif; ?>
-    </section>
-  <?php endif; ?>
+        <div class="lp-banner-copy">
+          <h2>پیامک انبوه، <span class="is-blue">سریع</span> و <span class="is-green">مطمئن</span></h2>
+          <p>با ELLSMS در چند ثانیه پیام خود را به هزاران مخاطب برسانید.</p>
+          <div class="lp-banner-feats">
+            <div><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M2 20h20"/></svg><b>ارسال سریع</b><span>ارسال پیامک در چند ثانیه</span></div>
+            <div><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg><b>قابلیت اطمینان بالا</b><span>زیرساخت پایدار و قابل اعتماد</span></div>
+            <div><svg viewBox="0 0 24 24"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><b>مخاطبین نامحدود</b><span>مدیریت آسان مخاطبین</span></div>
+            <div><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg><b>گزارش‌های دقیق</b><span>گزارش‌گیری لحظه‌ای و پیشرفته</span></div>
+          </div>
+          <a href="<?= e($primaryHref ?? '/login.php') ?>" class="btn btn-primary">شروع ارسال</a>
+        </div>
+      </article>
+
+      <article class="lp-banner-slide" aria-roledescription="slide" aria-label="۲ از ۳">
+        <div class="lp-banner-visual lp-banner-smart" aria-hidden="true">
+          <div class="lp-smart-template">سلام <b>{نام}</b>، شما <b>{شانس}</b> شانس دارید</div>
+          <div class="lp-smart-bubble" style="--i:0">سلام <b>علی</b>، شما <b>۲</b> شانس دارید <em>✓</em></div>
+          <div class="lp-smart-bubble" style="--i:1">سلام <b>مریم</b>، شما <b>۵</b> شانس دارید <em>✓</em></div>
+          <div class="lp-smart-bubble" style="--i:2">سلام <b>رضا</b>، شما <b>۱</b> شانس دارید <em>✓</em></div>
+        </div>
+        <div class="lp-banner-copy">
+          <h2>پیامک <span class="is-blue">هوشمند</span>؛ هر نفر، پیام <span class="is-green">خودش</span></h2>
+          <p>یک قالب بنویسید و فایل مخاطبین را بدهید؛ نام، مبلغ، کد یا تعداد شانس هر نفر خودکار در پیامش قرار می‌گیرد.</p>
+          <ul class="lp-banner-points">
+            <li>فایل اکسل یا CSV با هر تعداد ستون</li>
+            <li>پیش‌نمایش پیام هر ردیف پیش از ارسال</li>
+            <li>ارسال صدها هزار پیام شخصی در یک کمپین</li>
+          </ul>
+          <a href="<?= e($primaryHref ?? '/login.php') ?>" class="btn btn-primary">امتحان پیامک هوشمند</a>
+        </div>
+      </article>
+
+      <article class="lp-banner-slide" aria-roledescription="slide" aria-label="۳ از ۳">
+        <div class="lp-banner-visual lp-banner-report" aria-hidden="true">
+          <div class="lp-report-card">
+            <div class="lp-report-head"><span>ارسال امروز</span><b>۱۲٬۴۸۰</b></div>
+            <div class="lp-report-bars"><i style="--h:45%"></i><i style="--h:70%"></i><i style="--h:52%"></i><i style="--h:88%"></i><i style="--h:64%"></i><i style="--h:96%"></i><i style="--h:78%"></i></div>
+            <div class="lp-report-row" style="--i:0"><span class="ltr">0912•••4471</span><em class="is-ok">تحویل شد</em></div>
+            <div class="lp-report-row" style="--i:1"><span class="ltr">0935•••1187</span><em class="is-ok">تحویل شد</em></div>
+            <div class="lp-report-row" style="--i:2"><span class="ltr">0919•••0032</span><em class="is-wait">در حال ارسال</em></div>
+          </div>
+        </div>
+        <div class="lp-banner-copy">
+          <h2>گزارش <span class="is-blue">لحظه‌ای</span> تحویل</h2>
+          <p>پیشرفت هر ارسال حجیم و وضعیت تحویل تک‌تک پیامک‌ها را همان لحظه در داشبورد ببینید.</p>
+          <ul class="lp-banner-points">
+            <li>تحویل‌شده، ناموفق و در صف، جدا جدا</li>
+            <li>نمودار ارسال هفت روز اخیر</li>
+            <li>خروجی گزارش برای هر کمپین</li>
+          </ul>
+          <a href="#features" class="btn btn-ghost">مشاهده‌ی امکانات</a>
+        </div>
+      </article>
+
+    </div>
+    <div class="lp-banner-dots" role="tablist" aria-label="اسلایدها">
+      <button type="button" class="is-active" aria-label="اسلاید ۱"></button>
+      <button type="button" aria-label="اسلاید ۲"></button>
+      <button type="button" aria-label="اسلاید ۳"></button>
+    </div>
+  </section>
+<script>
+(function () {
+  var root = document.querySelector('[data-lp-banner]');
+  if (!root) return;
+  var slides = root.querySelectorAll('.lp-banner-slide');
+  var dots = root.querySelectorAll('.lp-banner-dots button');
+  var current = 0, timer = null, hovering = false, visible = true;
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function show(i) {
+    current = (i + slides.length) % slides.length;
+    slides.forEach(function (s, k) { s.classList.toggle('is-active', k === current); s.setAttribute('aria-hidden', k === current ? 'false' : 'true'); });
+    dots.forEach(function (d, k) { d.classList.toggle('is-active', k === current); d.setAttribute('aria-selected', k === current ? 'true' : 'false'); });
+  }
+  function schedule() {
+    clearTimeout(timer);
+    if (still || hovering || !visible || document.hidden) return;
+    timer = setTimeout(function () { show(current + 1); schedule(); }, 7000);
+  }
+  dots.forEach(function (d, k) { d.addEventListener('click', function () { show(k); schedule(); }); });
+  root.addEventListener('mouseenter', function () { hovering = true; schedule(); });
+  root.addEventListener('mouseleave', function () { hovering = false; schedule(); });
+  var x0 = null;
+  root.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+  root.addEventListener('touchend', function (e) {
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 40) { show(current + (dx > 0 ? 1 : -1)); schedule(); } // RTL: swipe right = next
+  });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+      root.classList.toggle('is-paused', !visible);
+      schedule();
+    }).observe(root);
+  }
+  document.addEventListener('visibilitychange', schedule);
+  show(0); schedule();
+})();
+</script>
 
   <div class="lp-scroll-progress" aria-hidden="true"><div class="lp-scroll-progress-bar" id="lpScrollBar"></div></div>
 
