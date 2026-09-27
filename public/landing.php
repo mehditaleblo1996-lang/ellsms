@@ -68,58 +68,50 @@ require __DIR__ . '/../app/views/public_header.php';
         </ul>
       </div>
       <div class="lp-hero-visual" aria-hidden="true">
-        <!-- A faithful, if compact, reproduction of the actual logged-in
-             dashboard (see app/views/header.php for the real nav items/icons
-             and public/index.php for the real stat labels, weekly bar chart
-             and "latest messages" table) — not an invented illustration, so
-             what a visitor sees here is what they'll actually get. -->
-        <div class="lp-app-mock">
-          <div class="lp-app-chrome">
-            <span class="lp-app-dot"></span><span class="lp-app-dot"></span><span class="lp-app-dot"></span>
-            <span class="lp-app-url">panel.ellsms.ir</span>
+        <!-- The 3D phone scene from the ELLSMS promo video, kept as one still (≈40 KB WebP) with the
+             motion added in CSS: flying envelopes, the orbit ring, the podium glow and sparks. The
+             captions are real text below (the video's own Persian captions were unreadable). -->
+        <div class="lp-scene" data-lp-scene>
+          <picture>
+            <source srcset="/assets/img/landing/hero-scene.webp" type="image/webp">
+            <img class="lp-scene-img" src="/assets/img/landing/hero-scene.jpg" alt="" width="760" height="720" fetchpriority="high" decoding="async">
+          </picture>
+          <span class="lp-scene-glow"></span>
+          <svg class="lp-scene-orbit" viewBox="0 0 760 720" preserveAspectRatio="none">
+            <g transform="rotate(-7 380 470)">
+              <ellipse class="lp-orbit-track" cx="380" cy="470" rx="275" ry="60"/>
+              <ellipse class="lp-orbit-comet" cx="380" cy="470" rx="275" ry="60" pathLength="1000"/>
+            </g>
+          </svg>
+          <span class="lp-scene-mail" style="--x:-165px;--y:-150px;--r:-22deg;--d:0s"><svg viewBox="0 0 40 28"><rect x="1" y="1" width="38" height="26" rx="4"/><path d="M2 3l18 13L38 3"/></svg></span>
+          <span class="lp-scene-mail" style="--x:170px;--y:-130px;--r:18deg;--d:0.8s"><svg viewBox="0 0 40 28"><rect x="1" y="1" width="38" height="26" rx="4"/><path d="M2 3l18 13L38 3"/></svg></span>
+          <span class="lp-scene-mail" style="--x:-205px;--y:20px;--r:-10deg;--d:1.6s"><svg viewBox="0 0 40 28"><rect x="1" y="1" width="38" height="26" rx="4"/><path d="M2 3l18 13L38 3"/></svg></span>
+          <span class="lp-scene-mail" style="--x:190px;--y:40px;--r:14deg;--d:2.4s"><svg viewBox="0 0 40 28"><rect x="1" y="1" width="38" height="26" rx="4"/><path d="M2 3l18 13L38 3"/></svg></span>
+          <span class="lp-scene-mail" style="--x:-120px;--y:150px;--r:-16deg;--d:3.2s"><svg viewBox="0 0 40 28"><rect x="1" y="1" width="38" height="26" rx="4"/><path d="M2 3l18 13L38 3"/></svg></span>
+          <span class="lp-scene-mail" style="--x:140px;--y:165px;--r:12deg;--d:4.0s"><svg viewBox="0 0 40 28"><rect x="1" y="1" width="38" height="26" rx="4"/><path d="M2 3l18 13L38 3"/></svg></span>
+          <span class="lp-scene-spark" style="--l:18%;--d:0s"></span>
+          <span class="lp-scene-spark" style="--l:32%;--d:1.2s"></span>
+          <span class="lp-scene-spark" style="--l:47%;--d:2.6s"></span>
+          <span class="lp-scene-spark" style="--l:63%;--d:0.6s"></span>
+          <span class="lp-scene-spark" style="--l:78%;--d:1.9s"></span>
+          <span class="lp-scene-spark" style="--l:26%;--d:3.1s"></span>
+          <span class="lp-scene-spark" style="--l:55%;--d:3.8s"></span>
+          <span class="lp-scene-spark" style="--l:84%;--d:0.3s"></span>
+          <span class="lp-scene-spark" style="--l:40%;--d:2.2s"></span>
+          <span class="lp-scene-spark" style="--l:70%;--d:4.4s"></span>
+        </div>
+        <div class="lp-scene-cards">
+          <div class="lp-scene-card" style="--d:0s">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M2 20h20"/></svg>
+            <span>ارسال سریع</span>
           </div>
-          <div class="lp-app-body">
-            <aside class="lp-app-side">
-              <div class="lp-app-brand">ELLSMS</div>
-              <a class="lp-app-nav is-active"><span>▦</span>داشبورد</a>
-              <a class="lp-app-nav"><span>🆕</span>پنل جدید ارسال</a>
-              <a class="lp-app-nav"><span>✦</span>پیامک هوشمند</a>
-              <a class="lp-app-nav"><span>🤖</span>منشی پیامک</a>
-              <a class="lp-app-nav"><span>≣</span>گزارش ارسال</a>
-            </aside>
-            <main class="lp-app-main">
-              <div class="lp-app-topbar">
-                <strong>داشبورد</strong>
-                <span class="lp-app-credit">۱۲۴,۰۰۰ اعتبار</span>
-              </div>
-              <div class="lp-app-stats">
-                <div class="lp-app-stat is-accent"><span>ارسال امروز</span><b>۱۲,۴۸۰</b></div>
-                <div class="lp-app-stat"><span>تحویل‌شده امروز</span><b>۱۱,۹۰۲</b></div>
-                <div class="lp-app-stat"><span>در صف ارسال</span><b>۳,۶۰۰</b></div>
-              </div>
-              <div class="lp-app-card">
-                <h4>پیامک‌های ۷ روز اخیر</h4>
-                <div class="lp-app-bars">
-                  <div style="--h:38%"><i></i><em>ش</em></div>
-                  <div style="--h:62%"><i></i><em>ی</em></div>
-                  <div style="--h:48%"><i></i><em>د</em></div>
-                  <div style="--h:81%"><i></i><em>س</em></div>
-                  <div style="--h:57%"><i></i><em>چ</em></div>
-                  <div style="--h:97%"><i></i><em>پ</em></div>
-                  <div style="--h:70%"><i></i><em>ج</em></div>
-                </div>
-              </div>
-              <div class="lp-app-card">
-                <h4>آخرین پیامک‌ها</h4>
-                <table class="lp-app-table">
-                  <tr><th>گیرنده</th><th>وضعیت</th><th>زمان</th></tr>
-                  <tr><td>0912***4471</td><td><span class="lp-app-badge is-ok">تحویل شد</span></td><td>۱۰:۲۴</td></tr>
-                  <tr><td>0935***1187</td><td><span class="lp-app-badge is-ok">تحویل شد</span></td><td>۱۰:۲۱</td></tr>
-                  <tr><td>0919***0032</td><td><span class="lp-app-badge is-warn">در صف</span></td><td>۱۰:۱۹</td></tr>
-                  <tr><td>0901***7765</td><td><span class="lp-app-badge is-err">ناموفق</span></td><td>۱۰:۱۵</td></tr>
-                </table>
-              </div>
-            </main>
+          <div class="lp-scene-card" style="--d:2s">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
+            <span>امن و قابل اطمینان</span>
+          </div>
+          <div class="lp-scene-card" style="--d:4s">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
+            <span>گزارش لحظه‌ای</span>
           </div>
         </div>
       </div>
@@ -159,6 +151,15 @@ require __DIR__ . '/../app/views/public_header.php';
     </div>
   </section>
 <script>
+(function () {
+  // Hero scene: CSS-only motion, paused while the hero is off-screen.
+  var scene = document.querySelector('[data-lp-scene]');
+  if (scene && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      scene.classList.toggle('is-paused', !entries[0].isIntersecting);
+    }).observe(scene);
+  }
+})();
 (function () {
   var root = document.querySelector('[data-lp-flow]');
   if (!root || !window.matchMedia || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
