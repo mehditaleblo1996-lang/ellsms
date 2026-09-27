@@ -19,7 +19,15 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 
 <header class="lp-nav">
   <div class="lp-nav-inner">
-    <a href="/landing.php" class="lp-brand"><img src="/assets/img/logo.png" alt="ELLSMS"></a>
+    <a href="/landing.php" class="lp-brand" aria-label="ELLSMS — پنل هوشمند پیامک">
+      <svg class="lp-brand-mark" viewBox="0 0 40 34" aria-hidden="true">
+        <defs><linearGradient id="lpBrandGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#6d4aff"/></linearGradient></defs>
+        <path d="M10 2h22a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6H19l-7 7v-7h-2a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6Z" fill="url(#lpBrandGrad)"/>
+        <circle cx="15" cy="13.5" r="2" fill="#fff"/><circle cx="21" cy="13.5" r="2" fill="#fff"/><circle cx="27" cy="13.5" r="2" fill="#fff"/>
+        <path d="M0 9h3M1 14h2.4M0 19h3" stroke="#60a5fa" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span class="lp-brand-text"><b><i>ELL</i>SMS</b><small>پنل هوشمند پیامک</small></span>
+    </a>
     <nav class="lp-nav-links" id="lpNavLinks">
       <a href="/landing.php#features">امکانات</a>
       <a href="/landing.php#pricing">بسته‌های پیامک</a>
