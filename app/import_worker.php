@@ -173,6 +173,11 @@ function import_job_analyze_pass(array $job): void {
                 $chunkCounters['invalid']++;
                 continue;
             }
+            // #40 — a row with prohibited text is invalid: never priced, queued or sent.
+            if (content_policy_violation($content) !== null) {
+                $chunkCounters['invalid']++;
+                continue;
+            }
             $fingerprint = hash('sha256', $content);
             $key = $row['mobile'] . "\0" . $fingerprint;
             if (isset($candidates[$key])) {

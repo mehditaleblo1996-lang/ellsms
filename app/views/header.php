@@ -53,6 +53,7 @@ $adminNav = [
     'price_quote'           => ['/price-quote.php',           'فاکتور / لیست قیمت', '🧾'],
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
+    'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
     'alerts'                => ['/admin/alerts',               'هشدارها',             '🔔'],
     'bulk_archive'          => ['/admin/bulk-archive',        'آرشیو شش‌ماهه پیام‌ها', '🗄'],

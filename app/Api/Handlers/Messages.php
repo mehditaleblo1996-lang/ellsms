@@ -75,6 +75,10 @@ function api_handle_messages_send(array $ctx): void {
         $fields['content'] = ['required'];
     } elseif (mb_strlen($content) > 2000) {
         $fields['content'] = ['too_long — max 2000 characters'];
+    } elseif (($ruleId = content_policy_violation($content)) !== null) {
+        // #40 — a precise 422 instead of dispatch_message()'s generic refusal; never names the word.
+        content_policy_log_refusal($ruleId, 'api', null);
+        $fields['content'] = ['prohibited_content'];
     }
     if (isset($body['originator']) && !is_string($body['originator'])) {
         $fields['originator'] = ['must_be_string'];

@@ -301,6 +301,21 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
         }
     }
 
+    // #40 — safety net for any caller that did not check earlier (the legacy URL API, anything added
+    // later). Per-recipient text is checked per destination; bulk rows are pre-filtered in
+    // bulk_send_group() with a clear per-row reason, so this only drops what slipped through.
+    if ($perDestinationContent === null) {
+        if (($ruleId = content_policy_violation($content)) !== null) {
+            content_policy_log_refusal($ruleId, 'dispatch', isset($user['id']) ? (int)$user['id'] : null);
+            return [false, CONTENT_POLICY_ERROR, 0, count($destinations), 0, false, []];
+        }
+    } elseif (content_policy_rules() !== []) {
+        $destinations = array_values(array_filter($destinations, static fn($d): bool => content_policy_violation((string)($perDestinationContent[(string)$d] ?? $content)) === null));
+        if ($destinations === []) {
+            return [false, CONTENT_POLICY_ERROR, 0, 0, 0, false, []];
+        }
+    }
+
     $parts = sms_parts($content);
     $total = count($destinations);
 
@@ -473,6 +488,12 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         return [false, impersonation_block_message('send.direct'), false, 0, $total, 0];
     }
 
+    // #40 — prohibited content is refused before any quota or credit is reserved.
+    if (($ruleId = content_policy_violation($content)) !== null) {
+        content_policy_log_refusal($ruleId, 'direct', $userId);
+        return [false, CONTENT_POLICY_ERROR, false, 0, $total, 0];
+    }
+
     // Phase 13 (STEP 20): the message quota is reserved BEFORE the wallet, deliberately — a
     // quota rejection then costs nothing to unwind, whereas checking money first would mean
     // releasing a wallet reservation on every over-quota send. Uses the SAME refType/refId the
@@ -621,6 +642,12 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
     if (!impersonation_action_allowed('send.schedule')) {
         impersonation_record_block('send.schedule');
         return [false, impersonation_block_message('send.schedule'), false];
+    }
+
+    // #40 — prohibited content: a permanent (non-retryable) refusal, before anything is reserved.
+    if (($ruleId = content_policy_violation($content)) !== null) {
+        content_policy_log_refusal($ruleId, 'scheduled', $userId);
+        return [false, CONTENT_POLICY_ERROR, false];
     }
 
     // Phase 13 (STEP 20/21/22): identical quota handling to dispatch_message(), with one crucial
@@ -1423,6 +1450,20 @@ function bulk_queue_job(
     $messageClass = normalize_bulk_message_class($messageClass);
     if (!$items) return [false, 'هیچ ردیف معتبری در فایل پیدا نشد.', null];
 
+    // #40 — refuse the whole job up front, before pricing or reserving anything, and say how many
+    // rows are affected so the user can fix the file.
+    if (content_policy_rules() !== []) {
+        $refusedRows = 0;
+        foreach ($items as $it) {
+            if (content_policy_violation((string)$it['content']) !== null) $refusedRows++;
+        }
+        if ($refusedRows > 0) {
+            Logger::warning('content_policy.refused', ['path' => 'bulk_queue', 'rows' => $refusedRows, 'user_id' => $user['id'] ?? null]);
+            Metrics::increment('content_policy.refused', 1, ['path' => 'bulk_queue']);
+            return [false, 'متن ' . to_persian_digits((string)$refusedRows) . ' ردیف شامل عبارت غیرمجاز است؛ این ارسال ثبت نشد. متن را اصلاح و دوباره تلاش کنید.', null, 'content_prohibited'];
+        }
+    }
+
     // Support impersonation: a queued bulk job is a send that happens LATER, which makes it exactly
     // the thing a support session must not be able to leave behind (STEP 8).
     if (!impersonation_action_allowed('send.bulk')) {
@@ -2059,6 +2100,36 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
         }
         $destinations = array_values(array_map(static fn(array $i): string => (string)$i['mobile'], $items));
         $content      = (string)$items[0]['content'];
+    }
+
+    // #40 — rows whose text contains a prohibited word fail with a clear reason, uncharged.
+    if (content_policy_rules() !== []) {
+        $refused = [];
+        foreach ($items as $i) {
+            if (($ruleId = content_policy_violation((string)$i['content'])) !== null) {
+                $refused[] = $i;
+                content_policy_log_refusal($ruleId, 'bulk', (int)($ctx['user']['id'] ?? 0));
+            }
+        }
+        if ($refused !== []) {
+            $refusedIds = array_flip(array_map(static fn(array $i): int => (int)$i['id'], $refused));
+            $items = array_values(array_filter($items, static fn(array $i): bool => !isset($refusedIds[(int)$i['id']])));
+            foreach (array_chunk(array_keys($refusedIds), 1000) as $chunk) {
+                $in = implode(',', array_fill(0, count($chunk), '?'));
+                $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL WHERE id IN ({$in})")
+                   ->execute(array_merge([CONTENT_POLICY_ERROR], $chunk));
+            }
+            $perJob = [];
+            foreach ($refused as $i) { $perJob[(int)$i['job_id']] = ($perJob[(int)$i['job_id']] ?? 0) + 1; }
+            foreach ($perJob as $jobId => $n) {
+                $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + ? WHERE id = ?')->execute([$n, $jobId]);
+            }
+            if ($items === []) {
+                return 0;
+            }
+            $destinations = array_values(array_map(static fn(array $i): string => (string)$i['mobile'], $items));
+            $content      = (string)$items[0]['content'];
+        }
     }
 
     // Phase 9C: a group may now contain rows whose content genuinely differs (see bulk_group_key()) —
