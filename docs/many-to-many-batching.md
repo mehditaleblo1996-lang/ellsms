@@ -135,6 +135,37 @@ gateway.** Money remains protected unconditionally either way — `wallet_commit
 per-item key makes a replayed settlement a no-op regardless of what the provider does with
 `idempotency_keys_array`.
 
+### Confirmed provider: Vesal (#36)
+
+Vesal's code answers the per-provider question above for Vesal:
+
+- **Field:** `userSuppliedIds` in the `/ManyToMany` (and `/OneToMany`) body — a `List<Long>`, i.e.
+  NUMBERS, positionally aligned with `destinations`. Absent or empty is fine; a non-empty list whose
+  length differs from the destinations' makes Vesal reject the WHOLE request.
+- **Window and key space:** Vesal de-duplicates `(customer, userSuppliedId, destination)` within the
+  **same calendar day** (`MTSMSServiceImpl.userSuppliedIdChecking`). A repeat is answered, in that
+  recipient's position, with **`-453`** (`DUPLICATE_USERSUPPLIED_ID`) instead of a reference id.
+
+What ELLSMS does with that:
+
+- `idempotency_ids_array` — the numeric form of the per-recipient token (the bulk item id). It is
+  **all-or-nothing**: empty unless every recipient in the group has an id, so a direct send (which has
+  none) sends `[]` rather than a short list. Wire it with data type **`integer_array`** so the ids
+  travel as JSON numbers: parameter `userSuppliedIds` → `variable` `idempotency_ids_array` →
+  `integer_array`.
+- `duplicate_values` in the connector's batch mapping — e.g.
+  `{"correlation_mode":"position","provider_ids_path":"references","duplicate_values":["-453"]}`.
+  A recipient answered with one of these values was accepted on an earlier attempt, so it is settled
+  as **sent** (counted and charged once, not failed, not re-queued) without a provider id — the
+  answer does not carry one, and ELLSMS never invents one, so that recipient's delivery status is not
+  polled. Works in `position` and `row` correlation (in `row` mode the row's `status_key` value is
+  compared). Empty by default: a connector that omits it behaves exactly as before.
+- Because Vesal's window is one calendar day, a crashed batch must be retried the same day for the
+  duplicate to be recognised; the worker's lease expiry (minutes) makes that the normal case.
+
+Tests: `tests/Integration/VesalIdempotencyTest.php` against a Vesal-shaped endpoint in
+`tests/fixtures/recording_gateway_server.php` (`/vesal/*`), and `tests/Unit/GatewayIdempotencyIdsTest.php`.
+
 ### Operator guidance
 
 - Confirm with each provider whether their batch/ManyToMany endpoint accepts a per-message

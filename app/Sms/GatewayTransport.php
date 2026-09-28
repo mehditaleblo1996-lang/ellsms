@@ -95,13 +95,32 @@ function gateway_send_context(array $input): array {
     $messagesArray=$perRecipientMessages!==null?array_map(static fn(string $d):string=>(string)($perRecipientMessages[$d]??$message),$recipients):($count>0?array_fill(0,$count,$message):[]);
     $perRecipientIdempotencyKeys=is_array($input['idempotency_keys']??null)?$input['idempotency_keys']:null;
     $idempotencyKeysArray=$perRecipientIdempotencyKeys!==null?array_map(static fn(string $d):string=>(string)($perRecipientIdempotencyKeys[$d]??''),$recipients):[];
+    $idempotencyIdsArray=gateway_idempotency_ids($idempotencyKeysArray);
     return [
         'sender'=>$sender,'recipient'=>(string)($input['recipient']??($recipients[0]??'')),'recipients'=>implode(',',$recipients),'recipients_array'=>$recipients,
-        'senders_array'=>$count>0?array_fill(0,$count,$sender):[],'messages_array'=>$messagesArray,'idempotency_keys_array'=>$idempotencyKeysArray,
+        'senders_array'=>$count>0?array_fill(0,$count,$sender):[],'messages_array'=>$messagesArray,'idempotency_keys_array'=>$idempotencyKeysArray,'idempotency_ids_array'=>$idempotencyIdsArray,
         'message'=>$message,'message_type'=>(string)($input['message_type']??''),'request_id'=>(string)($input['request_id']??Logger::currentRequestId()),
         'organization_id'=>(string)($input['organization_id']??''),'operator_code'=>(string)($input['operator_code']??''),'route_code'=>(string)($input['route_code']??''),
         'gateway_code'=>(string)($input['gateway_code']??''),'sender_user_id'=>(string)($input['sender_user_id']??''),'timestamp'=>(string)time(),
     ];
+}
+
+/**
+ * #36 — numeric form of the per-recipient idempotency keys ('ellsms:bulk_item:123' -> '123'),
+ * positionally aligned. Returns [] unless EVERY key yields a positive integer: a provider such as
+ * Vesal rejects the whole request when its id list is non-empty but shorter than the recipients.
+ *
+ * @param list<string> $keys
+ * @return list<string>
+ */
+function gateway_idempotency_ids(array $keys): array {
+    if ($keys === []) return [];
+    $ids = [];
+    foreach ($keys as $key) {
+        if (preg_match('/:(\d{1,18})$/D', (string)$key, $m) !== 1 || (int)$m[1] <= 0) return [];
+        $ids[] = ltrim($m[1], '0');
+    }
+    return $ids;
 }
 
 function gateway_status_context(array $input): array {
@@ -367,6 +386,7 @@ function gateway_extract_batch_result(array $section,mixed $decoded):array{
     foreach($rows as $row){
         if(!is_array($row))continue;
         $status=(string)($row[$batch['status_key']]??'');$destination=(string)($row[$batch['destination_key']]??'');
+        if($destination!==''&&gateway_is_duplicate_answer($status,$batch['duplicate_values']??[])){$sent[]=$destination;Metrics::increment('gateway.provider_duplicate_accepted',1);continue;}
         if($destination===''||!in_array($status,$batch['success_values'],true))continue;
         $id=$batch['message_id_key']!==''?gateway_provider_message_id_normalize($row[$batch['message_id_key']]??null):null;
         if($id===null){Logger::warning('gateway.correlation.invalid_provider_id',['mode'=>'keyed']);Metrics::increment('gateway.correlation_failure',1,['reason'=>'invalid_provider_id']);continue;}
@@ -410,6 +430,12 @@ function gateway_read_send_response(array $connector,array $response,array $grou
     return [$groupDestinations,array_fill_keys($groupDestinations,$messageId)];
 }
 
+/** #36 — true when a per-recipient answer is one of the connector's configured "already accepted" values. */
+function gateway_is_duplicate_answer(mixed $raw, array $duplicateValues): bool {
+    if ($duplicateValues === [] || $raw === null || is_bool($raw) || is_array($raw)) return false;
+    return in_array(trim((string)$raw), $duplicateValues, true);
+}
+
 function gateway_extract_positional_result(array $section,mixed $decoded,array $groupDestinations):array{
     $batch=$section['batch']??null;if($batch===null||$batch['provider_ids_path']===[])return [[],[]];
     $ids=gateway_path_extract($batch['provider_ids_path'],$decoded);
@@ -420,8 +446,9 @@ function gateway_extract_positional_result(array $section,mixed $decoded,array $
     // destination. Rejecting the whole group here marked every neighbour failed although the provider
     // had accepted and delivered them (1 bad entry in a 1000-recipient batch = 999 false failures),
     // left them without a provider id so delivery was never polled, and never charged them.
-    $accepted=[];$messageIds=[];$rejected=0;
-    foreach($groupDestinations as $index=>$destination){$id=gateway_provider_message_id_normalize($ids[$index]??null);if($id===null){$rejected++;continue;}$accepted[]=$destination;$messageIds[$destination]=$id;}
+    $accepted=[];$messageIds=[];$rejected=0;$duplicates=0;$duplicateValues=$batch['duplicate_values']??[];
+    foreach($groupDestinations as $index=>$destination){$id=gateway_provider_message_id_normalize($ids[$index]??null);if($id===null){if(gateway_is_duplicate_answer($ids[$index]??null,$duplicateValues)){$accepted[]=$destination;$duplicates++;continue;}$rejected++;continue;}$accepted[]=$destination;$messageIds[$destination]=$id;}
+    if($duplicates>0){Logger::info('gateway.correlation.already_accepted',['duplicates'=>$duplicates,'mode'=>'position']);Metrics::increment('gateway.provider_duplicate_accepted',$duplicates);}
     if($rejected>0){Logger::warning('gateway.correlation.positional_invalid_id',['rejected'=>$rejected,'accepted'=>count($accepted)]);Metrics::increment('gateway.correlation_failure',$rejected,['reason'=>'invalid_provider_id']);}
     return [$accepted,$messageIds];
 }

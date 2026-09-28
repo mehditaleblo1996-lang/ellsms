@@ -42,6 +42,12 @@ const GATEWAY_SEND_VARIABLES = [
     // recipients_array/messages_array. See gateway_send_context()'s docblock for how it is derived
     // and why it must be deterministic rather than a fresh 'uuid' parameter's value on every attempt.
     'idempotency_keys_array',
+    // #36 — the same per-recipient token as a NUMBER (the bulk item id), for providers whose
+    // idempotency field is numeric — Vesal's `userSuppliedIds` is a List<Long> and de-duplicates
+    // (customer, id, destination) within one calendar day, answering -453 for a repeat. All-or-
+    // nothing: empty unless EVERY recipient in the group has one, because such providers reject a
+    // list whose length differs from the recipients'. Pair it with data type `integer_array`.
+    'idempotency_ids_array',
 ];
 
 /**

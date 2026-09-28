@@ -429,6 +429,11 @@ function gateway_batch_mapping_compile(?array $mapping): ?array {
         'success_values'   => array_map('strval', (array)($mapping['success_values'] ?? ['sent'])),
         'message_id_key'   => (string)($mapping['message_id_key'] ?? ''),
         'provider_ids_path'=> gateway_path_compile((string)($mapping['provider_ids_path'] ?? '')),
+        // #36 — per-recipient answers meaning "you already sent me this one" (Vesal: -453 for a
+        // repeated userSuppliedId). Such a recipient was accepted on an earlier attempt, so it is
+        // settled as SENT (not failed, not re-queued) — just without a provider id, which this
+        // answer does not carry. Empty by default: nothing changes for a connector that omits it.
+        'duplicate_values' => array_values(array_filter(array_map(static fn($v): string => trim((string)$v), (array)($mapping['duplicate_values'] ?? [])), static fn(string $v): bool => $v !== '')),
     ];
 }
 

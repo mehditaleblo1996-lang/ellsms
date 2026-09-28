@@ -68,6 +68,41 @@ if (str_starts_with($path, '/status/')) {
     return;
 }
 
+// A Vesal-shaped ManyToMany endpoint (#36), mirroring the real rules in Vesal's
+// ArtMTSMSServiceImpl.sendMessageManyToMany / MTSMSServiceImpl.userSuppliedIdChecking:
+//  - `userSuppliedIds` may be absent or empty; if present it must match the destinations' count,
+//    otherwise the whole request is malformed;
+//  - a (userSuppliedId, destination) pair already accepted earlier is answered with -453
+//    (DUPLICATE_USERSUPPLIED_ID) instead of a new reference id.
+// Accepted pairs persist in "<recorder file>.vesal" so a test can pre-seed "the provider already has
+// this one" (an earlier attempt that crashed before ELLSMS settled it).
+if (str_starts_with($path, '/vesal/')) {
+    $decoded = json_decode((string)$body, true);
+    $destinations = is_array($decoded['destinations'] ?? null) ? array_values($decoded['destinations']) : [];
+    $ids = is_array($decoded['userSuppliedIds'] ?? null) ? array_values($decoded['userSuppliedIds']) : [];
+    header('Content-Type: application/json');
+    if ($ids !== [] && count($ids) !== count($destinations)) {
+        echo json_encode(['references' => null, 'errorModel' => ['errorCode' => -8]]);
+        return;
+    }
+    $store = (string)$recordFile . '.vesal';
+    $seen = is_file($store) ? array_flip(array_filter(explode("\n", (string)file_get_contents($store)))) : [];
+    $references = [];
+    foreach ($destinations as $i => $destination) {
+        $key = isset($ids[$i]) ? $ids[$i] . '|' . $destination : null;
+        if ($key !== null && isset($seen[$key])) {
+            $references[] = -453;
+            continue;
+        }
+        if ($key !== null) {
+            file_put_contents($store, $key . "\n", FILE_APPEND | LOCK_EX);
+        }
+        $references[] = 7000000000 + random_int(1, 999999999);
+    }
+    echo json_encode(['references' => $references]);
+    return;
+}
+
 // The legacy response shape: one row per destination, `status` = sent | send_failed.
 $decoded = json_decode((string)$body, true);
 $destinations = is_array($decoded['destinations'] ?? null) ? $decoded['destinations'] : [];
