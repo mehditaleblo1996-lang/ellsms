@@ -119,6 +119,11 @@ services:
       # and without SMS_GATEWAY_MASTER_KEY it cannot decrypt the gateway's stored credentials. With the
       # transport on, the legacy backend is never used unless SMS_LEGACY_BACKEND_ENABLED=1.
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      # Low-credit alerts (#35, app/LowCreditAlerts.php): how often the worker checks, how often one
+      # organization may be alerted, and how many alerts at most until it tops up.
+      LOW_CREDIT_ALERT_CHECK_SECONDS: ${LOW_CREDIT_ALERT_CHECK_SECONDS:-300}
+      LOW_CREDIT_ALERT_PERIOD_HOURS: ${LOW_CREDIT_ALERT_PERIOD_HOURS:-24}
+      LOW_CREDIT_ALERT_MAX_COUNT: ${LOW_CREDIT_ALERT_MAX_COUNT:-3}
       SMS_LEGACY_BACKEND_ENABLED: ${SMS_LEGACY_BACKEND_ENABLED:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}

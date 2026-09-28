@@ -183,9 +183,16 @@ inconsistency.
 
 ## 11. Limitations
 
-- **The low-credit alert is stored, not sent.** This phase owns the preference; the notification
-  sender needs a scheduled job with its own dedup/idempotency design and is deliberately not invented
-  here. Nothing currently reads the threshold to send anything.
+- ~~**The low-credit alert is stored, not sent.**~~ **Sent since #35** — `app/LowCreditAlerts.php`,
+  run by the `worker` service every `LOW_CREDIT_ALERT_CHECK_SECONDS` (default 300) and by
+  `make low-credit-alerts`. Balance = the organization's wallet accounts' `available_balance`. At most
+  one alert per `LOW_CREDIT_ALERT_PERIOD_HOURS` (24) and `LOW_CREDIT_ALERT_MAX_COUNT` (3) alerts while
+  the balance stays low; a top-up back to the threshold re-arms it. Each alert is claimed with one
+  conditional `UPDATE` (`last_low_credit_alert_at`, `low_credit_alert_count`), so concurrent runs never
+  double-send. SMS/email go only through the channels the organization enabled, to `alert_mobile` /
+  `alert_email` or else the owner's; the owner also gets a panel notification (`credit.low`). Text:
+  setting `low_credit_alert_template` (`{name}`, `{credit}`, `{threshold}`); platform admins are told
+  too only when setting `low_credit_alert_notify_admins` is `1`.
 - **One address per organization.** Every screen in this product represents a single company address;
   a billing/shipping split would add a "which one?" question to every read for no current benefit.
 - **No province/city catalog.** Validated free text, because no such catalog exists in the product

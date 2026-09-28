@@ -20,7 +20,7 @@
         db-migrations-show db-migrations-status db-migrations-apply \
         db-integrity-check db-cleanup db-cleanup-apply \
         wallet-backfill wallet-backfill-dry-run wallet-audit \
-        payments-reconcile payments-reconcile-dry-run \
+        payments-reconcile payments-reconcile-dry-run low-credit-alerts low-credit-alerts-dry-run \
         jobs-status jobs-recover jobs-recover-force jobs-recover-force-dry-run \
         rbac-integrity-check rbac-status backend-boundary-check \
         jobs-status-json performance-snapshot performance-snapshot-json \
@@ -89,6 +89,8 @@ help:
 	@echo "  make wallet-audit              read-only: report any drift between the wallet and currentcredit"
 	@echo "  make payments-reconcile        recover payments ZarinPal completed but ELLSMS never finished crediting"
 	@echo "  make payments-reconcile-dry-run  same, but only reports what it would do"
+	@echo "  make low-credit-alerts       send due low-credit alerts now (the worker also does this every 5 min)"
+	@echo "  make low-credit-alerts-dry-run  list organizations that would get a low-credit alert"
 	@echo "                            see docs/wallet-architecture.md for the deployment order these fit into"
 	@echo ""
 	@echo "  make jobs-status               read-only: queue health across bulk items/jobs, schedules, auto-reply"
@@ -483,6 +485,15 @@ payments-reconcile:
 
 payments-reconcile-dry-run:
 	docker compose run --rm worker php cron/payments-reconcile.php --dry-run
+
+# #35 -- low-credit alerts (app/LowCreditAlerts.php). The worker service already runs this every
+# LOW_CREDIT_ALERT_CHECK_SECONDS; these targets are for a manual run or a host cron. Idempotent and
+# safe alongside the worker: each alert is claimed atomically before it is sent.
+low-credit-alerts:
+	docker compose run --rm worker php cron/low-credit-alerts.php
+
+low-credit-alerts-dry-run:
+	docker compose run --rm worker php cron/low-credit-alerts.php --dry-run
 
 ## ---------- Job queue (Phase 4 -- see docs/job-queue-architecture.md) ----------
 

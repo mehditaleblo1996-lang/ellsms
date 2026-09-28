@@ -132,6 +132,21 @@ do {
             Logger::critical('worker.autoreply.failed', ['exception' => $t]);
             Metrics::increment('worker.pass.failed', 1, ['pass' => 'autoreply']);
         }
+
+        // Low-credit alerts (#35): a cheap periodic pass, not every tick. Each alert is claimed
+        // atomically, so a manual `make low-credit-alerts` alongside this never double-sends.
+        static $lowCreditLastRunAt = 0.0;
+        $lowCreditEvery = low_credit_alert_check_seconds();
+        if ($lowCreditEvery > 0 && microtime(true) - $lowCreditLastRunAt >= $lowCreditEvery) {
+            $lowCreditLastRunAt = microtime(true);
+            try {
+                $lc = Metrics::time('worker.pass.low_credit_alerts', fn() => low_credit_alerts_run());
+                if ($lc['sent'] > 0) Logger::info('worker.low_credit_alerts.sent', ['count' => $lc['sent']]);
+            } catch (Throwable $t) {
+                Logger::error('worker.low_credit_alerts.failed', ['exception' => $t]);
+                Metrics::increment('worker.pass.failed', 1, ['pass' => 'low_credit_alerts']);
+            }
+        }
     }
 
     if ($shuttingDown) break;
