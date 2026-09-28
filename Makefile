@@ -20,7 +20,7 @@
         db-migrations-show db-migrations-status db-migrations-apply \
         db-integrity-check db-cleanup db-cleanup-apply \
         wallet-backfill wallet-backfill-dry-run wallet-audit \
-        payments-reconcile payments-reconcile-dry-run low-credit-alerts low-credit-alerts-dry-run \
+        payments-reconcile payments-reconcile-dry-run low-credit-alerts low-credit-alerts-dry-run subscription-reminders subscription-reminders-dry-run \
         jobs-status jobs-recover jobs-recover-force jobs-recover-force-dry-run \
         rbac-integrity-check rbac-status backend-boundary-check \
         jobs-status-json performance-snapshot performance-snapshot-json \
@@ -91,6 +91,8 @@ help:
 	@echo "  make payments-reconcile-dry-run  same, but only reports what it would do"
 	@echo "  make low-credit-alerts       send due low-credit alerts now (the worker also does this every 5 min)"
 	@echo "  make low-credit-alerts-dry-run  list organizations that would get a low-credit alert"
+	@echo "  make subscription-reminders  send due subscription/trial/grace reminders (the worker does this hourly)"
+	@echo "  make subscription-reminders-dry-run  list organizations that would get a reminder"
 	@echo "                            see docs/wallet-architecture.md for the deployment order these fit into"
 	@echo ""
 	@echo "  make jobs-status               read-only: queue health across bulk items/jobs, schedules, auto-reply"
@@ -494,6 +496,14 @@ low-credit-alerts:
 
 low-credit-alerts-dry-run:
 	docker compose run --rm worker php cron/low-credit-alerts.php --dry-run
+
+# #41 -- reminders before a subscription, trial or grace period ends (app/SubscriptionReminders.php).
+# The worker already runs this every SUBSCRIPTION_REMINDER_CHECK_SECONDS; idempotent alongside it.
+subscription-reminders:
+	docker compose run --rm worker php cron/subscription-reminders.php
+
+subscription-reminders-dry-run:
+	docker compose run --rm worker php cron/subscription-reminders.php --dry-run
 
 ## ---------- Job queue (Phase 4 -- see docs/job-queue-architecture.md) ----------
 

@@ -221,3 +221,21 @@ A 3-segment message to one recipient consumes **1 message** of quota and, at 1 c
 
 Operational commands: `make sms-pricing-integrity-check`, `make sms-pricing-status`,
 `make sms-price-simulate PHONE=…`. The integrity check is part of `make release-preflight`.
+
+## Renewal reminders (#41)
+
+`app/SubscriptionReminders.php` reminds an organization before its effective subscription ends —
+`current_period_end` for an active subscription, `trial_ends_at` for a trial, `grace_ends_at` for
+`past_due`/`grace` — at `SUBSCRIPTION_REMINDER_DAYS` (default `7,3,1`) days before. The `worker` service
+runs it every `SUBSCRIPTION_REMINDER_CHECK_SECONDS` (3600); `make subscription-reminders[-dry-run]` runs
+it by hand. Nothing happens while `BILLING_ENABLED` is off.
+
+- **Only the most urgent due reminder** is sent: after a week-long outage the organization gets the
+  1-day reminder, not three at once.
+- **Once per period:** each reminder is claimed in `ellsms_subscription_reminders`
+  (UNIQUE subscription / end moment / offset) before sending; a renewal moves the end and re-arms them.
+- **Skipped** when `cancel_at_period_end = 1` — the organization chose to stop.
+- **Recipients:** the organization's alert mobile / email (Profile → notifications) or else the
+  owner's, plus a `subscription.expiring` panel notification for the owner.
+- **Text:** setting `subscription_reminder_template` with `{name} {what} {plan} {date} {days}`; `{date}`
+  is Jalali, `{what}` is اشتراک / دوره‌ی آزمایشی / مهلت پرداخت اشتراک.

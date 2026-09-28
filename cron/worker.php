@@ -147,6 +147,21 @@ do {
                 Metrics::increment('worker.pass.failed', 1, ['pass' => 'low_credit_alerts']);
             }
         }
+
+        // Subscription / trial / grace-period reminders (#41): hourly by default; each reminder is
+        // claimed in ellsms_subscription_reminders, so a manual run alongside never double-sends.
+        static $subscriptionReminderLastRunAt = 0.0;
+        $subscriptionReminderEvery = subscription_reminder_check_seconds();
+        if ($subscriptionReminderEvery > 0 && microtime(true) - $subscriptionReminderLastRunAt >= $subscriptionReminderEvery) {
+            $subscriptionReminderLastRunAt = microtime(true);
+            try {
+                $sr = Metrics::time('worker.pass.subscription_reminders', fn() => subscription_reminders_run());
+                if ($sr['sent'] > 0) Logger::info('worker.subscription_reminders.sent', ['count' => $sr['sent']]);
+            } catch (Throwable $t) {
+                Logger::error('worker.subscription_reminders.failed', ['exception' => $t]);
+                Metrics::increment('worker.pass.failed', 1, ['pass' => 'subscription_reminders']);
+            }
+        }
     }
 
     if ($shuttingDown) break;

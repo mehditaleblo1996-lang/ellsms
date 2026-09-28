@@ -14,6 +14,7 @@ const NOTIFICATION_EVENTS = [
     'payment.success'               => 'پرداخت موفق',
     'payment.failed'                => 'پرداخت ناموفق',
     'credit.low'                    => 'اعتبار کم',
+    'subscription.expiring'         => 'یادآوری تمدید اشتراک',
     'bulk.completed'                => 'پایان ارسال انبوه',
     'bulk.failed'                   => 'خطای ارسال انبوه',
     'import.started'                => 'شروع واردسازی',
