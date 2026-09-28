@@ -76,6 +76,25 @@ if (str_starts_with($path, '/status/')) {
 //    (DUPLICATE_USERSUPPLIED_ID) instead of a new reference id.
 // Accepted pairs persist in "<recorder file>.vesal" so a test can pre-seed "the provider already has
 // this one" (an earlier attempt that crashed before ELLSMS settled it).
+// Bale-shaped send_message (#42): 401 without the right api-access-key; a phone number starting with
+// 98912000 has no Bale account (404); otherwise {"request_id","message_id"} like Bale's answer.
+if ($path === '/bale/api/v3/send_message') {
+    header('Content-Type: application/json');
+    if (($headers['Api-Access-Key'] ?? '') !== 'test-bale-key') {
+        http_response_code(401);
+        echo json_encode(['error' => 'unauthorized']);
+        return;
+    }
+    $decoded = json_decode((string)$body, true);
+    if (str_starts_with((string)($decoded['phone_number'] ?? ''), '98912000')) {
+        http_response_code(404);
+        echo json_encode(['error' => 'user not found']);
+        return;
+    }
+    echo json_encode(['request_id' => bin2hex(random_bytes(4)), 'message_id' => 'bale-' . bin2hex(random_bytes(6))]);
+    return;
+}
+
 // Vesal-shaped pullReceivedMessages (#37): answers {"messageModels":[...],"errorModel":{"errorCode":0}}
 // from "<recorder file>.mo" (a JSON list the test writes), filtered by the requested `destination`.
 // Like Vesal's MessageModel it carries originator, destination, content and insertDate (epoch ms) —

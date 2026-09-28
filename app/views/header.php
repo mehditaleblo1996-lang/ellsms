@@ -27,6 +27,10 @@ $nav += [
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
 ];
+// #42 — the Bale channel's message record, shown once the channel is set up (admins always, to set it up).
+if ($me['role'] === 'admin' || bale_configured()) {
+    $nav['bale'] = ['/bale-messages.php', 'پیام‌رسان بله', '💬'];
+}
 $integrationNav = [];
 $navOrg = current_organization();
 if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {

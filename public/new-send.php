@@ -154,7 +154,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif ($mode === 'direct') {
-        [$ok, $info] = dispatch_message($me, $originator, $dests, $content);
+        // #42 — the Bale channel is offered only while it is configured; 'sms' is the unchanged path.
+        $channel = in_array($_POST['channel'] ?? 'sms', MESSAGE_CHANNELS, true) ? (string)$_POST['channel'] : 'sms';
+        [$ok, $info] = dispatch_with_channel($me, $originator, $dests, $content, $channel);
         flash($ok ? 'success' : 'error', $info . $blockedNote);
         audit((int)$me['id'], 'new_send.direct', count($dests) . ' dest, ok=' . (int)$ok);
         if ($ok) redirect('/reports.php');
@@ -377,6 +379,15 @@ if (isset($costPreview) && $costPreview) {
     </label>
     <div id="directPanel" class="card" style="margin:8px 0 16px">
       <div class="hint">پیام بلافاصله پس از ثبت فرم ارسال می‌شود.</div>
+      <?php if (bale_configured()): ?>
+        <label>کانال ارسال
+          <select name="channel" form="newSendForm">
+            <option value="sms">پیامک</option>
+            <option value="bale">پیام‌رسان بله</option>
+            <option value="bale_sms">بله، و پیامک برای کسانی که بله ندارند</option>
+          </select>
+        </label>
+      <?php endif; ?>
     </div>
 
     <label style="display:flex;align-items:center;gap:8px">

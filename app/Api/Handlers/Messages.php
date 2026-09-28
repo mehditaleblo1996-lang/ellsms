@@ -83,6 +83,11 @@ function api_handle_messages_send(array $ctx): void {
     if (isset($body['originator']) && !is_string($body['originator'])) {
         $fields['originator'] = ['must_be_string'];
     }
+    // #42 — optional channel: 'sms' (default), 'bale', or 'bale_sms' (Bale first, SMS for the rest).
+    $channel = $body['channel'] ?? 'sms';
+    if (!is_string($channel) || !in_array($channel, MESSAGE_CHANNELS, true)) {
+        $fields['channel'] = ['must_be_one_of: ' . implode(', ', MESSAGE_CHANNELS)];
+    }
     if ($fields) {
         ApiResponse::validationFailed($fields);
         return;
@@ -158,7 +163,7 @@ function api_handle_messages_send(array $ctx): void {
     // execute at most once for that id). When $clientMessageId is null, dispatch_message() itself
     // falls back to its own dispatch_direct_send_dedup_key() — the same behavior public/send.php
     // gets for an ordinary, non-deduplicated send.
-    [$ok, $info, , $sentCount, $totalCount, $parts] = dispatch_message($user, $originator, $destinations, trim($content), null, 'api_message', $clientMessageId);
+    [$ok, $info, , $sentCount, $totalCount, $parts, $byChannel] = dispatch_with_channel($user, $originator, $destinations, trim($content), (string)$channel, 'api_message', $clientMessageId);
 
     $status = $ok ? ($sentCount === $totalCount ? 'sent' : 'partially_sent') : 'failed';
     db()->prepare(
@@ -191,6 +196,8 @@ function api_handle_messages_send(array $ctx): void {
             'status'      => $status,
             'sent_count'  => $sentCount,
             'total_count' => $totalCount,
+            'channel'     => (string)$channel,
+            'sent_by_channel' => $byChannel,
             'message'     => $info,
         ],
     ];

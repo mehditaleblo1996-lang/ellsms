@@ -368,6 +368,30 @@ final class PublicApiHttpTest extends TestCase
      * send, never a 400. (bulk-jobs' own Idempotency-Key requirement is unrelated to this issue and
      * unchanged.)
      */
+    public function testMessagesSendRejectsAnUnknownChannel(): void
+    {
+        // #42 — `channel` is optional ('sms' by default) but, when given, must be a known channel.
+        $body = json_encode(['destinations' => ['09120000000'], 'content' => 'x', 'channel' => 'pigeon']);
+        $r = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, $body);
+        $this->assertSame(422, $r['code']);
+        $this->assertArrayHasKey('channel', json_decode($r['body'], true)['error']['fields'] ?? []);
+    }
+
+    public function testMessagesSendRejectsProhibitedContentWithAPrecise422(): void
+    {
+        // #40 — a precise validation error, never naming the prohibited word.
+        self::$db->exec("INSERT INTO ellsms_prohibited_words (pattern, match_type) VALUES ('api-forbidden-word', 'contains') ON DUPLICATE KEY UPDATE active = 1");
+        try {
+            $body = json_encode(['destinations' => ['09120000000'], 'content' => 'has API-FORBIDDEN-WORD in it']);
+            $r = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, $body);
+            $this->assertSame(422, $r['code']);
+            $this->assertSame(['prohibited_content'], json_decode($r['body'], true)['error']['fields']['content'] ?? null);
+            $this->assertStringNotContainsString('api-forbidden-word', strtolower($r['body']));
+        } finally {
+            self::$db->exec("DELETE FROM ellsms_prohibited_words WHERE pattern = 'api-forbidden-word'");
+        }
+    }
+
     public function testMessagesSendWithNoClientMessageIdSendsNormallyAndIsNeverDeduplicated(): void
     {
         // This class's API_BASE_URL is deliberately unreachable (setUpBeforeClass) — every send

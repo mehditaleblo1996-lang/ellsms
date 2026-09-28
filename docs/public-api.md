@@ -256,6 +256,11 @@ default. Response:
 `status` is one of `sent`, `partially_sent`, `failed`. This id is the API's OWN resource id
 (`ellsms_api_messages`), independent of the backend platform's own message records.
 
+Optional `"channel"`: `"sms"` (default), `"bale"` or `"bale_sms"` (Bale first, SMS for whoever Bale
+did not accept) — only while the Bale channel is configured (#42, `docs/bale-channel.md`); the response
+then also carries `channel` and `sent_by_channel: {"bale": n, "sms": n}`. Text containing a prohibited
+word (#40) is refused with `422` and `content: ["prohibited_content"]`.
+
 ### `GET /messages/{id}` — scope `messages:read`
 Returns the same resource shape as above by id, scoped to the caller's organization.
 
