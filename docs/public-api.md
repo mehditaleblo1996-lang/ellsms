@@ -322,7 +322,7 @@ the pricing model itself: `docs/sms-pricing.md`.
 ### Contacts — scopes `contacts:read` / `contacts:write`
 Standard CRUD over the organization's own contact list (the same table `/contacts.php` uses):
 - `GET /contacts?limit=&after=`
-- `POST /contacts` — `{"mobile": "...", "name": "...", "group": "..."}`
+- `POST /contacts` — `{"mobile": "...", "name": "...", "group": "..."}` — a mobile is stored once per group: a second copy answers `409 conflict`
 - `GET /contacts/{id}`
 - `PATCH /contacts/{id}` — any subset of `mobile`/`name`/`group`
 - `DELETE /contacts/{id}`

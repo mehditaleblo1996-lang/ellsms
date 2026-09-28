@@ -2,38 +2,57 @@
 
 # ELLSMS — Smart SMS Panel
 
-A self-hosted SMS panel (**PHP 8.2 + Docker Compose**) that shares its **database with a connected backend SMS platform** — no separate user database, no duplicate accounts. It logs in with existing backend accounts, and sends SMS by calling the backend's own REST API.
+A self-hosted SMS panel (**PHP 8.2 + Docker Compose**) that shares its **database with a connected backend SMS platform** — no separate user database, no duplicate accounts. It logs in with existing backend accounts, and sends SMS through one of two transports: the **SMS gateway connectors** ELLSMS configures and calls itself (`SMS_GATEWAY_TRANSPORT=1`), or the backend platform's own REST API (the legacy transport, still the default when the switch is off). See [Sending transports](#sending-transports-gateway-vs-legacy-backend-api).
 
 ## How this fits together with the backend platform
 
 ```
-                 ┌─────────────────────────────┐
-                 │      shared MySQL database    │
-                 │                                │
-                 │  owned by the backend platform: │
-                 │    user_, outbound_message,      │
-                 │    inbound_message, domain,       │
-                 │    customer, role, access          │
-                 │                                      │
-                 │  added by ELLSMS (ellsms_*):          │
-                 │    ellsms_meta, ellsms_schedule,       │
-                 │    ellsms_settings, ellsms_contacts,    │
-                 │    ellsms_audit_log                      │
-                 └───────────────┬───────────────────────────┘
-                                  │
-             ┌────────────────────┼────────────────────┐
-             │                    │                      │
-    Backend REST API          ELLSMS app/worker      SMS gateway
-    (POST /api/messages/send,  (this project) —        (called by the
-     also owns the /mo and     calls the backend's       backend platform,
-     /delivery endpoints        REST API to send           not directly
-     that receive inbound       and reads the shared        by ELLSMS)
-     SMS & delivery reports)    tables for everything else
+                 ┌──────────────────────────────────┐
+                 │        shared MySQL database       │
+                 │                                    │
+                 │  owned by the backend platform:     │
+                 │    user_, outbound_message,         │
+                 │    inbound_message, domain, ...     │
+                 │                                    │
+                 │  added by ELLSMS (ellsms_*):        │
+                 │    meta, settings, contacts,        │
+                 │    schedule, bulk_jobs/items,       │
+                 │    wallet_*, sms_gateways/routes,   │
+                 │    message_attempts, audit_log, ... │
+                 └─────────────────┬──────────────────┘
+                                   │
+            ┌──────────────────────┼───────────────────────┐
+            │                      │                       │
+   Backend REST API         ELLSMS app + workers     SMS provider(s)
+   (legacy transport:       (this project)           (gateway transport:
+    POST /api/messages/      ── SMS_GATEWAY_           called DIRECTLY by
+    send, sends through      TRANSPORT=0 ──►           ELLSMS through the
+    ITS OWN provider         backend API               connector configured
+    account; also owns       ── SMS_GATEWAY_           for each sender line;
+    /mo and /delivery)       TRANSPORT=1 ──►           delivery status is
+                             provider gateway          polled by status-worker)
 ```
 
-**Key point:** ELLSMS sends by calling the backend platform's own `POST {API_BASE_URL}/api/messages/send` — it does not talk to the underlying SMS gateway directly. The backend API performs the actual send and writes the resulting rows into the shared `outbound_message` table; ELLSMS reads those rows back from the response, so there's a single place that owns "what was actually sent." Delivery-status updates and inbound messages keep arriving the normal way through the backend's own receiver endpoints — ELLSMS just reads `inbound_message` / `outbound_message`, it doesn't need its own webhook for those.
+**Key point:** *which* transport carries a message is decided by one switch, `SMS_GATEWAY_TRANSPORT`:
 
-You still need the backend platform's stack running (for its REST API, its `/mo` and `/delivery` endpoints, and the database itself) — ELLSMS attaches to its Docker network to reach the shared database.
+- **`0` (default) — legacy backend API.** ELLSMS calls the backend platform's `POST {API_BASE_URL}/api/messages/send`. The backend performs the send through its own provider account and writes the rows into the shared `outbound_message` table; delivery reports and inbound messages arrive through the backend's own `/delivery` and `/mo` endpoints.
+- **`1` — gateway transport ("gateway only").** ELLSMS sends directly to the SMS provider through the admin-configured connector for each sender line's route (Platform Admin → درگاه‌های پیامک). These sends never reach `outbound_message`; ELLSMS records them in its own tables (`ellsms_bulk_items`, `ellsms_message_attempts`), and the dashboard and reports read from there. Delivery status is polled from the provider by the `status-worker` service. The legacy backend API is **not** used as a fallback — see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api).
+
+You still need the backend platform's stack running for the shared database, account logins and — while the legacy transport is in use — its REST API and `/mo` / `/delivery` endpoints. ELLSMS attaches to its Docker network to reach the shared database.
+
+## Sending transports (gateway vs. legacy backend API)
+
+| Setting (`.env`) | Effect |
+|---|---|
+| `SMS_GATEWAY_TRANSPORT=0` (default) | Every send goes through the legacy backend REST API, exactly as before gateways existed. |
+| `SMS_GATEWAY_TRANSPORT=1` | Every send resolves *sender line + message type → route → gateway* and calls that provider directly. **Gateway only:** a line whose route has no usable gateway is refused and its messages stay retryable (they go out once a gateway is configured / reachable again) — they are never silently re-sent through the backend API, because that API uses a *different* provider account. Registration codes and notification SMS go through the default line's gateway too. |
+| `SMS_LEGACY_BACKEND_ENABLED` | Empty (default) = automatic: the legacy API is used only while `SMS_GATEWAY_TRANSPORT=0`. `1` = keep the legacy API as a temporary fallback during a migration (direct sends, schedules, auto-replies, system SMS). `0` = never use it. |
+| `SMS_GATEWAY_MASTER_KEY` | Required with the gateway transport: root key for the encrypted gateway-secret vault (≥ 32 chars, `openssl rand -base64 48`). Keep it out of database backups — see `docs/backup-and-disaster-recovery.md`. |
+| `BULK_WORKER_REPLICAS` | Extra `bulk-worker` containers that drain bulk jobs in parallel (default `0`). They are gateway-only in every case: without `SMS_GATEWAY_TRANSPORT=1` **and** a master key they stay idle and log `worker.bulk_only.refused`. |
+
+Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy API once the gateway transport is on and `SMS_GATEWAY_MASTER_KEY` is set — not even with `SMS_LEGACY_BACKEND_ENABLED=1`; that fallback only applies to direct sends, schedules, auto-replies and system SMS.
+
+**Switching on safely:** configure the gateway and assign it to the routes your sender lines use, run `make sms-gateway-simulate TO=... COMPARE=1` until it reports `IDENTICAL`, then set `SMS_GATEWAY_TRANSPORT=1` (plus `SMS_GATEWAY_MASTER_KEY`) and restart the containers. **Rollback** is setting it back to `0` and restarting — no configuration has to be undone. Full design: [`docs/sms-gateway-connectors.md`](docs/sms-gateway-connectors.md); status polling: `docs/sms-gateway-status-batch-closure-report.md`; useful commands: `make sms-gateway-status`, `make sms-gateway-integrity-check`, `make sms-status-worker-status`.
 
 ## Login model
 
@@ -64,7 +83,7 @@ Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: 
 
 | Where | What |
 |---|---|
-| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default |
+| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)) |
 | Panel → Settings (admin) | API base URL (overrides `.env`, stored in `ellsms_settings`), default sender line |
 | Panel → Users | Grant/revoke panel access, admin flag, per-user sender line, credit (writes to the shared `user_.currentcredit`) |
 
@@ -149,7 +168,7 @@ Two upload-a-spreadsheet features that share one engine (`ellsms_bulk_jobs` / `e
 
 Both accept `.xlsx` or `.csv`. XLSX reading is a small hand-written parser in `app/xlsx_reader.php` (ZipArchive + SimpleXML, both PHP built-ins) rather than a Composer package — this project has no `vendor/` directory anywhere else, and the actual need is narrow (plain cell values, no formulas/styles). Requires the PHP `zip` extension, which `docker/Dockerfile` installs.
 
-Uploads don't send synchronously — a large file sending row-by-row inside one HTTP request risks a PHP timeout. Instead the upload is parsed, costed against your credit up front, and queued; the worker sends up to 20 rows per 8-second tick (the same loop already running schedules and منشی پیامک) and the page shows live sent/failed/total counts. Cancelling a job stops any rows still pending.
+Uploads don't send synchronously — a large file sending row-by-row inside one HTTP request risks a PHP timeout. Instead the upload is parsed, costed against your credit up front, and queued; the worker (plus any `bulk-worker` replicas) claims rows in leased batches and sends them through the configured gateway, and the job page (`/messages/bulk-jobs?id=…`) shows live sent/failed/total counts. Cancelling a job — from that page, the p2p/smart list, or, for gradual sends, the Schedules page — stops any rows still pending and releases the unspent credit reservation.
 
 ## Mobile & general UX polish
 
@@ -166,7 +185,7 @@ The panel now has a real mobile navigation drawer instead of stacking the entire
 
 ## Legacy-style URL send API
 
-`GET`/`POST /sms/url_send.html?username=...&password=...&originator=...&destination=...&content=...` — a single-message send endpoint shaped like the URL API a lot of other Iranian SMS panels already expose, so an integration written against one of those can point at ELLSMS with just a URL change. Authentication is the request's own `username`/`password` against the shared `user_` table (same check as logging into the panel, including requiring `ellsms_meta.panel_access`) — it does **not** use the browser session/cookie, every request stands alone. Sending itself goes through the exact same `dispatch_message()` as the regular Send page, so credit accounting and `outbound_message` logging are identical to a normal panel send.
+`GET`/`POST /sms/url_send.html?username=...&password=...&originator=...&destination=...&content=...` — a single-message send endpoint shaped like the URL API a lot of other Iranian SMS panels already expose, so an integration written against one of those can point at ELLSMS with just a URL change. Authentication is the request's own `username`/`password` against the shared `user_` table (same check as logging into the panel, including requiring `ellsms_meta.panel_access`) — it does **not** use the browser session/cookie, every request stands alone. Sending itself goes through the exact same `dispatch_message()` as the regular Send page, so credit accounting, transport choice (gateway or legacy API) and send records are identical to a normal panel send.
 
 The response is JSON: `{"status":"ok","reference_id":123456789,"error_code":null}` on success, or `{"status":"not ok","reference_id":null,"error_code":-2}` on failure. `error_code` is one of: `-1` missing parameter, `-2` authentication failed, `-3` account has no ELLSMS panel access, `-4` invalid destination, `-5` insufficient credit, `-6` the gateway rejected the send.
 

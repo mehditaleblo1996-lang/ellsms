@@ -55,8 +55,14 @@ function api_handle_contacts_create(array $ctx): void {
     $name = is_string($body['name'] ?? null) ? mb_strimwidth(trim($body['name']), 0, 160, '') : '';
     $group = is_string($body['group'] ?? null) ? mb_strimwidth(trim($body['group']), 0, 160, '') : '';
 
-    db()->prepare('INSERT INTO ellsms_contacts (user_id, organization_id, name, mobile, group_name) VALUES (?,?,?,?,?)')
-        ->execute([$principal['created_by_user_id'], $principal['organization_id'], $name, $mobile, $group]);
+    // TD-024: a contact is unique per (user_id, mobile, group_name) — a second POST of the same one
+    // is a 409 naming the existing row, never a silent second copy.
+    if (!contact_insert(db(), (int)$principal['created_by_user_id'], (int)$principal['organization_id'], $name, $mobile, $group)) {
+        $existingId = contact_find_id(db(), (int)$principal['created_by_user_id'], $mobile, $group);
+        ApiResponse::error(409, ApiResponse::CODE_CONFLICT, 'This contact already exists in this group'
+            . ($existingId !== null ? ' (id ' . $existingId . ').' : '.'));
+        return;
+    }
     $id = (string)db()->lastInsertId();
 
     ApiResponse::success(201, ['id' => $id, 'name' => $name, 'mobile' => $mobile, 'group' => $group]);
@@ -113,7 +119,15 @@ function api_handle_contacts_update(array $ctx): void {
     }
     if ($sets) {
         $params[] = $row['id'];
-        db()->prepare('UPDATE ellsms_contacts SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
+        try {
+            db()->prepare('UPDATE ellsms_contacts SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($params);
+        } catch (PDOException $e) {
+            if (!contact_is_duplicate_key($e)) {
+                throw $e;
+            }
+            ApiResponse::error(409, ApiResponse::CODE_CONFLICT, 'Another contact with this mobile already exists in this group.');
+            return;
+        }
     }
     $updated = api_contacts_find($principal['organization_id'], (string)$row['id']);
     ApiResponse::success(200, [

@@ -19,9 +19,10 @@ use PDOException;
  *    dirty state it guards against can no longer even be inserted, so there's nothing left to skip.
  *    That behavior was verified manually against two disposable, pre-constraint databases (a clean
  *    apply and a seeded-dirty apply) — see docs/phase-5-final-report.md section 13 for the exact
- *    commands and output. The two checks this class deliberately CAN still exercise for real dirty
- *    data are the ones Phase 5 left deliberately unenforced (ellsms_contacts, ellsms_autoreply_log
- *    orphans) — seeded and asserted below.
+ *    commands and output. The check this class deliberately CAN still exercise for real dirty
+ *    data is the one Phase 5 left deliberately unenforced (ellsms_autoreply_log orphans) — seeded
+ *    and asserted below. ellsms_contacts duplicates are enforced since TD-024 — see
+ *    ContactsUniquenessTest.
  */
 final class DatabaseIntegrityTest extends IntegrationTestCase
 {
@@ -123,18 +124,6 @@ final class DatabaseIntegrityTest extends IntegrationTestCase
     }
 
     // --- Deliberately-deferred checks: still detectable via db-integrity-check.php since no DB constraint blocks them yet ---
-
-    public function testIntegrityCheckDetectsDeferredContactsDuplicate(): void
-    {
-        $userId = $this->makeUser();
-        db()->prepare('INSERT INTO ellsms_contacts (user_id, name, mobile, group_name) VALUES (?, ?, ?, ?)')
-            ->execute([$userId, 'A', '09120000000', 'g1']);
-        db()->prepare('INSERT INTO ellsms_contacts (user_id, name, mobile, group_name) VALUES (?, ?, ?, ?)')
-            ->execute([$userId, 'B', '09120000000', 'g1']);
-
-        $st = db()->query("SELECT COUNT(*) c FROM (SELECT user_id, mobile, group_name FROM ellsms_contacts GROUP BY user_id, mobile, group_name HAVING COUNT(*) > 1) d");
-        $this->assertGreaterThan(0, (int)$st->fetch()['c'], 'contacts uniqueness is deliberately unenforced — this proves the underlying condition db-integrity-check reports is real, not just a query typo');
-    }
 
     public function testIntegrityCheckDetectsDeferredAutoreplyLogOrphan(): void
     {

@@ -26,14 +26,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$mobile) {
             flash('error', 'شماره موبایل معتبر نیست.');
         } else {
-            $slot = entitlement_with_resource_slot((int)$myOrgId, Limits::CONTACTS, static function (PDO $db) use ($me, $myOrgId) {
-                $db->prepare('INSERT INTO ellsms_contacts (user_id, organization_id, name, mobile, group_name) VALUES (?,?,?,?,?)')
-                   ->execute([$me['id'], $myOrgId, trim($_POST['name'] ?? ''), normalize_msisdn($_POST['mobile'] ?? ''), trim($_POST['group_name'] ?? '')]);
-                return true;
+            $slot = entitlement_with_resource_slot((int)$myOrgId, Limits::CONTACTS, static function (PDO $db) use ($me, $myOrgId, $mobile) {
+                return contact_insert($db, (int)$me['id'], $myOrgId !== null ? (int)$myOrgId : null, trim($_POST['name'] ?? ''), $mobile, trim($_POST['group_name'] ?? ''));
             });
-            flash($slot['ok'] ? 'success' : 'error', $slot['ok']
-                ? 'مخاطب افزوده شد.'
-                : 'به سقف تعداد مخاطبین پلن فعلی رسیده‌اید (' . to_persian_digits((string)$slot['limit']) . ' مخاطب). مخاطبین موجود شما دست‌نخورده باقی می‌مانند؛ برای افزودن مخاطب جدید پلن خود را ارتقا دهید.');
+            if (!$slot['ok']) {
+                flash('error', 'به سقف تعداد مخاطبین پلن فعلی رسیده‌اید (' . to_persian_digits((string)$slot['limit']) . ' مخاطب). مخاطبین موجود شما دست‌نخورده باقی می‌مانند؛ برای افزودن مخاطب جدید پلن خود را ارتقا دهید.');
+            } elseif ($slot['result']) {
+                flash('success', 'مخاطب افزوده شد.');
+            } else {
+                flash('info', 'این شماره قبلاً در همین گروه ثبت شده است؛ مخاطب تکراری افزوده نشد.');
+            }
         }
     }
 
@@ -43,10 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $limit = organization_limit((int)$myOrgId, Limits::CONTACTS);
         $imported = 0;
         $skippedOverLimit = 0;
-        db_transaction(function (PDO $db) use ($me, $myOrgId, $lines, $group, $limit, &$imported, &$skippedOverLimit): void {
+        $skippedDuplicate = 0;
+        db_transaction(function (PDO $db) use ($me, $myOrgId, $lines, $group, $limit, &$imported, &$skippedOverLimit, &$skippedDuplicate): void {
             $db->prepare('SELECT id FROM ellsms_organizations WHERE id = ? FOR UPDATE')->execute([$myOrgId]);
             $current = $limit === null ? 0 : entitlement_current_resource_count((int)$myOrgId, Limits::CONTACTS, $db);
-            $ins = $db->prepare('INSERT INTO ellsms_contacts (user_id, organization_id, name, mobile, group_name) VALUES (?,?,?,?,?)');
             foreach ($lines as $line) {
                 [$a, $b] = array_pad(array_map('trim', explode(',', $line, 2)), 2, '');
                 $mobile = normalize_msisdn($a) ?? normalize_msisdn($b);
@@ -58,15 +60,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $skippedOverLimit++;
                     continue;
                 }
-                $ins->execute([$me['id'], $myOrgId, $name, $mobile, $group]);
-                $imported++;
+                if (contact_insert($db, (int)$me['id'], $myOrgId !== null ? (int)$myOrgId : null, $name, $mobile, $group)) {
+                    $imported++;
+                } else {
+                    $skippedDuplicate++;
+                }
             }
         });
+        $duplicateNote = $skippedDuplicate > 0
+            ? ' ' . to_persian_digits((string)$skippedDuplicate) . ' شماره‌ی تکراری (از قبل در همین گروه) نادیده گرفته شد.'
+            : '';
         if ($skippedOverLimit > 0) {
             flash('error', to_persian_digits((string)$imported) . ' مخاطب وارد شد؛ ' . to_persian_digits((string)$skippedOverLimit)
-                . ' مورد به دلیل رسیدن به سقف پلن وارد نشد. برای افزایش ظرفیت، پلن خود را ارتقا دهید.');
+                . ' مورد به دلیل رسیدن به سقف پلن وارد نشد. برای افزایش ظرفیت، پلن خود را ارتقا دهید.' . $duplicateNote);
+        } elseif ($imported > 0) {
+            flash('success', to_persian_digits((string)$imported) . ' مخاطب وارد شد.' . $duplicateNote);
+        } elseif ($skippedDuplicate > 0) {
+            flash('info', 'مخاطب جدیدی وارد نشد؛ همه‌ی شماره‌ها از قبل در این گروه ثبت شده بودند.' . $duplicateNote);
         } else {
-            flash($imported ? 'success' : 'error', $imported ? to_persian_digits((string)$imported) . ' مخاطب وارد شد.' : 'هیچ شماره‌ی معتبری در متن پیدا نشد.');
+            flash('error', 'هیچ شماره‌ی معتبری در متن پیدا نشد.');
         }
     }
 

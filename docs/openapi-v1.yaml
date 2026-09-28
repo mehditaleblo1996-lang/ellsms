@@ -283,6 +283,7 @@ paths:
           application/json: { schema: { $ref: '#/components/schemas/ContactWrite' } }
       responses:
         "201": { description: Created, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/Contact' } } } } } }
+        "409": { description: "This mobile already exists in this group for the key's owner (code conflict)" }
         "422": { $ref: '#/components/responses/ValidationFailed' }
 
   /contacts/{id}:
@@ -301,6 +302,7 @@ paths:
       responses:
         "200": { description: OK }
         "404": { $ref: '#/components/responses/NotFound' }
+        "409": { description: "Another contact with this mobile already exists in this group (code conflict)" }
     delete:
       summary: Delete a contact (scope contacts:write)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]

@@ -68,13 +68,9 @@ report($db,
     "SELECT COUNT(*) FROM (SELECT reference_type, reference_id FROM ellsms_wallet_reservations GROUP BY reference_type, reference_id HAVING COUNT(*) > 1) d",
     'ellsms_wallet_reservations (reference_type, reference_id) duplicates (should be structurally impossible — UNIQUE since Phase 3)');
 
-section('Deferred product decision — for review only, not enforced (see docs/database-migrations.md)');
-report($db,
-    "SELECT COUNT(*) FROM (SELECT user_id, mobile FROM ellsms_contacts GROUP BY user_id, mobile HAVING COUNT(*) > 1) d",
-    'ellsms_contacts duplicate (user_id, mobile) pairs — candidate shape A');
 report($db,
     "SELECT COUNT(*) FROM (SELECT user_id, mobile, group_name FROM ellsms_contacts GROUP BY user_id, mobile, group_name HAVING COUNT(*) > 1) d",
-    'ellsms_contacts duplicate (user_id, mobile, group_name) triples — candidate shape B');
+    'ellsms_contacts duplicate (user_id, mobile, group_name) triples (TD-024 — UNIQUE since 2026_09_28_contacts_unique.sql; nonzero means duplicates that differ only in organization_id kept that migration from adding the index — resolve them by hand, then apply that file again directly with the mysql client, since the migration ledger already records it as applied)');
 
 section('Backend-table soft references (ELLSMS does not own user_ — monitoring only, never enforced; STEP 6)');
 $backendRefs = [

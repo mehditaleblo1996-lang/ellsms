@@ -11,6 +11,32 @@ if (!is_admin()) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // Cancelling a gradual send stops a bulk job, not an ellsms_schedule row, so it is gated the
+    // same way as the cancel button on its own job page (public/bulk-job.php): MESSAGES_SEND.
+    // bulk_cancel_campaign() re-checks ownership and releases the job's wallet reservation.
+    if (($_POST['do'] ?? '') === 'cancel_gradual') {
+        if (!is_admin()) {
+            require_permission(Permissions::MESSAGES_SEND);
+        }
+        $jobId = (int)($_POST['job_id'] ?? 0);
+        $check = db()->prepare('SELECT throttle_count FROM ellsms_bulk_jobs WHERE id = ?');
+        $check->execute([$jobId]);
+        $throttle = $check->fetchColumn();
+        if ($throttle === false || $throttle === null) {
+            flash('error', 'ارسال تدریجی پیدا نشد.');
+        } else {
+            $result = bulk_cancel_campaign($jobId, $me, 'admin panel: schedules gradual cancel');
+            if ($result['ok'] && $result['job_cancelled']) {
+                flash('success', 'ارسال تدریجی شماره ' . to_persian_digits((string)$jobId) . ' لغو شد — '
+                    . to_persian_digits(number_format((int)$result['cancelled_items'])) . ' پیامک ارسال‌نشده متوقف شد.');
+            } elseif ($result['ok']) {
+                flash('info', 'این ارسال قبلاً تمام یا لغو شده بود.');
+            } else {
+                flash('error', 'لغو این ارسال ممکن نشد.');
+            }
+        }
+        redirect('/schedules.php');
+    }
     if (!is_admin()) {
         require_permission(Permissions::SCHEDULES_MANAGE);
     }
@@ -57,6 +83,7 @@ $gradualBatches = array_slice($gradualBatches, 0, 300);
 
 $statusFa = ['active' => 'فعال', 'processing' => 'در حال ارسال', 'done' => 'انجام‌شده', 'cancelled' => 'لغوشده'];
 $repeatFa = ['none' => 'یک‌بار', 'daily' => 'روزانه', 'weekly' => 'هفتگی', 'monthly' => 'ماهانه'];
+$jobStatusFa = ['staged'=>'در حال آماده‌سازی','pending'=>'در صف','processing'=>'در حال ارسال','done'=>'انجام‌شده','cancelled'=>'لغوشده'];
 $batchStatusFa = ['pending'=>'در انتظار','processing'=>'در حال ارسال','done'=>'انجام‌شده','cancelled'=>'لغوشده'];
 
 require __DIR__ . '/../app/views/header.php';
@@ -93,6 +120,40 @@ require __DIR__ . '/../app/views/header.php';
       </tr>
     <?php endforeach; ?>
     <?php if (!$rows): ?><tr><td colspan="10" class="empty">هنوز هیچ زمان‌بندی دوره‌ای ثبت نشده است.</td></tr><?php endif; ?>
+  </table>
+  </div>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h2>ارسال‌های تدریجی</h2>
+  <div class="table-wrap">
+  <table>
+    <tr>
+      <th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>عنوان</th><th>خط</th><th>سرعت</th><th>پیشرفت</th><th>وضعیت</th><th></th>
+    </tr>
+    <?php foreach ($gradualJobs as $j): $jobDone = (int)$j['sent_rows'] + (int)$j['failed_rows']; ?>
+      <tr>
+        <td class="num">#<?= to_persian_digits((string)$j['id']) ?></td>
+        <?php if (is_admin()): ?><td><?= e((string)($gradualUsernames[(int)$j['user_id']] ?? '')) ?></td><?php endif; ?>
+        <td><?= e((string)$j['title']) ?></td>
+        <td class="msisdn"><?= e((string)$j['originator']) ?></td>
+        <td class="num"><?= to_persian_digits(number_format((int)$j['throttle_count'])) ?> پیام هر <?= to_persian_digits((string)(int)$j['throttle_minutes']) ?> دقیقه</td>
+        <td class="num"><?= to_persian_digits(number_format($jobDone)) ?> از <?= to_persian_digits(number_format((int)$j['total_rows'])) ?></td>
+        <td><span class="badge badge-<?= e((string)$j['status']) ?>"><?= e($jobStatusFa[(string)$j['status']] ?? (string)$j['status']) ?></span></td>
+        <td>
+          <a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a>
+          <?php if (in_array((string)$j['status'], ['pending', 'processing'], true)): ?>
+            <form method="post" style="display:inline" onsubmit="return confirm('ارسال تدریجی شماره <?= (int)$j['id'] ?> لغو شود؟ پیامک‌های ارسال‌نشده متوقف می‌شوند.')">
+              <?= csrf_field() ?>
+              <input type="hidden" name="job_id" value="<?= (int)$j['id'] ?>">
+              <input type="hidden" name="do" value="cancel_gradual">
+              <button class="btn btn-sm btn-danger">لغو</button>
+            </form>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$gradualJobs): ?><tr><td colspan="8" class="empty">ارسال تدریجی‌ای ثبت نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>
