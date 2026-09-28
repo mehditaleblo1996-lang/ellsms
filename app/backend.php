@@ -259,7 +259,7 @@ function system_sms_send(int $senderUserId, string $originator, array $destinati
  * per-message tokens, forwarded unchanged to gateway_send_for_dispatch(). See its docblock and
  * gateway_send_context()'s for why these must be caller-supplied rather than generated per attempt.
  */
-function dispatch_message_raw(array $user, string $originator, array $destinations, string $content, ?int $scheduleId = null, bool $recordTransport = true, ?array $perDestinationContent = null, ?array $perDestinationIdempotencyKeys = null): array {
+function dispatch_message_raw(array $user, string $originator, array $destinations, string $content, ?int $scheduleId = null, bool $recordTransport = true, ?array $perDestinationContent = null, ?array $perDestinationIdempotencyKeys = null, ?string $messageType = null): array {
     Logger::info('sms.send.requested', [
         'user_id'       => $user['id'] ?? null,
         'message_count' => count($destinations),
@@ -284,6 +284,21 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
             'originator' => $originator,
         ]);
         return [false, 'استفاده از این خط ارسال برای شما مجاز نیست — از خطوط تخصیص‌یافته به خودتان استفاده کنید.', 0, count($destinations), 0, false, []];
+    }
+
+    // #38 — recipients who texted "11" to this line are never sent to from it (and so never charged:
+    // callers settle on the ACCEPTED destinations). A one-time password is exempt by default.
+    if (!line_optout_is_exempt_type($messageType)) {
+        $optedOut = line_optout_filter($originator, $destinations);
+        if ($optedOut !== []) {
+            $requested = count($destinations);
+            $destinations = array_values(array_filter($destinations, static fn($d): bool => !isset($optedOut[(string)$d])));
+            Logger::info('sms.send.optout_skipped', ['user_id' => $user['id'] ?? null, 'originator' => $originator, 'skipped' => $requested - count($destinations)]);
+            Metrics::increment('sms.send.optout_skipped', $requested - count($destinations));
+            if ($destinations === []) {
+                return [false, LINE_OPTOUT_ERROR, 0, $requested, 0, false, []];
+            }
+        }
     }
 
     $parts = sms_parts($content);
@@ -529,7 +544,7 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     // is the SMS_MESSAGE_TYPES pricing vocabulary, translated to a queue message class purely for
     // this measurement's tagging — dispatch_message() never queues.
     $dispatchStartedAt = microtime(true);
-    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId), 8, null);
+    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId, true, null, null, $messageType), 8, null);
     sli_record_dispatch_latency(
         'dispatch.accept_to_provider_seconds',
         message_class_from_pricing_type($messageType),
@@ -664,7 +679,7 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
 
     sms_price_snapshot_record($priced, $organizationId ?: null, $userId, $refType, $refId);
 
-    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId), 8, null);
+    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId, true, null, null, $messageType), 8, null);
 
     $isTerminal = $ok || !$retryable || $attemptCount >= job_max_attempts();
     // Issue #12 re-audit: only once terminal, matching the wallet/usage-commit gating just below --
@@ -996,6 +1011,12 @@ function run_autoreply_pass(): int {
 
         foreach ($rows as $msg) {
             $maxId = max($maxId, (int)$msg['id']);
+            try {
+                // #38 — "11"/"12" opt-out/opt-in for the receiving line; idempotent per message.
+                line_optout_process_inbound($msg);
+            } catch (Throwable $t) {
+                Logger::error('line_optout.process_failed', ['inbound_message_id' => $msg['id'] ?? null, 'exception' => $t]);
+            }
             try {
                 autoreply_process_one($db, $msg, $sent);
             } catch (Throwable $t) {
@@ -2011,6 +2032,32 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
     $destinations = array_values(array_map(static fn(array $i): string => (string)$i['mobile'], $items));
     $content      = (string)$items[0]['content'];
     $originator   = (string)$items[0]['originator'];
+
+    // #38 — rows whose recipient opted out of this line ("11") are settled as failed with a clear
+    // reason, before any provider request and without a charge; the rest of the group sends normally.
+    $optedOut = line_optout_filter($originator, $destinations);
+    if ($optedOut !== []) {
+        $skipped = array_values(array_filter($items, static fn(array $i): bool => isset($optedOut[(string)$i['mobile']])));
+        $items = array_values(array_filter($items, static fn(array $i): bool => !isset($optedOut[(string)$i['mobile']])));
+        $ids = array_map(static fn(array $i): int => (int)$i['id'], $skipped);
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $in = implode(',', array_fill(0, count($chunk), '?'));
+            $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL WHERE id IN ({$in})")
+               ->execute(array_merge([LINE_OPTOUT_ERROR], $chunk));
+        }
+        $perJob = [];
+        foreach ($skipped as $i) { $perJob[(int)$i['job_id']] = ($perJob[(int)$i['job_id']] ?? 0) + 1; }
+        foreach ($perJob as $jobId => $n) {
+            $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + ? WHERE id = ?')->execute([$n, $jobId]);
+        }
+        Logger::info('bulk.optout_skipped', ['job_id' => $skipped[0]['job_id'] ?? null, 'skipped' => count($skipped)]);
+        Metrics::increment('sms.send.optout_skipped', count($skipped));
+        if ($items === []) {
+            return 0;
+        }
+        $destinations = array_values(array_map(static fn(array $i): string => (string)$i['mobile'], $items));
+        $content      = (string)$items[0]['content'];
+    }
 
     // Phase 9C: a group may now contain rows whose content genuinely differs (see bulk_group_key()) —
     // keyed by destination, not position, so it survives gateway_send()'s internal grouping/splitting

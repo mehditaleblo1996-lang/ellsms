@@ -36,6 +36,7 @@ require_once __DIR__ . '/QueueFairness.php';
 require_once __DIR__ . '/Slo.php';
 require_once __DIR__ . '/tenant.php';
 require_once __DIR__ . '/Contacts.php';
+require_once __DIR__ . '/LineOptouts.php';
 require_once __DIR__ . '/rbac.php';
 // Platform-admin support impersonation (docs/admin-impersonation.md). Loaded after the identity,
 // tenant and RBAC primitives it re-validates against, and before anything that renders a page.

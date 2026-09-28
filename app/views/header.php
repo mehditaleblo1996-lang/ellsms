@@ -22,6 +22,7 @@ $nav += [
     'inbox'      => ['/inbox.php',       'صندوق دریافت',    '✉'],
     'contacts'   => ['/contacts.php',    'مخاطبین',         '☰'],
     'blacklist'  => ['/blacklist.php',   'لیست سیاه',        '🚫'],
+    'line_optouts' => ['/line-optouts.php', 'لغو عضویت (۱۱)', '⛔'],
     'tickets'    => ['/tickets.php',     'پشتیبانی',        '🎫'],
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
