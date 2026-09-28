@@ -18,11 +18,18 @@ final class WebhookEvents
     public const BULK_COMPLETED    = 'bulk.completed';
     public const BULK_FAILED       = 'bulk.failed';
     public const PAYMENT_CREDITED  = 'payment.credited';
+    // #39 — final delivery state from the provider, and an inbound SMS on one of the organization's
+    // lines. Emitted only when the organization has an endpoint subscribed to them (they can be
+    // per-message on a million-row job), and exactly once per message.
+    public const MESSAGE_DELIVERED   = 'message.delivered';
+    public const MESSAGE_UNDELIVERED = 'message.undelivered';
+    public const MESSAGE_RECEIVED    = 'message.received';
 
     public static function all(): array
     {
         return [
             self::MESSAGE_SENT, self::MESSAGE_FAILED,
+            self::MESSAGE_DELIVERED, self::MESSAGE_UNDELIVERED, self::MESSAGE_RECEIVED,
             self::BULK_COMPLETED, self::BULK_FAILED,
             self::PAYMENT_CREDITED,
         ];

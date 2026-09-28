@@ -14,12 +14,25 @@ with automatic retries and a dead-letter state for endpoints that stay broken.
 | `bulk.completed` | A bulk job finished with at least one message actually sent |
 | `bulk.failed` | A bulk job finished with **zero** messages sent (total failure) |
 | `payment.credited` | A ZarinPal payment was successfully claimed and credited to a wallet |
+| `message.delivered` | The provider reported a message **delivered** (final state) — any send path, gateway mode (#39) |
+| `message.undelivered` | The provider reported a final **failed / rejected / expired** state (#39) |
+| `message.received` | An inbound SMS arrived on one of the organization's lines — either inbound store (#39) |
 
 This is a deliberately small, stable catalog (STEP 28) — each event is wired to a real, already-
 existing domain action, never speculative. `message.sent`/`message.failed` currently cover
 API-initiated sends only (`POST /api/v1/messages`); `bulk.completed`/`bulk.failed` and
 `payment.credited` cover the corresponding action regardless of whether it originated from the API
 or the panel UI.
+
+**Per-message events (#39).** `message.delivered`, `message.undelivered` and `message.received` can
+be one event per message on a large job, so they are recorded **only for an organization with an
+enabled endpoint subscribed to that type** (no event rows otherwise), and each fires **exactly once**:
+the delivery events from the one status write that moves a message into a final state
+(`gateway_status_record()`'s guarded UPDATE), `message.received` after claiming the inbound id in
+`ellsms_inbound_webhook_claims`. Delivery events come from the gateway's delivery-status polling, so
+they cover sends made in gateway mode. `data` carries `message_id` (`bulk_item:N`, `attempt:N` or
+`inbound:N`), `originator`/`destination` (or `line`/`from`), `status`, `delivered_at`,
+`provider_message_id`, and `bulk_job_id` or `reference_type`/`reference_id`.
 
 ### Payload shape
 

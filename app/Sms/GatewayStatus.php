@@ -528,6 +528,11 @@ function gateway_status_record(string $source, int $rowId, ?string $current, str
     }
     Logger::info('gateway.status.updated', ['source' => $source, 'row_id' => $rowId, 'from' => $current, 'to' => $next]);
     Metrics::increment('gateway_delivery_status', 1, ['state' => $next]);
+    // #39 — this UPDATE is the one that moved the row into a final state (the SQL guard lets exactly
+    // one writer win it), so the delivery webhook fires here exactly once.
+    if (gateway_state_is_terminal($next)) {
+        webhook_emit_delivery_state($source, $rowId, $next, $deliveredAt);
+    }
     return true;
 }
 
