@@ -31,6 +31,10 @@ $nav += [
 if ($me['role'] === 'admin' || bale_configured()) {
     $nav['bale'] = ['/bale-messages.php', 'پیام‌رسان بله', '💬'];
 }
+// #43 — regional bulk through Vesal, shown once it is set up (admins always, to set it up).
+if ($me['role'] === 'admin' || regional_bulk_configured()) {
+    $nav['regional_bulk'] = ['/regional-bulk.php', 'ارسال منطقه‌ای', '🗺️'];
+}
 $integrationNav = [];
 $navOrg = current_organization();
 if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {

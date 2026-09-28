@@ -116,6 +116,79 @@ if ($path === '/vesal/pullReceivedMessages') {
     return;
 }
 
+// Vesal-shaped regional bulk API (#43), /vesal/backend/bulk/*: username/password in the body, the
+// error codes of Vesal's BulkErrorCode. State (created requests, polls) lives in "<recorder file>.bulk";
+// a test sets "drop_next_request": true there to make the next request* call create the request and
+// then answer 502 — a lost answer that checkDuplicateRequest must recover.
+if (str_starts_with($path, '/vesal/backend/bulk/')) {
+    header('Content-Type: application/json');
+    $endpoint = substr($path, strlen('/vesal/backend/bulk/'));
+    $in = json_decode((string)$body, true) ?: [];
+    $storeFile = (string)$recordFile . '.bulk';
+    $state = is_file($storeFile) ? (json_decode((string)file_get_contents($storeFile), true) ?: []) : [];
+    $state += ['requests' => [], 'next' => 5000];
+    $save = static function () use (&$state, $storeFile): void { file_put_contents($storeFile, json_encode($state), LOCK_EX); };
+    if (($in['username'] ?? '') !== 'ellsms' || ($in['password'] ?? '') !== 'test-vesal-pass') {
+        echo str_starts_with($endpoint, 'count') || str_starts_with($endpoint, 'requestBulk') ? '-101' : json_encode(['errorCode' => -101]);
+        return;
+    }
+    if ($endpoint === 'provinces') {
+        echo json_encode(['errorCode' => 0, 'provinces' => [['code' => 1, 'name' => 'تهران'], ['code' => 2, 'name' => 'اصفهان']]], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    if ($endpoint === 'citiesOfProvince') {
+        echo json_encode(['errorCode' => 0, 'cities' => [['code' => 101, 'name' => 'تهران'], ['code' => 102, 'name' => 'ری']]], JSON_UNESCAPED_UNICODE);
+        return;
+    }
+    if (str_starts_with($endpoint, 'countBy')) {
+        echo (int)($in['provinceCode'] ?? 0) === 99 ? '-109' : '12345';
+        return;
+    }
+    if (str_starts_with($endpoint, 'requestBulkBy')) {
+        if (str_contains((string)($in['content'] ?? ''), 'ممنوع')) { echo '-137'; return; }
+        $usid = (string)($in['userSuppliedId'] ?? '');
+        foreach ($state['requests'] as $ref => $req) {
+            if ($usid !== '' && $req['userSuppliedId'] === $usid) { echo '-108'; return; }
+        }
+        $ref = (string)$state['next']++;
+        $state['requests'][$ref] = ['userSuppliedId' => $usid, 'confirmed' => false, 'polls' => 0, 'endpoint' => $endpoint];
+        $drop = !empty($state['drop_next_request']);
+        $state['drop_next_request'] = false;
+        $save();
+        if ($drop) { http_response_code(502); echo 'bad gateway'; return; }
+        echo $ref;
+        return;
+    }
+    if ($endpoint === 'checkDuplicateRequest') {
+        foreach ($state['requests'] as $ref => $req) {
+            if ($req['userSuppliedId'] === (string)($in['userSuppliedId'] ?? '')) { echo json_encode(['errorCode' => 0, 'referenceId' => (int)$ref]); return; }
+        }
+        echo json_encode(['errorCode' => -111]);
+        return;
+    }
+    $ref = (string)(($in['referenceId'] ?? [])[0] ?? '');
+    if (!isset($state['requests'][$ref])) { echo json_encode(['errorCode' => -111]); return; }
+    if ($endpoint === 'requestPrice') { echo json_encode(['errorCode' => 0, 'price' => 1500.0]); return; }
+    if ($endpoint === 'confirmBulkRequest') {
+        if ($state['requests'][$ref]['confirmed']) { echo json_encode(['errorCode' => -114]); return; }
+        $state['requests'][$ref]['confirmed'] = true;
+        $save();
+        echo json_encode(['errorCode' => 0, 'isConfirmed' => true]);
+        return;
+    }
+    if ($endpoint === 'bulkStatus') {
+        if (!$state['requests'][$ref]['confirmed']) { echo json_encode(['errorCode' => 0, 'bulkStatus' => 0, 'totalRequest' => 0, 'totalSent' => 0, 'totalDelivered' => 0]); return; }
+        $polls = ++$state['requests'][$ref]['polls'];
+        $save();
+        echo json_encode($polls === 1
+            ? ['errorCode' => 0, 'bulkStatus' => 3, 'totalRequest' => 1000, 'totalSent' => 400, 'totalDelivered' => 100]
+            : ['errorCode' => 0, 'bulkStatus' => 5, 'totalRequest' => 1000, 'totalSent' => 800, 'totalDelivered' => 700]);
+        return;
+    }
+    echo json_encode(['errorCode' => -104]);
+    return;
+}
+
 if (str_starts_with($path, '/vesal/')) {
     $decoded = json_decode((string)$body, true);
     $destinations = is_array($decoded['destinations'] ?? null) ? array_values($decoded['destinations']) : [];

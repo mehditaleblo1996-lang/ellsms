@@ -30,6 +30,8 @@ services:
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
       # Bale messenger channel (#42): the access key is only ever read from the environment.
       BALE_API_ACCESS_KEY: ${BALE_API_ACCESS_KEY:-}
+      # Regional bulk through Vesal (#43): the password is only ever read from the environment.
+      VESAL_BULK_PASSWORD: ${VESAL_BULK_PASSWORD:-}
       SMS_LEGACY_BACKEND_ENABLED: ${SMS_LEGACY_BACKEND_ENABLED:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}

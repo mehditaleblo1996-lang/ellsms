@@ -162,6 +162,20 @@ do {
                 Metrics::increment('worker.pass.failed', 1, ['pass' => 'subscription_reminders']);
             }
         }
+
+        // Regional bulk (#43): poll Vesal for confirmed requests and settle finished ones. Each request
+        // is polled at most once a minute (claimed by last_polled_at), so this pass is cheap when idle.
+        static $regionalBulkLastRunAt = 0.0;
+        if (microtime(true) - $regionalBulkLastRunAt >= 60) {
+            $regionalBulkLastRunAt = microtime(true);
+            try {
+                $rb = Metrics::time('worker.pass.regional_bulk', fn() => regional_bulk_poll_pass());
+                if ($rb['finished'] > 0) Logger::info('worker.regional_bulk.settled', ['count' => $rb['finished']]);
+            } catch (Throwable $t) {
+                Logger::error('worker.regional_bulk.failed', ['exception' => $t]);
+                Metrics::increment('worker.pass.failed', 1, ['pass' => 'regional_bulk']);
+            }
+        }
     }
 
     if ($shuttingDown) break;
