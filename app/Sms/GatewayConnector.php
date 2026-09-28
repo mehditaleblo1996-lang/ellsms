@@ -75,8 +75,22 @@ const GATEWAY_PER_MESSAGE_STATUS_VARIABLES = [
     'provider_message_id', 'recipient', 'sender', 'operator_code', 'route_code',
 ];
 
+/**
+ * Variables a RECEIVE connector (#37, app/Sms/GatewayReceive.php) may reference: which line to ask
+ * about and the time window. `from_date`/`to_date` are Tehran wall-clock `Y-m-d\TH:i:s` (the format
+ * Vesal's pullReceivedMessages parses); `from_unix`/`to_unix` are epoch seconds for providers that
+ * want those. Nothing message-shaped: a receive request carries no message.
+ */
+const GATEWAY_RECEIVE_VARIABLES = [
+    'line', 'from_date', 'to_date', 'from_unix', 'to_unix', 'request_id', 'gateway_code', 'timestamp',
+];
+
 function gateway_variable_catalog(string $connector): array {
-    return $connector === 'status' ? GATEWAY_STATUS_VARIABLES : GATEWAY_SEND_VARIABLES;
+    return match ($connector) {
+        'status'  => GATEWAY_STATUS_VARIABLES,
+        'receive' => GATEWAY_RECEIVE_VARIABLES,
+        default   => GATEWAY_SEND_VARIABLES,
+    };
 }
 
 /** The finite set of internal error classes an admin may map a provider error onto (STEP 20). */

@@ -99,6 +99,25 @@ do {
         Metrics::increment('gateway.status_worker.pass.failed', 1);
     }
 
+    // Inbound SMS through receive connectors (#37, app/Sms/GatewayReceive.php). Each gateway is
+    // polled at most once per its own poll_interval_seconds (claimed atomically), so running this
+    // every tick is cheap. Independent of the delivery-status pass: one failing never stops the other.
+    $receiveStartedAt = microtime(true);
+    try {
+        $receiveStats = Metrics::time('gateway.receive_worker.pass', fn() => gateway_receive_poll_pass());
+        if ($receiveStats['gateways'] > 0) {
+            Logger::info('gateway.receive_worker.pass_completed', $receiveStats + [
+                'elapsed_ms' => (int)round((microtime(true) - $receiveStartedAt) * 1000),
+            ]);
+        }
+    } catch (Throwable $t) {
+        Logger::critical('gateway.receive_worker.pass_failed', [
+            'exception'  => $t,
+            'elapsed_ms' => (int)round((microtime(true) - $receiveStartedAt) * 1000),
+        ]);
+        Metrics::increment('gateway.receive_worker.pass.failed', 1);
+    }
+
     // Summary maintenance is deliberately AFTER the provider poll. If polling changed delivery data,
     // paged rows see it immediately; summary cards stay transport-cache based and are advanced here
     // without coupling page latency to history size. First process tick runs it immediately.

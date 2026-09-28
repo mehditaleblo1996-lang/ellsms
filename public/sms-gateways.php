@@ -105,7 +105,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             /* ---------------- Send / status connectors ---------------- */
             case 'connector_save': {
                 $id = (int)$_POST['gateway_id'];
-                $kind = ($_POST['connector'] ?? 'send') === 'status' ? 'status' : 'send';
+                $kind = in_array($_POST['connector'] ?? '', ['status', 'receive'], true) ? (string)$_POST['connector'] : 'send';
                 $endpoint = trim((string)($_POST['endpoint_url'] ?? ''));
                 if ($endpoint !== '' && preg_match('#^https?://#i', $endpoint) !== 1) {
                     flash('error', 'آدرس باید با http:// یا https:// شروع شود.');
@@ -162,17 +162,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $mappings['success_rule_json'], $mappings['response_mapping_json'],
                         $mappings['error_mapping_json'], $mappings['batch_mapping_json'],
                     ]);
+                } elseif ($kind === 'receive') {
+                    // #37 — the provider's "pull received messages" call.
+                    $db->prepare(
+                        'INSERT INTO ellsms_sms_gateway_receive_connectors
+                           (gateway_id, enabled, endpoint_url, http_method, content_type, connect_timeout_ms, request_timeout_ms, tls_verify,
+                            auth_type, auth_config_json, success_rule_json, response_mapping_json, per_line, poll_interval_seconds, lookback_seconds)
+                         VALUES (?,?,?,?,?,?,?,1,?,?,?,?,?,?,?)
+                         ON DUPLICATE KEY UPDATE
+                           enabled=VALUES(enabled), endpoint_url=VALUES(endpoint_url), http_method=VALUES(http_method),
+                           content_type=VALUES(content_type), connect_timeout_ms=VALUES(connect_timeout_ms),
+                           request_timeout_ms=VALUES(request_timeout_ms), auth_type=VALUES(auth_type), auth_config_json=VALUES(auth_config_json),
+                           success_rule_json=VALUES(success_rule_json), response_mapping_json=VALUES(response_mapping_json),
+                           per_line=VALUES(per_line), poll_interval_seconds=VALUES(poll_interval_seconds), lookback_seconds=VALUES(lookback_seconds)'
+                    )->execute([
+                        $id, !empty($_POST['receive_enabled']) ? 1 : 0, $endpoint,
+                        in_array($method, ['GET', 'POST'], true) ? $method : 'POST', $contentType,
+                        max(500, (int)($_POST['connect_timeout_ms'] ?? 5000)),
+                        max(1000, (int)($_POST['request_timeout_ms'] ?? 15000)),
+                        $authType, $authConfig === [] ? null : json_encode($authConfig, JSON_UNESCAPED_UNICODE),
+                        $mappings['success_rule_json'], $mappings['response_mapping_json'],
+                        !empty($_POST['per_line']) ? 1 : 0,
+                        max(5, (int)($_POST['poll_interval_seconds'] ?? 30)),
+                        max(60, (int)($_POST['lookback_seconds'] ?? 3600)),
+                    ]);
                 } else {
                     $db->prepare(
                         'INSERT INTO ellsms_sms_gateway_status_connectors
                            (gateway_id, endpoint_url, http_method, content_type, connect_timeout_ms, request_timeout_ms, tls_verify,
-                            auth_type, auth_config_json, response_mapping_json, status_mapping_json,
+                            auth_type, auth_config_json, success_rule_json, response_mapping_json, status_mapping_json,
                             poll_initial_delay_seconds, poll_max_attempts, poll_max_age_seconds)
-                         VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?)
+                         VALUES (?,?,?,?,?,?,1,?,?,?,?,?,?,?,?)
                          ON DUPLICATE KEY UPDATE
                            endpoint_url=VALUES(endpoint_url), http_method=VALUES(http_method), content_type=VALUES(content_type),
                            connect_timeout_ms=VALUES(connect_timeout_ms), request_timeout_ms=VALUES(request_timeout_ms),
                            auth_type=VALUES(auth_type), auth_config_json=VALUES(auth_config_json),
+                           success_rule_json=VALUES(success_rule_json),
                            response_mapping_json=VALUES(response_mapping_json), status_mapping_json=VALUES(status_mapping_json),
                            poll_initial_delay_seconds=VALUES(poll_initial_delay_seconds),
                            poll_max_attempts=VALUES(poll_max_attempts), poll_max_age_seconds=VALUES(poll_max_age_seconds)'
@@ -181,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         max(500, (int)($_POST['connect_timeout_ms'] ?? 5000)),
                         max(1000, (int)($_POST['request_timeout_ms'] ?? 15000)),
                         $authType, $authConfig === [] ? null : json_encode($authConfig, JSON_UNESCAPED_UNICODE),
-                        $mappings['response_mapping_json'], $mappings['status_mapping_json'],
+                        $mappings['success_rule_json'], $mappings['response_mapping_json'], $mappings['status_mapping_json'],
                         max(0, (int)($_POST['poll_initial_delay_seconds'] ?? 30)),
                         max(0, (int)($_POST['poll_max_attempts'] ?? 6)),
                         max(0, (int)($_POST['poll_max_age_seconds'] ?? 86400)),
@@ -200,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     flash('error', 'نام پارامتر نامعتبر است.');
                     break;
                 }
-                $connectorKind = ($_POST['connector'] ?? 'send') === 'status' ? 'status' : 'send';
+                $connectorKind = in_array($_POST['connector'] ?? '', ['status', 'receive'], true) ? (string)$_POST['connector'] : 'send';
                 $location = in_array($_POST['location'] ?? '', ['header', 'query', 'body'], true) ? (string)$_POST['location'] : 'body';
                 $scope = in_array($_POST['scope'] ?? '', ['gateway', 'route', 'operator'], true) ? (string)$_POST['scope'] : 'gateway';
                 $scopeId = $scope === 'gateway' ? null : (int)($_POST['scope_id'] ?? 0);
@@ -210,7 +235,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $valueType = (string)($_POST['value_type'] ?? 'static');
                 $value = (string)($_POST['value'] ?? '');
-                $dataType = in_array($_POST['data_type'] ?? '', ['string', 'integer', 'boolean', 'null', 'json', 'string_list', 'numeric'], true)
+                $dataType = in_array($_POST['data_type'] ?? '', ['string', 'integer', 'boolean', 'null', 'json', 'string_list', 'numeric',
+                                                                  'string_array', 'numeric_array', 'integer_list', 'integer_array'], true)
                     ? (string)$_POST['data_type'] : 'string';
 
                 // Validated through the SAME compiler the runtime uses, so a value that saves here
@@ -315,7 +341,7 @@ foreach ($gateways as $row) {
     if ((int)$row['id'] === $gatewayId) $gateway = $row;
 }
 
-$sendConnector = $statusConnector = null;
+$sendConnector = $statusConnector = $receiveConnector = null;
 $parameters = $assignedOperators = $secrets = $auditRows = [];
 $compiled = null;
 $curlDraft = null;
@@ -329,6 +355,14 @@ if ($gateway !== null) {
     $st = $db->prepare('SELECT * FROM ellsms_sms_gateway_status_connectors WHERE gateway_id = ?');
     $st->execute([$gatewayId]);
     $statusConnector = $st->fetch() ?: null;
+
+    try {
+        $st = $db->prepare('SELECT * FROM ellsms_sms_gateway_receive_connectors WHERE gateway_id = ?');
+        $st->execute([$gatewayId]);
+        $receiveConnector = $st->fetch() ?: null;
+    } catch (PDOException) {
+        $receiveConnector = null; // 2026_09_29_gateway_receive.sql not applied yet
+    }
 
     $st = $db->prepare("SELECT * FROM ellsms_sms_gateway_parameters WHERE gateway_id = ? AND status = 'active' ORDER BY connector, location, scope, sort_order, param_key");
     $st->execute([$gatewayId]);
@@ -488,7 +522,7 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 </div>
 
-<?php foreach ([['send', 'کانکتور ارسال', $sendConnector], ['status', 'کانکتور وضعیت تحویل', $statusConnector]] as [$kind, $title, $connectorRow]): ?>
+<?php foreach ([['send', 'کانکتور ارسال', $sendConnector], ['status', 'کانکتور وضعیت تحویل', $statusConnector], ['receive', 'کانکتور دریافت پیامک (ورودی)', $receiveConnector]] as [$kind, $title, $connectorRow]): ?>
 <div class="card">
   <h2><?= $title ?></h2>
   <form method="post">
@@ -547,6 +581,38 @@ require __DIR__ . '/../app/views/header.php';
       <label style="display:block">نگاشت پاسخ دسته‌ای (JSON)
         <textarea name="batch_mapping_json" rows="3" class="ltr" style="width:100%"><?= e((string)($connectorRow['batch_mapping_json'] ?? '')) ?></textarea>
       </label>
+    <?php elseif ($kind === 'receive'): ?>
+      <p class="muted">
+        پیامک‌های ورودی خطوطی که از این درگاه ارسال می‌کنند، از API «دریافت پیام‌های ورودی» ارائه‌دهنده خوانده می‌شوند
+        (مثلاً <span class="ltr">POST /pullReceivedMessages</span> در Vesal) و در صندوق دریافت و منشی پیامک نمایش داده می‌شوند.
+        در هر استعلام، بازه‌ی «بازخوانی» دوباره خوانده می‌شود تا پیامی که ارائه‌دهنده «خوانده‌شده» علامت زده ولی ذخیره‌اش ناموفق بوده، از دست نرود؛
+        پیام تکراری به‌طور خودکار حذف می‌شود.
+      </p>
+      <div class="toolbar">
+        <label><input type="checkbox" name="receive_enabled" value="1"<?= !$connectorRow || !empty($connectorRow['enabled']) ? ' checked' : '' ?>> فعال</label>
+        <label><input type="checkbox" name="per_line" value="1"<?= !$connectorRow || !empty($connectorRow['per_line']) ? ' checked' : '' ?>> یک درخواست برای هر خط (متغیر <span class="ltr">line</span>)</label>
+        <label>فاصله‌ی استعلام (ثانیه) <input type="number" name="poll_interval_seconds" class="ltr" min="5" value="<?= (int)($connectorRow['poll_interval_seconds'] ?? 30) ?>"></label>
+        <label>بازه‌ی بازخوانی (ثانیه) <input type="number" name="lookback_seconds" class="ltr" min="60" value="<?= (int)($connectorRow['lookback_seconds'] ?? 3600) ?>"></label>
+      </div>
+      <label style="display:block">شرط موفقیت پاسخ (JSON — فقط شرط‌های اضافی)
+        <textarea name="success_rule_json" rows="3" class="ltr" style="width:100%" placeholder='{"rules":[{"path":"errorModel.errorCode","operator":"equals","values":[0]}]}'><?= e((string)($connectorRow['success_rule_json'] ?? '')) ?></textarea>
+      </label>
+      <label style="display:block">نگاشت پاسخ (JSON) — خالی یعنی قالب Vesal
+        <textarea name="response_mapping_json" rows="3" class="ltr" style="width:100%" placeholder='{"rows_path":"messageModels","sender_key":"originator","line_key":"destination","content_key":"content","received_at_key":"insertDate","id_key":""}'><?= e((string)($connectorRow['response_mapping_json'] ?? '')) ?></textarea>
+      </label>
+      <p class="muted">
+        متغیرهای مجاز: <span class="ltr"><?= e(implode(', ', GATEWAY_RECEIVE_VARIABLES)) ?></span>.
+        نمونه‌ی Vesal: پارامترهای بدنه <span class="ltr">username</span> و <span class="ltr">password</span> (کلید محرمانه)،
+        <span class="ltr">destination</span> ← متغیر <span class="ltr">line</span>، <span class="ltr">fromDate</span> ← <span class="ltr">from_date</span>،
+        <span class="ltr">toDate</span> ← <span class="ltr">to_date</span> و <span class="ltr">allStatus</span> ← ثابت <span class="ltr">true</span> (نوع boolean).
+      </p>
+      <?php if ($connectorRow): ?>
+        <p class="muted">
+          آخرین استعلام: <?= $connectorRow['last_polled_at'] ? jdate((string)$connectorRow['last_polled_at']) : '—' ?> ·
+          آخرین موفق: <?= $connectorRow['last_success_at'] ? jdate((string)$connectorRow['last_success_at']) : '—' ?>
+          <?php if (!empty($connectorRow['last_error'])): ?> · خطای آخر: <span class="ltr"><?= e((string)$connectorRow['last_error']) ?></span><?php endif; ?>
+        </p>
+      <?php endif; ?>
     <?php else: ?>
       <label style="display:block">شرط موفقیت پاسخ (JSON — فقط شرط‌های اضافی)
         <textarea name="success_rule_json" rows="3" class="ltr" style="width:100%" placeholder='{"rules":[{"path":"errorModel.errorCode","operator":"equals","values":[0]}]}'><?= e((string)($connectorRow['success_rule_json'] ?? '')) ?></textarea>
@@ -612,7 +678,7 @@ require __DIR__ . '/../app/views/header.php';
     <tbody>
     <?php foreach ($parameters as $row): ?>
       <tr>
-        <td><?= $row['connector'] === 'status' ? 'وضعیت' : 'ارسال' ?></td>
+        <td><?= ['status' => 'وضعیت', 'receive' => 'دریافت'][$row['connector']] ?? 'ارسال' ?></td>
         <td class="ltr"><?= e($row['location']) ?></td>
         <td class="ltr"><?= e($row['scope']) ?><?= $row['scope_id'] ? '#' . (int)$row['scope_id'] : '' ?></td>
         <td class="ltr"><?= e($row['param_key']) ?></td>
@@ -638,7 +704,7 @@ require __DIR__ . '/../app/views/header.php';
     <?= csrf_field() ?><input type="hidden" name="do" value="parameter_save">
     <input type="hidden" name="gateway_id" value="<?= $gatewayId ?>"><input type="hidden" name="tab" value="parameters">
     <label>کانکتور
-      <select name="connector" id="param-connector"><option value="send">ارسال</option><option value="status">وضعیت</option></select>
+      <select name="connector" id="param-connector"><option value="send">ارسال</option><option value="status">وضعیت</option><option value="receive">دریافت</option></select>
     </label>
     <label>محل
       <select name="location"><option value="body">body</option><option value="query">query</option><option value="header">header</option></select>
@@ -673,6 +739,7 @@ require __DIR__ . '/../app/views/header.php';
       <select name="data_type" id="param-data-type">
         <option value="string">string</option><option value="integer">integer</option><option value="numeric">numeric</option>
         <option value="string_list">string_list</option><option value="integer_list">integer_list</option>
+        <option value="string_array">string_array</option><option value="numeric_array">numeric_array</option><option value="integer_array">integer_array</option>
         <option value="boolean">boolean</option><option value="json">json</option><option value="null">null</option>
       </select>
     </label>
@@ -681,6 +748,7 @@ require __DIR__ . '/../app/views/header.php';
   </form>
   <p class="muted">متغیرهای مجاز ارسال: <span class="ltr"><?= e(implode(', ', GATEWAY_SEND_VARIABLES)) ?></span></p>
   <p class="muted">متغیرهای مجاز وضعیت: <span class="ltr"><?= e(implode(', ', GATEWAY_STATUS_VARIABLES)) ?></span></p>
+  <p class="muted">متغیرهای مجاز دریافت: <span class="ltr"><?= e(implode(', ', GATEWAY_RECEIVE_VARIABLES)) ?></span></p>
   <p class="muted">
     برای استعلام گروهی وضعیت، پارامتری با متغیر <span class="ltr">provider_message_ids</span> و نوع داده‌ی
     <span class="ltr">integer_list</span> تعریف کنید؛ خروجی آن آرایه‌ای از اعداد است
@@ -694,9 +762,11 @@ require __DIR__ . '/../app/views/header.php';
 // constants the compiler validates against, and every value is re-validated server-side through
 // gateway_parameter_compile() before it is stored. This only spares an admin a round trip.
 (function () {
-  var catalogs = <?= json_encode(['send' => GATEWAY_SEND_VARIABLES, 'status' => GATEWAY_STATUS_VARIABLES]) ?>;
+  var catalogs = <?= json_encode(['send' => GATEWAY_SEND_VARIABLES, 'status' => GATEWAY_STATUS_VARIABLES, 'receive' => GATEWAY_RECEIVE_VARIABLES]) ?>;
   // Variables whose natural serialization is a list rather than a scalar.
-  var listTypes = { provider_message_ids: 'integer_list', recipients: 'string_list' };
+  var listTypes = { provider_message_ids: 'integer_list', recipients: 'string_list', recipients_array: 'string_array',
+                    senders_array: 'string_array', messages_array: 'string_array', idempotency_keys_array: 'string_array',
+                    idempotency_ids_array: 'integer_array' };
 
   var connector = document.getElementById('param-connector');
   var valueType = document.getElementById('param-value-type');

@@ -5,8 +5,13 @@
  */
 declare(strict_types=1);
 
+/** The compiled section for a connector kind: 'send', 'status' or (#37) 'receive'. */
+function gateway_connector_section(array $connector, string $connectorKind): array {
+    return in_array($connectorKind, ['status', 'receive'], true) ? (array)$connector[$connectorKind] : $connector['send'];
+}
+
 function gateway_build_request(array $connector, string $connectorKind, array $context, ?int $routeId, ?int $operatorId): array {
-    $section = $connectorKind === 'status' ? $connector['status'] : $connector['send'];
+    $section = gateway_connector_section($connector, $connectorKind);
     $merged = gateway_applicable_parameters($connector, $connectorKind, $routeId, $operatorId);
     $headers = [];
     $query = [];
@@ -75,7 +80,7 @@ function gateway_form_values(array $body): array {
 function gateway_applicable_parameters(array $connector, string $connectorKind, ?int $routeId, ?int $operatorId): array {
     $cacheKey=$connector['gateway_id'].':'.$connector['config_version'].':'.$connectorKind.':'.($routeId??'-').':'.($operatorId??'-');
     if (isset($GLOBALS['__gateway_param_sets'][$cacheKey])) return $GLOBALS['__gateway_param_sets'][$cacheKey]['parameters'];
-    $section=$connectorKind==='status'?$connector['status']:$connector['send'];
+    $section=gateway_connector_section($connector,$connectorKind);
     $parameters=$section['parameters'];
     $merged=gateway_parameters_merge($parameters['gateway']??[], $routeId!==null?($parameters['route'][$routeId]??[]):[], $operatorId!==null?($parameters['operator'][$operatorId]??[]):[]);
     $GLOBALS['__gateway_param_sets'][$cacheKey]=['parameters'=>$merged,'signature'=>gateway_parameter_set_signature($merged)];
@@ -324,7 +329,7 @@ function gateway_provider_response_audit(int $gatewayId, string $connectorKind, 
 }
 
 function gateway_execute(array $connector, string $connectorKind, array $request): array {
-    $section=$connectorKind==='status'?$connector['status']:$connector['send']; $requestId=Logger::currentRequestId();
+    $section=gateway_connector_section($connector,$connectorKind); $requestId=Logger::currentRequestId();
     $endpointCheck=gateway_endpoint_allowed($request['url']);
     if(!$endpointCheck['ok']){
         Logger::error('gateway.endpoint_rejected',['gateway_id'=>$connector['gateway_id'],'reason'=>$endpointCheck['reason']]);
@@ -362,9 +367,9 @@ function gateway_execute(array $connector, string $connectorKind, array $request
     }
     gateway_provider_response_audit((int)$connector['gateway_id'],$connectorKind,$requestId,$http,$normalized);
     Logger::info('gateway.request_completed',['gateway_id'=>$connector['gateway_id'],'config_version'=>$connector['config_version'],'connector'=>$connectorKind,'http'=>$http,'success'=>$success,'normalized_outcome'=>$normalized['outcome'],'elapsed_ms'=>$elapsedMs,'request_id'=>$requestId]);
-    Metrics::timing('gateway_request',$elapsedMs,$metricTags+['result'=>strtolower((string)$normalized['outcome'])]); Metrics::increment($connectorKind==='status'?'gateway_status_poll_total':'gateway_send_total',1,$metricTags);
+    Metrics::timing('gateway_request',$elapsedMs,$metricTags+['result'=>strtolower((string)$normalized['outcome'])]); Metrics::increment(match($connectorKind){'status'=>'gateway_status_poll_total','receive'=>'gateway_receive_poll_total',default=>'gateway_send_total'},1,$metricTags);
     if($success)return ['ok'=>true,'http'=>$http,'data'=>$decoded,'error'=>null,'error_class'=>null,'request_id'=>$requestId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>$normalized['provider_message_id'],'provider_error_code'=>null,'provider_error_detail'=>null];
-    $errorClass=(string)($normalized['error_class']??gateway_classify_failure($section,$http,$decoded,$bodyIsJson)); Metrics::increment($connectorKind==='status'?'gateway_status_poll_failure':'gateway_send_failure',1,$metricTags+['error_class'=>$errorClass]);
+    $errorClass=(string)($normalized['error_class']??gateway_classify_failure($section,$http,$decoded,$bodyIsJson)); Metrics::increment(match($connectorKind){'status'=>'gateway_status_poll_failure','receive'=>'gateway_receive_poll_failure',default=>'gateway_send_failure'},1,$metricTags+['error_class'=>$errorClass]);
     $error=$normalized['provider_error_detail']??mb_strimwidth($raw,0,1000,'…');
     return ['ok'=>false,'http'=>$http,'data'=>$decoded,'error'=>$error,'error_class'=>$errorClass,'request_id'=>$requestId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>null,'provider_error_code'=>$normalized['provider_error_code'],'provider_error_detail'=>$normalized['provider_error_detail']];
 }

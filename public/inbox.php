@@ -42,13 +42,13 @@ if (isset($_GET['export'])) {
     // Phase 8 (Invariant C): inbound repository, not a direct inbound_message query — $W/$params
     // are still built entirely by this page (tenant scoping, date/sender/text filters); only the
     // actual SELECT execution moved to app/Backend/messages.php.
-    $st = backend_inbound_export_rows($W, $params, 100000);
+    $exportRows = backend_inbound_export_rows($W, $params, 100000);
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="ellsms-inbox-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
     fputcsv($out, ['شناسه','فرستنده','گیرنده','متن پیام','زمان دریافت']);
-    while ($r = $st->fetch()) fputcsv($out, $r);
+    foreach ($exportRows as $r) fputcsv($out, $r);
     exit;
 }
 

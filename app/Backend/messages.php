@@ -135,31 +135,103 @@ function backend_outbound_status_scan_cursor(string $whereSql, array $params): P
     return $st;
 }
 
-/* ---------- Inbound (backend-owned) ---------- */
+/* ---------- Inbound ----------
+ *
+ * Two stores with the same reading columns (id, originator, destination, content, received_at):
+ *  - `inbound_message`, owned by the backend platform (legacy transport, its /mo endpoint);
+ *  - `ellsms_inbound_messages`, ELLSMS's own, filled by gateway receive connectors (#37,
+ *    app/Sms/GatewayReceive.php).
+ * Every function below reads BOTH, so switching transport never hides either history. The ELLSMS
+ * store's ids start at 10^15 (see its migration), so they never collide with backend ids and always
+ * sort after them — which is what lets paging below walk "ELLSMS rows, then backend rows" exactly.
+ * $whereSql is built by the caller from those shared columns only.
+ */
+const INBOUND_ELLSMS_COLUMNS = 'id, originator, destination, content, received_at';
+
+/** False until 2026_09_29_gateway_receive.sql is applied — the ELLSMS store then reads as empty. */
+function inbound_ellsms_store_available(): bool {
+    static $available = null;
+    if ($available === null) {
+        try {
+            db()->query('SELECT 1 FROM ellsms_inbound_messages LIMIT 0');
+            $available = true;
+        } catch (PDOException) {
+            $available = false;
+        }
+    }
+    return $available;
+}
+
 function backend_inbound_count(string $whereSql, array $params): int {
     $st = db()->prepare("SELECT COUNT(*) c FROM inbound_message WHERE {$whereSql}");
+    $st->execute($params);
+    return (int)$st->fetch()['c'] + inbound_ellsms_count($whereSql, $params);
+}
+
+function inbound_ellsms_count(string $whereSql, array $params): int {
+    if (!inbound_ellsms_store_available()) return 0;
+    $st = db()->prepare("SELECT COUNT(*) c FROM ellsms_inbound_messages WHERE {$whereSql}");
     $st->execute($params);
     return (int)$st->fetch()['c'];
 }
 
 function backend_inbound_today_count(): int {
     $st = db()->query("SELECT COUNT(*) c FROM inbound_message WHERE DATE(received_at) = CURDATE()");
-    return (int)$st->fetch()['c'];
+    $count = (int)$st->fetch()['c'];
+    if (inbound_ellsms_store_available()) {
+        $count += (int)db()->query("SELECT COUNT(*) FROM ellsms_inbound_messages WHERE received_at >= CURDATE()")->fetchColumn();
+    }
+    return $count;
 }
 
+/** Newest first across both stores: ELLSMS rows (higher ids) then backend rows. */
 function backend_inbound_rows(string $whereSql, array $params, int $limit, int $offset): array {
-    $st = db()->prepare("SELECT * FROM inbound_message WHERE {$whereSql} ORDER BY id DESC LIMIT {$limit} OFFSET {$offset}");
-    $st->execute($params);
-    return $st->fetchAll();
+    $limit = max(0, $limit);
+    $offset = max(0, $offset);
+    $rows = [];
+    $ellsmsCount = inbound_ellsms_count($whereSql, $params);
+    if ($offset < $ellsmsCount) {
+        $st = db()->prepare('SELECT ' . INBOUND_ELLSMS_COLUMNS . " FROM ellsms_inbound_messages WHERE {$whereSql} ORDER BY id DESC LIMIT {$limit} OFFSET {$offset}");
+        $st->execute($params);
+        $rows = $st->fetchAll();
+    }
+    $remaining = $limit - count($rows);
+    if ($remaining > 0) {
+        $backendOffset = max(0, $offset - $ellsmsCount);
+        $st = db()->prepare("SELECT * FROM inbound_message WHERE {$whereSql} ORDER BY id DESC LIMIT {$remaining} OFFSET {$backendOffset}");
+        $st->execute($params);
+        $rows = array_merge($rows, $st->fetchAll());
+    }
+    return $rows;
 }
 
-function backend_inbound_export_rows(string $whereSql, array $params, int $limit) {
+/**
+ * CSV export rows (id, sender, recipient, content, received_at), newest first, both stores, at most
+ * $limit in total. A generator, so a large export is streamed rather than held in memory.
+ */
+function backend_inbound_export_rows(string $whereSql, array $params, int $limit): Generator {
+    $emitted = 0;
+    if (inbound_ellsms_store_available()) {
+        $st = db()->prepare(
+            "SELECT id, originator AS sender, destination AS recipient, content, received_at
+             FROM ellsms_inbound_messages WHERE {$whereSql} ORDER BY id DESC LIMIT {$limit}"
+        );
+        $st->execute($params);
+        while (($row = $st->fetch()) !== false) {
+            $emitted++;
+            yield $row;
+        }
+    }
+    $remaining = $limit - $emitted;
+    if ($remaining <= 0) return;
     $st = db()->prepare(
         "SELECT id, originator AS sender, destination AS recipient, content, received_at
-         FROM inbound_message WHERE {$whereSql} ORDER BY id DESC LIMIT {$limit}"
+         FROM inbound_message WHERE {$whereSql} ORDER BY id DESC LIMIT {$remaining}"
     );
     $st->execute($params);
-    return $st;
+    while (($row = $st->fetch()) !== false) {
+        yield $row;
+    }
 }
 
 function backend_scan_new_inbound_messages(int $sinceId, int $limit = 100): array {
@@ -168,15 +240,35 @@ function backend_scan_new_inbound_messages(int $sinceId, int $limit = 100): arra
     return $st->fetchAll();
 }
 
+/** The ELLSMS store's counterpart, with its OWN cursor (its ids live in a different range). */
+function inbound_ellsms_scan_new(int $sinceId, int $limit = 100): array {
+    if (!inbound_ellsms_store_available()) return [];
+    $st = db()->prepare('SELECT ' . INBOUND_ELLSMS_COLUMNS . ' FROM ellsms_inbound_messages WHERE id > ? ORDER BY id ASC LIMIT ' . max(1, $limit));
+    $st->execute([$sinceId]);
+    return $st->fetchAll();
+}
+
 function backend_scan_autoreply_retry_due_inbound(int $limit = 50): array {
+    $limit = max(1, $limit);
     $st = db()->prepare(
         "SELECT im.* FROM inbound_message im
          JOIN ellsms_autoreply_log l ON l.inbound_message_id = im.id
          WHERE l.status = 'processing' AND l.lease_expires_at IS NOT NULL AND l.lease_expires_at < NOW()
-         ORDER BY im.id ASC LIMIT " . max(1, $limit)
+         ORDER BY im.id ASC LIMIT {$limit}"
     );
     $st->execute();
-    return $st->fetchAll();
+    $rows = $st->fetchAll();
+    if (count($rows) < $limit && inbound_ellsms_store_available()) {
+        $st = db()->prepare(
+            "SELECT im.id, im.originator, im.destination, im.content, im.received_at FROM ellsms_inbound_messages im
+             JOIN ellsms_autoreply_log l ON l.inbound_message_id = im.id
+             WHERE l.status = 'processing' AND l.lease_expires_at IS NOT NULL AND l.lease_expires_at < NOW()
+             ORDER BY im.id ASC LIMIT " . ($limit - count($rows))
+        );
+        $st->execute();
+        $rows = array_merge($rows, $st->fetchAll());
+    }
+    return $rows;
 }
 
 /* ---------- ELLSMS-owned transport attempts ---------- */

@@ -36,7 +36,7 @@ const LOW_CREDIT_ALERT_DEFAULT_TEMPLATE =
     '{name} گرامی، اعتبار حساب شما به {credit} رسیده و کمتر از حد هشدار ({threshold}) است. برای جلوگیری از توقف ارسال، حساب خود را شارژ کنید.';
 
 function low_credit_alert_text(string $name, int $credit, int $threshold): string {
-    $template = trim((string)setting('low_credit_alert_template', ''));
+    $template = trim((string)setting_fresh('low_credit_alert_template', ''));
     if ($template === '') {
         $template = LOW_CREDIT_ALERT_DEFAULT_TEMPLATE;
     }
@@ -157,7 +157,7 @@ function low_credit_alerts_run(bool $dryRun = false, ?callable $sendSms = null, 
             if ($owner !== null) {
                 notification_insert_panel((int)$owner['id'], $organizationId, 'credit.low', $title, $text, '/buy-credit.php', 'warning');
             }
-            if (setting('low_credit_alert_notify_admins', '0') === '1') {
+            if (setting_fresh('low_credit_alert_notify_admins', '0') === '1') {
                 notification_dispatch_admins('credit.low', $title, ($row['organization_name'] ?? '') . ' — ' . $text, '', 'warning');
             }
         } catch (Throwable $e) {

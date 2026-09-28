@@ -76,6 +76,27 @@ if (str_starts_with($path, '/status/')) {
 //    (DUPLICATE_USERSUPPLIED_ID) instead of a new reference id.
 // Accepted pairs persist in "<recorder file>.vesal" so a test can pre-seed "the provider already has
 // this one" (an earlier attempt that crashed before ELLSMS settled it).
+// Vesal-shaped pullReceivedMessages (#37): answers {"messageModels":[...],"errorModel":{"errorCode":0}}
+// from "<recorder file>.mo" (a JSON list the test writes), filtered by the requested `destination`.
+// Like Vesal's MessageModel it carries originator, destination, content and insertDate (epoch ms) —
+// no message id. /vesal/pull-error answers 500.
+if ($path === '/vesal/pull-error') {
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'internal']);
+    return;
+}
+if ($path === '/vesal/pullReceivedMessages') {
+    $decoded = json_decode((string)$body, true);
+    $wanted = (string)($decoded['destination'] ?? '');
+    $store = (string)$recordFile . '.mo';
+    $messages = is_file($store) ? (json_decode((string)file_get_contents($store), true) ?: []) : [];
+    $models = array_values(array_filter($messages, static fn(array $m): bool => $wanted === '' || (string)$m['destination'] === $wanted));
+    header('Content-Type: application/json');
+    echo json_encode(['messageModels' => $models, 'errorModel' => ['errorCode' => 0]], JSON_UNESCAPED_UNICODE);
+    return;
+}
+
 if (str_starts_with($path, '/vesal/')) {
     $decoded = json_decode((string)$body, true);
     $destinations = is_array($decoded['destinations'] ?? null) ? array_values($decoded['destinations']) : [];

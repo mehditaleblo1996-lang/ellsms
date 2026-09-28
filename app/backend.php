@@ -955,7 +955,6 @@ const AUTOREPLY_COOLDOWN_SECONDS = 120;
 
 function run_autoreply_pass(): int {
     $db = db();
-    $lastId = (int)setting('autoreply_last_inbound_id', '0');
     $sent  = 0;
 
     // Phase 4: rows whose claim is stuck 'processing' past their lease —
@@ -977,30 +976,42 @@ function run_autoreply_pass(): int {
         }
     }
 
-    $scanStartedAt = microtime(true);
-    $rows = backend_scan_new_inbound_messages($lastId, 100);
-    Metrics::timing('queue.claim.autoreply_scan', (microtime(true) - $scanStartedAt) * 1000, ['found' => count($rows)]);
-    if (!$rows) return $sent;
+    // Two inbound stores, one cursor each (#37): the backend's inbound_message and ELLSMS's own
+    // ellsms_inbound_messages (gateway receive connectors). Their ids live in disjoint ranges, so a
+    // shared cursor would skip one of them; the UNIQUE(inbound_message_id) claim still works across both.
+    foreach ([
+        ['autoreply_last_inbound_id', 'backend_scan_new_inbound_messages'],
+        ['autoreply_last_gateway_inbound_id', 'inbound_ellsms_scan_new'],
+    ] as [$cursorKey, $scan]) {
+        // setting_fresh(), not setting(): this process writes the cursor itself below, and setting()'s
+        // process-lifetime cache would hand the long-running worker its start-up value forever — past
+        // 100 new messages the scan returned the same already-handled rows every tick.
+        $lastId = (int)setting_fresh($cursorKey, '0');
+        $scanStartedAt = microtime(true);
+        $rows = $scan($lastId, 100);
+        Metrics::timing('queue.claim.autoreply_scan', (microtime(true) - $scanStartedAt) * 1000, ['found' => count($rows)]);
+        if (!$rows) continue;
 
-    $maxId = $lastId;
+        $maxId = $lastId;
 
-    foreach ($rows as $msg) {
-        $maxId = max($maxId, (int)$msg['id']);
-        try {
-            autoreply_process_one($db, $msg, $sent);
-        } catch (Throwable $t) {
-            // Never let one bad row block the cursor from moving past it —
-            // that was the actual root cause of duplicate replies before
-            // this fix: an exception here left the cursor stuck, so the
-            // same row kept getting re-fetched and re-sent every tick.
-            Logger::error('autoreply.row.failed', [
-                'inbound_message_id' => $msg['id'] ?? null,
-                'exception'          => $t,
-            ]);
+        foreach ($rows as $msg) {
+            $maxId = max($maxId, (int)$msg['id']);
+            try {
+                autoreply_process_one($db, $msg, $sent);
+            } catch (Throwable $t) {
+                // Never let one bad row block the cursor from moving past it —
+                // that was the actual root cause of duplicate replies before
+                // this fix: an exception here left the cursor stuck, so the
+                // same row kept getting re-fetched and re-sent every tick.
+                Logger::error('autoreply.row.failed', [
+                    'inbound_message_id' => $msg['id'] ?? null,
+                    'exception'          => $t,
+                ]);
+            }
         }
-    }
 
-    set_setting('autoreply_last_inbound_id', (string)$maxId);
+        set_setting($cursorKey, (string)$maxId);
+    }
     return $sent;
 }
 

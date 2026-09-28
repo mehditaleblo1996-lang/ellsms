@@ -15,6 +15,7 @@ function gateway_clone_table_columns(string $table): array {
     $allowed = [
         'ellsms_sms_gateway_send_connectors',
         'ellsms_sms_gateway_status_connectors',
+        'ellsms_sms_gateway_receive_connectors',
         'ellsms_sms_gateway_parameters',
         'ellsms_sms_gateway_operators',
     ];
@@ -112,6 +113,13 @@ function gateway_clone_full(int $sourceGatewayId, string $newCode, string $newNa
         $connectors = 0;
         $connectors += gateway_clone_child_rows('ellsms_sms_gateway_send_connectors', $sourceGatewayId, $targetGatewayId);
         $connectors += gateway_clone_child_rows('ellsms_sms_gateway_status_connectors', $sourceGatewayId, $targetGatewayId);
+        // #37 — the receive connector, when this install has the table. The clone is archived, and
+        // an archived gateway is never polled, so the copy cannot start pulling messages by itself.
+        try {
+            $connectors += gateway_clone_child_rows('ellsms_sms_gateway_receive_connectors', $sourceGatewayId, $targetGatewayId);
+        } catch (PDOException $e) {
+            if (!str_contains($e->getMessage(), "doesn't exist")) throw $e;
+        }
         $parameters = gateway_clone_child_rows('ellsms_sms_gateway_parameters', $sourceGatewayId, $targetGatewayId);
         $operators = gateway_clone_child_rows('ellsms_sms_gateway_operators', $sourceGatewayId, $targetGatewayId);
 

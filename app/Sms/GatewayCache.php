@@ -191,6 +191,17 @@ function gateway_compile(int $gatewayId): ?array {
         $st->execute([$gatewayId]);
         $status = $st->fetch() ?: null;
 
+        // #37 — optional receive connector. Tolerates a database that has not applied
+        // 2026_09_29_gateway_receive.sql yet: no table simply means no receive connector.
+        $receive = null;
+        try {
+            $st = $db->prepare('SELECT * FROM ellsms_sms_gateway_receive_connectors WHERE gateway_id = ?');
+            $st->execute([$gatewayId]);
+            $receive = $st->fetch() ?: null;
+        } catch (PDOException $e) {
+            $receive = null;
+        }
+
         $st = $db->prepare("SELECT * FROM ellsms_sms_gateway_parameters WHERE gateway_id = ? AND status = 'active' ORDER BY sort_order, id");
         $st->execute([$gatewayId]);
         $parameterRows = $st->fetchAll();
@@ -212,7 +223,8 @@ function gateway_compile(int $gatewayId): ?array {
 
         // Parameters, compiled once and bucketed by scope so the hot path only has to pick.
         $parameters = ['send' => ['gateway' => [], 'route' => [], 'operator' => []],
-                       'status' => ['gateway' => [], 'route' => [], 'operator' => []]];
+                       'status' => ['gateway' => [], 'route' => [], 'operator' => []],
+                       'receive' => ['gateway' => [], 'route' => [], 'operator' => []]];
         foreach ($parameterRows as $row) {
             $connectorKind = (string)$row['connector'];
             $compiledParameter = gateway_parameter_compile($row, $connectorKind, $secrets);
@@ -232,6 +244,7 @@ function gateway_compile(int $gatewayId): ?array {
             'send_mode'      => (string)$gateway['send_mode'],
             'send_enabled'   => (bool)$gateway['send_enabled'],
             'status_enabled' => (bool)$gateway['status_enabled'] && $status !== null,
+            'receive_enabled' => $receive !== null && (bool)$receive['enabled'],
             'operators'      => $operators,
             'send' => [
                 'endpoint'      => (string)$send['endpoint_url'],
@@ -275,6 +288,26 @@ function gateway_compile(int $gatewayId): ?array {
                 // COMPILED parameters rather than from a flag an admin could set inconsistently with
                 // the request it actually builds.
                 'batch'         => gateway_status_batch_capability($parameters['status']),
+            ],
+            // #37 — the provider's "pull received messages" API (app/Sms/GatewayReceive.php). Same
+            // forced success floor as a status poll (2xx + parseable JSON; configuration can only add
+            // conditions), since a failed pull must never be read as "no new messages".
+            'receive' => $receive === null ? null : [
+                'endpoint'      => (string)$receive['endpoint_url'],
+                'method'        => (string)$receive['http_method'],
+                'content_type'  => (string)$receive['content_type'],
+                'connect_timeout_ms' => (int)$receive['connect_timeout_ms'],
+                'request_timeout_ms' => (int)$receive['request_timeout_ms'],
+                'tls_verify'    => (bool)$receive['tls_verify'],
+                'auth'          => gateway_auth_compile((string)$receive['auth_type'], gateway_json($receive['auth_config_json']), $secrets),
+                'success'       => gateway_status_success_rule_compile(gateway_json($receive['success_rule_json'] ?? null)),
+                'response'      => gateway_response_mapping_compile(null),
+                'errors'        => [],
+                'mapping'       => gateway_receive_mapping_compile(gateway_json($receive['response_mapping_json'])),
+                'per_line'      => (bool)$receive['per_line'],
+                'poll_interval_seconds' => max(5, (int)$receive['poll_interval_seconds']),
+                'lookback_seconds' => max(60, (int)$receive['lookback_seconds']),
+                'parameters'    => $parameters['receive'],
             ],
         ];
 
@@ -403,6 +436,23 @@ function gateway_status_batch_capability(array $statusParameters): array {
         'reason'    => $usesPlural
             ? ($usesPerMessage ? 'per_message_variable_present' : '')
             : 'no_provider_message_ids_parameter',
+    ];
+}
+
+/**
+ * #37 — how to read a receive connector's answer: where the message rows are and which key inside a
+ * row holds the sender, the receiving line, the text, the time and (optionally) the provider id.
+ * Defaults match Vesal's pullReceivedMessages (MessageResultModel.messageModels[]).
+ */
+function gateway_receive_mapping_compile(?array $mapping): array {
+    $mapping ??= [];
+    return [
+        'rows_path'       => gateway_path_compile((string)($mapping['rows_path'] ?? 'messageModels')),
+        'sender_key'      => (string)($mapping['sender_key'] ?? 'originator'),
+        'line_key'        => (string)($mapping['line_key'] ?? 'destination'),
+        'content_key'     => (string)($mapping['content_key'] ?? 'content'),
+        'received_at_key' => (string)($mapping['received_at_key'] ?? 'insertDate'),
+        'id_key'          => (string)($mapping['id_key'] ?? ''),
     ];
 }
 

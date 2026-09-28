@@ -301,6 +301,46 @@ guarantee.
 
 ---
 
+## Inbound messages — the receive connector (#37)
+
+In gateway mode nothing fills the legacy backend's `inbound_message`, so a gateway can have a third
+connector, **receive**, describing the provider's "pull received messages" call (Vesal:
+`POST /pullReceivedMessages`). The `status-worker` service polls it (`gateway_receive_poll_pass()`,
+`app/Sms/GatewayReceive.php`) and stores the result in **`ellsms_inbound_messages`**.
+
+| Setting (`ellsms_sms_gateway_receive_connectors`) | Meaning |
+|---|---|
+| `per_line` | one request per sender line whose default route resolves to this gateway (variable `line`) |
+| `poll_interval_seconds` | at most one poll per gateway per interval — claimed with one conditional UPDATE |
+| `lookback_seconds` | window re-read on every poll (`from_date`/`to_date`, `from_unix`/`to_unix`) |
+| `success_rule_json` | extra conditions on top of the forced floor (2xx + JSON), e.g. `errorModel.errorCode = 0` |
+| `response_mapping_json` | `rows_path`, `sender_key`, `line_key`, `content_key`, `received_at_key`, `id_key`; empty = Vesal's shape |
+
+Parameters use connector `receive` and the variables `line, from_date, to_date, from_unix, to_unix,
+request_id, gateway_code, timestamp`. `from_date`/`to_date` are Tehran wall-clock
+`Y-m-d\TH:i:s` — the format Vesal parses.
+
+**Never lost, never doubled.** Vesal marks messages as read the moment it returns them, so a poll that
+failed on our side would lose them. Configure `allStatus = true` (static, boolean) and let every poll
+re-read the lookback window; `UNIQUE(gateway_id, dedupe_key)` drops what was already stored.
+`dedupe_key` is the provider id when the answer has one (`id_key`), else a SHA-256 of
+(sender, line, text, time) — Vesal's answer has no id.
+
+**One inbox, two stores.** `app/Backend/messages.php` reads `inbound_message` and
+`ellsms_inbound_messages` together (same reading columns). The ELLSMS store's ids start at 10^15, so
+they never collide with backend ids and always sort after them; paging walks "ELLSMS rows, then
+backend rows" exactly. The auto-responder keeps one cursor per store
+(`autoreply_last_inbound_id`, `autoreply_last_gateway_inbound_id`) and its
+`UNIQUE(inbound_message_id)` claim works across both.
+
+Vesal example (receive parameters, all `body`): `username` (static), `password` (secret),
+`destination` ← `line`, `fromDate` ← `from_date`, `toDate` ← `to_date`, `allStatus` ← static `true`
+(boolean); success rule `{"rules":[{"path":"errorModel.errorCode","operator":"equals","values":[0]}]}`.
+
+Fixed along the way: the auto-responder read its cursor through `setting()`, whose process-lifetime
+cache the long-running worker never refreshed — past 100 new messages it rescanned the same rows every
+tick. Cursors now go through `setting_fresh()`.
+
 ## Secrets
 
 A gateway credential can send messages at the customer's expense, so:

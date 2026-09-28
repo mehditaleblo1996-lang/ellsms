@@ -91,6 +91,7 @@ require_once __DIR__ . '/Sms/GatewayConnector.php';
 require_once __DIR__ . '/Sms/GatewayCache.php';
 require_once __DIR__ . '/Sms/GatewayTransport.php';
 require_once __DIR__ . '/Sms/GatewayStatus.php';
+require_once __DIR__ . '/Sms/GatewayReceive.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';
@@ -321,6 +322,19 @@ function setting(string $key, ?string $default = null): ?string {
     }
     $v = $cache[$key] ?? '';
     return ($v !== '' ? $v : null) ?? $default;
+}
+
+/**
+ * setting() without the process-lifetime cache. For values a LONG-RUNNING process both writes and
+ * re-reads (a worker's scan cursor) or must see an admin change to without a restart: setting()'s
+ * static cache is filled once and set_setting() never updates it, so a worker reading its own cursor
+ * through setting() kept seeing the value from when it started.
+ */
+function setting_fresh(string $key, ?string $default = null): ?string {
+    $st = db()->prepare('SELECT svalue FROM ellsms_settings WHERE skey = ?');
+    $st->execute([$key]);
+    $v = $st->fetchColumn();
+    return ($v !== false && $v !== '') ? (string)$v : $default;
 }
 
 function set_setting(string $key, string $value): void {
