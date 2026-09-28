@@ -137,7 +137,7 @@ function bulk_cancel_message(int $itemId, array $actor, string $reason = ''): ar
 function bulk_job_provider_key(array $job): string {
     if (gateway_transport_enabled()) {
         $route = sms_pricing_route_for_sender((string)$job['originator'], sms_pricing_normalize_message_type(null));
-        $resolved = gateway_for_route($route);
+        $resolved = gateway_for_sender((string)$job['originator'], $route);
         if ($resolved['ok']) {
             return provider_health_key_for_gateway((int)$resolved['connector']['gateway_id']);
         }

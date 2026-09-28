@@ -459,10 +459,22 @@ function gateway_extract_positional_result(array $section,mixed $decoded,array $
 }
 
 function gateway_transport_enabled():bool{return (string)env('SMS_GATEWAY_TRANSPORT','0')==='1';}
-function gateway_connector_capability_for_sender(string $originator,?string $messageType):array{if(!gateway_transport_enabled())return ['ok'=>false,'per_recipient_content'=>false];$route=sms_pricing_route_for_sender($originator,sms_pricing_normalize_message_type($messageType));$resolved=gateway_for_route($route);if(!$resolved['ok'])return ['ok'=>false,'per_recipient_content'=>false];return ['ok'=>true,'per_recipient_content'=>gateway_connector_supports_per_recipient_content($resolved['connector'])];}
+function gateway_connector_capability_for_sender(string $originator,?string $messageType):array{if(!gateway_transport_enabled())return ['ok'=>false,'per_recipient_content'=>false];$route=sms_pricing_route_for_sender($originator,sms_pricing_normalize_message_type($messageType));$resolved=gateway_for_sender($originator,$route);if(!$resolved['ok'])return ['ok'=>false,'per_recipient_content'=>false];return ['ok'=>true,'per_recipient_content'=>gateway_connector_supports_per_recipient_content($resolved['connector'])];}
 
 function gateway_send_for_dispatch_group(array $user, string $originator, array $destinations, string $content, string $normalizedType, ?array $perDestinationContent, ?array $perDestinationIdempotencyKeys, ?array $route): ?array {
-    $resolved = gateway_for_route($route);
+    $resolved = gateway_for_sender($originator, $route);
+    if (!$resolved['ok'] && !empty($resolved['pinned'])) {
+        // The number is pinned to a gateway that cannot send right now: never fall back to another
+        // gateway or the legacy path. A retryable failure lets bulk retry later and tells a direct send.
+        Logger::warning('gateway.dispatch.pinned_gateway_unavailable', ['reason' => $resolved['reason'], 'gateway_id' => $resolved['gateway_id'] ?? null, 'originator' => $originator]);
+        Metrics::increment('gateway_dispatch_pinned_unavailable', 1, ['reason' => $resolved['reason']]);
+        $failure = gateway_send_failure('درگاه ارسال این شماره در دسترس نیست.', 'pinned_gateway_unavailable');
+        $failure['retryable'] = true;
+        $failure['gateway_id'] = $resolved['gateway_id'] ?? null;
+        $failure['gateway_config_version'] = null;
+        $failure['route_id'] = isset($route['route_id']) ? (int)$route['route_id'] : null;
+        return $failure;
+    }
     if (!$resolved['ok']) {
         Logger::warning('gateway.dispatch.falling_back_to_legacy', ['reason' => $resolved['reason'], 'route_id' => $route['route_id'] ?? null, 'user_id' => $user['id'] ?? null]);
         Metrics::increment('gateway_dispatch_fallback', 1, ['reason' => $resolved['reason']]);

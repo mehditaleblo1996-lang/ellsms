@@ -78,6 +78,8 @@ function gateway_cache_reset(): void {
     $GLOBALS['__gateway_versions_at'] = 0;
     $GLOBALS['__gateway_default_id'] = null;
     $GLOBALS['__gateway_default_at'] = 0;
+    $GLOBALS['__gateway_number_pins'] = null;
+    $GLOBALS['__gateway_number_pins_at'] = 0;
     // Merged parameter sets are derived from compiled connectors, so they are only valid for as long
     // as the connectors that produced them.
     $GLOBALS['__gateway_param_sets'] = [];
@@ -515,6 +517,57 @@ function gateway_for_route(?array $route): array {
         return ['ok' => false, 'reason' => 'mock_gateway_disabled'];
     }
     return ['ok' => true, 'connector' => $connector];
+}
+
+/**
+ * The gateway pinned to a sending number on the numbers page (ellsms_numbers.gateway_id), or 0.
+ * All pins are loaded in ONE query and cached for the same interval as the version list, so the send
+ * path gains no per-message query.
+ */
+function gateway_number_pinned_id(string $originator): int {
+    $sender = (string)(normalize_originator($originator) ?? '');
+    if ($sender === '') {
+        return 0;
+    }
+    $cached = $GLOBALS['__gateway_number_pins'] ?? null;
+    $loadedAt = (int)($GLOBALS['__gateway_number_pins_at'] ?? 0);
+    $ttl = gateway_version_check_seconds();
+    if (!is_array($cached) || $ttl <= 0 || (time() - $loadedAt) >= $ttl) {
+        try {
+            $cached = [];
+            foreach (db()->query('SELECT number, gateway_id FROM ellsms_numbers WHERE gateway_id IS NOT NULL') as $row) {
+                $cached[(string)$row['number']] = (int)$row['gateway_id'];
+            }
+        } catch (Throwable) {
+            // Before the migration (no column) nothing is pinned.
+            $cached = [];
+        }
+        $GLOBALS['__gateway_number_pins'] = $cached;
+        $GLOBALS['__gateway_number_pins_at'] = time();
+    }
+    return (int)($cached[$sender] ?? 0);
+}
+
+/**
+ * The compiled connector a send from $originator uses: the gateway pinned to that number when there is
+ * one, otherwise gateway_for_route(). A pinned gateway is never substituted: when it cannot send, the
+ * answer is a refusal marked 'pinned' => true, which the send path turns into a retryable failure
+ * instead of any fallback. The price is not affected — it still comes from $route.
+ */
+function gateway_for_sender(string $originator, ?array $route): array {
+    $pinned = gateway_number_pinned_id($originator);
+    if ($pinned === 0) {
+        return gateway_for_route($route);
+    }
+    $connector = gateway_compiled($pinned);
+    $reason = null;
+    if ($connector === null) $reason = 'pinned_gateway_unavailable';
+    elseif (!$connector['send_enabled']) $reason = 'pinned_gateway_send_disabled';
+    elseif ($connector['is_mock'] && !gateway_mock_enabled()) $reason = 'pinned_gateway_mock_disabled';
+    if ($reason !== null) {
+        return ['ok' => false, 'reason' => $reason, 'pinned' => true, 'gateway_id' => $pinned];
+    }
+    return ['ok' => true, 'connector' => $connector, 'pinned' => true];
 }
 
 /** The active default gateway id, cached for the same interval as the version list. */

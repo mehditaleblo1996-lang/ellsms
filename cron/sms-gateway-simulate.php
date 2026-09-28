@@ -56,10 +56,12 @@ if ($options['gateway'] !== null) {
     // would this sender actually use". Matches gateway_send_for_dispatch()'s own rule (issue #8):
     // the destination-operator routing step only applies to a single-destination send, never a batch.
     $route = sms_pricing_route_for_sender($sender, $messageType, count($destinations) === 1 ? $destinations[0] : null);
-    $resolved = gateway_for_route($route);
+    $resolved = gateway_for_sender($sender, $route);
     if (!$resolved['ok']) {
         fwrite(STDERR, "No gateway resolves for this sender: {$resolved['reason']}\n");
-        fwrite(STDERR, "A real send would fall back to the legacy REST client.\n");
+        fwrite(STDERR, !empty($resolved['pinned'])
+            ? "This number is pinned to that gateway: a real send would fail (retryable), never use another gateway.\n"
+            : "A real send would fall back to the legacy REST client.\n");
         exit(1);
     }
     $gatewayId = $resolved['connector']['gateway_id'];
