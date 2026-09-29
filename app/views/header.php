@@ -40,6 +40,10 @@ $navOrg = current_organization();
 if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
     $integrationNav['api_keys'] = ['/api-keys.php', 'کلیدهای API', '🔑'];
 }
+// WooCommerce plugin, SDKs and their guide — for whoever can see API keys (they are what the tools use).
+if ($me['role'] === 'admin' || ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW))) {
+    $integrationNav['integrations'] = ['/integrations.php', 'افزونه ووکامرس و SDK', '🧩'];
+}
 if ($navOrg && membership_has_permission($navOrg, Permissions::WEBHOOKS_VIEW)) {
     $integrationNav['webhooks'] = ['/webhooks.php', 'وب‌هوک‌ها', '🔗'];
 }

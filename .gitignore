@@ -21,3 +21,7 @@ public/assets/img/slides/*
 # Claude Code local-only
 .claude/settings.local.json
 .claude/worktrees/
+
+# Python bytecode (sdk/python)
+__pycache__/
+*.pyc
