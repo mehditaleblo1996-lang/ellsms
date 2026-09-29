@@ -1,0 +1,15 @@
+{
+    "name": "ellsms/ellsms-php",
+    "description": "PHP client for the ELLSMS SMS panel public API (v1)",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["sms", "ellsms", "api", "iran"],
+    "require": {
+        "php": ">=7.4",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "autoload": {
+        "psr-4": { "Ellsms\\": "src/" }
+    }
+}

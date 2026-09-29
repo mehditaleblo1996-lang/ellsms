@@ -1,0 +1,21 @@
+{
+  "name": "ellsms",
+  "version": "1.0.0",
+  "description": "Node.js client for the ELLSMS SMS panel public API (v1)",
+  "license": "MIT",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.mjs",
+      "require": "./index.js"
+    }
+  },
+  "files": ["index.js", "index.mjs", "index.d.ts", "README.md"],
+  "engines": { "node": ">=18" },
+  "keywords": ["sms", "ellsms", "api", "iran"],
+  "scripts": {
+    "test": "node --test test/retry.test.js"
+  }
+}
