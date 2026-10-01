@@ -245,8 +245,17 @@ if (PHP_SAPI !== 'cli' && maintenance_mode_active() && !maintenance_mode_current
 }
 
 /* ---------- Database (shared backend platform DB) ---------- */
-function db(): PDO {
+/**
+ * The process-wide PDO handle, by reference so db_ensure_connected() can drop a dead one.
+ * @internal use db()
+ */
+function &db_connection_slot(): ?PDO {
     static $pdo = null;
+    return $pdo;
+}
+
+function db(): PDO {
+    $pdo = &db_connection_slot();
     if ($pdo === null) {
         $host = env('BACKEND_DB_HOST', 'localhost');
         $port = env('BACKEND_DB_PORT', '3306');
@@ -279,6 +288,34 @@ function db(): PDO {
         $pdo = new PDO($dsn, $user, $pass, $options);
     }
     return $pdo;
+}
+
+/**
+ * For long-running daemons (cron/*-worker.php): call once at the top of every loop tick.
+ *
+ * db() caches one connection for the life of the process. A web request lives for milliseconds,
+ * but a worker lives for weeks — when MySQL closes its connection (wait_timeout on an idle queue,
+ * a MySQL restart, a network blip) every later query failed with "2006 MySQL server has gone
+ * away", forever, until someone restarted the container. Import jobs then sat in 'uploaded'
+ * indefinitely while the import worker logged the same error once per second.
+ *
+ * Pings the cached connection; if it is dead, drops it so the next db() call reconnects.
+ * Returns true when a dead connection was dropped. Never opens a connection by itself.
+ */
+function db_ensure_connected(): bool {
+    $pdo = &db_connection_slot();
+    if ($pdo === null) {
+        return false;
+    }
+    try {
+        // @: mysqlnd also emits an E_WARNING ("Error while sending QUERY packet") on a dead socket.
+        @$pdo->query('SELECT 1');
+        return false;
+    } catch (PDOException $e) {
+        Logger::warning('db.connection_lost.reconnecting', ['message' => $e->getMessage()]);
+        $pdo = null;
+        return true;
+    }
 }
 
 /**

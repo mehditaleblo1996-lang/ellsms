@@ -72,6 +72,8 @@ if (!$pcntlAvailable) {
 }
 
 do {
+    // A long-lived worker must survive MySQL dropping its connection (wait_timeout, restart).
+    db_ensure_connected();
     if (maintenance_mode_active()) {
         static $maintenanceLastLoggedAt = 0;
         if (microtime(true) - $maintenanceLastLoggedAt > 60) {

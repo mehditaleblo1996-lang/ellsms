@@ -80,6 +80,8 @@ if (!$pcntlAvailable) {
 }
 
 do {
+    // A long-lived worker must survive MySQL dropping its connection (wait_timeout, restart).
+    db_ensure_connected();
     $loopStartedAt = microtime(true);
     $workProcessed = 0;
 

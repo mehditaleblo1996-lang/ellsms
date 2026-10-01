@@ -44,6 +44,8 @@ Logger::info('import_worker.started', [
 ]);
 
 do {
+    // A long-lived worker must survive MySQL dropping its connection (wait_timeout, restart).
+    db_ensure_connected();
     $processed = 0;
     try {
         $processed = import_fast_worker_run_once();

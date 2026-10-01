@@ -54,6 +54,8 @@ Logger::info('reports.summary_worker.started', [
 ]);
 
 do {
+    // A long-lived worker must survive MySQL dropping its connection (wait_timeout, restart).
+    db_ensure_connected();
     if (maintenance_mode_active()) {
         if ($once) break;
         sleep($interval);

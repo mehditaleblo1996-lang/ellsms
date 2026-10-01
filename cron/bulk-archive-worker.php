@@ -33,6 +33,8 @@ if ($pcntlAvailable) {
 Logger::info('bulk_archive.worker.started', ['worker_id' => worker_id(), 'pid' => getmypid(), 'once' => $once, 'interval_seconds' => $interval]);
 
 do {
+    // A long-lived worker must survive MySQL dropping its connection (wait_timeout, restart).
+    db_ensure_connected();
     if (maintenance_mode_active()) {
         if ($once) break;
         sleep($interval);
