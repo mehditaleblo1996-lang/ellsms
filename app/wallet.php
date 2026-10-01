@@ -330,6 +330,105 @@ function wallet_commit_reservation(string $refType, string $refId, int $amount, 
 }
 
 /**
+ * wallet_commit_reservation() for many line items of one reservation at once — the bulk worker's
+ * settlement of a whole provider batch. Same money semantics, line by line: one ledger row per
+ * line keyed by that line's own idempotency key (already-used keys are skipped as replays), lines
+ * are applied in order and a line that would exceed the remaining amount is skipped, exactly as a
+ * sequence of single commits would behave.
+ *
+ * What changes is the cost: one reservation lock, one key lookup, one account lock, one multi-row
+ * ledger insert and two updates for the whole batch, instead of ~6 statements per line with the
+ * user's wallet row locked from the first line until the batch commits. With every bulk worker
+ * charging the same user, those per-line round trips held the one wallet row for the whole batch
+ * and the workers settled strictly one after another.
+ *
+ * @param array<int, array{key:string, amount:int}> $lines
+ * @return array<string, true> idempotency keys newly committed by this call (not replays)
+ */
+function wallet_commit_reservation_batch(string $refType, string $refId, array $lines): array {
+    $lines = array_values(array_filter($lines, static fn(array $l): bool => (int)$l['amount'] > 0));
+    if ($lines === []) {
+        return [];
+    }
+    return db_transaction(function (PDO $db) use ($refType, $refId, $lines): array {
+        $rst = $db->prepare('SELECT * FROM ellsms_wallet_reservations WHERE reference_type = ? AND reference_id = ? FOR UPDATE');
+        $rst->execute([$refType, $refId]);
+        $res = $rst->fetch();
+        if (!$res || $res['status'] !== 'active') {
+            Logger::warning('wallet.reservation.batch_commit_skipped', [
+                'reference_type' => $refType, 'reference_id' => $refId, 'lines' => count($lines),
+                'reason' => 'no_active_reservation',
+            ]);
+            return [];
+        }
+
+        $used = [];
+        foreach (array_chunk(array_column($lines, 'key'), 500) as $keys) {
+            $in = implode(',', array_fill(0, count($keys), '?'));
+            $st = $db->prepare("SELECT idempotency_key FROM ellsms_wallet_transactions WHERE idempotency_key IN ({$in})");
+            $st->execute($keys);
+            foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $k) {
+                $used[(string)$k] = true;
+            }
+        }
+
+        $remaining = (int)$res['remaining_amount'];
+        $apply = [];
+        $total = 0;
+        foreach ($lines as $line) {
+            $key = (string)$line['key'];
+            $amount = (int)$line['amount'];
+            if (isset($used[$key]) || isset($apply[$key])) {
+                continue;
+            }
+            if ($amount > $remaining) {
+                Logger::warning('wallet.reservation.commit_exceeds_remaining', [
+                    'reference_type' => $refType, 'reference_id' => $refId, 'idempotency_key' => $key,
+                    'amount' => $amount, 'remaining' => $remaining,
+                ]);
+                continue;
+            }
+            $apply[$key] = $amount;
+            $remaining -= $amount;
+            $total += $amount;
+        }
+        if ($apply === []) {
+            return [];
+        }
+
+        $userId = (int)$res['user_id'];
+        $acct = $db->prepare('SELECT available_balance FROM ellsms_wallet_accounts WHERE user_id = ? FOR UPDATE');
+        $acct->execute([$userId]);
+        $availableBalance = (int)$acct->fetch()['available_balance'];
+
+        $metadata = json_encode([]);
+        foreach (array_chunk($apply, 500, true) as $chunk) {
+            $rows = [];
+            $params = [];
+            foreach ($chunk as $key => $amount) {
+                $rows[] = '(?,?,?,?,?,?,?,?,?,?)';
+                array_push($params, $userId, 'sms_debit', -$amount, $availableBalance, $availableBalance, $refType, $refId, $key, $metadata, null);
+            }
+            $db->prepare('INSERT INTO ellsms_wallet_transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, idempotency_key, metadata, actor_user_id)
+                          VALUES ' . implode(',', $rows))
+               ->execute($params);
+        }
+
+        $db->prepare('UPDATE ellsms_wallet_accounts SET reserved_balance = reserved_balance - ? WHERE user_id = ?')
+           ->execute([$total, $userId]);
+        $newStatus = $remaining <= 0 ? 'committed' : 'active';
+        $db->prepare('UPDATE ellsms_wallet_reservations SET remaining_amount = ?, status = ? WHERE id = ?')
+           ->execute([$remaining, $newStatus, $res['id']]);
+
+        Logger::info('wallet.reservation.committed', [
+            'user_id' => $userId, 'amount' => $total, 'lines' => count($apply),
+            'reference_type' => $refType, 'reference_id' => $refId, 'status' => $newStatus,
+        ]);
+        return array_fill_keys(array_keys($apply), true);
+    });
+}
+
+/**
  * Release whatever remains of an active reservation back to available_balance — called when a
  * job/schedule finishes (give back the unused remainder) or is cancelled/fails outright (give back
  * everything). Idempotent: releasing an already-committed/released/expired/non-existent

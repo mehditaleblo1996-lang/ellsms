@@ -1970,7 +1970,14 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
         // The price FROZEN onto this row at acceptance (bulk_queue_job()) — never re-resolved here.
         $unitCost   = $item['price_cost_credits'] !== null ? (int)$item['price_cost_credits'] : $parts;
         $actualCost = $sentCount > 0 ? $unitCost : 0;
-        if ($actualCost > 0) {
+        if ($actualCost > 0 && $deferred !== null) {
+            // Batched settlement: committed for the whole provider batch, still one ledger row and
+            // one idempotency key per item, by bulk_flush_deferred_settlement().
+            $deferred['commits'][] = [
+                'job_id' => (int)$item['job_id'], 'key' => 'commit:bulk_item:' . $item['id'],
+                'amount' => $actualCost, 'group_key' => (string)($item['price_group_key'] ?? ''),
+            ];
+        } elseif ($actualCost > 0) {
             $commit = wallet_commit_reservation('bulk_job', (string)$item['job_id'], $actualCost, 'commit:bulk_item:' . $item['id']);
             if (($commit['ok'] ?? false) && !($commit['replayed'] ?? false) && !empty($item['price_group_key'])) {
                 sms_price_snapshot_add_settlement('bulk_job', (string)$item['job_id'], (string)$item['price_group_key'], $actualCost);
@@ -2105,6 +2112,26 @@ function bulk_flush_deferred_settlement(PDO $db, array $deferred): void {
     foreach ($counters as $jobId => $c) {
         $bump->execute([(int)($c['sent'] ?? 0), (int)($c['failed'] ?? 0), $jobId]);
     }
+
+    // Money last: the wallet row is shared by every worker sending for this user, so it is locked
+    // only for these last few statements before the batch commits, not for the whole settlement.
+    $commitsByJob = [];
+    foreach ($deferred['commits'] ?? [] as $c) {
+        $commitsByJob[$c['job_id']][] = $c;
+    }
+    ksort($commitsByJob);
+    foreach ($commitsByJob as $jobId => $lines) {
+        $committed = wallet_commit_reservation_batch('bulk_job', (string)$jobId, $lines);
+        $settledByGroup = [];
+        foreach ($lines as $line) {
+            if (isset($committed[$line['key']]) && $line['group_key'] !== '') {
+                $settledByGroup[$line['group_key']] = ($settledByGroup[$line['group_key']] ?? 0) + $line['amount'];
+            }
+        }
+        foreach ($settledByGroup as $groupKey => $amount) {
+            sms_price_snapshot_add_settlement('bulk_job', (string)$jobId, (string)$groupKey, $amount);
+        }
+    }
 }
 
 /**
@@ -2231,7 +2258,7 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
     // inside the transaction below (all or nothing); the fallback path settles item by item.
     $finalizeAll = static function (bool $batched) use ($db, $items, $ctx, $ok, $info, $retryable, $gatewayMeta, $accepted): int {
         $sent = 0;
-        $deferred = $batched ? ['sent' => [], 'failed' => []] : null;
+        $deferred = $batched ? ['sent' => [], 'failed' => [], 'commits' => []] : null;
         foreach ($items as $item) {
             // Segments for THIS item's own text, not the group's representative $parts — correctness
             // matters here even though it is a fallback: bulk_finalize_item() only falls back to it when

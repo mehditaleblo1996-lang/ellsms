@@ -169,6 +169,37 @@ final class WalletIntegrationTest extends IntegrationTestCase
         $this->assertSame(100, wallet_balance($userId)['reserved'], 'A rejected over-commit must not touch the reservation at all.');
     }
 
+    public function testBatchCommitWritesOneLedgerRowPerLineAndMatchesSingleCommits(): void
+    {
+        $userId = $this->makeUser();
+        $this->seedWallet($userId, 1000);
+        wallet_reserve($userId, 100, 'bulk_job', '606', 'reserve_606');
+        wallet_commit_reservation('bulk_job', '606', 10, 'commit:bulk_item:1'); // already settled earlier
+
+        $committed = wallet_commit_reservation_batch('bulk_job', '606', [
+            ['key' => 'commit:bulk_item:1', 'amount' => 10], // replay: skipped
+            ['key' => 'commit:bulk_item:2', 'amount' => 30],
+            ['key' => 'commit:bulk_item:3', 'amount' => 70], // would exceed the 60 left: skipped
+            ['key' => 'commit:bulk_item:4', 'amount' => 60],
+        ]);
+
+        $this->assertSame(['commit:bulk_item:2', 'commit:bulk_item:4'], array_keys($committed));
+        $this->assertSame(0, wallet_balance($userId)['reserved']);
+        $this->assertSame(900, wallet_balance($userId)['available']);
+        $st = db()->prepare("SELECT idempotency_key, amount FROM ellsms_wallet_transactions WHERE reference_type = 'bulk_job' AND reference_id = '606' AND type = 'sms_debit' ORDER BY idempotency_key");
+        $st->execute();
+        $this->assertSame([
+            ['idempotency_key' => 'commit:bulk_item:1', 'amount' => -10],
+            ['idempotency_key' => 'commit:bulk_item:2', 'amount' => -30],
+            ['idempotency_key' => 'commit:bulk_item:4', 'amount' => -60],
+        ], array_map(static fn(array $r): array => ['idempotency_key' => $r['idempotency_key'], 'amount' => (int)$r['amount']], $st->fetchAll()));
+        $res = db()->prepare("SELECT status, remaining_amount FROM ellsms_wallet_reservations WHERE reference_type = 'bulk_job' AND reference_id = '606'");
+        $res->execute();
+        $this->assertSame(['status' => 'committed', 'remaining_amount' => 0], array_map(static fn($v) => is_numeric($v) ? (int)$v : $v, $res->fetch()));
+
+        $this->assertSame([], wallet_commit_reservation_batch('bulk_job', '606', [['key' => 'commit:bulk_item:2', 'amount' => 30]]), 'a retried batch charges nothing');
+    }
+
     public function testReleaseReturnsRemainingReservationToAvailableBalance(): void
     {
         $userId = $this->makeUser();
