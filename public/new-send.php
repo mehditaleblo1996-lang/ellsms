@@ -141,7 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             fclose($fh);
 
-            $title = $mode === 'gradual' ? ($notes ?: 'ارسال تدریجی') : ($notes ?: 'ارسال دسته‌ای');
+            // Unnamed: "ارسال دسته‌ای <date> - <n>" so same-day sends can be told apart.
+            $title = $notes ?: bulk_default_send_title((int)$me['id'], $mode === 'gradual' ? 'ارسال تدریجی' : 'ارسال دسته‌ای');
             $throttleCount = $mode === 'gradual' ? max(1, (int)($_POST['throttle_count'] ?? 10)) : null;
             $throttleMinutes = $mode === 'gradual' ? max(1, (int)($_POST['throttle_minutes'] ?? 5)) : null;
             $created = import_create_job($me, $mode === 'gradual' ? 'gradual' : 'p2p', $originator, $title, $storageKey, $throttleCount, $throttleMinutes);

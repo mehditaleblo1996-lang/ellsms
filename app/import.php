@@ -50,6 +50,34 @@ function import_job_display_title(array $job): string {
     return $title !== '' ? $title : (string)($job['original_filename'] ?? '');
 }
 
+/** The name the user's browser sent for an uploaded file, safe to store and show ('' if none). */
+function import_upload_original_name(array $file): string {
+    $name = trim(basename(str_replace('\\', '/', (string)($file['name'] ?? ''))));
+    $name = preg_replace('/[\x00-\x1F\x7F]/u', '', $name) ?? '';
+    return mb_substr($name, 0, 190);
+}
+
+/**
+ * Default title for a send the user did not name: "<label> <Jalali date> - <n>", where n numbers
+ * this user's unnamed sends of the same label on the same day (1, 2, 3, ...).
+ */
+function bulk_default_send_title(int $userId, string $label = 'ارسال دسته‌ای'): string {
+    $prefix = $label . ' ' . jdate(date('Y-m-d H:i:s'), false) . ' - ';
+    $like = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $prefix) . '%';
+    $db = db();
+    // A large send is an import job first and only gets its bulk job on confirmation (same title),
+    // so count import jobs plus bulk jobs that did not come from an import.
+    $st = $db->prepare("SELECT COUNT(*) FROM ellsms_bulk_jobs WHERE user_id = ? AND source_import_job_id IS NULL AND title LIKE ?");
+    $st->execute([$userId, $like]);
+    $count = (int)$st->fetchColumn();
+    if (import_jobs_have_title_column()) {
+        $st = $db->prepare('SELECT COUNT(*) FROM ellsms_import_jobs WHERE user_id = ? AND title LIKE ?');
+        $st->execute([$userId, $like]);
+        $count += (int)$st->fetchColumn();
+    }
+    return $prefix . to_persian_digits((string)($count + 1));
+}
+
 /**
  * Create an import job record and pre-create its chunks.
  *
@@ -70,7 +98,8 @@ function import_create_job(
     ?int $throttleMinutes = null,
     ?string $messageType = null,
     ?string $template = null,
-    ?array $variableHeaders = null
+    ?array $variableHeaders = null,
+    ?string $originalFilename = null
 ): array {
     $organizationId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
     $userId = (int)($user['id'] ?? 0);
@@ -105,7 +134,7 @@ function import_create_job(
         $jobId = db_transaction(function (PDO $db) use (
             $userId, $organizationId, $sourceType, $title, $originator,
             $storageKey, $totalRows, $chunkSize, $throttleCount, $throttleMinutes, $messageType,
-            $template, $variableHeaders
+            $template, $variableHeaders, $originalFilename
         ): int {
             $db->prepare(
                 "INSERT INTO ellsms_import_jobs
@@ -114,7 +143,11 @@ function import_create_job(
                     template, variable_headers)
                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             )->execute([
-                $organizationId, $userId, $sourceType, $originator, basename($storageKey), $storageKey,
+                $organizationId, $userId, $sourceType, $originator,
+                // The user's own file name when there is one; generated sends (new-send.php) keep
+                // the storage basename, which is how import_fast_generated_simple_job() spots them.
+                ($originalFilename !== null && $originalFilename !== '') ? $originalFilename : basename($storageKey),
+                $storageKey,
                 'uploaded', $totalRows, $chunkSize, $throttleCount, $throttleMinutes, $messageType,
                 $template, $variableHeaders !== null ? json_encode($variableHeaders, JSON_UNESCAPED_UNICODE) : null,
             ]);

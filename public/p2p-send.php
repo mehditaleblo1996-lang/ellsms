@@ -26,7 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($do === 'upload') {
-        $title      = trim($_POST['title'] ?? '') ?: 'بدون عنوان';
+        // Unnamed sends take the uploaded file's name.
+        $uploadName = import_upload_original_name($_FILES['file'] ?? []);
+        $title      = trim($_POST['title'] ?? '') ?: ($uploadName !== '' ? $uploadName : 'بدون عنوان');
         $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
 
         if ($originator === '') {
@@ -49,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         import_delete_storage($storageKey);
                         flash('error', 'تعداد ردیف‌های فایل از سقف مجاز بیشتر است.');
                     } elseif ($countResult['count'] > import_sync_max_recipients()) {
-                        $created = import_create_job($me, 'p2p', $originator, $title, $storageKey);
+                        $created = import_create_job($me, 'p2p', $originator, $title, $storageKey, null, null, null, null, null, $uploadName);
                         if ($created['ok']) {
                             audit((int)$me['id'], 'p2p.upload.large', "{$title}: " . $countResult['count'] . ' rows');
                             redirect('/import.php?id=' . $created['job_id']);

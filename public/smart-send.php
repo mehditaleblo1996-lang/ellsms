@@ -31,7 +31,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($do === 'upload') {
-        $title      = trim($_POST['title'] ?? '') ?: 'بدون عنوان';
+        // Unnamed sends take the uploaded file's name.
+        $uploadName = import_upload_original_name($_FILES['file'] ?? []);
+        $title      = trim($_POST['title'] ?? '') ?: ($uploadName !== '' ? $uploadName : 'بدون عنوان');
         $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
 
         if ($originator === '') {
@@ -61,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             flash('error', 'فایل هوشمند باید حداقل ستون موبایل و متن داشته باشد.');
                         } else {
                             $varHeaders = array_slice($headers, 2);
-                            $created = import_create_job($me, 'smart', $originator, $title, $storageKey, null, null, null, null, $varHeaders);
+                            $created = import_create_job($me, 'smart', $originator, $title, $storageKey, null, null, null, null, $varHeaders, $uploadName);
                             if ($created['ok']) {
                                 audit((int)$me['id'], 'smart.upload.large', "{$title}: " . $countResult['count'] . ' rows');
                                 redirect('/import.php?id=' . $created['job_id']);

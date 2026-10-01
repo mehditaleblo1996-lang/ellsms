@@ -25,8 +25,12 @@ function import_fast_generated_simple_job(array $job): bool {
     if (!in_array((string)($job['source_type'] ?? ''), ['p2p', 'gradual'], true)) {
         return false;
     }
+    // A user upload stores the user's own file name, so only a job whose name IS its random
+    // storage basename was written by new-send.php. (Uploads used to store the storage basename
+    // too, so a user's .csv took this path and skipped validation and blacklist filtering.)
     $name = (string)($job['original_filename'] ?? '');
-    return preg_match('/^[a-f0-9]{32}\.csv$/', $name) === 1;
+    return preg_match('/^[a-f0-9]{32}\.csv$/', $name) === 1
+        && $name === basename((string)($job['storage_key'] ?? ''));
 }
 
 /** Correct CSV record count; quoted embedded newlines belong to one record, not many rows. */

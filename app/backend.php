@@ -1620,34 +1620,61 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
     // between message classes is achieved entirely by the CALLER issuing separate, already
     // single-class-filtered calls to this function (bulk_claim_unthrottled_items_by_class()'s
     // per-class quota loop) rather than by ordering a mixed-class claim here.
-    db_transaction(function (PDO $db) use ($jobFilterSql, $jobFilterParams, $limit, $claimToken, $leaseSeconds): void {
-        $jobIdsSubquery = "SELECT j.id FROM ellsms_bulk_jobs j WHERE {$jobFilterSql}";
+    //
+    // Job ids are resolved FIRST, in their own read, and each job is then claimed with a literal
+    // `job_id = ?`. The claim used to say `job_id IN (SELECT j.id FROM ellsms_bulk_jobs j WHERE ...)`,
+    // which MySQL runs as a DEPENDENT SUBQUERY: it could not use (job_id, status, id), walked every
+    // pending row of every job through idx_lease and filesorted them, and under REPEATABLE READ
+    // locked every row it walked. Measured with 8 running 100k jobs: claiming 1000 rows locked
+    // 1,601,771 rows and took 3.5s idle — 35-55s in production — and every other bulk worker queued
+    // behind those locks, so N workers sent no faster than one. With `job_id = ?` the same claim
+    // locks ~2000 rows and takes ~30ms, and workers claiming different jobs never touch each other.
+    // The id is interpolated (it is an int from intval()) rather than bound: PDO binds it as a string,
+    // and with a string the same UPDATE measured ~250ms instead of ~4ms.
+    // A job that changes status between this read and the UPDATE is harmless:
+    // bulk_item_preflight() re-reads job status right before dispatch.
+    $jobIdsStmt = $db->prepare("SELECT j.id FROM ellsms_bulk_jobs j WHERE {$jobFilterSql} ORDER BY j.id");
+    $jobIdsStmt->execute($jobFilterParams);
+    $jobIds = array_map('intval', $jobIdsStmt->fetchAll(PDO::FETCH_COLUMN));
 
-        $duePending = $db->prepare(
-            "UPDATE ellsms_bulk_items
-             SET status='processing', claimed_by=?, claimed_at=NOW(),
-                 lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1, next_attempt_at=NULL
-             WHERE job_id IN ({$jobIdsSubquery})
-               AND status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
-             ORDER BY id
-             LIMIT {$limit}"
-        );
-        $duePending->execute(array_merge([$claimToken, $leaseSeconds], $jobFilterParams));
-        $remaining = $limit - $duePending->rowCount();
+    if ($jobIds !== []) {
+        db_transaction(function (PDO $db) use ($jobIds, $limit, $claimToken, $leaseSeconds): void {
+            $remaining = $limit;
+            foreach ($jobIds as $jobId) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $duePending = $db->prepare(
+                    "UPDATE ellsms_bulk_items
+                     SET status='processing', claimed_by=?, claimed_at=NOW(),
+                         lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1, next_attempt_at=NULL
+                     WHERE job_id = {$jobId}
+                       AND status='pending' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+                     ORDER BY id
+                     LIMIT {$remaining}"
+                );
+                $duePending->execute([$claimToken, $leaseSeconds]);
+                $remaining -= $duePending->rowCount();
+            }
 
-        if ($remaining > 0) {
-            $expiredLease = $db->prepare(
-                "UPDATE ellsms_bulk_items
-                 SET claimed_by=?, claimed_at=NOW(),
-                     lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1
-                 WHERE job_id IN ({$jobIdsSubquery})
-                   AND status='processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
-                 ORDER BY id
-                 LIMIT {$remaining}"
-            );
-            $expiredLease->execute(array_merge([$claimToken, $leaseSeconds], $jobFilterParams));
-        }
-    });
+            foreach ($jobIds as $jobId) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $expiredLease = $db->prepare(
+                    "UPDATE ellsms_bulk_items
+                     SET claimed_by=?, claimed_at=NOW(),
+                         lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1
+                     WHERE job_id = {$jobId}
+                       AND status='processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
+                     ORDER BY id
+                     LIMIT {$remaining}"
+                );
+                $expiredLease->execute([$claimToken, $leaseSeconds]);
+                $remaining -= $expiredLease->rowCount();
+            }
+        });
+    }
 
     $sel = $db->prepare(
         "SELECT i.*, j.user_id AS user_id, j.originator AS originator
@@ -1692,9 +1719,6 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
 function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array {
     $classes = [MESSAGE_CLASS_BULK_CAMPAIGN, MESSAGE_CLASS_ADVERTISING];
 
-    // oldest_age_seconds computed in SQL (TIMESTAMPDIFF against the DB's own NOW()), not in PHP via
-    // strtotime() — matching cron/jobs-status.php's established oldest-pending-age pattern, and
-    // avoiding any PHP/MySQL session timezone mismatch a client-side date parse would risk.
     // Eligibility here MUST match bulk_claim_items()'s own claim predicate exactly (pending-and-due,
     // OR processing-with-an-expired-lease) -- issue #3's re-audit found and fixed a real bug where
     // this only counted 'pending' rows: a class whose only claimable work was a crashed worker's
@@ -1702,30 +1726,21 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
     // it a zero share and bulk_claim_items() for that class was never even called, leaving the row
     // stuck 'processing' forever -- a genuine silent-loss-adjacent bug (issue #6's own concern),
     // caught by tests/Integration/BulkWorkerCrashRecoveryTest.php's reclaim test.
-    $depthStmt = $db->prepare(
-        "SELECT bj.message_class, COUNT(*) AS depth,
-                TIMESTAMPDIFF(SECOND, MIN(i.created_at), NOW()) AS oldest_age_seconds
-         FROM ellsms_bulk_items i
-         JOIN ellsms_bulk_jobs bj ON bj.id = i.job_id
-         WHERE bj.status = 'processing' AND bj.throttle_count IS NULL
-           AND (
-             (i.status = 'pending' AND (i.next_attempt_at IS NULL OR i.next_attempt_at <= NOW()))
-             OR (i.status = 'processing' AND i.lease_expires_at IS NOT NULL AND i.lease_expires_at < NOW())
-           )
-         GROUP BY bj.message_class"
-    );
-    $depthStmt->execute();
+    //
+    // Depth is counted per job and only up to $totalBudget: allocate_priority_quota() never grants
+    // a class more than the tick's budget, so counting further is wasted work. The exact
+    // COUNT(*)/MIN(created_at) over every claimable row of every running job used to run on EVERY
+    // worker tick and took 10+ seconds with a few 100k jobs queued. Exact depth and oldest age per
+    // class are still exported by PrometheusExporter (ellsms_queue_bulk_depth / _oldest_age_seconds).
     $depthByClass = array_fill_keys($classes, 0);
-    $oldestAgeByClass = [];
-    foreach ($depthStmt->fetchAll() as $row) {
-        $class = normalize_bulk_message_class($row['message_class']);
-        $depthByClass[$class] = (int)$row['depth'];
-        $oldestAgeByClass[$class] = (int)$row['oldest_age_seconds'];
-    }
-
     foreach ($classes as $class) {
-        Metrics::gauge('queue.bulk.depth', $depthByClass[$class], ['message_class' => $class]);
-        Metrics::gauge('queue.bulk.oldest_age_seconds', $oldestAgeByClass[$class] ?? 0, ['message_class' => $class]);
+        foreach (bulk_unthrottled_job_ids_for_class($db, $class) as $jobId) {
+            $left = $totalBudget - $depthByClass[$class];
+            if ($left <= 0) {
+                break;
+            }
+            $depthByClass[$class] += bulk_job_claimable_count($db, $jobId, $left);
+        }
     }
 
     $quota = allocate_priority_quota($depthByClass, $totalBudget);
@@ -1750,6 +1765,51 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
     return $items;
 }
 
+/** Ids of the running, unthrottled bulk jobs of one message class, oldest first. */
+function bulk_unthrottled_job_ids_for_class(PDO $db, string $class): array {
+    $st = $db->prepare(
+        "SELECT j.id FROM ellsms_bulk_jobs j
+         WHERE j.status = 'processing' AND j.throttle_count IS NULL AND j.message_class = ?
+         ORDER BY j.id"
+    );
+    $st->execute([$class]);
+    return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * How many of one job's items bulk_claim_items() could claim right now, counting at most $cap.
+ * Same eligibility as the claim (pending-and-due, or processing with an expired lease), split into
+ * two index-range reads on (job_id, status) instead of one OR that would defeat the index.
+ */
+function bulk_job_claimable_count(PDO $db, int $jobId, int $cap): int {
+    $cap = max(0, $cap);
+    if ($cap === 0) {
+        return 0;
+    }
+    $pending = $db->prepare(
+        "SELECT COUNT(*) FROM (
+           SELECT 1 FROM ellsms_bulk_items
+           WHERE job_id = {$jobId} AND status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+           LIMIT {$cap}
+         ) t"
+    );
+    $pending->execute();
+    $count = (int)$pending->fetchColumn();
+    if ($count >= $cap) {
+        return $count;
+    }
+    $left = $cap - $count;
+    $expired = $db->prepare(
+        "SELECT COUNT(*) FROM (
+           SELECT 1 FROM ellsms_bulk_items
+           WHERE job_id = {$jobId} AND status = 'processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
+           LIMIT {$left}
+         ) t"
+    );
+    $expired->execute();
+    return $count + (int)$expired->fetchColumn();
+}
+
 /**
  * Claim up to $share due items of one message class, spread over every running job of that class
  * instead of strictly oldest-row-first. Oldest-first drained one job completely before the next got
@@ -1760,9 +1820,7 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
  */
 function bulk_claim_class_items_across_jobs(PDO $db, string $class, int $share): array {
     $classFilter = "j.status = 'processing' AND j.throttle_count IS NULL AND j.message_class = ?";
-    $st = $db->prepare("SELECT j.id FROM ellsms_bulk_jobs j WHERE {$classFilter}");
-    $st->execute([$class]);
-    $jobIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    $jobIds = bulk_unthrottled_job_ids_for_class($db, $class);
     if (count($jobIds) <= 1) {
         return bulk_claim_items($db, $classFilter, [$class], $share);
     }
