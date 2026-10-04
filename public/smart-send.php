@@ -14,7 +14,7 @@ if (!is_admin()) {
     require_entitlement((int)($me['organization_id'] ?? 0), Entitlements::BULK_SEND);
 }
 
-$myNumbers = user_assigned_numbers($me);
+$myNumbers = user_sendable_numbers($me); // own + organization + shared (app/authorization.php)
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();

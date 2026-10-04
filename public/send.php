@@ -18,7 +18,7 @@ $groups = db()->prepare("SELECT DISTINCT group_name FROM ellsms_contacts WHERE {
 $groups->execute([$myOrgId, $me['id']]);
 $groups = array_column($groups->fetchAll(), 'group_name');
 
-$myNumbers = user_assigned_numbers($me);
+$myNumbers = user_sendable_numbers($me); // own + organization + shared (app/authorization.php)
 
 $categories = db()->prepare(
     "SELECT c.id, c.name, (SELECT COUNT(*) FROM ellsms_number_category_items i WHERE i.category_id = c.id) c

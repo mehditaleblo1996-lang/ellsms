@@ -54,6 +54,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Shared lines (docs/shared-numbers.md). A share is additive and send-only: it never moves the
+    // number's own assignment, and never widens the inbox/auto-reply/opt-out scope, which stay with
+    // assigned_user_id / organization_id. Granting the same line twice is a no-op (PRIMARY KEY).
+    if ($do === 'share_add') {
+        $id     = (int)($_POST['id'] ?? 0);
+        $userId = (int)($_POST['user_id'] ?? 0);
+        // The number is re-checked rather than trusted from the form: INSERT IGNORE downgrades a
+        // foreign-key failure to a warning, so a crafted id would otherwise insert nothing while
+        // still reporting success. resolve_ellsms_managed_user() is the same gate users.php uses —
+        // a real backend account that actually has ELLSMS panel access, never an arbitrary id.
+        $numberExists = false;
+        if ($id > 0) {
+            $st = db()->prepare('SELECT 1 FROM ellsms_numbers WHERE id = ?');
+            $st->execute([$id]);
+            $numberExists = $st->fetchColumn() !== false;
+        }
+        if (!$numberExists) {
+            flash('error', 'شماره‌ی معتبری انتخاب نشده است.');
+        } elseif ($userId <= 0 || !resolve_ellsms_managed_user($userId)) {
+            flash('error', 'کاربر معتبری انتخاب نشده است.');
+        } else {
+            db()->prepare('INSERT IGNORE INTO ellsms_number_shares (number_id, user_id, created_by) VALUES (?,?,?)')
+               ->execute([$id, $userId, (int)$me['id']]);
+            audit((int)$me['id'], 'number.share_add', "#{$id} -> {$userId}");
+            flash('success', 'شماره برای این کاربر هم فعال شد.');
+        }
+    }
+
+    if ($do === 'share_remove') {
+        $id     = (int)($_POST['id'] ?? 0);
+        $userId = (int)($_POST['user_id'] ?? 0);
+        db()->prepare('DELETE FROM ellsms_number_shares WHERE number_id = ? AND user_id = ?')
+           ->execute([$id, $userId]);
+        audit((int)$me['id'], 'number.share_remove', "#{$id} -> {$userId}");
+        flash('info', 'اشتراک این شماره برای آن کاربر برداشته شد.');
+    }
+
     if ($do === 'delete') {
         $id = (int)($_POST['id'] ?? 0);
         db()->prepare('DELETE FROM ellsms_numbers WHERE id = ?')->execute([$id]);
@@ -72,6 +109,19 @@ foreach ($numbers as &$n) {
     $n['username'] = $n['assigned_user_id'] !== null ? ($numberUsernames[(int)$n['assigned_user_id']] ?? null) : null;
 }
 unset($n);
+
+// Shares, grouped per number, in one query — not one per row. Usernames resolve through the same
+// identity provider the assignment column already uses (app/Backend/identity.php), never a second
+// ad-hoc join to user_.
+$shareRows = db()->query('SELECT number_id, user_id FROM ellsms_number_shares')->fetchAll();
+$shareUsernames = backend_usernames_by_ids(array_column($shareRows, 'user_id'));
+$sharesByNumber = [];
+foreach ($shareRows as $row) {
+    $sharesByNumber[(int)$row['number_id']][] = [
+        'user_id'  => (int)$row['user_id'],
+        'username' => $shareUsernames[(int)$row['user_id']] ?? ('#' . (int)$row['user_id']),
+    ];
+}
 
 $panelUsers = backend_panel_access_users();
 
@@ -97,7 +147,7 @@ require __DIR__ . '/../app/views/header.php';
   <h2>همه‌ی شماره‌ها</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>شماره</th><th>برچسب</th><th>تخصیص به کاربر</th><th>درگاه ارسال</th><th></th></tr>
+    <tr><th>شماره</th><th>برچسب</th><th>تخصیص به کاربر</th><th>کاربران اشتراکی (فقط ارسال)</th><th>درگاه ارسال</th><th></th></tr>
     <?php foreach ($numbers as $n): ?>
       <tr>
         <td class="msisdn"><?= e($n['number']) ?></td>
@@ -114,6 +164,38 @@ require __DIR__ . '/../app/views/header.php';
               <?php endforeach; ?>
             </select>
             <noscript><button class="btn btn-sm">اعمال</button></noscript>
+          </form>
+        </td>
+        <td>
+          <?php $shares = $sharesByNumber[(int)$n['id']] ?? []; ?>
+          <?php foreach ($shares as $s): ?>
+            <form method="post" class="toolbar" style="margin:0 0 4px">
+              <?= csrf_field() ?>
+              <input type="hidden" name="do" value="share_remove">
+              <input type="hidden" name="id" value="<?= $n['id'] ?>">
+              <input type="hidden" name="user_id" value="<?= $s['user_id'] ?>">
+              <span><?= e($s['username']) ?></span>
+              <button class="btn btn-sm btn-danger" title="برداشتن اشتراک">×</button>
+            </form>
+          <?php endforeach; ?>
+          <form method="post" class="toolbar" style="margin:0">
+            <?= csrf_field() ?>
+            <input type="hidden" name="do" value="share_add">
+            <input type="hidden" name="id" value="<?= $n['id'] ?>">
+            <select name="user_id" onchange="this.form.submit()">
+              <option value="">— افزودن کاربر —</option>
+              <?php
+              $alreadyShared = array_column($shares, 'user_id');
+              foreach ($panelUsers as $u):
+                  // The outright owner is already covered by the assignment column; offering them
+                  // here would create a share row that changes nothing.
+                  if ((int)$u['id'] === (int)$n['assigned_user_id']) continue;
+                  if (in_array((int)$u['id'], $alreadyShared, true)) continue;
+              ?>
+                <option value="<?= $u['id'] ?>"><?= e($u['username']) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <noscript><button class="btn btn-sm">افزودن</button></noscript>
           </form>
         </td>
         <td>
@@ -144,10 +226,18 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$numbers): ?><tr><td colspan="5" class="empty">هنوز شماره‌ای ثبت نشده.</td></tr><?php endif; ?>
+    <?php if (!$numbers): ?><tr><td colspan="6" class="empty">هنوز شماره‌ای ثبت نشده.</td></tr><?php endif; ?>
   </table>
   </div>
   <p class="hint">وقتی کاربری حداقل یک شماره تخصیص‌یافته داشته باشد، در ارسال پیامک و منشی پیامک به‌جای نوشتن آزاد، از میان شماره‌های خودش انتخاب می‌کند.</p>
+  <p class="hint">
+    <b>کاربران اشتراکی:</b> یک شماره را می‌توان علاوه بر مالکش، به چند کاربر دیگر هم داد. آن کاربران این خط را در فهرست
+    «ارسال‌کننده» صفحات ارسال، نظیر‌به‌نظیر، پیامک هوشمند و ارسال منطقه‌ای می‌بینند و می‌توانند از آن بفرستند — هزینه‌ی هر
+    ارسال هم از اعتبار خودِ همان کاربر کم می‌شود.
+    اشتراک <b>فقط اجازه‌ی ارسال</b> می‌دهد: صندوق دریافت، منشی پیامک و فهرست لغو عضویتِ این خط همچنان فقط برای مالک
+    (یا سازمان مالک) دیده می‌شود. برای اینکه کاربری پیام‌های ورودی یک خط را هم ببیند، باید خط به خودش یا به سازمانش
+    تخصیص داده شود، نه اشتراکی.
+  </p>
   <p class="hint">
     <b>درگاه ارسال:</b> هر پیامی که از این شماره ارسال شود فقط از درگاه انتخاب‌شده می‌رود (پیامک ورودی تغییری نمی‌کند).
     قیمت پیام همان قیمت مسیر فعلی است و تغییر نمی‌کند. اگر درگاه انتخاب‌شده در دسترس نباشد، پیام از درگاه دیگری فرستاده نمی‌شود:

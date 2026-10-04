@@ -10,8 +10,9 @@
  * the root cause of the CRITICAL inbox.php cross-tenant leak.
  *
  * Split deliberately into:
- *  - thin DB-read functions (user_assigned_numbers, resolve_ellsms_managed_user)
- *    whose only job is fetching the row(s) a decision needs, and
+ *  - thin DB-read functions (user_assigned_numbers, user_shared_numbers,
+ *    user_sendable_numbers, resolve_ellsms_managed_user) whose only job is
+ *    fetching the row(s) a decision needs, and
  *  - pure decision functions (can_view_inbound_message, can_use_originator,
  *    is_backend_account_active, has_panel_access, can_demote_or_revoke)
  *    that take already-fetched arrays and return a bool — these are
@@ -48,6 +49,89 @@ function organization_assigned_numbers(int $organizationId): array {
     $st = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE organization_id = ? ORDER BY number');
     $st->execute([$organizationId]);
     return $st->fetchAll();
+}
+
+/**
+ * Lines a platform admin has SHARED with this user (ellsms_number_shares, /admin/numbers) — a third
+ * way to reach a line, alongside owning it outright (assigned_user_id) and being in the
+ * organization it belongs to (organization_id).
+ *
+ * A share is deliberately send-only, so this feeds sendable_originators() and NOT
+ * allowed_originators(): see that pair below and docs/shared-numbers.md.
+ */
+function user_shared_numbers(array $user): array {
+    if (($user['role'] ?? null) === 'admin') return [];
+    $userId = (int)($user['id'] ?? 0);
+    if ($userId <= 0) return [];
+    $st = db()->prepare(
+        'SELECT n.number, n.label
+           FROM ellsms_number_shares s
+           JOIN ellsms_numbers n ON n.id = s.number_id
+          WHERE s.user_id = ?
+          ORDER BY n.number'
+    );
+    $st->execute([$userId]);
+    return $st->fetchAll();
+}
+
+/**
+ * Every line this user may send from, as rows for a picker: their own, their organization's, and
+ * every one shared with them — de-duplicated by number, ordered by number.
+ *
+ * This, not user_assigned_numbers(), is what a send page's "ارسال‌کننده" dropdown must read. The two
+ * had already drifted before shares existed: allowed_originators() has permitted the organization's
+ * numbers since Phase 5, while the dropdowns only ever listed assigned_user_id ones, so a member
+ * could be entitled to a line the UI never offered. Both halves now derive from one function, so
+ * the list a user sees and the list can_use_originator() accepts cannot diverge again.
+ */
+function user_sendable_numbers(array $user): array {
+    if (($user['role'] ?? null) === 'admin') return [];
+    $owned  = array_merge(
+        user_assigned_numbers($user),
+        organization_assigned_numbers((int)($user['organization_id'] ?? 0))
+    );
+    $shared = user_shared_numbers($user);
+
+    // A user with no line of their own still sends today: allowed_originators() falls back to their
+    // legacy ellsms_meta.originator, and can_use_originator() accepts the panel's default_originator
+    // on top of that — which is why the send pages show a free-text field when this returns nothing.
+    // A share would otherwise turn that field into a dropdown holding ONLY the shared line, quietly
+    // taking their usual sender away, so it is carried into the list it is about to be replaced by.
+    if (!$owned && $shared) {
+        $fallback = normalize_originator((string)($user['originator'] ?? ''))
+            ?? normalize_originator((string)(setting('default_originator', '') ?? ''));
+        if ($fallback !== null) $owned[] = ['number' => $fallback, 'label' => 'پیش‌فرض'];
+    }
+
+    $rows = array_merge($owned, $shared);
+    $seen = [];
+    $out  = [];
+    foreach ($rows as $row) {
+        $number = (string)$row['number'];
+        // First writer wins: an owned/organization row keeps its own label over a shared duplicate.
+        if (isset($seen[$number])) continue;
+        $seen[$number] = true;
+        $out[] = $row;
+    }
+    // Sorted on the value, not on an array key: PHP silently casts a numeric-string key to int, and
+    // an originator is a string ('09…' and '9…' must not order by numeric value).
+    usort($out, static fn(array $a, array $b): int => strcmp((string)$a['number'], (string)$b['number']));
+    return $out;
+}
+
+/**
+ * The send-side counterpart of allowed_originators(): the same lines PLUS the shared ones.
+ *
+ * can_use_originator() checks this one. The inbox (can_view_inbound_message(), inbox.php),
+ * auto-reply rules and the per-line opt-out list keep checking allowed_originators() — that
+ * separation IS the "send only" part of a share, not an oversight.
+ */
+function sendable_originators(array $user): array {
+    $allowed = allowed_originators($user);
+    if (in_array('*', $allowed, true)) return $allowed;
+    $shared = array_column(user_shared_numbers($user), 'number');
+    if (!$shared) return $allowed;
+    return array_values(array_unique(array_merge($allowed, $shared)));
 }
 
 function can_view_inbound_message(array $user, string $destination): bool {
@@ -212,7 +296,9 @@ function can_use_originator(array $user, string $originator): bool {
     $userId = (int)($user['id'] ?? 0);
     if ($userId > 0 && !user_send_policy_request_allowed($userId)) return false;
     if (($user['role'] ?? null) === 'admin') return true;
-    if (in_array($normalized, allowed_originators($user), true)) return true;
+    // sendable_originators(), not allowed_originators(): a line shared with this user may be sent
+    // from, while its inbox/auto-reply/opt-out list stay with its owner (docs/shared-numbers.md).
+    if (in_array($normalized, sendable_originators($user), true)) return true;
     $default = normalize_originator((string)(setting('default_originator', '') ?? ''));
     return $default !== null && $normalized === $default;
 }

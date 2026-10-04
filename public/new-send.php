@@ -11,7 +11,7 @@ $active = 'new_send';
 // save-as-campaign checkbox specifically (STEP 14/15 — read/manage/send/schedule kept distinct).
 $rbacOrg = is_admin() ? null : require_permission(Permissions::MESSAGES_SEND);
 
-$myNumbers = user_assigned_numbers($me);
+$myNumbers = user_sendable_numbers($me); // own + organization + shared (app/authorization.php)
 
 // Phase 6 closure: same organization-or-legacy-fallback ownership shape as public/contacts.php.
 $myOrgId = $me['organization_id'] ?? null;

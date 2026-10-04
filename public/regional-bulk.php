@@ -71,7 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $configured = regional_bulk_configured();
 $provinces = $configured ? regional_bulk_provinces() : [];
-$originators = allowed_originators($me);
+// Send page, so the send-side list: own + organization + shared lines (app/authorization.php).
+$originators = sendable_originators($me);
 
 $where = ['1=1'];
 $params = [];
