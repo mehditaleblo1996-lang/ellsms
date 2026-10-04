@@ -142,7 +142,7 @@ require __DIR__ . '/../app/views/header.php';
         <?php if (!is_admin() && $myNumbers): ?>
           <select name="originator">
             <?php foreach ($myNumbers as $n): ?>
-              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?><?= $n['label'] ? ' — ' . e($n['label']) : '' ?></option>
+              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?></option>
             <?php endforeach; ?>
           </select>
         <?php else: ?>

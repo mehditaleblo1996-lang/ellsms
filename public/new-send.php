@@ -259,7 +259,7 @@ if (isset($costPreview) && $costPreview) {
         <?php if ($myNumbers): ?>
           <select name="originator">
             <?php foreach ($myNumbers as $n): ?>
-              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?><?= $n['label'] ? ' — ' . e($n['label']) : '' ?></option>
+              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?></option>
             <?php endforeach; ?>
           </select>
         <?php else: ?>
