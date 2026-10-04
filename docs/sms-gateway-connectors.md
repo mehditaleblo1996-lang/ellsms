@@ -355,6 +355,8 @@ an oversized packet). Absent or `0` means unbounded — nothing changes for exis
 per gateway; the global `SMS_PROVIDER_BATCH_SIZE` (default 200) only decides how many rows are *handed*
 to the gateway at once.
 
+**`recipients_local_array`** is the recipients as `0912...` (98/+98/0098 rewritten), for providers that reject the 98 form; opt-in per parameter.
+
 **PishgamRayan** (`db/migrations/2026_10_04_pishgamrayan_gateway.sql`): `Send` (positional `result`
 ids, a negative entry fails only its own recipient) and `StatusWithTime` (correlated by id, polled for
 48 h). The migration is inert until a route or number points at the gateway, and its `Authorization`

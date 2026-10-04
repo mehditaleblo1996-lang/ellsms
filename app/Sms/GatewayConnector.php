@@ -35,7 +35,7 @@ class GatewayConfigException extends AppException {}
  * which is how a provider ends up receiving a message addressed to nobody.
  */
 const GATEWAY_SEND_VARIABLES = [
-    'sender', 'recipient', 'recipients', 'recipients_array', 'senders_array', 'messages_array',
+    'sender', 'recipient', 'recipients', 'recipients_array', 'recipients_local_array', 'senders_array', 'messages_array',
     'message', 'message_type', 'request_id',
     'organization_id', 'operator_code', 'route_code', 'gateway_code', 'timestamp', 'sender_user_id',
     // Phase 9C — a deterministic idempotency token PER RECIPIENT, positionally aligned with

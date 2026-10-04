@@ -764,7 +764,7 @@ require __DIR__ . '/../app/views/header.php';
 (function () {
   var catalogs = <?= json_encode(['send' => GATEWAY_SEND_VARIABLES, 'status' => GATEWAY_STATUS_VARIABLES, 'receive' => GATEWAY_RECEIVE_VARIABLES]) ?>;
   // Variables whose natural serialization is a list rather than a scalar.
-  var listTypes = { provider_message_ids: 'integer_list', recipients: 'string_list', recipients_array: 'string_array',
+  var listTypes = { provider_message_ids: 'integer_list', recipients: 'string_list', recipients_array: 'string_array', recipients_local_array: 'string_array',
                     senders_array: 'string_array', messages_array: 'string_array', idempotency_keys_array: 'string_array',
                     idempotency_ids_array: 'integer_array' };
 

@@ -96,6 +96,14 @@ function gateway_parameter_signature(array $connector, string $connectorKind, ?i
     return $GLOBALS['__gateway_param_sets'][$cacheKey]['signature'];
 }
 
+/**
+ * Iranian mobile in national form: `98912...`, `+98912...`, `0098912...` -> `0912...`. Anything else is
+ * returned unchanged. Feeds `recipients_local_array`, for providers that reject the 98 form.
+ */
+function gateway_local_msisdn(string $number): string {
+    return preg_match('/^(?:\+|00)?98(9\d{9})$/D', trim($number), $m) === 1 ? '0' . $m[1] : $number;
+}
+
 function gateway_send_context(array $input): array {
     $recipients=is_array($input['recipients']??null)?array_values(array_map('strval',$input['recipients'])):[];
     $sender=(string)($input['sender']??''); $message=(string)($input['message']??''); $count=count($recipients);
@@ -105,7 +113,7 @@ function gateway_send_context(array $input): array {
     $idempotencyKeysArray=$perRecipientIdempotencyKeys!==null?array_map(static fn(string $d):string=>(string)($perRecipientIdempotencyKeys[$d]??''),$recipients):[];
     $idempotencyIdsArray=gateway_idempotency_ids($idempotencyKeysArray);
     return [
-        'sender'=>$sender,'recipient'=>(string)($input['recipient']??($recipients[0]??'')),'recipients'=>implode(',',$recipients),'recipients_array'=>$recipients,
+        'sender'=>$sender,'recipient'=>(string)($input['recipient']??($recipients[0]??'')),'recipients'=>implode(',',$recipients),'recipients_array'=>$recipients,'recipients_local_array'=>array_map('gateway_local_msisdn',$recipients),
         'senders_array'=>$count>0?array_fill(0,$count,$sender):[],'messages_array'=>$messagesArray,'idempotency_keys_array'=>$idempotencyKeysArray,'idempotency_ids_array'=>$idempotencyIdsArray,
         'message'=>$message,'message_type'=>(string)($input['message_type']??''),'request_id'=>(string)($input['request_id']??Logger::currentRequestId()),
         'organization_id'=>(string)($input['organization_id']??''),'operator_code'=>(string)($input['operator_code']??''),'route_code'=>(string)($input['route_code']??''),
