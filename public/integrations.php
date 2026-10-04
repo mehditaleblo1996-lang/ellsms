@@ -54,6 +54,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php foreach (integration_packages() as $name => [$folder, $label]): ?>
       <a class="btn<?= $name === 'woocommerce' ? ' btn-primary' : '' ?>" href="/integrations.php?download=<?= e($name) ?>">⬇ <?= e($label) ?> <span class="muted ltr">(<?= e($folder) ?>.zip)</span></a>
     <?php endforeach; ?>
+    <a class="btn" href="/developers/api-guide">📄 راهنمای کامل API <span class="muted ltr">(PDF)</span></a>
     <a class="btn" href="/api-keys.php">🔑 ساخت کلید API</a>
   </div>
 </div>

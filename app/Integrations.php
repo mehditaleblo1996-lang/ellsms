@@ -11,6 +11,9 @@
 declare(strict_types=1);
 
 const INTEGRATION_GUIDE_FILE = 'integrations/GUIDE.fa.md';
+// The customer-facing API guide PDF, served by public/api-guide.php to any signed-in user. It lives here,
+// outside public/, because Apache would hand anything under public/ to anyone — logged in or not.
+const INTEGRATION_API_GUIDE_PDF = 'integrations/ELLSMS-API-Guide.pdf';
 
 /** name => [zip root folder, label, list of [source (relative to the repo, file or dir), target inside root]] */
 function integration_packages(): array {

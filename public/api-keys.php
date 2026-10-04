@@ -133,6 +133,8 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
 
 <div class="card">
   <h2>ساخت کلید جدید</h2>
+  <p class="hint" style="margin:-8px 0 14px">نحوه‌ی ارسال، انواع ارسال، کدهای خطا و نمونه‌کد در
+    <a href="/developers/api-guide">راهنمای کامل API (PDF)</a> آمده است.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="create">
