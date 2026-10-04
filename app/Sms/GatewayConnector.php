@@ -693,6 +693,46 @@ function gateway_parameter_resolve(array $parameter, array $context): mixed {
     };
 }
 
+/**
+ * Parameter key meaning "this value IS the whole JSON request body" rather than one field of an object.
+ *
+ * Some providers (PishgamRayan's `Status`/`StatusWithTime`) take a bare JSON array — `[42676161,...]` —
+ * as the body, which a key/value parameter model cannot express. The marker is an ordinary
+ * `[A-Za-z0-9_.-]` key so the admin form accepts it, and it is a bounded, named convention, not an
+ * expression: the value still comes from one of the usual value types and data types.
+ */
+const GATEWAY_ROOT_BODY_KEY = '__root__';
+
+/**
+ * Fails closed when a root-body parameter cannot produce a valid request: it must be the ONLY body
+ * parameter (a bare array has nowhere to put siblings), the body must be JSON, and the method must be
+ * one that carries a body.
+ *
+ * @param array<string,array> $parameterScopes compiled parameters for one connector, bucketed by scope
+ */
+function gateway_root_body_validate(array $parameterScopes, string $method, string $contentType): void {
+    $bodyKeys = [];
+    foreach ($parameterScopes as $scope => $bucket) {
+        $lists = $scope === 'gateway' ? [$bucket] : array_values($bucket);
+        foreach ($lists as $parameters) {
+            foreach ($parameters as $parameter) {
+                if ($parameter['location'] === 'body') {
+                    $bodyKeys[] = $parameter['key'];
+                }
+            }
+        }
+    }
+    if (!in_array(GATEWAY_ROOT_BODY_KEY, $bodyKeys, true)) {
+        return;
+    }
+    if (count(array_unique($bodyKeys)) !== 1) {
+        throw new GatewayConfigException('پارامتر ' . GATEWAY_ROOT_BODY_KEY . ' کل بدنه‌ی درخواست است و نباید همراه پارامتر بدنه‌ی دیگری باشد');
+    }
+    if ($method === 'GET' || $contentType !== 'application/json') {
+        throw new GatewayConfigException('پارامتر ' . GATEWAY_ROOT_BODY_KEY . ' فقط با متد دارای بدنه و نوع محتوای application/json قابل استفاده است');
+    }
+}
+
 /** Splits a comma-separated context value into a list, dropping empties. */
 function gateway_split_list(string $raw): array {
     if ($raw === '') {

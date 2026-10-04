@@ -38,8 +38,11 @@ function gateway_build_request(array $connector, string $connectorKind, array $c
     $encodedBody = null;
     $method = $section['method'];
     if ($method !== 'GET' && $body !== []) {
+        // A root-body parameter (GATEWAY_ROOT_BODY_KEY) is the whole body, e.g. a bare `[id,...]`
+        // array. Compile time guarantees it is the only body parameter on a JSON connector.
+        $rootBody = array_key_exists(GATEWAY_ROOT_BODY_KEY, $body) && is_array($body[GATEWAY_ROOT_BODY_KEY]);
         $encodedBody = $section['content_type'] === 'application/json'
-            ? gateway_json_encode_body($body)
+            ? gateway_json_encode_body($rootBody ? $body[GATEWAY_ROOT_BODY_KEY] : $body)
             : http_build_query(gateway_form_values($body));
     }
     $path = (string)(parse_url($section['endpoint'], PHP_URL_PATH) ?: '/');
@@ -405,6 +408,10 @@ function gateway_send(array $connector,array $input,?int $routeId,?int $operator
     $input['gateway_code']=$connector['gateway_code']; $perMessage=$connector['send_mode']!=='batch'; $groups=[];$unsupported=[];$resolvedOperators=[];
     foreach($destinations as $destination){$operator=$operatorId!==null?['operator_id'=>$operatorId,'operator_code'=>(string)($connector['operators'][$operatorId]??'')]:gateway_resolve_recipient_operator($destination);if(!gateway_supports_operator($connector,$operator['operator_id'])){$unsupported[]=$destination;continue;}$signature=gateway_parameter_signature($connector,'send',$routeId,$operator['operator_id']);$groupKey=implode('|',[$connector['gateway_id'],$connector['config_version'],$routeId??'-',$signature['signature'],(string)($input['sender']??''),(string)($input['message_type']??''),($perMessage||$signature['per_recipient'])?$destination:'']);$groups[$groupKey]??=['operator'=>$operator,'destinations'=>[]];$groups[$groupKey]['destinations'][]=$destination;$resolvedOperators[$destination]=$operator['operator_id'];}
     if($groups===[])return gateway_send_failure('gateway does not carry this operator',BackendError::REJECTED);
+    // A provider that caps recipients per request (PishgamRayan: 100) is served by batch mapping `max_recipients`:
+    // each compatible group is split into requests of at most that many destinations. 0/absent = no cap.
+    $cap=(int)($connector['send']['batch']['max_recipients']??0);
+    if($cap>0){$chunked=[];foreach($groups as $groupKey=>$group){foreach(array_chunk($group['destinations'],$cap) as $chunkIndex=>$chunk)$chunked[$groupKey.'#'.$chunkIndex]=['operator'=>$group['operator'],'destinations'=>$chunk];}$groups=$chunked;}
     $sent=[];$messageIds=[];$lastError=null;$lastClass=null;$lastHttp=0;$retryable=false;$lastOutcome=PROVIDER_RESPONSE_FAILED;$lastProviderErrorCode=null;$lastProviderErrorDetail=null;
     foreach($groups as $group){
         $groupDestinations=$group['destinations'];$operator=$group['operator'];

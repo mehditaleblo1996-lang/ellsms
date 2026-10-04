@@ -238,6 +238,15 @@ function gateway_compile(int $gatewayId): ?array {
             }
         }
 
+        // Root-body parameters (a bare JSON array as the whole body) are only meaningful on a JSON
+        // connector that carries a body; refuse anything else at compile time, not on the first send.
+        $connectorSections = ['send' => $send, 'status' => $status, 'receive' => $receive];
+        foreach ($connectorSections as $kind => $section) {
+            if ($section !== null) {
+                gateway_root_body_validate($parameters[$kind], (string)$section['http_method'], (string)$section['content_type']);
+            }
+        }
+
         $connector = [
             'gateway_id'     => (int)$gateway['id'],
             'gateway_code'   => (string)$gateway['code'],
@@ -485,6 +494,8 @@ function gateway_batch_mapping_compile(?array $mapping): ?array {
         // repeated userSuppliedId). Such a recipient was accepted on an earlier attempt, so it is
         // settled as SENT (not failed, not re-queued) — just without a provider id, which this
         // answer does not carry. Empty by default: nothing changes for a connector that omits it.
+        // Upper bound on recipients per provider request; 0 = unbounded (the default). Applied by gateway_send().
+        'max_recipients'   => max(0, min(1000, (int)($mapping['max_recipients'] ?? 0))),
         'duplicate_values' => array_values(array_filter(array_map(static fn($v): string => trim((string)$v), (array)($mapping['duplicate_values'] ?? [])), static fn(string $v): bool => $v !== '')),
     ];
 }

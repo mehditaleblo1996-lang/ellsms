@@ -341,6 +341,25 @@ Fixed along the way: the auto-responder read its cursor through `setting()`, who
 cache the long-running worker never refreshed — past 100 new messages it rescanned the same rows every
 tick. Cursors now go through `setting_fresh()`.
 
+## Two small connector features (PishgamRayan, 2026-10)
+
+**Root body — `__root__`.** A body parameter keyed `__root__` is the *whole* JSON body instead of one
+field of an object, for providers whose request is a bare array (`StatusWithTime`: `[42676161,...]`).
+Compile time refuses it unless it is the only body parameter on a JSON connector with a body-carrying
+method, so a half-valid request can never be built. Value and data type work as usual
+(`provider_message_ids` + `integer_list` keeps 19-digit ids off the float path).
+
+**`max_recipients` in the batch mapping.** `{"correlation_mode":"position","provider_ids_path":"result","max_recipients":100}`
+splits every compatible group into requests of at most that many destinations (providers that reject
+an oversized packet). Absent or `0` means unbounded — nothing changes for existing gateways. This is
+per gateway; the global `SMS_PROVIDER_BATCH_SIZE` (default 200) only decides how many rows are *handed*
+to the gateway at once.
+
+**PishgamRayan** (`db/migrations/2026_10_04_pishgamrayan_gateway.sql`): `Send` (positional `result`
+ids, a negative entry fails only its own recipient) and `StatusWithTime` (correlated by id, polled for
+48 h). The migration is inert until a route or number points at the gateway, and its `Authorization`
+header ships as a test placeholder to be replaced in the admin panel.
+
 ## Secrets
 
 A gateway credential can send messages at the customer's expense, so:
