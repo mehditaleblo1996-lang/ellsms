@@ -120,6 +120,18 @@ do {
         Metrics::increment('gateway.receive_worker.pass.failed', 1);
     }
 
+    // #46 — delivery receipts and received messages from SMPP gateways (written by smpp-bridge to
+    // ellsms_smpp_events). Same monotonic status rules and inbound store as the HTTP paths above.
+    try {
+        $smppStats = Metrics::time('gateway.smpp_events.pass', fn() => smpp_events_process_pass());
+        if ($smppStats['processed'] + $smppStats['retry'] > 0) {
+            Logger::info('gateway.smpp_events.pass_completed', $smppStats);
+        }
+    } catch (Throwable $t) {
+        Logger::critical('gateway.smpp_events.pass_failed', ['exception' => $t]);
+        Metrics::increment('gateway.smpp_events.pass.failed', 1);
+    }
+
     // Summary maintenance is deliberately AFTER the provider poll. If polling changed delivery data,
     // paged rows see it immediately; summary cards stay transport-cache based and are advanced here
     // without coupling page latency to history size. First process tick runs it immediately.

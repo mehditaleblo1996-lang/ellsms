@@ -404,6 +404,7 @@ function gateway_extract_batch_result(array $section,mixed $decoded):array{
 }
 
 function gateway_send(array $connector,array $input,?int $routeId,?int $operatorId=null):array{
+    if(($connector['protocol']??'http')==='smpp')return smpp_gateway_send($connector,$input,$routeId,$operatorId); // #46
     $destinations=array_values(array_map('strval',$input['recipients']??[])); if($destinations===[])return gateway_send_failure('no destinations',BackendError::REJECTED);
     $input['gateway_code']=$connector['gateway_code']; $perMessage=$connector['send_mode']!=='batch'; $groups=[];$unsupported=[];$resolvedOperators=[];
     foreach($destinations as $destination){$operator=$operatorId!==null?['operator_id'=>$operatorId,'operator_code'=>(string)($connector['operators'][$operatorId]??'')]:gateway_resolve_recipient_operator($destination);if(!gateway_supports_operator($connector,$operator['operator_id'])){$unsupported[]=$destination;continue;}$signature=gateway_parameter_signature($connector,'send',$routeId,$operator['operator_id']);$groupKey=implode('|',[$connector['gateway_id'],$connector['config_version'],$routeId??'-',$signature['signature'],(string)($input['sender']??''),(string)($input['message_type']??''),($perMessage||$signature['per_recipient'])?$destination:'']);$groups[$groupKey]??=['operator'=>$operator,'destinations'=>[]];$groups[$groupKey]['destinations'][]=$destination;$resolvedOperators[$destination]=$operator['operator_id'];}

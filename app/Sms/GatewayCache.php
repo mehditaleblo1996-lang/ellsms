@@ -179,6 +179,10 @@ function gateway_compile(int $gatewayId): ?array {
         if (!$gateway) {
             return null;
         }
+        // #46 — an SMPP gateway has no HTTP connectors; its sessions live in the smpp-bridge container.
+        if (($gateway['protocol'] ?? 'http') === 'smpp') {
+            return smpp_gateway_compile($gateway);
+        }
 
         $st = $db->prepare('SELECT * FROM ellsms_sms_gateway_send_connectors WHERE gateway_id = ?');
         $st->execute([$gatewayId]);

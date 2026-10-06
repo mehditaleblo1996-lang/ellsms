@@ -37,6 +37,9 @@ services:
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
       SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
       ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
+      # #46 — SMPP gateways send through the smpp-bridge container (panel: monitoring, test, reconnect).
+      SMPP_BRIDGE_URL: ${SMPP_BRIDGE_URL:-http://smpp-bridge:8090}
+      SMPP_BRIDGE_TOKEN: ${SMPP_BRIDGE_TOKEN:-}
       TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
       SESSION_IDLE_TIMEOUT_SECONDS: ${SESSION_IDLE_TIMEOUT_SECONDS:-1800}
       SESSION_ABSOLUTE_TIMEOUT_SECONDS: ${SESSION_ABSOLUTE_TIMEOUT_SECONDS:-43200}
@@ -123,6 +126,9 @@ services:
       # and without SMS_GATEWAY_MASTER_KEY it cannot decrypt the gateway's stored credentials. With the
       # transport on, the legacy backend is never used unless SMS_LEGACY_BACKEND_ENABLED=1.
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
+      # #46 — sends to SMPP gateways go through the smpp-bridge container.
+      SMPP_BRIDGE_URL: ${SMPP_BRIDGE_URL:-http://smpp-bridge:8090}
+      SMPP_BRIDGE_TOKEN: ${SMPP_BRIDGE_TOKEN:-}
       # Low-credit alerts (#35, app/LowCreditAlerts.php): how often the worker checks, how often one
       # organization may be alerted, and how many alerts at most until it tops up.
       LOW_CREDIT_ALERT_CHECK_SECONDS: ${LOW_CREDIT_ALERT_CHECK_SECONDS:-300}
@@ -530,6 +536,34 @@ services:
       timeout: 10s
       retries: 3
     stop_grace_period: 30s
+
+  # #46 — SMPP bridge (smpp-bridge/, docs/smpp-gateway.md). Keeps SMPP sessions open for every gateway
+  # whose protocol is SMPP (Admin → درگاه‌های پیامک); PHP submits through its internal API and receives
+  # delivery receipts / MOs through ellsms_smpp_events. Idle (no sessions) until such a gateway exists.
+  # NOT published to the host: only the other containers on backend_net can reach it, and every call
+  # but /health needs SMPP_BRIDGE_TOKEN.
+  smpp-bridge:
+    build:
+      context: ./smpp-bridge
+    image: ellsms-smpp-bridge:latest
+    container_name: ellsms-smpp-bridge
+    restart: unless-stopped
+    environment:
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      SMPP_BRIDGE_TOKEN: ${SMPP_BRIDGE_TOKEN:-}
+      SMPP_BRIDGE_PORT: 8090
+      SMPP_BRIDGE_RELOAD_SECONDS: ${SMPP_BRIDGE_RELOAD_SECONDS:-10}
+      # Development only: a built-in fake SMSC on this port (point an SMPP gateway at smpp-bridge:<port>).
+      SMPP_SIMULATOR_PORT: ${SMPP_SIMULATOR_PORT:-}
+    networks:
+      - backend_net
+    # Unbinding every session cleanly before exit (the SMSC otherwise holds the binds until timeout).
+    stop_grace_period: 20s
 
   # Issue #14 — Prometheus + Grafana observability stack. Behind the "observability" profile so a
   # plain `docker compose up` never starts them: bring them up explicitly with

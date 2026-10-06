@@ -56,19 +56,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     break;
                 }
                 $sendMode = ($_POST['send_mode'] ?? 'per_message') === 'batch' ? 'batch' : 'per_message';
-                $db->prepare(
-                    "INSERT INTO ellsms_sms_gateways (code, name, status, send_mode, send_enabled, status_enabled, is_default, config_version)
-                     VALUES (?,?,'active',?,1,0,0,1)"
-                )->execute([$code, $name, $sendMode]);
+                // #46 — SMPP gateways: sessions are kept by the smpp-bridge container (docs/smpp-gateway.md).
+                $isSmpp = ($_POST['protocol'] ?? 'http') === 'smpp';
+                if ($isSmpp) {
+                    $db->prepare(
+                        "INSERT INTO ellsms_sms_gateways (code, protocol, name, status, send_mode, send_enabled, status_enabled, is_default, config_version)
+                         VALUES (?,'smpp',?,'active','batch',1,0,0,1)"
+                    )->execute([$code, $name]);
+                } else {
+                    $db->prepare(
+                        "INSERT INTO ellsms_sms_gateways (code, name, status, send_mode, send_enabled, status_enabled, is_default, config_version)
+                         VALUES (?,?,'active',?,1,0,0,1)"
+                    )->execute([$code, $name, $sendMode]);
+                }
                 $newId = (int)$db->lastInsertId();
+                if ($isSmpp) {
+                    smpp_connector_save($newId, smpp_connector_defaults());
+                }
                 // A gateway with no send connector cannot compile, so one is created immediately with
                 // safe defaults rather than leaving the gateway in a state that reports as broken.
                 $db->prepare(
                     "INSERT INTO ellsms_sms_gateway_send_connectors (gateway_id, endpoint_url, success_rule_json)
                      VALUES (?, '', ?)"
                 )->execute([$newId, json_encode(['http' => ['min' => 200, 'max' => 299], 'require_json' => true, 'rules' => []])]);
-                gateway_admin_audit($me, $newId, 'gateway.create', ['code' => $code, 'send_mode' => $sendMode]);
-                flash('success', 'درگاه ساخته شد. اکنون آدرس و پارامترهای آن را تنظیم کنید.');
+                gateway_admin_audit($me, $newId, 'gateway.create', ['code' => $code, 'send_mode' => $sendMode, 'protocol' => $isSmpp ? 'smpp' : 'http']);
+                flash('success', $isSmpp ? 'درگاه SMPP ساخته شد. اکنون آدرس، system_id و رمز آن را تنظیم کنید.' : 'درگاه ساخته شد. اکنون آدرس و پارامترهای آن را تنظیم کنید.');
                 redirect('/sms-gateways.php?gateway=' . $newId . '&tab=connector');
             }
 
@@ -315,6 +327,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            /* ---------------- SMPP (#46) ---------------- */
+            case 'smpp_save': {
+                $id = (int)$_POST['gateway_id'];
+                [$errors, $row] = smpp_connector_validate($_POST);
+                if ($errors !== []) {
+                    flash('error', 'تنظیمات SMPP ذخیره نشد: ' . implode(' ', array_map(static fn(string $k, string $v): string => "[{$k}] {$v}", array_keys($errors), $errors)));
+                    break;
+                }
+                smpp_connector_save($id, $row);
+                $password = (string)($_POST['password'] ?? '');
+                if ($password !== '') {
+                    gateway_secret_put($id, 'smpp_password', $password);
+                }
+                gateway_admin_audit($me, $id, 'smpp.save', ['host' => $row['host'], 'port' => $row['port'], 'bind_mode' => $row['bind_mode'], 'sessions' => $row['session_count'], 'tps' => $row['tps'], 'password_changed' => $password !== '']);
+                smpp_bridge_request('POST', '/v1/reload', [], 5000); // best effort; the bridge also re-reads every few seconds
+                flash('success', 'تنظیمات SMPP ذخیره شد. نشست‌ها با تنظیمات جدید دوباره وصل می‌شوند.');
+                break;
+            }
+
+            case 'smpp_reconnect': {
+                $id = (int)$_POST['gateway_id'];
+                $r = smpp_bridge_request('POST', '/v1/gateways/' . $id . '/reconnect', [], 10000);
+                flash($r['ok'] ? 'info' : 'error', $r['ok'] ? 'نشست‌ها قطع و دوباره وصل می‌شوند.' : 'سرویس SMPP پاسخ نداد: ' . $r['error']);
+                break;
+            }
+
+            case 'smpp_test': {
+                $id = (int)$_POST['gateway_id'];
+                $r = smpp_bridge_request('POST', '/v1/gateways/' . $id . '/test', [], 30000);
+                if (!$r['ok']) {
+                    flash('error', 'سرویس SMPP پاسخ نداد: ' . $r['error']);
+                } elseif (!empty($r['data']['ok'])) {
+                    flash('success', 'اتصال آزمایشی موفق بود (' . (string)($r['data']['bind_type'] ?? '') . '، ' . (int)($r['data']['elapsed_ms'] ?? 0) . ' میلی‌ثانیه؛ SMSC: ' . (string)($r['data']['smsc_system_id'] ?? '') . ').');
+                } else {
+                    flash('error', 'اتصال آزمایشی ناموفق: ' . (string)($r['data']['error'] ?? 'نامشخص'));
+                }
+                break;
+            }
+
             case 'secret_delete': {
                 $id = (int)$_POST['gateway_id'];
                 gateway_secret_delete($id, (string)($_POST['secret_key'] ?? ''));
@@ -342,6 +393,10 @@ foreach ($gateways as $row) {
 }
 
 $sendConnector = $statusConnector = $receiveConnector = null;
+$isSmpp = false;
+$smppRow = $smppSessions = $smppEvents = [];
+$smppLive = null;
+$smppPasswordSet = false;
 $parameters = $assignedOperators = $secrets = $auditRows = [];
 $compiled = null;
 $curlDraft = null;
@@ -379,6 +434,17 @@ if ($gateway !== null) {
     $auditRows = $st->fetchAll();
 
     $compiled = $gateway['status'] === 'active' ? gateway_compiled($gatewayId) : null;
+
+    // #46 — SMPP gateway: settings row, live sessions published by the bridge, receipt/MO counts.
+    $isSmpp = ($gateway['protocol'] ?? 'http') === 'smpp';
+    if ($isSmpp) {
+        $smppRow = smpp_connector_row($gatewayId) ?? smpp_connector_defaults();
+        $smppSessions = smpp_sessions_for_gateway($gatewayId);
+        $smppEvents = smpp_event_stats($gatewayId);
+        $smppLive = smpp_bridge_status();
+        $smppPasswordSet = in_array('smpp_password', array_column($secrets, 'secret_key'), true);
+        if (!in_array($tab, ['connector', 'operators'], true)) $tab = 'connector';
+    }
 
     if ($tab === 'import' && isset($_GET['curl'])) {
         // Parsed, never executed — see gateway_parse_curl()'s docblock.
@@ -436,7 +502,7 @@ require __DIR__ . '/../app/views/header.php';
     ?>
       <tr>
         <td class="ltr"><?= e($row['code']) ?><?= $row['is_default'] ? ' ★' : '' ?></td>
-        <td><?= e($row['name']) ?></td>
+        <td><?= e($row['name']) ?><?= ($row['protocol'] ?? 'http') === 'smpp' ? ' <span class="badge badge-admin">SMPP</span>' : '' ?></td>
         <td><?= $row['status'] === 'active' ? 'فعال' : 'بایگانی' ?><?= $row['send_enabled'] ? '' : ' — ارسال خاموش' ?></td>
         <td><?= $row['send_mode'] === 'batch' ? 'دسته‌ای' : 'تک‌پیام' ?></td>
         <td class="ltr">v<?= (int)$row['config_version'] ?></td>
@@ -471,6 +537,12 @@ require __DIR__ . '/../app/views/header.php';
     <?= csrf_field() ?><input type="hidden" name="do" value="gateway_create">
     <label>شناسه <input type="text" name="code" class="ltr" placeholder="my_provider" required></label>
     <label>نام <input type="text" name="name" required></label>
+    <label>پروتکل
+      <select name="protocol">
+        <option value="http">HTTP (وب‌سرویس)</option>
+        <option value="smpp">SMPP (اتصال مستقیم به اپراتور/SMSC)</option>
+      </select>
+    </label>
     <label>حالت ارسال
       <select name="send_mode">
         <option value="per_message">تک‌پیام (هر مقصد یک درخواست)</option>
@@ -484,7 +556,7 @@ require __DIR__ . '/../app/views/header.php';
 <?php if ($gateway !== null): ?>
 <div class="card">
   <div class="toolbar">
-    <?php foreach ([
+    <?php foreach ($isSmpp ? ['connector' => 'تنظیمات SMPP و مانیتورینگ', 'operators' => 'اپراتورها'] : [
       'connector' => 'کانکتورها', 'parameters' => 'پارامترها', 'operators' => 'اپراتورها',
       'secrets' => 'کلیدهای محرمانه', 'import' => 'ورود از curl', 'test' => 'پیش‌نمایش درخواست',
     ] as $key => $label): ?>
@@ -522,7 +594,8 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 </div>
 
-<?php foreach ([['send', 'کانکتور ارسال', $sendConnector], ['status', 'کانکتور وضعیت تحویل', $statusConnector], ['receive', 'کانکتور دریافت پیامک (ورودی)', $receiveConnector]] as [$kind, $title, $connectorRow]): ?>
+<?php if ($isSmpp) { require __DIR__ . '/../app/views/smpp-gateway-panel.php'; } ?>
+<?php foreach ($isSmpp ? [] : [['send', 'کانکتور ارسال', $sendConnector], ['status', 'کانکتور وضعیت تحویل', $statusConnector], ['receive', 'کانکتور دریافت پیامک (ورودی)', $receiveConnector]] as [$kind, $title, $connectorRow]): ?>
 <div class="card">
   <h2><?= $title ?></h2>
   <form method="post">

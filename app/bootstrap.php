@@ -98,6 +98,8 @@ require_once __DIR__ . '/Sms/GatewayCache.php';
 require_once __DIR__ . '/Sms/GatewayTransport.php';
 require_once __DIR__ . '/Sms/GatewayStatus.php';
 require_once __DIR__ . '/Sms/GatewayReceive.php';
+// #46 — SMPP gateways (compile/send through the smpp-bridge container, receipts and MOs from its events).
+require_once __DIR__ . '/Sms/Smpp.php';
 // #45 — customer database connector (config/validation, SQL dialects + password vault, sync engine).
 require_once __DIR__ . '/RemoteDb/Config.php';
 require_once __DIR__ . '/RemoteDb/Dialect.php';

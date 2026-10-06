@@ -25,3 +25,4 @@ public/assets/img/slides/*
 # Python bytecode (sdk/python)
 __pycache__/
 *.pyc
+smpp-bridge/target/
