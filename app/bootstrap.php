@@ -98,6 +98,10 @@ require_once __DIR__ . '/Sms/GatewayCache.php';
 require_once __DIR__ . '/Sms/GatewayTransport.php';
 require_once __DIR__ . '/Sms/GatewayStatus.php';
 require_once __DIR__ . '/Sms/GatewayReceive.php';
+// #45 — customer database connector (config/validation, SQL dialects + password vault, sync engine).
+require_once __DIR__ . '/RemoteDb/Config.php';
+require_once __DIR__ . '/RemoteDb/Dialect.php';
+require_once __DIR__ . '/RemoteDb/Sync.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';

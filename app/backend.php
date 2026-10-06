@@ -1533,23 +1533,33 @@ function bulk_queue_job(
             // The accepted per-row price travels WITH the row. bulk_send_one_item() commits exactly
             // this number and never re-prices, which is what makes a retry (or a row that sends
             // three days later on a throttled job) cost what the customer was quoted at acceptance.
+            // #45 — a caller that must correlate each item with its own source row (the customer
+            // database connector) passes 'source_ref' per item. It is written here, inside the job's
+            // own transaction, so an item can never exist without the link back to its source row.
+            // Only that caller adds the column to the statement, so every other path keeps working
+            // on a database that has not applied 2026_10_06_remote_db_connections.sql.
+            $withSourceRef = isset($items[array_key_first($items)]['source_ref']);
             $ins = $db->prepare(
                 'INSERT INTO ellsms_bulk_items
-                   (job_id, mobile, content, unit_price_millicredits, price_cost_credits, price_operator_code, price_route_id, price_group_key)
-                 VALUES (?,?,?,?,?,?,?,?)'
+                   (job_id, mobile, content, unit_price_millicredits, price_cost_credits, price_operator_code, price_route_id, price_group_key'
+                . ($withSourceRef ? ', source_ref) VALUES (?,?,?,?,?,?,?,?,?)' : ') VALUES (?,?,?,?,?,?,?,?)')
             );
             foreach ($items as $index => $it) {
                 // per_index, not per_mobile: a personalized file may contain the same number twice
                 // with different bodies, and those two rows genuinely have different segment counts.
                 $p = $priced['per_index'][$index] ?? null;
-                $ins->execute([
+                $row = [
                     $jobId, $it['mobile'], $it['content'],
                     $p !== null ? (int)$p['unit_price'] : null,
                     $p !== null ? (int)$p['cost'] : null,
                     $p !== null ? (string)$p['operator_code'] : null,
                     $p !== null ? $p['route_id'] : null,
                     $p !== null ? $p['group_key'] : null,
-                ]);
+                ];
+                if ($withSourceRef) {
+                    $row[] = isset($it['source_ref']) ? (int)$it['source_ref'] : null;
+                }
+                $ins->execute($row);
             }
 
             sms_price_snapshot_record($priced, $organizationId ?: null, $userId, 'bulk_job', (string)$jobId);

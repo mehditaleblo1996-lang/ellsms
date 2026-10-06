@@ -44,6 +44,16 @@ if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
 if ($me['role'] === 'admin' || ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW))) {
     $integrationNav['integrations'] = ['/integrations.php', 'افزونه ووکامرس و SDK', '🧩'];
 }
+// #45 — a customer whose account has a database connection sees its read-only health card.
+if ($me['role'] !== 'admin') {
+    try {
+        $navRdb = db()->prepare('SELECT 1 FROM ellsms_remote_db_connections WHERE user_id = ? LIMIT 1');
+        $navRdb->execute([(int)$me['id']]);
+        if ($navRdb->fetchColumn()) $integrationNav['remote_db'] = ['/remote-db.php', 'اتصال به دیتابیس', '🗄'];
+    } catch (PDOException) {
+        // 2026_10_06_remote_db_connections.sql not applied yet: no entry.
+    }
+}
 if ($navOrg && membership_has_permission($navOrg, Permissions::WEBHOOKS_VIEW)) {
     $integrationNav['webhooks'] = ['/webhooks.php', 'وب‌هوک‌ها', '🔗'];
 }
@@ -65,6 +75,7 @@ $adminNav = [
     'price_quote'           => ['/price-quote.php',           'فاکتور / لیست قیمت', '🧾'],
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
+    'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
     'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
     'alerts'                => ['/admin/alerts',               'هشدارها',             '🔔'],

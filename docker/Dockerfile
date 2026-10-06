@@ -12,6 +12,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get purge -y --auto-remove $PHPIZE_DEPS \
  && rm -rf /var/lib/apt/lists/*
 
+# #45 — customer database connector (app/RemoteDb, docs/remote-db.md): PDO drivers for the customer
+# databases ELLSMS can read from besides MySQL/MariaDB.
+#   - PostgreSQL: pdo_pgsql against Debian's libpq.
+#   - SQL Server: Microsoft's pdo_sqlsrv, which needs Microsoft's ODBC Driver 18 (msodbcsql18) from
+#     Microsoft's own Debian 12 repository. ACCEPT_EULA is Microsoft's licence prompt for that driver.
+# Set INSTALL_SQLSRV=0 to build without SQL Server support (e.g. a non-amd64 host).
+ARG INSTALL_SQLSRV=1
+ARG SQLSRV_VERSION=5.12.0
+RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev curl ca-certificates $PHPIZE_DEPS \
+ && docker-php-ext-install pdo_pgsql \
+ && if [ "$INSTALL_SQLSRV" = "1" ]; then \
+      curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+      && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \
+      && apt-get update \
+      && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev \
+      && pecl install sqlsrv-${SQLSRV_VERSION} pdo_sqlsrv-${SQLSRV_VERSION} \
+      && docker-php-ext-enable sqlsrv pdo_sqlsrv; \
+    fi \
+ && apt-get purge -y --auto-remove $PHPIZE_DEPS \
+ && rm -rf /var/lib/apt/lists/* /tmp/pear
+
 # wkhtmltopdf renders the ELLSMS-branded invoice/price-quote PDF (public/price-quote.php,
 # public/telegram-webhook.php's /invoice command — see app/PriceQuote.php) locally, the same
 # "shell out to one pinned local binary with a controlled argv" pattern qrencode already uses

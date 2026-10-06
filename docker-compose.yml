@@ -505,6 +505,32 @@ services:
     # half-written CSV behind.
     stop_grace_period: 30s
 
+  # #45 — customer database connector (docs/remote-db.md). Its own container so a slow or unreachable
+  # customer database can only delay other connections, never the send workers. It queues rows as
+  # ordinary bulk jobs (wallet, pricing, quota all apply), so it needs the worker's full environment;
+  # the bulk pass of `worker`/`bulk-worker` then actually sends them. Idle until an admin enables a
+  # connection on /admin/remote-db. Connections are leased, so scaling it is safe.
+  remote-db-worker:
+    image: ellsms-app:latest
+    pull_policy: never
+    container_name: ellsms-remote-db-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/remote-db-worker.php
+    environment:
+      <<: *worker_environment
+      REMOTE_DB_WORKER_TICK_SECONDS: ${REMOTE_DB_WORKER_TICK_SECONDS:-2}
+      REMOTE_DB_WORKER_MAX_CONNECTIONS: ${REMOTE_DB_WORKER_MAX_CONNECTIONS:-20}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    stop_grace_period: 30s
+
   # Issue #14 — Prometheus + Grafana observability stack. Behind the "observability" profile so a
   # plain `docker compose up` never starts them: bring them up explicitly with
   # `docker compose --profile observability up -d prometheus grafana`. Both stay on backend_net only
