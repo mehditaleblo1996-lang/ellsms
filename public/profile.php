@@ -506,15 +506,15 @@ $showCompany  = $organizationId > 0 && ($accountType === 'legal' || $hasLegalDat
     <div class="form-section">
       <h3 class="subsection-title">مدیرعامل / نماینده شرکت</h3>
       <div class="form-grid">
-        <label>نام <input type="text" name="ceo_name" value="<?= e((string)$organizationProfile['ceo_name']) ?>" maxlength="160" <?= $orgDisabled ?>></label>
-        <label>نام خانوادگی <input type="text" name="ceo_last_name" value="<?= e((string)$organizationProfile['ceo_last_name']) ?>" maxlength="120" <?= $orgDisabled ?>></label>
-        <label>نام پدر <input type="text" name="ceo_father_name" value="<?= e((string)$organizationProfile['ceo_father_name']) ?>" maxlength="120" <?= $orgDisabled ?>></label>
-        <label>کد ملی <input type="text" name="ceo_national_code" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['ceo_national_code']) ?>" maxlength="20" placeholder="۱۰ رقم" <?= $orgDisabled ?>></label>
-        <label>شماره شناسنامه <input type="text" name="ceo_birth_certificate_no" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['ceo_birth_certificate_no']) ?>" maxlength="30" <?= $orgDisabled ?>></label>
-        <label>تاریخ تولد <?= jalali_date_select('ceo_birth_date', $organizationProfile['ceo_birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
-        <label>شهر محل تولد <?= geo_any_city_select('ceo_birth_city', (string)$organizationProfile['ceo_birth_city'], $orgDisabled) ?></label>
-        <label>موبایل <input type="text" name="ceo_mobile" class="ltr" inputmode="tel" value="<?= e((string)$organizationProfile['ceo_mobile']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
-        <label>ایمیل <input type="email" name="ceo_email" class="ltr" value="<?= e((string)$organizationProfile['ceo_email']) ?>" maxlength="190" <?= $orgDisabled ?>></label>
+        <label>نام مدیرعامل شرکت <input type="text" name="ceo_name" value="<?= e((string)$organizationProfile['ceo_name']) ?>" maxlength="160" <?= $orgDisabled ?>></label>
+        <label>نام خانوادگی مدیرعامل شرکت <input type="text" name="ceo_last_name" value="<?= e((string)$organizationProfile['ceo_last_name']) ?>" maxlength="120" <?= $orgDisabled ?>></label>
+        <label>نام پدر مدیرعامل شرکت <input type="text" name="ceo_father_name" value="<?= e((string)$organizationProfile['ceo_father_name']) ?>" maxlength="120" <?= $orgDisabled ?>></label>
+        <label>کد ملی مدیرعامل شرکت <input type="text" name="ceo_national_code" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['ceo_national_code']) ?>" maxlength="20" placeholder="۱۰ رقم" <?= $orgDisabled ?>></label>
+        <label>شماره شناسنامه مدیرعامل شرکت <input type="text" name="ceo_birth_certificate_no" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['ceo_birth_certificate_no']) ?>" maxlength="30" <?= $orgDisabled ?>></label>
+        <label>تاریخ تولد مدیرعامل شرکت <?= jalali_date_select('ceo_birth_date', $organizationProfile['ceo_birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
+        <label>شهر محل تولد مدیرعامل شرکت <?= geo_any_city_select('ceo_birth_city', (string)$organizationProfile['ceo_birth_city'], $orgDisabled) ?></label>
+        <label>موبایل مدیرعامل <input type="text" name="ceo_mobile" class="ltr" inputmode="tel" value="<?= e((string)$organizationProfile['ceo_mobile']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+        <label>ایمیل مدیرعامل <input type="email" name="ceo_email" class="ltr" value="<?= e((string)$organizationProfile['ceo_email']) ?>" maxlength="190" <?= $orgDisabled ?>></label>
         <label>کاربر مرتبط (اختیاری)
           <select name="legal_representative_user_id" <?= $orgDisabled ?>>
             <option value="0">—</option>
