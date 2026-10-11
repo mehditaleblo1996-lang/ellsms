@@ -8,6 +8,10 @@ $active = 'reports';
 if (!is_admin()) {
     require_permission(Permissions::REPORTS_VIEW);
 }
+// Admin "delete message" (app/HiddenMessages.php): a removed message is left out of every query below
+// for the customer; an admin still sees it, badged, with a restore button.
+hidden_messages_handle_post();
+$hideRemoved = hidden_messages_apply_to_viewer();
 
 function report_v2_local_time(?string $value): string {
     if ($value === null || trim($value) === '') return '';
@@ -64,7 +68,7 @@ if ($senderDigits !== '') { $dw[]='m.originator LIKE ?'; $dp[]='%'.$senderDigits
 if ($text !== '') { $dw[]='m.content LIKE ?'; $dp[]='%'.$text.'%'; }
 $directCanonical = "CASE WHEN m.status='delivered' THEN 'delivered' WHEN m.status IN ('send_failed','failed') THEN 'failed' WHEN m.status='sent' THEN 'sent' ELSE 'pending' END";
 if (in_array($status, ['pending','sent','delivered','failed'], true)) { $dw[]="$directCanonical = ?"; $dp[]=$status; }
-$DW = implode(' AND ', $dw);
+$DW = implode(' AND ', $dw) . hidden_messages_exclude_sql('outbound', 'm.id', $hideRemoved);
 
 $ds = db()->prepare("SELECT COUNT(*) total, SUM(($directCanonical) IN ('sent','delivered')) ok_count, SUM(($directCanonical)='failed') failed_count FROM outbound_message m WHERE $DW");
 $ds->execute($dp); $D = $ds->fetch() ?: [];
@@ -80,7 +84,7 @@ if (is_admin() && $userId > 0) {
     else { $bw[]='bj.user_id = ?'; $bp[]=(int)$me['id']; }
 }
 if ($senderDigits !== '') { $bw[]='bj.originator LIKE ?'; $bp[]='%'.$senderDigits.'%'; }
-$BW = implode(' AND ', $bw);
+$BW = implode(' AND ', $bw) . hidden_messages_exclude_sql('bulk_job', 'bj.id', $hideRemoved);
 
 $bulkSummarySt = db()->prepare("SELECT COALESCE(SUM(bj.total_rows),0) total,
                                       COALESCE(SUM(bj.sent_rows),0) sent_rows,
@@ -121,7 +125,7 @@ if ($senderDigits !== '') { $gw[] = $gwReport ? 'a.originator LIKE ?' : '0=1'; i
 if ($text !== '') { $gw[] = $gwReport ? 'a.content LIKE ?' : '0=1'; if ($gwReport) $gp[] = '%' . $text . '%'; }
 if ($status === 'pending') { $gw[] = '0=1'; }
 elseif (in_array($status, ['sent','delivered','failed'], true)) { $gw[] = "$gwCanonical = ?"; $gp[] = $status; }
-$GW = implode(' AND ', $gw);
+$GW = implode(' AND ', $gw) . hidden_messages_exclude_sql('attempt', 'a.id', $hideRemoved);
 
 $gs = db()->prepare("SELECT COUNT(*) total, SUM(($gwCanonical) IN ('sent','delivered')) ok_count, SUM(($gwCanonical)='failed') failed_count FROM ellsms_message_attempts a WHERE $GW");
 $gs->execute($gp); $G = $gs->fetch() ?: [];
@@ -202,6 +206,13 @@ $hasNext = count($directRows) > $per;
 $rows = array_slice($directRows, 0, $per);
 $last = $rows ? $rows[count($rows)-1] : null;
 
+// Which of the rows on screen an admin has removed from the customer's panel (empty for a customer,
+// who never receives those rows in the first place).
+$hiddenOutbound = is_admin() ? hidden_messages_lookup('outbound', array_column($rows, 'id')) : [];
+$hiddenAttempts = is_admin() ? hidden_messages_lookup('attempt', array_column($gwRows, 'id')) : [];
+$hiddenJobs     = is_admin() ? hidden_messages_lookup('bulk_job', array_column($bulkJobs, 'id')) : [];
+$canHide = is_admin() && hidden_messages_available();
+
 $users = is_admin() ? backend_list_users_summary() : [];
 $qs = fn(array $extra=[]) => http_build_query(array_filter(array_merge($_GET,$extra), static fn($v)=>$v!==null && $v!==''));
 $bulkStatusFa = ['pending'=>'در صف','processing'=>'در حال ارسال','done'=>'انجام‌شده','cancelled'=>'لغوشده','staged'=>'منتظر تأیید'];
@@ -249,7 +260,11 @@ require __DIR__ . '/../app/views/header.php';
         <td><span class="badge badge-<?= e((string)$j['status']) ?>"><?= e($bulkStatusFa[(string)$j['status']] ?? (string)$j['status']) ?></span></td>
         <td class="num"><?php if(!empty($j['throttle_count'])): ?><?= to_persian_digits(number_format((int)$j['throttle_count'])) ?> هر <?= to_persian_digits((string)(int)$j['throttle_minutes']) ?> دقیقه<?php else: ?>—<?php endif; ?></td>
         <td class="num"><?= report_v2_jdate((string)$j['created_at']) ?></td>
-        <td><a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a></td>
+        <td style="white-space:nowrap">
+          <?php if (isset($hiddenJobs[(int)$j['id']])): ?><?= hidden_messages_badge() ?><?php endif; ?>
+          <a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a>
+          <?php if ($canHide): ?><?= hidden_messages_admin_button('bulk_job', (int)$j['id'], isset($hiddenJobs[(int)$j['id']])) ?><?php endif; ?>
+        </td>
       </tr>
     <?php endforeach; ?>
     <?php if(!$bulkJobs): ?><tr><td colspan="13" class="empty">ارسال حجیمی در این بازه وجود ندارد.</td></tr><?php endif; ?>
@@ -285,7 +300,7 @@ require __DIR__ . '/../app/views/header.php';
 <h2>پیام‌های عادی / API / زمان‌بندی (ارسال مستقیم از درگاه)</h2>
 <p class="hint">پیام‌هایی که مستقیم از درگاه پیامک ارسال شده‌اند. تعداد: <?= to_persian_digits(number_format((int)($G['total'] ?? 0))) ?></p>
 <div class="table-wrap"><table>
-<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>نوع</th><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th></tr>
+<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>نوع</th><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
 <?php foreach($gwRows as $r): $cs=(string)$r['canonical_status']; $gc=(string)($r['content'] ?? ''); ?>
 <tr>
 <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
@@ -298,9 +313,10 @@ require __DIR__ . '/../app/views/header.php';
 <td><span class="badge badge-<?= e(report_v2_status_class($cs)) ?>"><?= e(report_v2_status_label($cs)) ?></span></td>
 <td class="num"><?= report_v2_jdate((string)$r['attempted_at']) ?></td>
 <td class="num"><?= !empty($r['delivered_at']) ? report_v2_jdate((string)$r['delivered_at']) : '—' ?></td>
+<?php if($canHide): $isHidden = isset($hiddenAttempts[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('attempt', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
 </tr>
 <?php endforeach; ?>
-<?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?10:9 ?>" class="empty">پیامی با این فیلترها از درگاه ارسال نشده است.</td></tr><?php endif; ?>
+<?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?($canHide?11:10):9 ?>" class="empty">پیامی با این فیلترها از درگاه ارسال نشده است.</td></tr><?php endif; ?>
 </table></div>
 <div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
   <?php if($gwPage > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['gw_page'=>$gwPage-1])) ?>">→ جدیدتر</a><?php endif; ?>
@@ -312,7 +328,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card" style="margin-top:18px">
 <h2>پیام‌های عادی / API</h2>
 <div class="table-wrap"><table>
-<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th></tr>
+<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
 <?php foreach($rows as $r): $cs=(string)$r['canonical_status']; ?>
 <tr>
 <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
@@ -324,9 +340,10 @@ require __DIR__ . '/../app/views/header.php';
 <td><span class="badge badge-<?= e(report_v2_status_class($cs)) ?>"><?= e(report_v2_status_label($cs)) ?></span></td>
 <td class="num"><?= report_v2_jdate((string)$r['sent_at']) ?></td>
 <td class="num"><?= !empty($r['delivered_at']) ? report_v2_jdate((string)$r['delivered_at']) : '—' ?></td>
+<?php if($canHide): $isHidden = isset($hiddenOutbound[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('outbound', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
 </tr>
 <?php endforeach; ?>
-<?php if(!$rows): ?><tr><td colspan="<?= is_admin()?9:8 ?>" class="empty">هیچ پیام عادی/API با این فیلترها یافت نشد.</td></tr><?php endif; ?>
+<?php if(!$rows): ?><tr><td colspan="<?= is_admin()?($canHide?10:9):8 ?>" class="empty">هیچ پیام عادی/API با این فیلترها یافت نشد.</td></tr><?php endif; ?>
 </table></div>
 <div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
   <a class="btn btn-sm" href="?<?= e($qs(['before_time'=>null,'before_id'=>null])) ?>">↻ جدیدترین</a>

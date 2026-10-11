@@ -71,7 +71,8 @@ if ($text !== '') {
     $where[] = 'bi.content LIKE ?';
     $params[] = '%' . $text . '%';
 }
-$W = implode(' AND ', $where);
+// A bulk send an admin removed from the customer's panel (app/HiddenMessages.php) is left out for the customer.
+$W = implode(' AND ', $where) . hidden_messages_exclude_sql('bulk_job', 'bj.id', hidden_messages_apply_to_viewer());
 
 $summarySql = "SELECT
     COUNT(*) AS total,

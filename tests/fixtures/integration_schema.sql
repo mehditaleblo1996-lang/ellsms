@@ -37,7 +37,8 @@ CREATE TABLE outbound_message (
   content         TEXT NULL,
   status          VARCHAR(40) NOT NULL DEFAULT '',
   error_code      INT NOT NULL DEFAULT 0,
-  sent_at         DATETIME NULL
+  sent_at         DATETIME NULL,
+  delivered_at    DATETIME NULL   -- read by the reports page (public/reports-v2.php)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Minimal stand-in so backend_list_domains() (app/Backend/identity.php, read by public/users.php's

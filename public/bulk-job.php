@@ -31,7 +31,14 @@ if (!is_admin()) {
         http_response_code(403);
         exit('دسترسی به این ارسال وجود ندارد.');
     }
+    // Removed from the customer's panel by an admin (app/HiddenMessages.php): as if it did not exist.
+    if (hidden_messages_is_hidden('bulk_job', $jobId)) {
+        http_response_code(404);
+        exit('ارسال پیدا نشد.');
+    }
 }
+hidden_messages_handle_post();
+$jobHidden = is_admin() && hidden_messages_is_hidden('bulk_job', $jobId);
 
 // Cancel from the job's own page: a job queued behind others had no cancel control anywhere once
 // its import was confirmed (the import page only cancels before confirmation, and reports are
@@ -150,7 +157,11 @@ require __DIR__ . '/../app/views/header.php';
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
   <a class="btn btn-ghost" href="/messages/p2p">بازگشت به ارسال‌های نظیر به نظیر</a>
   <a class="btn btn-ghost" href="/messages/reports/bulk?job_id=<?= (int)$jobId ?>">گزارش حجیم</a>
+  <?php if (is_admin()): ?><?= hidden_messages_admin_button('bulk_job', $jobId, $jobHidden) ?><?php endif; ?>
 </div>
+<?php if ($jobHidden): ?>
+  <div class="flash flash-info">این ارسال توسط مدیر از پنل کاربر حذف شده است و کاربر آن را نمی‌بیند.</div>
+<?php endif; ?>
 
 <div class="card">
   <h2><?= e((string)($job['title'] ?? ('ارسال #' . $jobId))) ?></h2>

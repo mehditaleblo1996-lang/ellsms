@@ -120,6 +120,8 @@ require_once __DIR__ . '/Profile.php';
 // KYC review workflow — state machine, per-document review, submission eligibility, feature gating
 // (docs/profile-kyc.md). Composes Profile.php (document storage/catalogs) and audit(); owns neither.
 require_once __DIR__ . '/Kyc.php';
+// Admin "delete message": hides a sent message from the customer's panel (soft delete).
+require_once __DIR__ . '/HiddenMessages.php';
 require_once __DIR__ . '/AllowedIps.php';
 // Large-scale SMS import pipeline (docs/large-import-architecture.md). Loaded last because it
 // composes the file reader, pricing, wallet, quota, and bulk job primitives above.

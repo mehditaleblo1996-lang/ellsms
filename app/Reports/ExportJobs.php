@@ -107,7 +107,9 @@ function report_export_filter_sql(array $filters): array {
         $params[] = '%' . $text . '%';
     }
 
-    return [implode(' AND ', $where), $params];
+    // A message an admin removed from the customer's panel (app/HiddenMessages.php) is not exported
+    // for the customer either. Keyed on who REQUESTED the export, not on who runs the worker.
+    return [implode(' AND ', $where) . hidden_messages_exclude_sql('outbound', 'm.id', !$isAdmin), $params];
 }
 
 /**

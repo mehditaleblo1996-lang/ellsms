@@ -55,6 +55,12 @@ if (empty($notFound) && $attemptId > 0) {
     }
 }
 
+// Removed from the customer's panel by an admin (app/HiddenMessages.php): not found, for the customer.
+if (hidden_messages_apply_to_viewer()) {
+    if ($attempt !== null && hidden_messages_is_hidden('attempt', (int)$attempt['id'])) $attempt = null;
+    if ($bulkJob !== null && hidden_messages_is_hidden('bulk_job', (int)$bulkJob['id'])) $bulkJob = null;
+}
+
 if ($attempt === null && $bulkJob === null) {
     http_response_code(404);
     $pageTitle = 'پیام یافت نشد';

@@ -5,7 +5,8 @@
  * (ellsms_message_attempts). The legacy backend's outbound_message is not used: sends go through the
  * configured gateways, which never write there.
  *
- * $userIds: null = every account (admin); otherwise only sends owned by these accounts.
+ * $userIds: null = every account (admin); otherwise only sends owned by these accounts, minus anything
+ * an admin removed from the customer's panel (app/HiddenMessages.php).
  */
 
 const DASHBOARD_DIRECT_TYPES = ['direct_send', 'schedule', 'autoreply'];
@@ -25,14 +26,14 @@ function dashboard_scope_user_ids(array $me): ?array {
 function dashboard_bulk_scope(?array $userIds): array {
     if ($userIds === null) return ['', []];
     $ph = implode(',', array_fill(0, count($userIds), '?'));
-    return [" AND i.job_id IN (SELECT id FROM ellsms_bulk_jobs WHERE user_id IN ({$ph}))", array_values(array_map('intval', $userIds))];
+    return [" AND i.job_id IN (SELECT id FROM ellsms_bulk_jobs WHERE user_id IN ({$ph}))" . hidden_messages_exclude_sql('bulk_job', 'i.job_id'), array_values(array_map('intval', $userIds))];
 }
 
 /** @return array{0:string,1:array} SQL fragment restricting attempts (alias a) to the scope. */
 function dashboard_attempt_scope(?array $userIds): array {
     if ($userIds === null) return ['', []];
     $ph = implode(',', array_fill(0, count($userIds), '?'));
-    return [" AND a.user_id IN ({$ph})", array_values(array_map('intval', $userIds))];
+    return [" AND a.user_id IN ({$ph})" . hidden_messages_exclude_sql('attempt', 'a.id'), array_values(array_map('intval', $userIds))];
 }
 
 /** UTC [start, end) of today in Tehran. */
@@ -85,7 +86,8 @@ function dashboard_queued_count(?array $userIds): int {
             FROM ellsms_bulk_jobs WHERE status IN ('pending', 'processing')";
     $params = [];
     if ($userIds !== null) {
-        $sql .= ' AND user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')';
+        $sql .= ' AND user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')'
+              . hidden_messages_exclude_sql('bulk_job', 'ellsms_bulk_jobs.id');
         $params = array_values(array_map('intval', $userIds));
     }
     $st = db()->prepare($sql);
@@ -141,7 +143,8 @@ function dashboard_recent_jobs(?array $userIds, int $limit = 5): array {
     $where = "status IN ('pending', 'processing', 'done', 'cancelled')";
     $params = [];
     if ($userIds !== null) {
-        $where .= ' AND user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')';
+        $where .= ' AND user_id IN (' . implode(',', array_fill(0, count($userIds), '?')) . ')'
+                . hidden_messages_exclude_sql('bulk_job', 'ellsms_bulk_jobs.id');
         $params = array_values(array_map('intval', $userIds));
     }
     $st = db()->prepare(
