@@ -457,6 +457,62 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
 }
 .subsection-title::before { content: ""; width: 4px; height: 14px; border-radius: 3px; background: var(--grad); display: inline-block; }
 
+/* ---------- Structured forms ----------
+   One layout for every long form: a card is split into titled .form-section blocks, each a
+   .form-grid of fields (three columns on desktop, two on tablet, one on phone), and closes with a
+   single .form-actions row. Fields line up across rows because every one is the same grid cell —
+   the old auto-fit rows and inline date pickers made each row wrap at a different point. */
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-5); }
+.card-head h2 { margin: 0; }
+.card-head .hint { margin: var(--sp-1) 0 0; }
+.form-section + .form-section { margin-top: var(--sp-5); padding-top: var(--sp-5); border-top: 1px solid var(--line); }
+.form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4) var(--sp-5); }
+.form-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.form-grid > label, .form-grid > .field { margin-bottom: 0; min-width: 0; }
+.form-grid .span-2 { grid-column: span 2; }
+.form-grid .span-full { grid-column: 1 / -1; }
+@media (max-width: 1100px) {
+  .form-grid, .form-grid.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .form-grid, .form-grid.cols-2, .form-grid.cols-4 { grid-template-columns: 1fr; }
+  .form-grid .span-2 { grid-column: auto; }
+}
+/* A date inside a form grid fills its cell like any other control: year | month | day. */
+.form-grid .jdate { display: flex; width: 100%; margin-top: var(--sp-1); }
+.form-grid .jdate select { flex: 1 1 0; min-width: 0; padding-inline: 8px; }
+.form-grid .jdate .jdate-m { flex-grow: 1.5; }
+.form-actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--line); }
+.form-actions .hint { margin: 0; }
+/* A checkbox option sized like a text field, so it sits on the same row line as its neighbours. */
+.form-grid > label.check, label.check {
+  display: flex; align-items: center; gap: var(--sp-2); align-self: end;
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--canvas); cursor: pointer;
+}
+label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--indigo); flex: none; }
+.req { color: var(--err); margin-inline-start: 2px; }
+/* The caption of a field that is not a single control (e.g. a segmented radio group). */
+.field-label { display: block; font-weight: 600; font-size: var(--fs-sm); line-height: var(--lh-snug); margin-bottom: var(--sp-1); }
+/* ---------- Tabs ----------
+   A long page (user editor, account profile) shows one section at a time. Without JavaScript every
+   panel stays visible, one after another; assets/js/forms.js adds .is-ready and hides the rest. */
+.tabs-nav {
+  display: flex; gap: var(--sp-1); overflow-x: auto; scrollbar-width: thin;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: var(--sp-1); margin-bottom: var(--sp-4);
+}
+.tabs-nav button {
+  appearance: none; border: 0; background: none; border-radius: 9px; cursor: pointer;
+  padding: 8px 16px; font: inherit; font-size: var(--fs-sm); font-weight: 700; line-height: var(--lh-snug);
+  color: var(--muted); white-space: nowrap; transition: background .15s ease, color .15s ease;
+}
+.tabs-nav button:hover { color: var(--ink); background: var(--canvas); }
+.tabs-nav button[aria-selected="true"] { background: var(--grad); color: #fff; }
+.tabs-nav .tab-count { font-weight: 400; opacity: .8; margin-inline-start: 4px; }
+.tabs.is-ready > .tab-panel:not(.is-active) { display: none; }
+.tab-panel > .card:last-child, .tab-panel > .grid:last-child { margin-bottom: 0; }
+
 /* ---------- KYC document tiles ---------- */
 .doc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
 .doc-tile {

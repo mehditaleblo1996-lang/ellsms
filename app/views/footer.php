@@ -74,5 +74,6 @@
   }
 })();
 </script>
+<script src="<?= e(asset_url('/assets/js/forms.js')) ?>"></script>
 </body>
 </html>

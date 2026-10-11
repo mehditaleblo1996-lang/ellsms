@@ -253,7 +253,22 @@ require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'profile.personal';
 require __DIR__ . '/../app/views/impersonation_notice.php';
 $profileReadOnly = is_impersonating();
+$showPersonal = $accountType !== 'legal' || $organizationId === 0;
+$showCompany  = $organizationId > 0 && ($accountType === 'legal' || $hasLegalData);
 ?>
+
+<div class="tabs" data-tabs="profile">
+<nav class="tabs-nav" role="tablist" aria-label="بخش‌های حساب کاربری">
+  <button type="button" role="tab" data-tab="summary">خلاصه و احراز هویت</button>
+  <?php if ($showPersonal): ?><button type="button" role="tab" data-tab="personal">اطلاعات فردی</button><?php endif; ?>
+  <?php if ($showCompany): ?><button type="button" role="tab" data-tab="company">اطلاعات شرکت</button><?php endif; ?>
+  <?php if ($organizationId > 0): ?><button type="button" role="tab" data-tab="address">آدرس</button><?php endif; ?>
+  <button type="button" role="tab" data-tab="documents">مدارک</button>
+  <button type="button" role="tab" data-tab="security">امنیت</button>
+  <?php if ($organizationId > 0): ?><button type="button" role="tab" data-tab="alerts">هشدار اعتبار</button><?php endif; ?>
+</nav>
+
+<section class="tab-panel" data-panel="summary" role="tabpanel">
 
 <?php if ($organizationId > 0): ?>
 <div class="card">
@@ -390,7 +405,10 @@ $profileReadOnly = is_impersonating();
 </div>
 <?php endif; ?>
 
-<?php if ($accountType !== 'legal' || $organizationId === 0): ?>
+</section>
+
+<?php if ($showPersonal): ?>
+<section class="tab-panel" data-panel="personal" role="tabpanel">
 <div class="card">
   <h2>اطلاعات فردی</h2>
   <?php if (!empty($userProfile['from_legacy_kyc'])): ?>
@@ -399,33 +417,53 @@ $profileReadOnly = is_impersonating();
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_personal">
-    <div class="grid grid-2">
-      <label>نام <span class="field-source">سامانه مرکزی</span> <input type="text" value="<?= e((string)$me['first_name']) ?>" disabled></label>
-      <label>نام خانوادگی <span class="field-source">سامانه مرکزی</span> <input type="text" value="<?= e((string)$me['last_name']) ?>" disabled></label>
-      <label>نام پدر <input type="text" name="father_name" value="<?= e((string)$userProfile['father_name']) ?>" maxlength="120"></label>
-      <label>کد ملی <input type="text" name="national_code" class="ltr" value="<?= e((string)$userProfile['national_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
-      <label>شماره شناسنامه <input type="text" name="birth_certificate_no" class="ltr" value="<?= e((string)$userProfile['birth_certificate_no']) ?>" maxlength="30"></label>
-      <label>تاریخ تولد <?= jalali_date_select('birth_date', $userProfile['birth_date'] ?? null) ?></label>
-      <label>جنسیت
-        <select name="gender">
-          <?php foreach (PROFILE_GENDERS as $value => $label): ?>
-            <option value="<?= e($value) ?>"<?= ($userProfile['gender'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <label>تاریخ انقضای کارت ملی <?= jalali_date_select('national_id_expiry_at', $userProfile['national_id_expiry_at'] ?? null, 15) ?></label>
-      <label>موبایل <span class="field-source">سامانه مرکزی</span> <input type="text" class="ltr" value="<?= e((string)$me['mobile']) ?>" disabled></label>
-      <label>ایمیل <span class="field-source">سامانه مرکزی</span> <input type="text" class="ltr" value="<?= e((string)$me['email']) ?>" disabled></label>
-      <label style="grid-column:1/-1">آدرس شخصی <input type="text" name="personal_address" value="<?= e((string)($userProfile['personal_address'] ?? '')) ?>" maxlength="500"></label>
+
+    <div class="form-section">
+      <h3 class="subsection-title">مشخصات حساب <span class="field-source">از سامانه مرکزی — فقط خواندنی</span></h3>
+      <div class="form-grid cols-4">
+        <label>نام <input type="text" value="<?= e((string)$me['first_name']) ?>" disabled></label>
+        <label>نام خانوادگی <input type="text" value="<?= e((string)$me['last_name']) ?>" disabled></label>
+        <label>موبایل <input type="text" class="ltr" value="<?= e((string)$me['mobile']) ?>" disabled></label>
+        <label>ایمیل <input type="text" class="ltr" value="<?= e((string)$me['email']) ?>" disabled></label>
+      </div>
     </div>
+
+    <div class="form-section">
+      <h3 class="subsection-title">مشخصات هویتی</h3>
+      <div class="form-grid">
+        <label>نام پدر <input type="text" name="father_name" value="<?= e((string)$userProfile['father_name']) ?>" maxlength="120"></label>
+        <label>کد ملی <input type="text" name="national_code" class="ltr" inputmode="numeric" value="<?= e((string)$userProfile['national_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
+        <label>شماره شناسنامه <input type="text" name="birth_certificate_no" class="ltr" inputmode="numeric" value="<?= e((string)$userProfile['birth_certificate_no']) ?>" maxlength="30"></label>
+        <label>تاریخ تولد <?= jalali_date_select('birth_date', $userProfile['birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
+        <label>جنسیت
+          <select name="gender">
+            <?php foreach (PROFILE_GENDERS as $value => $label): ?>
+              <option value="<?= e($value) ?>"<?= ($userProfile['gender'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <label>تاریخ انقضای کارت ملی <?= jalali_date_select('national_id_expiry_at', $userProfile['national_id_expiry_at'] ?? null, yearsAhead: 15, yearsBack: 10, allowEmpty: true) ?></label>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3 class="subsection-title">آدرس شخصی</h3>
+      <div class="form-grid">
+        <label class="span-full">آدرس <input type="text" name="personal_address" value="<?= e((string)($userProfile['personal_address'] ?? '')) ?>" maxlength="500"></label>
+      </div>
+    </div>
+
     <?php if (!$profileReadOnly): ?>
-      <button class="btn btn-primary" style="margin-top:12px">ذخیره‌ی اطلاعات فردی</button>
+      <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات فردی</button></div>
     <?php endif; ?>
   </form>
 </div>
+</section>
 <?php endif; ?>
 
-<?php if ($organizationId > 0 && ($accountType === 'legal' || $hasLegalData)): ?>
+<?php if ($showCompany):
+    $orgDisabled = $canManageOrganization ? '' : 'disabled'; ?>
+<section class="tab-panel" data-panel="company" role="tabpanel">
 <div class="card">
   <h2>اطلاعات شرکت و نماینده</h2>
   <?php if (!$canManageOrganization): ?>
@@ -436,43 +474,49 @@ $profileReadOnly = is_impersonating();
     <input type="hidden" name="do" value="profile_organization">
     <input type="hidden" name="account_type" value="legal">
 
-    <div class="subsection">
-      <h3 class="subsection-title">اطلاعات شرکت</h3>
-      <div class="grid grid-2">
-        <label>نام شرکت <input type="text" name="legal_name" value="<?= e((string)$organizationProfile['legal_name']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>شناسه ملی شرکت <input type="text" name="national_id" class="ltr" value="<?= e((string)$organizationProfile['national_id']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>شماره ثبت <input type="text" name="registration_number" class="ltr" value="<?= e((string)$organizationProfile['registration_number']) ?>" maxlength="40" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>کد اقتصادی <input type="text" name="economic_code" class="ltr" value="<?= e((string)$organizationProfile['economic_code']) ?>" maxlength="30" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+    <div class="form-section">
+      <h3 class="subsection-title">اطلاعات ثبتی شرکت</h3>
+      <div class="form-grid">
+        <label>نام شرکت <input type="text" name="legal_name" value="<?= e((string)$organizationProfile['legal_name']) ?>" maxlength="190" <?= $orgDisabled ?>></label>
         <label>نوع شرکت
-          <select name="company_type" <?= $canManageOrganization ? '' : 'disabled' ?>>
+          <select name="company_type" <?= $orgDisabled ?>>
             <?php foreach (PROFILE_COMPANY_TYPES as $value => $label): ?>
               <?php if ($value === 'unspecified') continue; ?>
               <option value="<?= e($value) ?>"<?= ($organizationProfile['company_type'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
             <?php endforeach; ?>
           </select>
         </label>
-        <label>کد مشتری <input type="text" name="customer_code" class="ltr" value="<?= e((string)$organizationProfile['customer_code']) ?>" maxlength="40" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>تاریخ شروع شرکت <?= jalali_date_select('company_start_date', $organizationProfile['company_start_date'] ?? null) ?></label>
-        <label>تاریخ انقضای شرکت <?= jalali_date_select('company_expiry_date', $organizationProfile['company_expiry_date'] ?? null, 10) ?></label>
-        <label>شماره ثابت <input type="text" name="landline_phone" class="ltr" value="<?= e((string)$organizationProfile['landline_phone']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>شماره فکس <input type="text" name="fax_number" class="ltr" value="<?= e((string)$organizationProfile['fax_number']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+        <label>شناسه ملی شرکت <input type="text" name="national_id" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['national_id']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+        <label>شماره ثبت <input type="text" name="registration_number" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['registration_number']) ?>" maxlength="40" <?= $orgDisabled ?>></label>
+        <label>کد اقتصادی <input type="text" name="economic_code" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['economic_code']) ?>" maxlength="30" <?= $orgDisabled ?>></label>
+        <label>کد مشتری <input type="text" name="customer_code" class="ltr" value="<?= e((string)$organizationProfile['customer_code']) ?>" maxlength="40" <?= $orgDisabled ?>></label>
+        <label>تاریخ شروع شرکت <?= jalali_date_select('company_start_date', $organizationProfile['company_start_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
+        <label>تاریخ انقضای شرکت <?= jalali_date_select('company_expiry_date', $organizationProfile['company_expiry_date'] ?? null, yearsAhead: 15, yearsBack: 10, allowEmpty: true) ?></label>
       </div>
     </div>
 
-    <div class="subsection">
-      <h3 class="subsection-title">اطلاعات مدیرعامل / نماینده شرکت</h3>
-      <div class="grid grid-2">
-        <label>نام مدیرعامل شرکت <input type="text" name="ceo_name" value="<?= e((string)$organizationProfile['ceo_name']) ?>" maxlength="160" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>نام خانوادگی مدیرعامل شرکت <input type="text" name="ceo_last_name" value="<?= e((string)$organizationProfile['ceo_last_name']) ?>" maxlength="120" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>نام پدر مدیرعامل شرکت <input type="text" name="ceo_father_name" value="<?= e((string)$organizationProfile['ceo_father_name']) ?>" maxlength="120" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>کد ملی مدیرعامل شرکت <input type="text" name="ceo_national_code" class="ltr" value="<?= e((string)$organizationProfile['ceo_national_code']) ?>" maxlength="20" placeholder="۱۰ رقم" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>شماره شناسنامه مدیرعامل شرکت <input type="text" name="ceo_birth_certificate_no" class="ltr" value="<?= e((string)$organizationProfile['ceo_birth_certificate_no']) ?>" maxlength="30" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>تاریخ تولد مدیرعامل شرکت <?= jalali_date_select('ceo_birth_date', $organizationProfile['ceo_birth_date'] ?? null) ?></label>
-        <label>شهر محل تولد مدیرعامل شرکت <input type="text" name="ceo_birth_city" value="<?= e((string)$organizationProfile['ceo_birth_city']) ?>" maxlength="60" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>موبایل مدیرعامل <input type="text" name="ceo_mobile" class="ltr" value="<?= e((string)$organizationProfile['ceo_mobile']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-        <label>ایمیل مدیرعامل <input type="text" name="ceo_email" class="ltr" value="<?= e((string)$organizationProfile['ceo_email']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+    <div class="form-section">
+      <h3 class="subsection-title">راه‌های تماس شرکت</h3>
+      <div class="form-grid">
+        <label>شماره ثابت <input type="text" name="landline_phone" class="ltr" inputmode="tel" value="<?= e((string)$organizationProfile['landline_phone']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+        <label>شماره فکس <input type="text" name="fax_number" class="ltr" inputmode="tel" value="<?= e((string)$organizationProfile['fax_number']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h3 class="subsection-title">مدیرعامل / نماینده شرکت</h3>
+      <div class="form-grid">
+        <label>نام <input type="text" name="ceo_name" value="<?= e((string)$organizationProfile['ceo_name']) ?>" maxlength="160" <?= $orgDisabled ?>></label>
+        <label>نام خانوادگی <input type="text" name="ceo_last_name" value="<?= e((string)$organizationProfile['ceo_last_name']) ?>" maxlength="120" <?= $orgDisabled ?>></label>
+        <label>نام پدر <input type="text" name="ceo_father_name" value="<?= e((string)$organizationProfile['ceo_father_name']) ?>" maxlength="120" <?= $orgDisabled ?>></label>
+        <label>کد ملی <input type="text" name="ceo_national_code" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['ceo_national_code']) ?>" maxlength="20" placeholder="۱۰ رقم" <?= $orgDisabled ?>></label>
+        <label>شماره شناسنامه <input type="text" name="ceo_birth_certificate_no" class="ltr" inputmode="numeric" value="<?= e((string)$organizationProfile['ceo_birth_certificate_no']) ?>" maxlength="30" <?= $orgDisabled ?>></label>
+        <label>تاریخ تولد <?= jalali_date_select('ceo_birth_date', $organizationProfile['ceo_birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
+        <label>شهر محل تولد <?= geo_any_city_select('ceo_birth_city', (string)$organizationProfile['ceo_birth_city'], $orgDisabled) ?></label>
+        <label>موبایل <input type="text" name="ceo_mobile" class="ltr" inputmode="tel" value="<?= e((string)$organizationProfile['ceo_mobile']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+        <label>ایمیل <input type="email" name="ceo_email" class="ltr" value="<?= e((string)$organizationProfile['ceo_email']) ?>" maxlength="190" <?= $orgDisabled ?>></label>
         <label>کاربر مرتبط (اختیاری)
-          <select name="legal_representative_user_id" <?= $canManageOrganization ? '' : 'disabled' ?>>
+          <select name="legal_representative_user_id" <?= $orgDisabled ?>>
             <option value="0">—</option>
             <option value="<?= (int)$me['id'] ?>"<?= (int)($organizationProfile['legal_representative_user_id'] ?? 0) === (int)$me['id'] ? ' selected' : '' ?>><?= e((string)$me['username']) ?></option>
           </select>
@@ -481,35 +525,47 @@ $profileReadOnly = is_impersonating();
     </div>
 
     <?php if ($canManageOrganization && !$profileReadOnly): ?>
-      <button class="btn btn-primary" style="margin-top:6px">ذخیره‌ی اطلاعات شرکت و نماینده</button>
+      <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات شرکت و نماینده</button></div>
     <?php endif; ?>
   </form>
 </div>
+</section>
 <?php endif; ?>
 
-<?php if ($organizationId > 0): ?>
+<?php if ($organizationId > 0):
+    $orgDisabled = $canManageOrganization ? '' : 'disabled'; ?>
+<section class="tab-panel" data-panel="address" role="tabpanel">
 <div class="card">
   <h2><?= $accountType === 'legal' ? 'آدرس شرکت' : 'آدرس و تماس' ?></h2>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_address">
-    <div class="grid grid-2">
-      <label>استان <input type="text" name="province" value="<?= e((string)$address['province']) ?>" maxlength="60" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>شهر <input type="text" name="city" value="<?= e((string)$address['city']) ?>" maxlength="60" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>خیابان <input type="text" name="street" value="<?= e((string)$address['street']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>کوچه <input type="text" name="alley" value="<?= e((string)$address['alley']) ?>" maxlength="120" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>پلاک <input type="text" name="building_no" class="ltr" value="<?= e((string)$address['building_no']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>واحد <input type="text" name="unit_no" class="ltr" value="<?= e((string)$address['unit_no']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>کد پستی <input type="text" name="postal_code" class="ltr" value="<?= e((string)$address['postal_code']) ?>" maxlength="20" placeholder="۱۰ رقم" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>منطقه / محله <input type="text" name="district" value="<?= e((string)$address['district']) ?>" maxlength="60" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>کشور <input type="text" name="country" value="<?= e((string)$address['country']) ?>" maxlength="60" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label style="grid-column:1/-1">آدرس کامل (توضیح تکمیلی) <input type="text" name="address_text" value="<?= e((string)($address['address_text'] ?? '')) ?>" maxlength="500" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
+    <div class="form-section">
+      <h3 class="subsection-title">موقعیت</h3>
+      <div class="form-grid cols-4">
+        <label>کشور <?= geo_country_select('country', (string)($address['country'] ?: GEO_DEFAULT_COUNTRY), $orgDisabled) ?></label>
+        <label>استان <?= geo_province_select('province', (string)$address['province'], $orgDisabled) ?></label>
+        <label>شهر <?= geo_city_select('city', (string)$address['city'], (string)$address['province'], $orgDisabled) ?></label>
+        <label>منطقه / محله <input type="text" name="district" value="<?= e((string)$address['district']) ?>" maxlength="60" <?= $orgDisabled ?>></label>
+      </div>
+    </div>
+    <div class="form-section">
+      <h3 class="subsection-title">نشانی</h3>
+      <div class="form-grid cols-4">
+        <label class="span-2">خیابان <input type="text" name="street" value="<?= e((string)$address['street']) ?>" maxlength="190" <?= $orgDisabled ?>></label>
+        <label class="span-2">کوچه <input type="text" name="alley" value="<?= e((string)$address['alley']) ?>" maxlength="120" <?= $orgDisabled ?>></label>
+        <label>پلاک <input type="text" name="building_no" class="ltr" value="<?= e((string)$address['building_no']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+        <label>واحد <input type="text" name="unit_no" class="ltr" value="<?= e((string)$address['unit_no']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+        <label class="span-2">کد پستی <input type="text" name="postal_code" class="ltr" inputmode="numeric" value="<?= e((string)$address['postal_code']) ?>" maxlength="20" placeholder="۱۰ رقم" <?= $orgDisabled ?>></label>
+        <label class="span-full">آدرس کامل (توضیح تکمیلی) <input type="text" name="address_text" value="<?= e((string)($address['address_text'] ?? '')) ?>" maxlength="500" <?= $orgDisabled ?>></label>
+      </div>
     </div>
     <?php if ($canManageOrganization && !$profileReadOnly): ?>
-      <button class="btn btn-primary" style="margin-top:12px">ذخیره‌ی آدرس</button>
+      <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی آدرس</button></div>
     <?php endif; ?>
   </form>
 </div>
+</section>
 <?php endif; ?>
 
 <?php
@@ -524,6 +580,7 @@ if ($accountType === 'legal' && $organizationId > 0) {
     $docCards[] = ['title' => 'مدارک احراز هویت', 'owner' => 'user', 'types' => PROFILE_USER_DOCUMENT_TYPES, 'byType' => $activeUserDocsByType, 'editable' => !$profileReadOnly];
 }
 ?>
+<section class="tab-panel" data-panel="documents" role="tabpanel">
 <?php foreach ($docCards as $card): ?>
 <div class="card">
   <h2><?= e($card['title']) ?></h2>
@@ -537,44 +594,26 @@ if ($accountType === 'legal' && $organizationId > 0) {
   <p class="hint" style="margin-top:14px">فرمت‌های مجاز: JPG، PNG، WEBP، PDF — حداکثر ۸ مگابایت. بارگذاری یک فایل جدید برای همان نوع مدرک، نسخه‌ی قبلی را بایگانی و وضعیت بررسی را به «در انتظار بررسی» بازمی‌گرداند.</p>
 </div>
 <?php endforeach; ?>
+</section>
 
+<section class="tab-panel" data-panel="security" role="tabpanel">
 <div class="card">
   <h2>تغییر رمز عبور</h2>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="password">
-    <div class="grid grid-2">
-      <label>رمز عبور فعلی <input type="password" name="current" required></label>
-      <label>رمز عبور جدید <input type="password" name="new" minlength="6" required></label>
-      <label>تکرار رمز عبور جدید <input type="password" name="repeat" minlength="6" required></label>
+    <div class="form-grid">
+      <label>رمز عبور فعلی <input type="password" name="current" autocomplete="current-password" required></label>
+      <label>رمز عبور جدید <input type="password" name="new" minlength="6" autocomplete="new-password" required></label>
+      <label>تکرار رمز عبور جدید <input type="password" name="repeat" minlength="6" autocomplete="new-password" required></label>
     </div>
     <?php if (!$profileReadOnly): ?>
-      <button class="btn btn-primary">تغییر رمز عبور</button>
+      <div class="form-actions"><button class="btn btn-primary">تغییر رمز عبور</button></div>
     <?php endif; ?>
   </form>
 </div>
 
 <?php if ($organizationId > 0): ?>
-<div class="card">
-  <h2>هشدار اعتبار کم</h2>
-  <p class="hint">آستانه بر حسب «واحد اعتبار» است و فقط یک تنظیم است؛ موجودی کیف پول را تغییر نمی‌دهد.</p>
-  <form method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="profile_notifications">
-    <div class="grid grid-2">
-      <label><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $notifications['low_credit_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> هشدار اعتبار کم فعال باشد</label>
-      <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" value="<?= e((string)$notifications['low_credit_threshold']) ?>" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label><input type="checkbox" name="email_alert_enabled" value="1"<?= $notifications['email_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> اعلان ایمیلی</label>
-      <label><input type="checkbox" name="sms_alert_enabled" value="1"<?= $notifications['sms_alert_enabled'] ? ' checked' : '' ?> <?= $canManageOrganization ? '' : 'disabled' ?>> اعلان پیامکی</label>
-      <label>ایمیل اعلان <input type="text" name="alert_email" class="ltr" value="<?= e((string)$notifications['alert_email']) ?>" maxlength="190" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-      <label>موبایل اعلان <input type="text" name="alert_mobile" class="ltr" value="<?= e((string)$notifications['alert_mobile']) ?>" maxlength="20" <?= $canManageOrganization ? '' : 'disabled' ?>></label>
-    </div>
-    <?php if ($canManageOrganization && !$profileReadOnly): ?>
-      <button class="btn btn-primary">ذخیره‌ی تنظیمات</button>
-    <?php endif; ?>
-  </form>
-</div>
-
 <div class="card">
   <h2>آدرس‌های IP مجاز</h2>
   <p class="hint">این فهرست فقط برای ثبت و مدیریت است؛ اعمال محدودیت ورود بر اساس IP در حال حاضر در این نسخه فعال نیست (docs/profile-kyc.md).</p>
@@ -621,4 +660,38 @@ if ($accountType === 'legal' && $organizationId > 0) {
   <?php endif; ?>
 </div>
 <?php endif; ?>
+</section>
+
+<?php if ($organizationId > 0):
+    $orgDisabled = $canManageOrganization ? '' : 'disabled'; ?>
+<section class="tab-panel" data-panel="alerts" role="tabpanel">
+<div class="card">
+  <h2>هشدار اعتبار کم</h2>
+  <p class="hint">آستانه بر حسب «واحد اعتبار» است و فقط یک تنظیم است؛ موجودی کیف پول را تغییر نمی‌دهد.</p>
+  <form method="post" style="margin-top:var(--sp-3)">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_notifications">
+    <div class="form-section">
+      <div class="form-grid">
+        <label class="check"><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $notifications['low_credit_alert_enabled'] ? ' checked' : '' ?> <?= $orgDisabled ?>> هشدار اعتبار کم فعال باشد</label>
+        <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" inputmode="numeric" value="<?= e((string)$notifications['low_credit_threshold']) ?>" <?= $orgDisabled ?>></label>
+      </div>
+    </div>
+    <div class="form-section">
+      <h3 class="subsection-title">کانال‌های اعلان</h3>
+      <div class="form-grid">
+        <label class="check"><input type="checkbox" name="email_alert_enabled" value="1"<?= $notifications['email_alert_enabled'] ? ' checked' : '' ?> <?= $orgDisabled ?>> اعلان ایمیلی</label>
+        <label class="span-2">ایمیل اعلان <input type="email" name="alert_email" class="ltr" value="<?= e((string)$notifications['alert_email']) ?>" maxlength="190" <?= $orgDisabled ?>></label>
+        <label class="check"><input type="checkbox" name="sms_alert_enabled" value="1"<?= $notifications['sms_alert_enabled'] ? ' checked' : '' ?> <?= $orgDisabled ?>> اعلان پیامکی</label>
+        <label class="span-2">موبایل اعلان <input type="text" name="alert_mobile" class="ltr" inputmode="tel" value="<?= e((string)$notifications['alert_mobile']) ?>" maxlength="20" <?= $orgDisabled ?>></label>
+      </div>
+    </div>
+    <?php if ($canManageOrganization && !$profileReadOnly): ?>
+      <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی تنظیمات</button></div>
+    <?php endif; ?>
+  </form>
+</div>
+</section>
+<?php endif; ?>
+</div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

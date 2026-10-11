@@ -115,6 +115,7 @@ require_once __DIR__ . '/Reports/ExportJobs.php';
 // Customer/organization profile — personal profile, company legal profile, address, notification
 // preferences and private documents (docs/customer-profile.md). Loaded last: it composes tenant.php
 // (organization membership), rbac.php (settings.manage) and audit(), and owns none of them.
+require_once __DIR__ . '/IranGeo.php';
 require_once __DIR__ . '/Profile.php';
 // KYC review workflow — state machine, per-document review, submission eligibility, feature gating
 // (docs/profile-kyc.md). Composes Profile.php (document storage/catalogs) and audit(); owns neither.
@@ -913,30 +914,66 @@ function jdate_long(?string $mysqlDateTime): string {
     return to_persian_digits((string)$jd) . ' ' . JALALI_MONTHS[$jm] . ' ' . to_persian_digits((string)$jy);
 }
 
+/** Days in a Jalali month: 31 for the first six, 30 for the next five, 29 or 30 for Esfand. */
+function jalali_month_length(int $jy, int $jm): int {
+    if ($jm >= 1 && $jm <= 6) return 31;
+    if ($jm >= 7 && $jm <= 11) return 30;
+    // Esfand has a 30th day only in a leap year — the same arithmetic the conversions above use
+    // decides it, so the picker and the conversion can never disagree about which days exist.
+    [$gy, $gm, $gd] = jalali_to_gregorian($jy, 12, 30);
+    return gregorian_to_jalali($gy, $gm, $gd) === [$jy, 12, 30] ? 30 : 29;
+}
+
 /**
  * Render three <select> boxes (year/month/day) for picking a Jalali date,
  * named "{$name}_y", "{$name}_m", "{$name}_d". $defaultYmd is a Gregorian
  * 'Y-m-d' string (or null for no default / today).
+ *
+ * The year list runs from $yearsBack years before this year to $yearsAhead after it, newest first
+ * when it reaches further back than forward (a birth date picks a past year, so 1404 should not sit
+ * at the top of a hundred-year list). A stored year outside that window is still listed, so opening
+ * an old record never silently replaces its date.
+ *
+ * $allowEmpty adds a blank first option to each box and, when there is no stored value, leaves all
+ * three blank instead of pre-selecting today — an optional date like a birth date must not quietly
+ * save as "today" just because the form around it was submitted.
  */
-function jalali_date_select(string $name, ?string $defaultYmd = null, int $yearsAhead = 2): string {
-    $ts = $defaultYmd ? strtotime($defaultYmd) : time();
-    [$dy, $dm, $dd] = gregorian_to_jalali((int)date('Y', $ts), (int)date('n', $ts), (int)date('j', $ts));
+function jalali_date_select(string $name, ?string $defaultYmd = null, int $yearsAhead = 2, int $yearsBack = 1, bool $allowEmpty = false): string {
+    $ts = $defaultYmd ? strtotime($defaultYmd) : false;
+    $hasValue = $ts !== false;
+    if (!$hasValue && !$allowEmpty) $ts = time();
+    [$dy, $dm, $dd] = $ts !== false
+        ? gregorian_to_jalali((int)date('Y', $ts), (int)date('n', $ts), (int)date('j', $ts))
+        : [0, 0, 0];
     $todayTs = time();
     [$ty] = gregorian_to_jalali((int)date('Y', $todayTs), (int)date('n', $todayTs), (int)date('j', $todayTs));
 
-    $h = '<span class="jdate">';
-    $h .= '<select name="' . e($name) . '_y" class="jdate-y">';
-    for ($y = $ty - 1; $y <= $ty + $yearsAhead; $y++) {
+    $from = $ty - max(0, $yearsBack);
+    $to   = $ty + max(0, $yearsAhead);
+    if ($dy) { $from = min($from, $dy); $to = max($to, $dy); }
+    $years = range($from, $to);
+    if ($yearsBack > $yearsAhead) $years = array_reverse($years);
+
+    $blank = static fn(string $label, bool $selected): string =>
+        '<option value=""' . ($selected ? ' selected' : '') . '>' . $label . '</option>';
+
+    $h = '<span class="jdate" data-jdate>';
+    $h .= '<select name="' . e($name) . '_y" class="jdate-y" aria-label="سال">';
+    if ($allowEmpty) $h .= $blank('سال', !$dy);
+    foreach ($years as $y) {
         $h .= '<option value="' . $y . '"' . ($y === $dy ? ' selected' : '') . '>' . to_persian_digits((string)$y) . '</option>';
     }
     $h .= '</select>';
-    $h .= '<select name="' . e($name) . '_m" class="jdate-m">';
+    $h .= '<select name="' . e($name) . '_m" class="jdate-m" aria-label="ماه">';
+    if ($allowEmpty) $h .= $blank('ماه', !$dm);
     foreach (JALALI_MONTHS as $num => $label) {
         $h .= '<option value="' . $num . '"' . ($num === $dm ? ' selected' : '') . '>' . $label . '</option>';
     }
     $h .= '</select>';
-    $h .= '<select name="' . e($name) . '_d" class="jdate-d">';
-    for ($d = 1; $d <= 31; $d++) {
+    $h .= '<select name="' . e($name) . '_d" class="jdate-d" aria-label="روز">';
+    if ($allowEmpty) $h .= $blank('روز', !$dd);
+    $maxDay = $dy && $dm ? jalali_month_length($dy, $dm) : 31;
+    for ($d = 1; $d <= $maxDay; $d++) {
         $h .= '<option value="' . $d . '"' . ($d === $dd ? ' selected' : '') . '>' . to_persian_digits((string)$d) . '</option>';
     }
     $h .= '</select></span>';
@@ -948,8 +985,10 @@ function jalali_request_to_gregorian(string $name): ?string {
     $y = (int)($_REQUEST["{$name}_y"] ?? 0);
     $m = (int)($_REQUEST["{$name}_m"] ?? 0);
     $d = (int)($_REQUEST["{$name}_d"] ?? 0);
-    if (!$y || !$m || !$d) return null;
-    [$gy, $gm, $gd] = jalali_to_gregorian($y, $m, min($d, 31));
+    if (!$y || $m < 1 || $m > 12 || $d < 1) return null;
+    // A day past the month's end (۳۱ مهر, ۳۰ اسفند of a common year) would otherwise roll over into
+    // the next month; it is clamped to the month's last day instead.
+    [$gy, $gm, $gd] = jalali_to_gregorian($y, $m, min($d, jalali_month_length($y, $m)));
     return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
 }
 

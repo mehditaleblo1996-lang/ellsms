@@ -275,11 +275,16 @@ function profile_user_save(int $userId, array $input, int $actorUserId): array {
         return ['ok' => false, 'reason' => 'invalid_national_code'];
     }
 
+    $birthDate = $input['birth_date'] ?? null;
+    if ($birthDate !== null && $birthDate > date('Y-m-d')) {
+        return ['ok' => false, 'reason' => 'birth_date_in_future'];
+    }
+
     $values = [
         'father_name'           => profile_clean_text((string)($input['father_name'] ?? ''), 120),
         'national_code'         => $nationalCode,
         'birth_certificate_no'  => profile_normalize_digits((string)($input['birth_certificate_no'] ?? '')),
-        'birth_date'            => $input['birth_date'] ?? null,
+        'birth_date'            => $birthDate,
         'national_id_expiry_at' => $input['national_id_expiry_at'] ?? null,
         'gender'                => $gender,
         'personal_address'      => profile_clean_text((string)($input['personal_address'] ?? ''), 500),
@@ -370,6 +375,18 @@ function profile_organization_save(int $organizationId, array $input, int $actor
         return ['ok' => false, 'reason' => 'expiry_before_start'];
     }
 
+    $ceoBirthDate = $input['ceo_birth_date'] ?? null;
+    if ($ceoBirthDate !== null && $ceoBirthDate > date('Y-m-d')) {
+        return ['ok' => false, 'reason' => 'birth_date_in_future'];
+    }
+
+    // Place of birth is picked from the fixed city list (app/IranGeo.php); a value stored before that
+    // list existed is still accepted as-is so an old record stays savable.
+    $ceoBirthCity = profile_clean_text((string)($input['ceo_birth_city'] ?? ''), 60);
+    if ($ceoBirthCity !== '' && !geo_is_city($ceoBirthCity) && $ceoBirthCity !== (string)($previous['ceo_birth_city'] ?? '')) {
+        return ['ok' => false, 'reason' => 'invalid_birth_city'];
+    }
+
     $ceoNationalCodeRaw = (string)($input['ceo_national_code'] ?? '');
     $ceoNationalCode = profile_normalize_national_code($ceoNationalCodeRaw);
     if ($ceoNationalCodeRaw !== '' && $ceoNationalCode === '') {
@@ -417,8 +434,8 @@ function profile_organization_save(int $organizationId, array $input, int $actor
         profile_clean_text((string)($input['ceo_father_name'] ?? ''), 120),
         $ceoNationalCode,
         profile_normalize_digits((string)($input['ceo_birth_certificate_no'] ?? '')),
-        $input['ceo_birth_date'] ?? null,
-        profile_clean_text((string)($input['ceo_birth_city'] ?? ''), 60),
+        $ceoBirthDate,
+        $ceoBirthCity,
         profile_normalize_digits((string)($input['ceo_mobile'] ?? '')),
         $ceoEmailRaw,
         profile_normalize_digits((string)($input['landline_phone'] ?? '')),
@@ -468,6 +485,31 @@ function profile_address_save(int $organizationId, array $input, int $actorUserI
         return ['ok' => false, 'reason' => 'invalid_postal_code'];
     }
 
+    // Country, province and city come from fixed lists (app/IranGeo.php) rather than free text. A
+    // value already on file from before those lists is accepted unchanged, so re-saving an old
+    // address never fails on a field the user did not touch.
+    $previous = profile_address_get($organizationId);
+    $country  = profile_clean_text((string)($input['country'] ?? GEO_DEFAULT_COUNTRY), 60) ?: GEO_DEFAULT_COUNTRY;
+    $province = profile_clean_text((string)($input['province'] ?? ''), 60);
+    $city     = profile_clean_text((string)($input['city'] ?? ''), 60);
+    if (!geo_is_country($country) && $country !== (string)$previous['country']) {
+        return ['ok' => false, 'reason' => 'invalid_country'];
+    }
+    if ($country !== GEO_DEFAULT_COUNTRY) {
+        // The province/city lists are Iran's; they mean nothing for an address abroad.
+        $province = '';
+        $city = '';
+    }
+    $provinceIsLegacy = $province !== '' && $province === (string)$previous['province'] && !geo_is_province($province);
+    if ($province !== '' && !geo_is_province($province) && !$provinceIsLegacy) {
+        return ['ok' => false, 'reason' => 'invalid_province'];
+    }
+    if ($city !== '' && $city !== (string)$previous['city']) {
+        if (!geo_is_city($city, $provinceIsLegacy ? null : $province)) {
+            return ['ok' => false, 'reason' => $province !== '' && geo_is_city($city) ? 'city_not_in_province' : 'invalid_city'];
+        }
+    }
+
     db()->prepare(
         'INSERT INTO ellsms_organization_addresses
            (organization_id, country, province, city, district, street, alley, building_no, unit_no, postal_code, address_text)
@@ -479,9 +521,9 @@ function profile_address_save(int $organizationId, array $input, int $actorUserI
            postal_code = VALUES(postal_code), address_text = VALUES(address_text)'
     )->execute([
         $organizationId,
-        profile_clean_text((string)($input['country'] ?? 'ایران'), 60) ?: 'ایران',
-        profile_clean_text((string)($input['province'] ?? ''), 60),
-        profile_clean_text((string)($input['city'] ?? ''), 60),
+        $country,
+        $province,
+        $city,
         profile_clean_text((string)($input['district'] ?? ''), 60),
         profile_clean_text((string)($input['street'] ?? ''), 190),
         profile_clean_text((string)($input['alley'] ?? ''), 120),
@@ -784,6 +826,12 @@ function profile_error_message(string $reason): string {
         'invalid_ceo_national_code'   => 'کد ملی مدیرعامل باید دقیقاً ۱۰ رقم باشد.',
         'invalid_ceo_email'           => 'ایمیل نماینده معتبر نیست.',
         'invalid_postal_code'         => 'کد پستی باید دقیقاً ۱۰ رقم باشد.',
+        'invalid_country'             => 'کشور را از فهرست انتخاب کنید.',
+        'invalid_province'            => 'استان را از فهرست انتخاب کنید.',
+        'invalid_city'                => 'شهر را از فهرست انتخاب کنید.',
+        'city_not_in_province'        => 'شهر انتخاب‌شده در استان انتخاب‌شده نیست.',
+        'invalid_birth_city'          => 'شهر محل تولد را از فهرست انتخاب کنید.',
+        'birth_date_in_future'        => 'تاریخ تولد نمی‌تواند در آینده باشد.',
         'invalid_threshold'           => 'آستانه‌ی اعتبار نامعتبر است.',
         'invalid_email'               => 'ایمیل اعلان معتبر نیست.',
         'expiry_before_start'         => 'تاریخ انقضا نمی‌تواند پیش از تاریخ شروع فعالیت باشد.',

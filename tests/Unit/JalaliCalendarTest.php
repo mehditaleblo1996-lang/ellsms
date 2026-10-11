@@ -72,4 +72,45 @@ final class JalaliCalendarTest extends TestCase
         );
         $this->assertSame([1403, 1, 1], [$jy2, $jm2, $jd2]);
     }
+
+    public function testMonthLengthFollowsTheCalendar(): void
+    {
+        $this->assertSame(31, jalali_month_length(1404, 1));
+        $this->assertSame(31, jalali_month_length(1404, 6));
+        $this->assertSame(30, jalali_month_length(1404, 7));
+        $this->assertSame(30, jalali_month_length(1403, 12), '1403 is a leap year');
+        $this->assertSame(29, jalali_month_length(1404, 12));
+    }
+
+    public function testRequestDateClampsADayPastTheMonthEnd(): void
+    {
+        $_REQUEST = ['d_y' => '1404', 'd_m' => '7', 'd_d' => '31'];
+        $this->assertSame(sprintf('%04d-%02d-%02d', ...jalali_to_gregorian(1404, 7, 30)), jalali_request_to_gregorian('d'));
+        $_REQUEST = [];
+    }
+
+    public function testPartlyFilledRequestDateReadsAsNoDate(): void
+    {
+        $_REQUEST = ['d_y' => '1370', 'd_m' => '', 'd_d' => ''];
+        $this->assertNull(jalali_request_to_gregorian('d'));
+        $_REQUEST = [];
+    }
+
+    /** A birth date needs past years, and an empty profile must not render (and save) as today. */
+    public function testBirthDatePickerReachesBackAndStartsEmpty(): void
+    {
+        $html = jalali_date_select('birth_date', null, yearsAhead: 0, yearsBack: 100, allowEmpty: true);
+        [$thisYear] = gregorian_to_jalali((int)date('Y'), (int)date('n'), (int)date('j'));
+
+        $this->assertStringContainsString('<option value="' . ($thisYear - 100) . '">', $html);
+        $this->assertStringNotContainsString('<option value="' . ($thisYear + 1) . '"', $html);
+        $this->assertStringNotContainsString(' selected', str_replace('<option value="" selected>', '', $html));
+    }
+
+    public function testStoredYearOutsideTheWindowIsStillSelectable(): void
+    {
+        $html = jalali_date_select('birth_date', '1900-06-01', yearsAhead: 0, yearsBack: 100, allowEmpty: true);
+        [$jy] = gregorian_to_jalali(1900, 6, 1);
+        $this->assertStringContainsString('<option value="' . $jy . '" selected>', $html);
+    }
 }

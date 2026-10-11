@@ -420,70 +420,107 @@ require __DIR__ . '/../app/views/header.php';
 
 <?php if ($editUser): ?>
 <div class="card">
-  <h2><?= e($editUser['username']) ?> <a class="btn btn-sm btn-ghost" style="float:left" href="/users.php">← بازگشت به فهرست</a></h2>
+  <div class="card-head">
+    <div>
+      <h2><?= e($editUser['username']) ?></h2>
+      <p class="hint"><?= e(trim($editUser['first_name'] . ' ' . $editUser['last_name'])) ?></p>
+    </div>
+    <a class="btn btn-sm btn-ghost" href="/users.php">← بازگشت به فهرست</a>
+  </div>
   <?php if (!$editUser['active'] || $editUser['deleted']): ?>
     <div class="flash flash-error">این حساب غیرفعال یا حذف‌شده است — تا زمانی که در سامانه‌ی مرکزی اصلاح نشود، امکان ورود ندارد.</div>
   <?php endif; ?>
-  <div class="grid grid-2">
-    <div>
-      <table>
-        <tr><th>نام</th><td><?= e(trim($editUser['first_name'] . ' ' . $editUser['last_name'])) ?></td></tr>
-        <tr><th>موبایل</th><td class="msisdn"><?= e((string)$editUser['mobile']) ?></td></tr>
-        <tr><th>نقش</th><td><span class="badge badge-<?= $editUser['is_admin'] ? 'admin' : 'user' ?>"><?= $editUser['is_admin'] ? 'مدیر' : 'کاربر' ?></span></td></tr>
-        <tr><th>اعتبار</th><td class="num"><?= to_persian_digits(number_format((float)$editUser['credit'])) ?></td></tr>
-        <tr><th>ورود دومرحله‌ای</th><td><span class="badge badge-<?= $editUser['twofa_enabled'] ? 'ok' : 'off' ?>"><?= $editUser['twofa_enabled'] ? 'فعال' : 'غیرفعال' ?></span></td></tr>
-      </table>
-      <div class="toolbar" style="margin-top:10px">
-        <?php if ((int)$editUser['id'] !== (int)$me['id']): ?>
-        <form method="post">
-          <?= csrf_field() ?>
-          <input type="hidden" name="do" value="toggle_admin">
-          <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
-          <button class="btn btn-sm"><?= $editUser['is_admin'] ? 'حذف نقش مدیر' : 'تبدیل به مدیر' ?></button>
-        </form>
-        <?php endif; ?>
-        <form method="post">
-          <?= csrf_field() ?>
-          <input type="hidden" name="do" value="toggle_2fa">
-          <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
-          <button class="btn btn-sm"><?= $editUser['twofa_enabled'] ? 'غیرفعال‌سازی ۲مرحله‌ای' : 'فعال‌سازی ۲مرحله‌ای' ?></button>
-        </form>
-        <?php
-        /*
-         * Support impersonation (docs/admin-impersonation.md). A LINK to a confirmation page, not a
-         * one-click POST: entering a customer's account is exactly the kind of action that should
-         * cost a deliberate second step, and the confirmation page is where the reason is captured.
-         * Shown only when the target is actually impersonable, so the operator does not click into a
-         * refusal.
-         */
-        ?>
-        <?php if (impersonation_target_refusal($editUser, (int)$me['id']) === null): ?>
-          <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>">ورود به پنل مشتری</a>
-        <?php endif; ?>
-      </div>
+
+  <div class="summary-grid">
+    <div class="summary-item">
+      <div class="summary-label">موبایل</div>
+      <div class="summary-value ltr msisdn"><?= e((string)$editUser['mobile']) ?></div>
     </div>
+    <div class="summary-item">
+      <div class="summary-label">نقش</div>
+      <div class="summary-value"><span class="badge badge-<?= $editUser['is_admin'] ? 'admin' : 'user' ?>"><?= $editUser['is_admin'] ? 'مدیر' : 'کاربر' ?></span></div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">اعتبار</div>
+      <div class="summary-value num"><?= to_persian_digits(number_format((float)$editUser['credit'])) ?></div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-label">ورود دومرحله‌ای</div>
+      <div class="summary-value"><span class="badge badge-<?= $editUser['twofa_enabled'] ? 'ok' : 'off' ?>"><?= $editUser['twofa_enabled'] ? 'فعال' : 'غیرفعال' ?></span></div>
+    </div>
+  </div>
+
+  <div class="toolbar" style="margin:var(--sp-4) 0 0">
+    <?php if ((int)$editUser['id'] !== (int)$me['id']): ?>
+    <form method="post">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="toggle_admin">
+      <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
+      <button class="btn btn-sm"><?= $editUser['is_admin'] ? 'حذف نقش مدیر' : 'تبدیل به مدیر' ?></button>
+    </form>
+    <?php endif; ?>
+    <form method="post">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="toggle_2fa">
+      <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
+      <button class="btn btn-sm"><?= $editUser['twofa_enabled'] ? 'غیرفعال‌سازی ۲مرحله‌ای' : 'فعال‌سازی ۲مرحله‌ای' ?></button>
+    </form>
+    <?php
+    /*
+     * Support impersonation (docs/admin-impersonation.md). A LINK to a confirmation page, not a
+     * one-click POST: entering a customer's account is exactly the kind of action that should
+     * cost a deliberate second step, and the confirmation page is where the reason is captured.
+     * Shown only when the target is actually impersonable, so the operator does not click into a
+     * refusal.
+     */
+    ?>
+    <?php if (impersonation_target_refusal($editUser, (int)$me['id']) === null): ?>
+      <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>">ورود به پنل مشتری</a>
+    <?php endif; ?>
+  </div>
+</div>
+
+<div class="tabs" data-tabs="user-edit">
+<nav class="tabs-nav" role="tablist" aria-label="بخش‌های ویرایش کاربر">
+  <button type="button" role="tab" data-tab="account">حساب و اعتبار</button>
+  <button type="button" role="tab" data-tab="personal">اطلاعات فردی</button>
+  <button type="button" role="tab" data-tab="organization">سازمان</button>
+  <?php if ($editOrganizationId > 0): ?>
+    <button type="button" role="tab" data-tab="address">آدرس</button>
+    <button type="button" role="tab" data-tab="alerts">هشدار اعتبار</button>
+  <?php endif; ?>
+  <button type="button" role="tab" data-tab="documents">مدارک</button>
+  <button type="button" role="tab" data-tab="kyc">اطلاعات هویتی (KYC)</button>
+</nav>
+
+<section class="tab-panel" data-panel="account" role="tabpanel">
+<div class="card">
+    <h2>خط ارسال پیش‌فرض</h2>
     <form method="post">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="originator">
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
-      <label>خط ارسال پیش‌فرض (قدیمی) <input type="text" name="originator" value="<?= e((string)$editUser['originator']) ?>" class="ltr"></label>
-      <div class="hint">اگر از صفحه‌ی «شماره‌ها» شماره‌ای به این کاربر تخصیص داده شده باشد، در ارسال پیامک به‌جای این مقدار از آن استفاده می‌شود.</div>
-      <button class="btn btn-primary btn-sm">ذخیره</button>
+      <div class="form-grid">
+        <label>خط ارسال پیش‌فرض (قدیمی) <input type="text" name="originator" value="<?= e((string)$editUser['originator']) ?>" class="ltr"></label>
+        <div class="field span-2" style="align-self:end">
+          <div class="hint">اگر از صفحه‌ی «شماره‌ها» شماره‌ای به این کاربر تخصیص داده شده باشد، در ارسال پیامک به‌جای این مقدار از آن استفاده می‌شود.</div>
+        </div>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary btn-sm">ذخیره‌ی خط</button></div>
     </form>
   </div>
-</div>
 
 <div class="grid grid-2">
   <div class="card">
     <h2>تعیین رمز عبور جدید</h2>
     <p class="hint">این کار رمز عبور حساب را همه‌جا تغییر می‌دهد، نه فقط در ELLSMS.</p>
-    <form method="post">
+    <form method="post" style="margin-top:var(--sp-3)">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="password">
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
       <input type="hidden" name="back" value="1">
-      <label>رمز عبور جدید <input type="password" name="password" minlength="6" required></label>
-      <button class="btn btn-primary">تغییر رمز عبور</button>
+      <label>رمز عبور جدید <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      <div class="form-actions"><button class="btn btn-primary btn-sm">تغییر رمز عبور</button></div>
     </form>
   </div>
   <div class="card">
@@ -493,42 +530,56 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="do" value="credit">
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
       <input type="hidden" name="back" value="1">
-      <label>افزایش / کاهش اعتبار <input type="number" name="amount" value="1000" required>
-        <div class="hint">برای کاهش، عدد منفی وارد کنید. اعتبار = بخش‌های پیامک.</div>
-      </label>
-      <label>دلیل (اختیاری) <input type="text" name="reason" maxlength="190" placeholder="مثلاً: جبران خطای ارسال">
-        <div class="hint">برای پیگیری در تاریخچه‌ی مالی ثبت می‌شود.</div>
-      </label>
-      <button class="btn btn-primary">اعمال</button>
+      <div class="form-grid cols-2">
+        <label>افزایش / کاهش اعتبار <input type="number" name="amount" value="1000" required>
+          <span class="hint" style="display:block">برای کاهش، عدد منفی وارد کنید.</span>
+        </label>
+        <label>دلیل (اختیاری) <input type="text" name="reason" maxlength="190" placeholder="مثلاً: جبران خطای ارسال">
+          <span class="hint" style="display:block">در تاریخچه‌ی مالی ثبت می‌شود.</span>
+        </label>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary btn-sm">اعمال</button></div>
     </form>
   </div>
 </div>
+</section>
 
+<section class="tab-panel" data-panel="personal" role="tabpanel">
 <div class="card">
   <h2>اطلاعات فردی مشتری</h2>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_personal">
     <input type="hidden" name="id" value="<?= $editUserId ?>">
-    <div class="grid grid-2">
-      <label>نام پدر <input type="text" name="father_name" value="<?= e((string)$editProfile['father_name']) ?>" maxlength="120"></label>
-      <label>کد ملی <input type="text" name="national_code" class="ltr" value="<?= e((string)$editProfile['national_code']) ?>" maxlength="20"></label>
-      <label>شماره شناسنامه <input type="text" name="birth_certificate_no" class="ltr" value="<?= e((string)$editProfile['birth_certificate_no']) ?>" maxlength="30"></label>
-      <label>جنسیت
-        <select name="gender">
-          <?php foreach (PROFILE_GENDERS as $value => $label): ?>
-            <option value="<?= e($value) ?>"<?= ($editProfile['gender'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <label>تاریخ تولد <?= jalali_date_select('birth_date', $editProfile['birth_date'] ?? null) ?></label>
-      <label>آدرس شخصی <input type="text" name="personal_address" value="<?= e((string)($editProfile['personal_address'] ?? '')) ?>" maxlength="500"></label>
+    <div class="form-section">
+      <h3 class="subsection-title">مشخصات هویتی</h3>
+      <div class="form-grid">
+        <label>نام پدر <input type="text" name="father_name" value="<?= e((string)$editProfile['father_name']) ?>" maxlength="120"></label>
+        <label>کد ملی <input type="text" name="national_code" class="ltr" inputmode="numeric" value="<?= e((string)$editProfile['national_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
+        <label>شماره شناسنامه <input type="text" name="birth_certificate_no" class="ltr" inputmode="numeric" value="<?= e((string)$editProfile['birth_certificate_no']) ?>" maxlength="30"></label>
+        <label>تاریخ تولد <?= jalali_date_select('birth_date', $editProfile['birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
+        <label>جنسیت
+          <select name="gender">
+            <?php foreach (PROFILE_GENDERS as $value => $label): ?>
+              <option value="<?= e($value) ?>"<?= ($editProfile['gender'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+      </div>
     </div>
-    <button class="btn btn-primary btn-sm">ذخیره‌ی اطلاعات فردی</button>
+    <div class="form-section">
+      <h3 class="subsection-title">آدرس شخصی</h3>
+      <div class="form-grid">
+        <label class="span-full">آدرس <input type="text" name="personal_address" value="<?= e((string)($editProfile['personal_address'] ?? '')) ?>" maxlength="500"></label>
+      </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات فردی</button></div>
   </form>
 </div>
+</section>
 
 <?php if ($editOrganizationId === 0): ?>
+<section class="tab-panel" data-panel="organization" role="tabpanel">
 <div class="card">
   <h2>سازمان</h2>
   <div class="flash flash-error">
@@ -544,62 +595,71 @@ require __DIR__ . '/../app/views/header.php';
   </form>
   <p class="hint">این عملیات فقط وقتی کاربر عضو هیچ سازمانی نباشد اثر می‌کند؛ هرگز کاربر را به سازمان دیگری متصل نمی‌کند.</p>
 </div>
+</section>
 <?php else: ?>
+<section class="tab-panel" data-panel="organization" role="tabpanel">
 <div class="card">
-  <h2>نوع حساب</h2>
-  <?php if (count($editMemberships) > 1): ?>
-    <p class="hint">این کاربر عضو <?= to_persian_digits((string)count($editMemberships)) ?> سازمان است؛ نوع حساب زیر مربوط به سازمان «<?= e((string)($editOrganization['name'] ?? '')) ?>» (سازمان نمایش‌داده‌شده) است.</p>
-  <?php endif; ?>
-  <form method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="account_type">
-    <input type="hidden" name="id" value="<?= $editUserId ?>">
-    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
-    <input type="hidden" name="back" value="1">
-    <div class="segmented" role="radiogroup" aria-label="نوع حساب">
-      <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
-        <input type="radio" id="edit_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= ($editOrgProfile['account_type'] ?? 'individual') === $value ? ' checked' : '' ?>>
-        <label for="edit_account_type_<?= e($value) ?>"><?= e($label) ?></label>
-      <?php endforeach; ?>
+  <div class="card-head">
+    <div>
+      <h2>اطلاعات سازمان — <?= e((string)($editOrganization['name'] ?? '')) ?></h2>
+      <?php if (count($editMemberships) > 1): ?>
+        <p class="hint">این کاربر عضو <?= to_persian_digits((string)count($editMemberships)) ?> سازمان است؛ اطلاعات زیر مربوط به سازمان نمایش‌داده‌شده است.</p>
+      <?php endif; ?>
     </div>
-    <button class="btn btn-sm" style="margin-top:10px">اعمال نوع حساب</button>
-  </form>
-  <p class="hint">تغییر نوع حساب اطلاعات و مدارک بخش دیگر را حذف نمی‌کند؛ فقط بخش نمایش‌داده‌شده در پروفایل مشتری را تغییر می‌دهد.</p>
-</div>
+    <form method="post" class="toolbar" style="margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="account_type">
+      <input type="hidden" name="id" value="<?= $editUserId ?>">
+      <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+      <input type="hidden" name="back" value="1">
+      <div class="segmented" role="radiogroup" aria-label="نوع حساب">
+        <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
+          <input type="radio" id="edit_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= ($editOrgProfile['account_type'] ?? 'individual') === $value ? ' checked' : '' ?>>
+          <label for="edit_account_type_<?= e($value) ?>"><?= e($label) ?></label>
+        <?php endforeach; ?>
+      </div>
+      <button class="btn btn-sm">اعمال نوع حساب</button>
+    </form>
+  </div>
 
-<div class="card">
-  <h2>اطلاعات حقوقی سازمان — <?= e((string)($editOrganization['name'] ?? '')) ?></h2>
-  <?php if (count($editMemberships) > 1): ?>
-    <p class="hint">این کاربر عضو <?= to_persian_digits((string)count($editMemberships)) ?> سازمان است؛ اطلاعات زیر مربوط به سازمان پیش‌فرض اوست.</p>
-  <?php endif; ?>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_organization">
     <input type="hidden" name="id" value="<?= $editUserId ?>">
     <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
-    <div class="grid grid-2">
-      <label>نام حقوقی <input type="text" name="legal_name" value="<?= e((string)$editOrgProfile['legal_name']) ?>" maxlength="190"></label>
-      <label>نوع شرکت
-        <select name="company_type">
-          <?php foreach (PROFILE_COMPANY_TYPES as $value => $label): ?>
-            <option value="<?= e($value) ?>"<?= ($editOrgProfile['company_type'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-      <label>شماره ثبت <input type="text" name="registration_number" class="ltr" value="<?= e((string)$editOrgProfile['registration_number']) ?>" maxlength="40"></label>
-      <label>شناسه ملی شرکت <input type="text" name="national_id" class="ltr" value="<?= e((string)$editOrgProfile['national_id']) ?>" maxlength="20"></label>
-      <label>کد اقتصادی <input type="text" name="economic_code" class="ltr" value="<?= e((string)$editOrgProfile['economic_code']) ?>" maxlength="30"></label>
-      <label>مدیرعامل <input type="text" name="ceo_name" value="<?= e((string)$editOrgProfile['ceo_name']) ?>" maxlength="160"></label>
-      <label>نام پدر مدیرعامل <input type="text" name="ceo_father_name" value="<?= e((string)$editOrgProfile['ceo_father_name']) ?>" maxlength="120"></label>
-      <label>کد ملی مدیرعامل <input type="text" name="ceo_national_code" class="ltr" value="<?= e((string)$editOrgProfile['ceo_national_code']) ?>" maxlength="20"></label>
-      <label>تاریخ تولد مدیرعامل <?= jalali_date_select('ceo_birth_date', $editOrgProfile['ceo_birth_date'] ?? null) ?></label>
-      <label>تاریخ شروع فعالیت <?= jalali_date_select('company_start_date', $editOrgProfile['company_start_date'] ?? null) ?></label>
-      <label>تاریخ انقضا <?= jalali_date_select('company_expiry_date', $editOrgProfile['company_expiry_date'] ?? null, 10) ?></label>
+    <div class="form-section">
+      <h3 class="subsection-title">اطلاعات شرکت</h3>
+      <div class="form-grid">
+        <label>نام حقوقی <input type="text" name="legal_name" value="<?= e((string)$editOrgProfile['legal_name']) ?>" maxlength="190"></label>
+        <label>نوع شرکت
+          <select name="company_type">
+            <?php foreach (PROFILE_COMPANY_TYPES as $value => $label): ?>
+              <option value="<?= e($value) ?>"<?= ($editOrgProfile['company_type'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <label>شماره ثبت <input type="text" name="registration_number" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['registration_number']) ?>" maxlength="40"></label>
+        <label>شناسه ملی شرکت <input type="text" name="national_id" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['national_id']) ?>" maxlength="20"></label>
+        <label>کد اقتصادی <input type="text" name="economic_code" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['economic_code']) ?>" maxlength="30"></label>
+        <label>تاریخ شروع فعالیت <?= jalali_date_select('company_start_date', $editOrgProfile['company_start_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
+        <label>تاریخ انقضا <?= jalali_date_select('company_expiry_date', $editOrgProfile['company_expiry_date'] ?? null, yearsAhead: 15, yearsBack: 10, allowEmpty: true) ?></label>
+      </div>
     </div>
-    <button class="btn btn-primary btn-sm">ذخیره‌ی اطلاعات سازمان</button>
+    <div class="form-section">
+      <h3 class="subsection-title">مدیرعامل</h3>
+      <div class="form-grid">
+        <label>نام مدیرعامل <input type="text" name="ceo_name" value="<?= e((string)$editOrgProfile['ceo_name']) ?>" maxlength="160"></label>
+        <label>نام پدر مدیرعامل <input type="text" name="ceo_father_name" value="<?= e((string)$editOrgProfile['ceo_father_name']) ?>" maxlength="120"></label>
+        <label>کد ملی مدیرعامل <input type="text" name="ceo_national_code" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['ceo_national_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
+        <label>تاریخ تولد مدیرعامل <?= jalali_date_select('ceo_birth_date', $editOrgProfile['ceo_birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
+      </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات سازمان</button></div>
   </form>
 </div>
+</section>
 
+<section class="tab-panel" data-panel="address" role="tabpanel">
 <div class="card">
   <h2>آدرس سازمان</h2>
   <form method="post">
@@ -607,20 +667,32 @@ require __DIR__ . '/../app/views/header.php';
     <input type="hidden" name="do" value="profile_address">
     <input type="hidden" name="id" value="<?= $editUserId ?>">
     <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
-    <div class="grid grid-2">
-      <label>استان <input type="text" name="province" value="<?= e((string)$editAddress['province']) ?>" maxlength="60"></label>
-      <label>شهر <input type="text" name="city" value="<?= e((string)$editAddress['city']) ?>" maxlength="60"></label>
-      <label>خیابان <input type="text" name="street" value="<?= e((string)$editAddress['street']) ?>" maxlength="190"></label>
-      <label>کوچه <input type="text" name="alley" value="<?= e((string)$editAddress['alley']) ?>" maxlength="120"></label>
-      <label>پلاک <input type="text" name="building_no" class="ltr" value="<?= e((string)$editAddress['building_no']) ?>" maxlength="20"></label>
-      <label>واحد <input type="text" name="unit_no" class="ltr" value="<?= e((string)$editAddress['unit_no']) ?>" maxlength="20"></label>
-      <label>کد پستی <input type="text" name="postal_code" class="ltr" value="<?= e((string)$editAddress['postal_code']) ?>" maxlength="20"></label>
-      <label>توضیح آدرس <input type="text" name="address_text" value="<?= e((string)($editAddress['address_text'] ?? '')) ?>" maxlength="500"></label>
+    <div class="form-section">
+      <h3 class="subsection-title">موقعیت</h3>
+      <div class="form-grid cols-4">
+        <label>کشور <?= geo_country_select('country', (string)($editAddress['country'] ?: GEO_DEFAULT_COUNTRY)) ?></label>
+        <label>استان <?= geo_province_select('province', (string)$editAddress['province']) ?></label>
+        <label>شهر <?= geo_city_select('city', (string)$editAddress['city'], (string)$editAddress['province']) ?></label>
+        <label>منطقه / محله <input type="text" name="district" value="<?= e((string)($editAddress['district'] ?? '')) ?>" maxlength="60"></label>
+      </div>
     </div>
-    <button class="btn btn-primary btn-sm">ذخیره‌ی آدرس</button>
+    <div class="form-section">
+      <h3 class="subsection-title">نشانی</h3>
+      <div class="form-grid cols-4">
+        <label class="span-2">خیابان <input type="text" name="street" value="<?= e((string)$editAddress['street']) ?>" maxlength="190"></label>
+        <label class="span-2">کوچه <input type="text" name="alley" value="<?= e((string)$editAddress['alley']) ?>" maxlength="120"></label>
+        <label>پلاک <input type="text" name="building_no" class="ltr" value="<?= e((string)$editAddress['building_no']) ?>" maxlength="20"></label>
+        <label>واحد <input type="text" name="unit_no" class="ltr" value="<?= e((string)$editAddress['unit_no']) ?>" maxlength="20"></label>
+        <label class="span-2">کد پستی <input type="text" name="postal_code" class="ltr" inputmode="numeric" value="<?= e((string)$editAddress['postal_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
+        <label class="span-full">توضیح آدرس <input type="text" name="address_text" value="<?= e((string)($editAddress['address_text'] ?? '')) ?>" maxlength="500"></label>
+      </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی آدرس</button></div>
   </form>
 </div>
+</section>
 
+<section class="tab-panel" data-panel="alerts" role="tabpanel">
 <div class="card">
   <h2>تنظیمات اعتبار سازمان</h2>
   <form method="post">
@@ -628,17 +700,26 @@ require __DIR__ . '/../app/views/header.php';
     <input type="hidden" name="do" value="profile_notifications">
     <input type="hidden" name="id" value="<?= $editUserId ?>">
     <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
-    <div class="grid grid-2">
-      <label><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $editNotifications['low_credit_alert_enabled'] ? ' checked' : '' ?>> هشدار اعتبار کم</label>
-      <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" value="<?= e((string)$editNotifications['low_credit_threshold']) ?>"></label>
-      <label><input type="checkbox" name="email_alert_enabled" value="1"<?= $editNotifications['email_alert_enabled'] ? ' checked' : '' ?>> اعلان ایمیلی</label>
-      <label><input type="checkbox" name="sms_alert_enabled" value="1"<?= $editNotifications['sms_alert_enabled'] ? ' checked' : '' ?>> اعلان پیامکی</label>
-      <label>ایمیل اعلان <input type="text" name="alert_email" class="ltr" value="<?= e((string)$editNotifications['alert_email']) ?>" maxlength="190"></label>
-      <label>موبایل اعلان <input type="text" name="alert_mobile" class="ltr" value="<?= e((string)$editNotifications['alert_mobile']) ?>" maxlength="20"></label>
+    <div class="form-section">
+      <h3 class="subsection-title">هشدار اعتبار کم</h3>
+      <div class="form-grid">
+        <label class="check"><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $editNotifications['low_credit_alert_enabled'] ? ' checked' : '' ?>> هشدار اعتبار کم فعال باشد</label>
+        <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" inputmode="numeric" value="<?= e((string)$editNotifications['low_credit_threshold']) ?>"></label>
+      </div>
     </div>
-    <button class="btn btn-primary btn-sm">ذخیره‌ی تنظیمات</button>
+    <div class="form-section">
+      <h3 class="subsection-title">کانال‌های اعلان</h3>
+      <div class="form-grid">
+        <label class="check"><input type="checkbox" name="email_alert_enabled" value="1"<?= $editNotifications['email_alert_enabled'] ? ' checked' : '' ?>> اعلان ایمیلی</label>
+        <label class="span-2">ایمیل اعلان <input type="email" name="alert_email" class="ltr" value="<?= e((string)$editNotifications['alert_email']) ?>" maxlength="190"></label>
+        <label class="check"><input type="checkbox" name="sms_alert_enabled" value="1"<?= $editNotifications['sms_alert_enabled'] ? ' checked' : '' ?>> اعلان پیامکی</label>
+        <label class="span-2">موبایل اعلان <input type="text" name="alert_mobile" class="ltr" inputmode="tel" value="<?= e((string)$editNotifications['alert_mobile']) ?>" maxlength="20"></label>
+      </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی تنظیمات</button></div>
   </form>
 </div>
+</section>
 <?php endif; ?>
 
 <?php
@@ -647,6 +728,7 @@ if ($editOrganizationId > 0) {
     $adminDocumentSections[] = ['owner' => 'organization', 'title' => 'مدارک سازمان', 'types' => PROFILE_ORGANIZATION_DOCUMENT_TYPES, 'documents' => $editOrgDocuments];
 }
 ?>
+<section class="tab-panel" data-panel="documents" role="tabpanel">
 <?php foreach ($adminDocumentSections as $section): ?>
 <div class="card">
   <h2><?= e($section['title']) ?></h2>
@@ -679,114 +761,75 @@ if ($editOrganizationId > 0) {
     <?php if (!$section['documents']): ?><tr><td colspan="4" class="empty">مدرکی ثبت نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
-  <form method="post" enctype="multipart/form-data" class="toolbar" style="margin-top:10px">
+  <form method="post" enctype="multipart/form-data" class="form-section" style="margin-top:var(--sp-4);padding-top:var(--sp-4);border-top:1px solid var(--line)">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_document_upload">
     <input type="hidden" name="id" value="<?= $editUserId ?>">
     <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
     <input type="hidden" name="owner" value="<?= e($section['owner']) ?>">
-    <label>نوع مدرک
-      <select name="document_type">
-        <?php foreach ($section['types'] as $value => $label): ?>
-          <option value="<?= e($value) ?>"><?= e($label) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </label>
-    <label>فایل <input type="file" name="document" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label>
-    <button class="btn btn-primary btn-sm">بارگذاری</button>
+    <h3 class="subsection-title">بارگذاری مدرک جدید</h3>
+    <div class="form-grid">
+      <label>نوع مدرک
+        <select name="document_type">
+          <?php foreach ($section['types'] as $value => $label): ?>
+            <option value="<?= e($value) ?>"><?= e($label) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>فایل <input type="file" name="document" accept=".jpg,.jpeg,.png,.webp,.pdf" required></label>
+      <div class="field" style="align-self:end"><button class="btn btn-primary btn-sm">بارگذاری</button></div>
+    </div>
   </form>
 </div>
 <?php endforeach; ?>
+</section>
 
+<section class="tab-panel" data-panel="kyc" role="tabpanel">
 <div class="card">
   <h2>اطلاعات هویتی (KYC)</h2>
   <p class="hint">نام، نام‌خانوادگی و موبایل از سامانه‌ی مرکزی می‌آید (بالا نمایش داده شد). فیلدهای زیر فقط در ELLSMS نگهداری می‌شوند.</p>
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data" style="margin-top:var(--sp-3)">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="kyc_save">
     <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
     <input type="hidden" name="back" value="1">
-    <div class="form-row">
-      <label>نام پدر <input type="text" name="father_name" value="<?= e($editKyc['father_name']) ?>"></label>
-      <label>آدرس <input type="text" name="address" value="<?= e((string)$editKyc['address']) ?>"></label>
+    <div class="form-section">
+      <div class="form-grid">
+        <label>نام پدر <input type="text" name="father_name" value="<?= e($editKyc['father_name']) ?>"></label>
+        <label class="span-2">آدرس <input type="text" name="address" value="<?= e((string)$editKyc['address']) ?>"></label>
+      </div>
     </div>
-    <div class="form-row">
-      <label>تصویر کارت ملی
-        <input type="file" name="id_card_photo" accept=".jpg,.jpeg,.png,.webp,.pdf">
-        <?php if ($editKyc['id_card_photo']): ?>
-          <div class="hint"><a href="/kyc-photo.php?user=<?= $editUser['id'] ?>&type=id_card" target="_blank">مشاهده‌ی فایل فعلی</a></div>
-        <?php endif; ?>
-      </label>
-      <label>تصویر مدرک دوم (شناسنامه یا پاسپورت)
-        <input type="file" name="second_doc_photo" accept=".jpg,.jpeg,.png,.webp,.pdf">
-        <?php if ($editKyc['second_doc_photo']): ?>
-          <div class="hint"><a href="/kyc-photo.php?user=<?= $editUser['id'] ?>&type=second_doc" target="_blank">مشاهده‌ی فایل فعلی</a></div>
-        <?php endif; ?>
-      </label>
+    <div class="form-section">
+      <h3 class="subsection-title">تصاویر مدارک</h3>
+      <div class="form-grid cols-2">
+        <label>تصویر کارت ملی
+          <input type="file" name="id_card_photo" accept=".jpg,.jpeg,.png,.webp,.pdf">
+          <?php if ($editKyc['id_card_photo']): ?>
+            <span class="hint" style="display:block"><a href="/kyc-photo.php?user=<?= $editUser['id'] ?>&type=id_card" target="_blank">مشاهده‌ی فایل فعلی</a></span>
+          <?php endif; ?>
+        </label>
+        <label>تصویر مدرک دوم (شناسنامه یا پاسپورت)
+          <input type="file" name="second_doc_photo" accept=".jpg,.jpeg,.png,.webp,.pdf">
+          <?php if ($editKyc['second_doc_photo']): ?>
+            <span class="hint" style="display:block"><a href="/kyc-photo.php?user=<?= $editUser['id'] ?>&type=second_doc" target="_blank">مشاهده‌ی فایل فعلی</a></span>
+          <?php endif; ?>
+        </label>
+      </div>
     </div>
-    <button class="btn btn-primary">ذخیره‌ی اطلاعات هویتی</button>
+    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات هویتی</button></div>
   </form>
 </div>
-<?php endif; ?>
-
-<div class="card">
-  <h2>ساخت حساب تازه</h2>
-  <?php if (!$domains): ?>
-    <div class="flash flash-error">هیچ دامنه‌ای (Domain) در سامانه‌ی مرکزی پیدا نشد — ساخت حساب تازه بدون دامنه ممکن نیست. یک دامنه باید ابتدا در سامانه‌ی مرکزی ساخته شود.</div>
-  <?php else: ?>
-  <form method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="create_account">
-    <div class="form-row">
-      <label>نام کاربری * <input type="text" name="username" required></label>
-      <label>رمز عبور * <input type="password" name="password" minlength="6" required></label>
-      <label>نام * <input type="text" name="first_name" required></label>
-      <label>نام‌خانوادگی * <input type="text" name="last_name" required></label>
-    </div>
-    <div class="form-row">
-      <label>ایمیل * <input type="email" name="email" required class="ltr"></label>
-      <label>موبایل * <input type="text" name="mobile" required class="ltr" placeholder="0912…"></label>
-      <label>کد ملی * <input type="text" name="national_id" required maxlength="10" class="ltr" placeholder="۱۰ رقم"></label>
-      <label>جنسیت
-        <select name="gender">
-          <option value="MALE">مرد</option>
-          <option value="FEMALE">زن</option>
-        </select>
-      </label>
-    </div>
-    <div class="form-row">
-      <label>دامنه (Domain) *
-        <select name="domain_id" required>
-          <?php foreach ($domains as $d): ?><option value="<?= $d['id'] ?>"><?= e($d['name']) ?></option><?php endforeach; ?>
-        </select>
-      </label>
-      <label>سقف ارسال روزانه <input type="number" name="daily_limit" value="1000" min="1"></label>
-    </div>
-    <label>نوع حساب
-      <span class="segmented" role="radiogroup" aria-label="نوع حساب" style="margin-top:6px">
-        <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
-          <input type="radio" id="new_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= $value === 'individual' ? ' checked' : '' ?>>
-          <label for="new_account_type_<?= e($value) ?>"><?= e($label) ?></label>
-        <?php endforeach; ?>
-      </span>
-    </label>
-    <button class="btn btn-primary">ساخت حساب</button>
-  </form>
-  <p class="hint">پس از ساخت، دسترسی ELLSMS به‌طور خودکار فعال می‌شود و می‌توانید بلافاصله اعتبار، شماره، و اطلاعات هویتی برای آن تنظیم کنید. کد کاربری (code) به‌صورت خودکار و یکتا تولید می‌شود.</p>
-  <?php endif; ?>
+</section>
 </div>
+<?php else: ?>
+<div class="tabs" data-tabs="users">
+<nav class="tabs-nav" role="tablist" aria-label="مدیریت حساب‌ها">
+  <button type="button" role="tab" data-tab="list">حساب‌ها<span class="tab-count">(<?= to_persian_digits((string)count($panelUsers)) ?>)</span></button>
+  <button type="button" role="tab" data-tab="create">ساخت حساب تازه</button>
+  <button type="button" role="tab" data-tab="grant">دسترسی به حساب موجود</button>
+</nav>
 
-<div class="card">
-  <h2>یا دادن دسترسی به یک حساب موجود</h2>
-  <form method="post" class="toolbar">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="grant">
-    <label>نام کاربری <input type="text" name="username" required placeholder="نام کاربری موجود"></label>
-    <button class="btn btn-primary">دادن دسترسی</button>
-  </form>
-  <p class="hint">اگر حساب از قبل در سامانه‌ی مرکزی وجود دارد (مثلاً از طریق ابزارهای دیگر ساخته شده)، به‌جای ساخت دوباره، فقط دسترسی ELLSMS را برایش فعال کنید.</p>
-</div>
-
+<section class="tab-panel" data-panel="list" role="tabpanel">
 <div class="card">
   <h2>حساب‌های دارای دسترسی ELLSMS</h2>
   <form method="post" onsubmit="return confirm('ورود دومرحله‌ای با پیامک برای همه‌ی کاربران فعال شود؟')" style="margin-bottom:14px">
@@ -827,8 +870,92 @@ if ($editOrganizationId > 0) {
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$panelUsers): ?><tr><td colspan="10" class="empty">هنوز حسابی وجود ندارد — از بالا دسترسی بدهید.</td></tr><?php endif; ?>
+    <?php if (!$panelUsers): ?><tr><td colspan="10" class="empty">هنوز حسابی وجود ندارد — از تب «ساخت حساب تازه» یا «دسترسی به حساب موجود» شروع کنید.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>
+</section>
+
+<section class="tab-panel" data-panel="create" role="tabpanel">
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>ساخت حساب تازه</h2>
+      <p class="hint">پس از ساخت، دسترسی ELLSMS خودکار فعال می‌شود و می‌توانید بلافاصله اعتبار، شماره و اطلاعات هویتی را تنظیم کنید. کد کاربری (code) خودکار و یکتا تولید می‌شود.</p>
+    </div>
+  </div>
+  <?php if (!$domains): ?>
+    <div class="flash flash-error">هیچ دامنه‌ای (Domain) در سامانه‌ی مرکزی پیدا نشد — ساخت حساب تازه بدون دامنه ممکن نیست. یک دامنه باید ابتدا در سامانه‌ی مرکزی ساخته شود.</div>
+  <?php else: ?>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="create_account">
+    <div class="form-section">
+      <h3 class="subsection-title">مشخصات فردی</h3>
+      <div class="form-grid cols-4">
+        <label>نام <span class="req">*</span> <input type="text" name="first_name" required></label>
+        <label>نام‌خانوادگی <span class="req">*</span> <input type="text" name="last_name" required></label>
+        <label>کد ملی <span class="req">*</span> <input type="text" name="national_id" required maxlength="10" class="ltr" inputmode="numeric" placeholder="۱۰ رقم"></label>
+        <label>جنسیت
+          <select name="gender">
+            <option value="MALE">مرد</option>
+            <option value="FEMALE">زن</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="form-section">
+      <h3 class="subsection-title">اطلاعات تماس</h3>
+      <div class="form-grid cols-4">
+        <label>موبایل <span class="req">*</span> <input type="text" name="mobile" required class="ltr" inputmode="tel" placeholder="0912…"></label>
+        <label class="span-2">ایمیل <span class="req">*</span> <input type="email" name="email" required class="ltr"></label>
+      </div>
+    </div>
+    <div class="form-section">
+      <h3 class="subsection-title">اطلاعات ورود</h3>
+      <div class="form-grid cols-4">
+        <label>نام کاربری <span class="req">*</span> <input type="text" name="username" class="ltr" autocomplete="off" required></label>
+        <label>رمز عبور <span class="req">*</span> <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      </div>
+    </div>
+    <div class="form-section">
+      <h3 class="subsection-title">تنظیمات حساب</h3>
+      <div class="form-grid cols-4">
+        <label>دامنه (Domain) <span class="req">*</span>
+          <select name="domain_id" required>
+            <?php foreach ($domains as $d): ?><option value="<?= $d['id'] ?>"><?= e($d['name']) ?></option><?php endforeach; ?>
+          </select>
+        </label>
+        <label>سقف ارسال روزانه <input type="number" name="daily_limit" value="1000" min="1"></label>
+        <div class="field span-2">
+          <span class="field-label" id="new_account_type_label">نوع حساب</span>
+          <div class="segmented" role="radiogroup" aria-labelledby="new_account_type_label">
+            <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
+              <input type="radio" id="new_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= $value === 'individual' ? ' checked' : '' ?>>
+              <label for="new_account_type_<?= e($value) ?>"><?= e($label) ?></label>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">ساخت حساب</button></div>
+  </form>
+  <?php endif; ?>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="grant" role="tabpanel">
+<div class="card">
+  <h2>دادن دسترسی به یک حساب موجود</h2>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="grant">
+    <label>نام کاربری <input type="text" name="username" required placeholder="نام کاربری موجود"></label>
+    <button class="btn btn-primary">دادن دسترسی</button>
+  </form>
+  <p class="hint">اگر حساب از قبل در سامانه‌ی مرکزی وجود دارد (مثلاً از طریق ابزارهای دیگر ساخته شده)، به‌جای ساخت دوباره، فقط دسترسی ELLSMS را برایش فعال کنید.</p>
+</div>
+</section>
+</div>
+<?php endif; ?>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

@@ -161,59 +161,67 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
           <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
         </div>
 
-        <div class="form-row">
-          <label>نام
-            <input type="text" name="first_name" maxlength="100" value="<?= e($_POST['first_name'] ?? '') ?>" required autofocus>
-          </label>
-          <label>نام خانوادگی
-            <input type="text" name="last_name" maxlength="100" value="<?= e($_POST['last_name'] ?? '') ?>" required>
-          </label>
+        <div class="form-section">
+          <h3 class="subsection-title">مشخصات فردی</h3>
+          <div class="form-grid cols-2">
+            <label>نام <span class="req">*</span>
+              <input type="text" name="first_name" maxlength="100" value="<?= e($_POST['first_name'] ?? '') ?>" required autofocus>
+            </label>
+            <label>نام خانوادگی <span class="req">*</span>
+              <input type="text" name="last_name" maxlength="100" value="<?= e($_POST['last_name'] ?? '') ?>" required>
+            </label>
+            <label>کد ملی <span class="req">*</span>
+              <input type="text" name="national_id" class="ltr" inputmode="numeric" maxlength="10" placeholder="۱۰ رقم" value="<?= e($_POST['national_id'] ?? '') ?>" required>
+            </label>
+            <label>جنسیت
+              <select name="gender">
+                <option value="MALE"<?= ($_POST['gender'] ?? 'MALE') === 'MALE' ? ' selected' : '' ?>>مرد</option>
+                <option value="FEMALE"<?= ($_POST['gender'] ?? '') === 'FEMALE' ? ' selected' : '' ?>>زن</option>
+              </select>
+            </label>
+          </div>
         </div>
 
-        <div class="form-row">
-          <label>شماره موبایل
-            <input type="tel" name="mobile" class="ltr" maxlength="20" placeholder="0912..." value="<?= e($_POST['mobile'] ?? '') ?>" required>
-          </label>
-          <label>ایمیل
-            <input type="email" name="email" class="ltr" maxlength="190" value="<?= e($_POST['email'] ?? '') ?>" required>
-          </label>
+        <div class="form-section">
+          <h3 class="subsection-title">اطلاعات تماس</h3>
+          <div class="form-grid cols-2">
+            <label>شماره موبایل <span class="req">*</span>
+              <input type="tel" name="mobile" class="ltr" maxlength="20" placeholder="0912..." value="<?= e($_POST['mobile'] ?? '') ?>" required>
+            </label>
+            <label>ایمیل <span class="req">*</span>
+              <input type="email" name="email" class="ltr" maxlength="190" value="<?= e($_POST['email'] ?? '') ?>" required>
+            </label>
+          </div>
         </div>
 
-        <div class="form-row">
-          <label>کد ملی
-            <input type="text" name="national_id" class="ltr" inputmode="numeric" maxlength="10" value="<?= e($_POST['national_id'] ?? '') ?>" required>
-          </label>
-          <label>جنسیت
-            <select name="gender">
-              <option value="MALE"<?= ($_POST['gender'] ?? 'MALE') === 'MALE' ? ' selected' : '' ?>>مرد</option>
-              <option value="FEMALE"<?= ($_POST['gender'] ?? '') === 'FEMALE' ? ' selected' : '' ?>>زن</option>
-            </select>
-          </label>
+        <div class="form-section">
+          <h3 class="subsection-title">اطلاعات ورود</h3>
+          <div class="form-grid cols-2">
+            <label class="span-full">نام کاربری <span class="req">*</span>
+              <input type="text" name="username" class="ltr" maxlength="120" autocomplete="username" value="<?= e($_POST['username'] ?? '') ?>" required>
+            </label>
+            <label>رمز عبور <span class="req">*</span>
+              <input type="password" name="password" minlength="8" autocomplete="new-password" required>
+            </label>
+            <label>تکرار رمز عبور <span class="req">*</span>
+              <input type="password" name="password_repeat" minlength="8" autocomplete="new-password" required>
+            </label>
+          </div>
         </div>
 
-        <label>نام کاربری
-          <input type="text" name="username" class="ltr" maxlength="120" autocomplete="username" value="<?= e($_POST['username'] ?? '') ?>" required>
-        </label>
-
-        <div class="form-row">
-          <label>رمز عبور
-            <input type="password" name="password" minlength="8" autocomplete="new-password" required>
-          </label>
-          <label>تکرار رمز عبور
-            <input type="password" name="password_repeat" minlength="8" autocomplete="new-password" required>
-          </label>
-        </div>
-
-        <div class="form-row">
-          <label>نوع حساب
-            <select name="account_type" id="accountType">
-              <option value="individual"<?= ($_POST['account_type'] ?? 'individual') === 'individual' ? ' selected' : '' ?>>حقیقی</option>
-              <option value="legal"<?= ($_POST['account_type'] ?? '') === 'legal' ? ' selected' : '' ?>>حقوقی</option>
-            </select>
-          </label>
-          <label id="companyNameWrap">نام شرکت
-            <input type="text" name="company_name" maxlength="190" value="<?= e($_POST['company_name'] ?? '') ?>">
-          </label>
+        <div class="form-section">
+          <h3 class="subsection-title">نوع حساب</h3>
+          <div class="form-grid cols-2">
+            <label>نوع حساب
+              <select name="account_type" id="accountType">
+                <option value="individual"<?= ($_POST['account_type'] ?? 'individual') === 'individual' ? ' selected' : '' ?>>حقیقی</option>
+                <option value="legal"<?= ($_POST['account_type'] ?? '') === 'legal' ? ' selected' : '' ?>>حقوقی</option>
+              </select>
+            </label>
+            <label id="companyNameWrap">نام شرکت
+              <input type="text" name="company_name" maxlength="190" value="<?= e($_POST['company_name'] ?? '') ?>">
+            </label>
+          </div>
         </div>
 
         <?php if ($showCaptcha): ?>
@@ -225,7 +233,7 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
           </div>
         <?php endif; ?>
 
-        <button type="submit" class="btn btn-primary btn-block">ثبت‌نام و ارسال کد تأیید</button>
+        <div class="form-actions"><button type="submit" class="btn btn-primary btn-block">ثبت‌نام و ارسال کد تأیید</button></div>
       </form>
       <p class="login-foot">حساب دارید؟ <a href="/login.php">وارد شوید</a></p>
     <?php endif; ?>
@@ -235,7 +243,7 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
   const type=document.getElementById('accountType');
   const wrap=document.getElementById('companyNameWrap');
   if(!type||!wrap)return;
-  function sync(){ wrap.style.display=type.value==='legal'?'block':'none'; }
+  function sync(){ wrap.style.display=type.value==='legal'?'':'none'; }
   type.addEventListener('change',sync); sync();
 })();
 </script>
