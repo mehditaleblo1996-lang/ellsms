@@ -151,7 +151,7 @@ require __DIR__ . '/../app/views/header.php';
     <tr><th>اپراتور</th><th>کل پیام</th><th>ارسال‌شده</th><th>تحویل‌شده</th><th>ناموفق</th><th>در انتظار</th><th>واحد پیامک</th></tr>
     <?php foreach ($byOperator as $key => $b): ?>
       <tr>
-        <td><?= e($key) ?></td>
+        <td><?= operator_label($key, $key) ?></td>
         <td class="num"><?= to_persian_digits(number_format($b['total'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format($b['sent'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format($b['delivered'])) ?></td>
@@ -177,7 +177,7 @@ require __DIR__ . '/../app/views/header.php';
       <tr>
         <td class="ltr"><?= e((string)$c['provider_code']) ?></td>
         <td class="ltr"><?= e((string)$c['route_code']) ?></td>
-        <td class="ltr"><?= e((string)$c['operator_code']) ?></td>
+        <td><?= operator_label((string)$c['operator_code']) ?></td>
         <td class="ltr"><?= e((string)$c['message_type']) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$c['recipients'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$c['segments'])) ?></td>

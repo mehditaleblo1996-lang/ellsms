@@ -1333,3 +1333,8 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .print-invoice { border: none !important; box-shadow: none !important; }
   body { background: #fff !important; }
 }
+
+/* Operator logos (app/OperatorLogos.php): height is set per use, width follows the image. */
+.op-logo { width: auto; vertical-align: middle; object-fit: contain; flex: none; }
+.op-label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
+.op-label .op-logo { min-width: 20px; }

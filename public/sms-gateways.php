@@ -888,7 +888,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php foreach ($operators as $operator): ?>
       <label style="display:block">
         <input type="checkbox" name="operator_ids[]" value="<?= (int)$operator['id'] ?>"<?= in_array((int)$operator['id'], $assignedOperators, true) ? ' checked' : '' ?>>
-        <span class="ltr"><?= e($operator['code']) ?></span> — <?= e($operator['name']) ?>
+        <?= operator_label($operator['code'], $operator['name'], 24) ?> <span class="muted ltr"><?= e($operator['code']) ?></span>
       </label>
     <?php endforeach; ?>
     <button class="btn btn-primary" style="margin-top:10px">ذخیره</button>

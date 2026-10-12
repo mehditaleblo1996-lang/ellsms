@@ -935,7 +935,7 @@ if ($editOrganizationId > 0) {
           <?php foreach (array_merge($editOperators, [['id' => 'other', 'name' => 'سایر اپراتورها و شماره‌های ناشناخته']]) as $operatorRow):
               $current = $editOperatorPrices[$operatorRow['id']] ?? null; ?>
             <tr>
-              <td><?= e((string)$operatorRow['name']) ?></td>
+              <td><?= $operatorRow['id'] === 'other' ? e((string)$operatorRow['name']) : operator_label((string)$operatorRow['code'], (string)$operatorRow['name'], 32) ?></td>
               <td><input type="text" name="price[<?= e((string)$operatorRow['id']) ?>]" class="ltr" inputmode="decimal" size="10"
                          value="<?= $current ? e((string)sms_pricing_millicredits_to_credits($current['millicredits'])) : '' ?>" placeholder="قیمت عادی"></td>
               <td class="num"><?= $current ? jdate($current['since'] . ' UTC') : '—' ?></td>

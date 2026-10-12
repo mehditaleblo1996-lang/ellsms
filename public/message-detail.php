@@ -144,7 +144,7 @@ require __DIR__ . '/../app/views/header.php';
           <?php endif; ?></td>
         <th>تعداد تلاش استعلام وضعیت</th>
         <td class="num"><?= to_persian_digits((string)(int)$attempt['delivery_attempts']) ?></td></tr>
-    <tr><th>اپراتور</th><td><?= e($names['operators'][(int)($attempt['operator_id'] ?? 0)] ?? $dash) ?></td>
+    <tr><th>اپراتور</th><td><?= isset($names['operators'][(int)($attempt['operator_id'] ?? 0)]) ? operator_label($names['operators'][(int)$attempt['operator_id']], $names['operators'][(int)$attempt['operator_id']]) : e($dash) ?></td>
         <th>مسیر</th><td><?= e($names['routes'][(int)($attempt['route_id'] ?? 0)] ?? $dash) ?></td></tr>
     <tr><th>درگاه</th>
         <td><?= e($names['gateways'][(int)($attempt['gateway_id'] ?? 0)] ?? $dash) ?>
@@ -247,7 +247,7 @@ require __DIR__ . '/../app/views/header.php';
       <tr>
         <td class="num"><?= to_persian_digits((string)($i + 1)) ?></td>
         <td class="msisdn"><?= e((string)$item['mobile']) ?></td>
-        <td><?= e($names['operators'][(int)($item['operator_id'] ?? 0)] ?? $dash) ?></td>
+        <td><?= isset($names['operators'][(int)($item['operator_id'] ?? 0)]) ? operator_label($names['operators'][(int)$item['operator_id']], $names['operators'][(int)$item['operator_id']]) : e($dash) ?></td>
         <td class="provider-ref"><?= e((string)($item['provider_message_id'] ?? $dash)) ?></td>
         <?php $itemStatus = report_canonical_status($item['delivery_status']); ?>
         <td><span class="badge badge-<?= e($itemStatus['class']) ?>">
@@ -270,7 +270,7 @@ require __DIR__ . '/../app/views/header.php';
     <tr><th>اپراتور</th><th>تعداد گیرنده</th><th>تعداد پارت</th><th>قیمت واحد</th><th>هزینه پذیرش</th><th>هزینه نهایی</th></tr>
     <?php foreach ($pricing['groups'] as $g): ?>
       <tr>
-        <td><?= e((string)$g['operator_code']) ?></td>
+        <td><?= operator_label((string)$g['operator_code']) ?></td>
         <td class="num"><?= to_persian_digits((string)(int)$g['recipient_count']) ?></td>
         <td class="num"><?= to_persian_digits((string)(int)$g['segment_count']) ?></td>
         <td class="num"><?= to_persian_digits(report_format_millicredits((int)$g['unit_price_millicredits'])) ?></td>

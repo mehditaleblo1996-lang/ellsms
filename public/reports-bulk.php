@@ -185,7 +185,7 @@ require __DIR__ . '/../app/views/header.php';
       <td><?= e((string)$d['message_type']) ?></td>
       <td class="ltr"><?= e((string)$d['sender_number']) ?></td>
       <td class="ltr"><?= (int)$d['route_id'] === 0 ? 'قدیمی (Legacy)' : e($names['routes'][(int)$d['route_id']] ?? ('#' . (int)$d['route_id'])) ?></td>
-      <td><?= (int)$d['operator_id'] === 0 ? 'نامشخص' : e($names['operators'][(int)$d['operator_id']] ?? ('#' . (int)$d['operator_id'])) ?></td>
+      <td><?= (int)$d['operator_id'] === 0 ? 'نامشخص' : operator_label($names['operators'][(int)$d['operator_id']] ?? null, $names['operators'][(int)$d['operator_id']] ?? ('#' . (int)$d['operator_id'])) ?></td>
       <td><span class="badge badge-<?= $statusClass[$d['status']] ?? 'pending' ?>"><?= e($statusFa[$d['status']] ?? (string)$d['status']) ?></span></td>
       <td class="ltr"><?= to_persian_digits(number_format((int)$d['message_count'])) ?></td>
     </tr>

@@ -382,7 +382,7 @@ $prefixes  = $db->query('SELECT x.*, o.code AS operator_code, o.name AS operator
 $senderRoutes = $db->query('SELECT s.*, r.code AS route_code, p.code AS provider_code FROM ellsms_sender_routes s JOIN ellsms_sms_routes r ON r.id = s.route_id JOIN ellsms_sms_providers p ON p.id = r.provider_id ORDER BY s.sender, s.message_type')->fetchAll();
 $operatorRoutes = $db->query('SELECT o.*, op.code AS operator_code, op.name AS operator_name, r.code AS route_code, p.code AS provider_code FROM ellsms_operator_routes o JOIN ellsms_sms_operators op ON op.id = o.operator_id JOIN ellsms_sms_routes r ON r.id = o.route_id JOIN ellsms_sms_providers p ON p.id = r.provider_id ORDER BY op.code, o.message_type')->fetchAll();
 $prices    = $db->query(
-    'SELECT rp.*, r.code AS route_code, p.code AS provider_code, o.code AS operator_code
+    'SELECT rp.*, r.code AS route_code, p.code AS provider_code, o.code AS operator_code, o.name AS operator_name
      FROM ellsms_sms_route_prices rp
      JOIN ellsms_sms_routes r ON r.id = rp.route_id
      JOIN ellsms_sms_providers p ON p.id = r.provider_id
@@ -456,7 +456,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php foreach ($operators as $o): ?>
     <tr>
       <td class="ltr"><?= e($o['code']) ?></td>
-      <td><?= e($o['name']) ?></td>
+      <td><?= operator_label($o['code'], $o['name'], 24) ?></td>
       <td class="ltr"><?= e($o['country_code']) ?></td>
       <td><?= to_persian_digits((string)$o['prefix_count']) ?></td>
       <td>
@@ -501,7 +501,7 @@ require __DIR__ . '/../app/views/header.php';
       <td class="ltr"><?= e($p['prefix']) ?></td>
       <td class="ltr"><?= e($p['normalized_prefix']) ?></td>
       <td><?= to_persian_digits((string)$p['prefix_length']) ?></td>
-      <td><?= e($p['operator_name']) ?></td>
+      <td><?= operator_label($p['operator_code'], $p['operator_name']) ?></td>
       <td>
         <form method="post" class="toolbar" style="margin:0">
           <?= csrf_field() ?><input type="hidden" name="do" value="prefix_update"><input type="hidden" name="tab" value="prefixes">
@@ -675,7 +675,7 @@ require __DIR__ . '/../app/views/header.php';
     <tr><th>اپراتور</th><th>نوع پیام</th><th>مسیر</th><th>وضعیت</th></tr>
     <?php foreach ($operatorRoutes as $o): ?>
     <tr>
-      <td class="ltr"><?= e($o['operator_code'] . ' — ' . $o['operator_name']) ?></td>
+      <td><?= operator_label($o['operator_code'], $o['operator_name']) ?> <span class="muted ltr"><?= e($o['operator_code']) ?></span></td>
       <td class="ltr"><?= e($o['message_type']) ?></td>
       <td class="ltr"><?= e($o['provider_code'] . ' / ' . $o['route_code']) ?></td>
       <td>
@@ -727,7 +727,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php foreach ($prices as $p): $current = price_is_current($p, $nowUtc); ?>
     <tr<?= $current ? ' style="font-weight:600"' : '' ?>>
       <td class="ltr"><?= e($p['provider_code'] . ' / ' . $p['route_code']) ?></td>
-      <td><?= $p['operator_code'] === null ? '<span class="muted">پیش‌فرض مسیر</span>' : e($p['operator_code']) ?></td>
+      <td><?= $p['operator_code'] === null ? '<span class="muted">پیش‌فرض مسیر</span>' : operator_label($p['operator_code'], $p['operator_name']) ?></td>
       <td class="ltr"><?= e((string)sms_pricing_millicredits_to_credits((int)$p['price_per_segment_millicredits'])) ?> <?= e(sms_pricing_currency_label((string)$p['currency'])) ?></td>
       <td class="ltr"><?= e((string)$p['effective_from']) ?></td>
       <td class="ltr"><?= $p['effective_to'] === null ? '—' : e((string)$p['effective_to']) ?></td>
