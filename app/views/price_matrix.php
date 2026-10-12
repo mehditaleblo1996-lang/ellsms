@@ -8,7 +8,8 @@
  *   $matrixGateways      gateway_price_matrix_gateways()
  *   $matrixColumns       gateway_price_matrix_columns()
  *   $matrixValues        gateway_prices_current() of the matrix being edited
- *   $matrixPlaceholders  values shown greyed in empty cells (the global matrix on an account's form), or []
+ *   $matrixDefaults      gateway_price_defaults(): what an empty cell costs. Shown in grey inside the
+ *                        empty cell so it can be edited in place; left unchanged, it is not saved
  *   $matrixHidden        HTML of the form's hidden fields (csrf, do, id, ...)
  *   $matrixSubmitLabel   the submit button's label
  */
@@ -64,13 +65,16 @@ $matrixFormat = static fn(int $millis): string => (string)sms_pricing_millicredi
             <?php foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding):
                 $cellKey = gateway_price_key($gatewayId, $column['key'], $encoding);
                 $value = $matrixValues[$cellKey] ?? null;
-                $placeholder = $matrixPlaceholders[$cellKey] ?? null; ?>
+                $default = $matrixDefaults[$cellKey] ?? null;
+                $shown = $value ?? $default; ?>
               <td>
-                <input type="text" inputmode="decimal" class="ltr pm-cell"
+                <input type="text" inputmode="decimal" class="ltr pm-cell<?= $value === null && $default !== null ? ' is-default' : '' ?>"
                        name="price[<?= $gatewayId ?>][<?= e($column['key']) ?>][<?= $encoding ?>]"
                        data-fill-target="<?= e($column['key'] . '-' . $encoding) ?>"
-                       value="<?= $value !== null ? e($matrixFormat($value)) : '' ?>"
-                       placeholder="<?= $placeholder !== null ? e($matrixFormat($placeholder)) : '—' ?>">
+                       data-default="<?= $default !== null ? e($matrixFormat($default)) : '' ?>"
+                       value="<?= $shown !== null ? e($matrixFormat($shown)) : '' ?>"
+                       placeholder="<?= $default !== null ? e($matrixFormat($default)) : '—' ?>"
+                       title="<?= $default !== null ? 'پیش‌فرض: ' . e($matrixFormat($default)) . ' ریال' : 'بدون قیمت پیش‌فرض' ?>">
               </td>
             <?php endforeach; ?>
           <?php endforeach; ?>

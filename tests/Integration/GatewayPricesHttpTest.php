@@ -187,6 +187,12 @@ final class GatewayPricesHttpTest extends TestCase
         $this->assertSame(200, $page['code']);
         $this->assertStringContainsString('تعرفه‌ی اختصاصی (عامل ارسال × اپراتور)', $page['body']);
         $this->assertMatchesRegularExpression('/name="price\[' . $this->gatewayId . '\]\[' . $mci . '\]\[fa\]"[^>]*placeholder="1124"/s', $page['body']);
+        $this->assertMatchesRegularExpression('/class="ltr pm-cell is-default"\s+name="price\[' . $this->gatewayId . '\]\[' . $mci . '\]\[fa\]"[^>]*value="1124"/s', $page['body'], 'the default is shown, greyed, in the cell');
+
+        // Posting the shown default unchanged saves nothing.
+        $this->post($session, '/users.php?edit=' . $customer, ['do' => 'operator_prices_save', 'id' => $customer, 'back' => '1',
+            'price' => [$this->gatewayId => [$mci => ['fa' => '1124', 'en' => '']]]]);
+        $this->assertSame([], \gateway_prices_current($customer));
 
         $this->post($session, '/users.php?edit=' . $customer, ['do' => 'operator_prices_save', 'id' => $customer, 'back' => '1',
             'price' => [$this->gatewayId => [$mci => ['fa' => '900', 'en' => '']]]]);

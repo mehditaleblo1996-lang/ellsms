@@ -134,9 +134,22 @@ function gateway_prices_at(?int $userId, string $atUtc): array {
     return $out;
 }
 
-/** Current cells (millicredits) keyed by gateway_price_key(), for the admin forms. */
+/**
+ * The latest saved cells (millicredits) keyed by gateway_price_key(), for the admin forms: every
+ * open period, including one a save in the same second scheduled to start a second from now.
+ */
 function gateway_prices_current(?int $userId): array {
-    return array_map(static fn(array $c): int => $c['millicredits'], gateway_prices_at($userId, gmdate('Y-m-d H:i:s')));
+    if (!gateway_prices_available()) {
+        return [];
+    }
+    $st = db()->prepare('SELECT gateway_id, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
+                         WHERE user_slot = ? AND effective_to IS NULL');
+    $st->execute([$userId ?? 0]);
+    $out = [];
+    foreach ($st as $row) {
+        $out[gateway_price_key((int)$row['gateway_id'], (string)$row['column_key'], (string)$row['encoding'])] = (int)$row['price_per_segment_millicredits'];
+    }
+    return $out;
 }
 
 /** Rows of the matrix: active gateways. */
@@ -160,6 +173,67 @@ function gateway_price_matrix_columns(): array {
     $columns[] = ['key' => 'other', 'label' => 'سایر', 'code' => null];
     $columns[] = ['key' => 'intl', 'label' => 'بین‌الملل', 'code' => null];
     return $columns;
+}
+
+/**
+ * What each cell costs when it is left empty, keyed by gateway_price_key() (millicredits), for the
+ * forms to show in place of an empty cell:
+ *
+ *  - global matrix ($userId null): the route price — the default route's price for that operator,
+ *    else its route-default price, else the fallback price when the fallback is on;
+ *  - an account's matrix: the global cell, else that route price, times the account's tariff
+ *    percentage — exactly what the account pays for an empty cell.
+ *
+ * The route price is per operator, not per gateway or encoding, so it repeats along those axes.
+ * A send routed by sender or operator assignment can still land on another route's price; this is
+ * the default the admin sees, not a guarantee for every sender.
+ */
+function gateway_price_defaults(?int $userId): array {
+    $now = gmdate('Y-m-d H:i:s');
+    $routePrices = [];
+    try {
+        $route = sms_pricing_route_for_sender('', sms_pricing_default_message_type(), null);
+        $prices = $route !== null ? sms_pricing_prices_for_route((int)$route['route_id']) : [];
+    } catch (Throwable) {
+        $prices = [];
+    }
+    $fallback = sms_pricing_legacy_fallback_enabled() ? sms_pricing_legacy_unit_price() : null;
+    foreach (gateway_price_matrix_columns() as $column) {
+        $operatorId = ctype_digit($column['key']) ? (int)$column['key'] : null;
+        $price = $prices !== [] ? sms_pricing_select_price($prices, $operatorId, $now) : null;
+        $routePrices[$column['key']] = $price !== null ? (int)$price['price_per_segment_millicredits'] : $fallback;
+    }
+
+    $global = $userId !== null ? gateway_prices_current(null) : [];
+    $tariffBp = $userId !== null ? customer_effective_tariff_bp($userId) : CUSTOMER_TARIFF_BASE_BP;
+    $defaults = [];
+    foreach (gateway_price_matrix_gateways() as $gateway) {
+        foreach ($routePrices as $columnKey => $routePrice) {
+            foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding) {
+                $key = gateway_price_key((int)$gateway['id'], (string)$columnKey, $encoding);
+                $base = $global[$key] ?? $routePrice;
+                if ($base !== null) {
+                    $defaults[$key] = customer_tariff_apply($base, $tariffBp);
+                }
+            }
+        }
+    }
+    return $defaults;
+}
+
+/**
+ * The forms show each empty cell filled with its default (in grey). A submitted value equal to the
+ * default, in a cell that has no own price yet, is therefore "left as default", not a new price:
+ * saving it would pin today's default and stop the cell following later changes to the route or
+ * global price, or to the tariff percentage.
+ */
+function gateway_prices_drop_defaults(array $cells, array $current, array $defaults): array {
+    foreach ($cells as $key => $millis) {
+        if ($millis !== null && !isset($current[$key]) && ($defaults[$key] ?? null) === $millis) {
+            $cells[$key] = null;
+        }
+    }
+    return $cells;
 }
 
 /**

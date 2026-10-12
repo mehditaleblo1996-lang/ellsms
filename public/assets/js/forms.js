@@ -9,7 +9,8 @@
  *  3. Tabs (.tabs > .tabs-nav + .tab-panel): one panel at a time. The open tab is remembered per page
  *     for the browser session, so the redirect after saving a form lands back on the same tab.
  *  4. Fill down ([data-fill-down] buttons, the price matrix): copies the value of the matching
- *     [data-fill-source] input into every [data-fill-target] input of the same key in its form.
+ *     [data-fill-source] input into every [data-fill-target] input of the same key in its form; an
+ *     empty source clears the column back to its defaults ([data-default], shown as placeholders).
  */
 (function () {
   'use strict';
@@ -159,7 +160,18 @@
     if (!source) return;
     scope.querySelectorAll('[data-fill-target="' + key + '"]').forEach(function (input) {
       input.value = source.value.trim();
+      markDefault(input);
     });
+  });
+
+  // A price-matrix cell still showing its default is greyed; editing it makes it an own price. A
+  // cleared cell stays empty (its placeholder shows the default) and is saved as "no own price".
+  function markDefault(input) {
+    var def = input.getAttribute('data-default') || '';
+    input.classList.toggle('is-default', def !== '' && input.value.trim() === def);
+  }
+  document.addEventListener('input', function (event) {
+    if (event.target.matches && event.target.matches('input[data-default]')) markDefault(event.target);
   });
 
   document.querySelectorAll('.tabs').forEach(initTabs);

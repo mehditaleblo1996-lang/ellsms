@@ -20,6 +20,13 @@ Code: `app/GatewayPrices.php`; table: `ellsms_gateway_prices` (migration
   exact price (no tariff percentage); an empty cell shows the global value greyed out and falls back
   to it.
 
+Every cell without a saved price shows its default in grey, editable in place: on the global table
+the route price (the default route's price for that operator, else the fallback), on an account's
+table what the account pays for it (the global cell, else the route price, times its tariff
+percentage). A grey value submitted unchanged is not saved, so the cell keeps following the default;
+an edited value is saved; a cleared cell has no own price and falls back to the default
+(`gateway_price_defaults()`, `gateway_prices_drop_defaults()`).
+
 In both tables the top row of each column has an input and a ↓ button that writes that value into
 every gateway of the column; an empty value clears the column. Nothing is saved unless every cell is
 a valid positive Rial amount (up to three decimals; `1,124` and Persian digits are accepted).

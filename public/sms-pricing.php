@@ -351,6 +351,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             /* ---------------- Price matrix: gateway x operator x encoding (app/GatewayPrices.php) ---------------- */
             case 'matrix_save': {
                 [$cells, $error] = gateway_prices_from_form((array)($_POST['price'] ?? []));
+                $cells = gateway_prices_drop_defaults($cells, gateway_prices_current(null), gateway_price_defaults(null));
                 $result = $error === null ? gateway_prices_save(null, $cells, (int)$me['id']) : ['ok' => false, 'reason' => $error];
                 flash($result['ok'] ? 'success' : 'error', $result['ok']
                     ? 'تعرفه‌ی درگاه‌ها ذخیره شد' . ($result['changed'] > 0 ? ' (' . to_persian_digits((string)$result['changed']) . ' خانه تغییر کرد).' : '؛ تغییری نبود.')
@@ -453,14 +454,15 @@ require __DIR__ . '/../app/views/header.php';
   <p class="hint">
     قیمت هر بخش پیامک به ریال، برای هر درگاه ارسال و اپراتور مقصد، جدا برای متن فارسی و لاتین. «سایر» شماره‌های ایرانی با اپراتور
     نامشخص و «بین‌الملل» شماره‌های خارج از ایران است. درگاه هر پیام همان درگاهی است که آن را می‌فرستد: درگاه متصل به شماره‌ی فرستنده،
-    وگرنه درگاه مسیر، وگرنه درگاه پیش‌فرض. درصد تعرفه‌ی هر مشتری روی این قیمت‌ها اعمال می‌شود. خانه‌ی خالی یعنی تعرفه‌ی مسیر (برگه‌ی «تعرفه‌ها»).
+    وگرنه درگاه مسیر، وگرنه درگاه پیش‌فرض. درصد تعرفه‌ی هر مشتری روی این قیمت‌ها اعمال می‌شود. عدد خاکستری یعنی این خانه قیمت ثبت‌شده ندارد و تعرفه‌ی مسیر
+    (برگه‌ی «تعرفه‌ها») حساب می‌شود؛ هر خانه را که تغییر دهید ذخیره می‌شود، و خالی‌کردن یک خانه آن را به همین پیش‌فرض برمی‌گرداند.
     با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تعرفه‌ی اختصاصی هر مشتری در صفحه‌ی ویرایش کاربر است.
   </p>
   <?php
     $matrixGateways = gateway_price_matrix_gateways();
     $matrixColumns = gateway_price_matrix_columns();
     $matrixValues = gateway_prices_current(null);
-    $matrixPlaceholders = [];
+    $matrixDefaults = gateway_price_defaults(null);
     $matrixHidden = csrf_field() . '<input type="hidden" name="do" value="matrix_save"><input type="hidden" name="tab" value="matrix">';
     $matrixSubmitLabel = 'ذخیره‌ی تعرفه‌ی درگاه‌ها';
     if (!gateway_prices_available()):

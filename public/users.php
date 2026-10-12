@@ -174,6 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // The account's own price matrix (app/GatewayPrices.php): gateway x operator x encoding.
             // An empty cell falls back to the global matrix. Nothing is saved unless every cell parses.
             [$cells, $error] = gateway_prices_from_form((array)($_POST['price'] ?? []));
+            $cells = gateway_prices_drop_defaults($cells, gateway_prices_current($id), gateway_price_defaults($id));
             $result = $error === null ? gateway_prices_save($id, $cells, (int)$me['id']) : ['ok' => false, 'reason' => $error];
             flash($result['ok'] ? 'success' : 'error', $result['ok']
                 ? 'تعرفه‌ی اختصاصی ذخیره شد. از همین لحظه برای ارسال‌های جدید اعمال می‌شود.'
@@ -892,7 +893,8 @@ if ($editOrganizationId > 0) {
     <p class="hint">
       قیمت هر بخش پیامک به ریال برای همین کاربر. هر خانه‌ای که پر شود دقیقاً با همان مبلغ حساب می‌شود و درصد تعرفه‌ی حساب
       (<?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp((int)$editUser['id']))) ?>٪) رویش اعمال نمی‌شود.
-      خانه‌ی خالی یعنی تعرفه‌ی عمومی (عدد کم‌رنگ داخل خانه) × درصد تعرفه. تعرفه‌ی عمومی در «تعرفه‌ی پیامک ← تعرفه‌ی درگاه‌ها» است.
+      عدد خاکستری قیمت پیش‌فرض همین کاربر است (تعرفه‌ی عمومی × درصد تعرفه) و تا تغییرش ندهید ذخیره نمی‌شود؛ خالی‌کردن یک خانه آن را به پیش‌فرض برمی‌گرداند.
+      تعرفه‌ی عمومی در «تعرفه‌ی پیامک ← تعرفه‌ی درگاه‌ها» است.
       با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تغییرات از همین لحظه برای ارسال‌های جدید اعمال می‌شود.
       <?php if ($editCustomerChildren): ?>زیرسازمان‌های این حساب هم با همین قیمت‌ها ارسال می‌کنند.<?php endif; ?>
     </p>
@@ -900,7 +902,7 @@ if ($editOrganizationId > 0) {
       $matrixGateways = gateway_price_matrix_gateways();
       $matrixColumns = gateway_price_matrix_columns();
       $matrixValues = gateway_prices_current((int)$editUser['id']);
-      $matrixPlaceholders = gateway_prices_current(null);
+      $matrixDefaults = gateway_price_defaults((int)$editUser['id']);
       $matrixHidden = csrf_field() . '<input type="hidden" name="do" value="operator_prices_save"><input type="hidden" name="id" value="' . (int)$editUser['id'] . '"><input type="hidden" name="back" value="1">';
       $matrixSubmitLabel = 'ذخیره‌ی تعرفه‌ی اختصاصی';
       require __DIR__ . '/../app/views/price_matrix.php';

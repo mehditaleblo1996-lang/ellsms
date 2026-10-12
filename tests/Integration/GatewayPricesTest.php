@@ -206,6 +206,49 @@ final class GatewayPricesTest extends IntegrationTestCase
         $this->assertSame(1124, $this->cost(null, self::MCI, self::FA));
     }
 
+    public function testDefaultsShowWhatAnEmptyCellCosts(): void
+    {
+        // The test DB's default route is the seeded legacy route: 1000 millicredits (1 credit) per segment.
+        $defaultRoutePrice = (int)db()->query(
+            "SELECT rp.price_per_segment_millicredits FROM ellsms_sms_route_prices rp JOIN ellsms_sms_routes r ON r.id = rp.route_id
+             WHERE r.is_default = 1 AND rp.operator_id IS NULL AND rp.status = 'active' ORDER BY rp.id LIMIT 1")->fetchColumn();
+        $this->set(null, [[$this->routeGateway, $this->mci, 'fa', 1124]]);
+
+        $global = gateway_price_defaults(null);
+        $this->assertSame($defaultRoutePrice, $global[gateway_price_key($this->routeGateway, (string)$this->mci, 'fa')], 'global form: the route price');
+        $this->assertSame($defaultRoutePrice, $global[gateway_price_key($this->otherGateway, 'intl', 'en')]);
+
+        $user = $this->makeUser();
+        $this->account($user, 'normal', null, 15000);
+        $own = gateway_price_defaults($user);
+        $this->assertSame(1686000, $own[gateway_price_key($this->routeGateway, (string)$this->mci, 'fa')], 'account form: global 1124 x 150%');
+        $this->assertSame(intdiv($defaultRoutePrice * 15000 + 9999, 10000), $own[gateway_price_key($this->routeGateway, 'other', 'fa')], 'no global cell: route price x 150%');
+    }
+
+    public function testSubmittingTheShownDefaultsSavesNothingButAnEditedCellIsSaved(): void
+    {
+        $user = $this->makeUser();
+        $this->account($user, 'normal');
+        $this->set(null, [[$this->routeGateway, $this->mci, 'fa', 1124]]);
+        $defaults = gateway_price_defaults($user);
+        $mciFa = gateway_price_key($this->routeGateway, (string)$this->mci, 'fa');
+        $mtnFa = gateway_price_key($this->routeGateway, (string)$this->mtn, 'fa');
+
+        // The form posts every cell; untouched ones still hold their default.
+        $posted = $defaults;
+        $posted[$mtnFa] = 1500000;
+        $cells = gateway_prices_drop_defaults($posted, gateway_prices_current($user), $defaults);
+        gateway_prices_save($user, $cells, $this->admin);
+        $this->assertSame([$mtnFa => 1500000], gateway_prices_current($user));
+
+        // An own price that equals the default is kept, and clearing it removes it.
+        $this->set($user, [[$this->routeGateway, $this->mci, 'fa', 1124]]);
+        $cells = gateway_prices_drop_defaults([$mciFa => 1124000], gateway_prices_current($user), $defaults);
+        $this->assertSame([$mciFa => 1124000], $cells);
+        gateway_prices_save($user, [$mciFa => null], $this->admin);
+        $this->assertArrayNotHasKey($mciFa, gateway_prices_current($user));
+    }
+
     public function testInvalidCellsAndPricesAreRefused(): void
     {
         $this->assertSame('invalid_cell', $this->set(null, [[999999, $this->mci, 'fa', 100]])['reason']);
