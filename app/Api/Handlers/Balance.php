@@ -18,6 +18,7 @@ function api_handle_balance(array $ctx): void {
         'available' => $balance['available'],
         'reserved'  => $balance['reserved'],
         'total'     => $balance['total'],
-        'unit'      => 'credits',
+        // One wallet unit is one Rial (docs/rial-currency.md).
+        'unit'      => SMS_PRICING_CURRENCY,
     ]);
 }

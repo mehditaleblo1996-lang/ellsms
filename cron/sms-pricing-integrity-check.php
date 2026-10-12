@@ -87,7 +87,7 @@ try {
 echo "  [ok] pricing tables present\n";
 
 $fallbackOn = sms_pricing_legacy_fallback_enabled();
-echo '  [info] legacy fallback (1 credit/segment when nothing is configured): ' . ($fallbackOn ? 'ENABLED' : 'DISABLED — pricing fails closed') . "\n";
+echo '  [info] legacy fallback (' . sms_pricing_millicredits_to_credits(sms_pricing_legacy_unit_price()) . ' Rial/segment when nothing is configured): ' . ($fallbackOn ? 'ENABLED' : 'DISABLED — pricing fails closed') . "\n";
 
 section('Operators');
 $critical += count_check($db,
@@ -145,7 +145,7 @@ $defaultRoutes = (int)$db->query("SELECT COUNT(*) FROM ellsms_sms_routes r JOIN 
                                   WHERE r.status = 'active' AND r.is_default = 1 AND p.status = 'active'")->fetchColumn();
 if ($defaultRoutes === 0) {
     echo '  ' . ($fallbackOn ? '[WARN]' : '[CRITICAL]') . " no active default route under an active provider — senders without an explicit assignment "
-        . ($fallbackOn ? "fall back to 1 credit/segment\n" : "cannot be priced at all\n");
+        . ($fallbackOn ? "fall back to the default Rial price per segment\n" : "cannot be priced at all\n");
     $fallbackOn ? $warnings++ : $critical++;
 } else {
     echo "  [ok] at least one active default route exists under an active provider\n";
@@ -174,8 +174,18 @@ $critical += count_check($db,
     "SELECT COUNT(*) FROM ellsms_sms_route_prices WHERE price_per_segment_millicredits = 0 AND status = 'active'",
     'ACTIVE zero prices — a free tariff is expressed by the platform-admin exemption or a plan, never a 0-priced route (0 is indistinguishable from unconfigured)');
 $critical += count_check($db,
-    "SELECT COUNT(*) FROM ellsms_sms_route_prices WHERE currency <> 'credit'",
-    "prices in a currency other than 'credit' — the wallet ledger is credit-denominated and nothing converts");
+    "SELECT COUNT(*) FROM ellsms_sms_route_prices WHERE currency NOT IN ('IRR','credit')",
+    "prices in a currency other than 'IRR' — the wallet is Rial-denominated and nothing converts");
+// Still in the old credit unit: expected until `make rial-conversion` has run (a fresh install's
+// seeded price included), wrong after it.
+$unconvertedCheck = "SELECT COUNT(*) FROM ellsms_sms_route_prices WHERE currency = 'credit'";
+if (rial_conversion_done()) {
+    $critical += count_check($db, $unconvertedCheck,
+        "prices still in the old 'credit' unit although the wallet was converted to Rial");
+} else {
+    $warnings += count_check($db, $unconvertedCheck,
+        "prices still in the old 'credit' unit — run `make rial-conversion` (docs/rial-currency.md)", false);
+}
 $critical += count_check($db,
     "SELECT COUNT(*) FROM ellsms_sms_route_prices WHERE effective_to IS NOT NULL AND effective_to <= effective_from",
     'malformed effective dates (period ends at or before it starts)');
@@ -215,7 +225,7 @@ foreach ($routes as $route) {
         echo "  [ok] {$label} — route default price in effect, covers every operator and unknown numbers\n";
     } elseif ($missing === []) {
         echo "  [ok] {$label} — every active operator has a specific price, but NO route default: an UNKNOWN number on this route "
-            . ($fallbackOn ? "falls back to 1 credit/segment\n" : "cannot be priced\n");
+            . ($fallbackOn ? "falls back to the default Rial price per segment\n" : "cannot be priced\n");
     } else {
         echo '  ' . ($fallbackOn ? '[WARN]' : '[CRITICAL]') . " {$label} — no route default price and no price for: " . implode(', ', $missing) . "\n";
         $fallbackOn ? $warnings++ : $unpriceable++;

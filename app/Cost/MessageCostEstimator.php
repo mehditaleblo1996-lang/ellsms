@@ -35,10 +35,10 @@
  * from the wallet. Invariant E (preview and send price identically) is therefore true by
  * construction again, exactly as it was when both sides shared one literal expression.
  *
- * The wallet ledger stays denominated in whole CREDITS; a configured rate lives in millicredits and
- * becomes credits once per message inside sms_pricing_cost_for_segments(). `rial_per_credit`
- * (ellsms_settings, managed in Settings) remains the Rial value of one credit — used ONLY to render
- * a human-readable Rial figure alongside the credit figure; it is never part of wallet arithmetic.
+ * The wallet ledger is denominated in whole Rial (one wallet "credit" is one Rial); a configured
+ * rate lives in millicredits (thousandths of a Rial) and becomes Rial once per message inside
+ * sms_pricing_cost_for_segments(). `rial_per_credit` is therefore always 1 and is reported only so
+ * existing API consumers keep finding the field.
  *
  * FAIL CLOSED: a recipient whose price cannot be resolved does not get a guessed rate. The estimate
  * refuses with `reason = 'pricing_unavailable'` and reports exactly how many recipients were
@@ -52,8 +52,8 @@
 
 declare(strict_types=1);
 
-/** Bumped whenever the estimate's shape or arithmetic changes, so a stored/echoed preview can be recognized as stale. ('2' = route/operator-aware pricing.) */
-const COST_PREVIEW_ESTIMATOR_VERSION = '2';
+/** Bumped whenever the estimate's shape or arithmetic changes, so a stored/echoed preview can be recognized as stale. ('2' = route/operator-aware pricing, '3' = Rial-denominated wallet.) */
+const COST_PREVIEW_ESTIMATOR_VERSION = '3';
 
 /** Above this many resolved recipients, a personalized bulk preview switches from exact per-recipient counting to a sampled estimate (STEP 28) and says so. */
 function cost_preview_exact_recipient_ceiling(): int {
@@ -116,17 +116,9 @@ function cost_estimate_segments(string $content): array {
    Pricing (STEP 6/7)
    ========================================================================== */
 
-/** The Rial value of one credit — display only, never part of wallet arithmetic. */
+/** The Rial value of one wallet unit. Always 1 since the wallet became Rial-denominated. */
 function cost_rial_per_credit(): int {
-    // Deliberately best-effort: if ellsms_settings is unreachable, the estimate still returns a
-    // correct CREDIT cost and simply omits the Rial figure (0 = "unknown", which every rendering
-    // surface already guards on). A display nicety must never be able to fail a preview whose
-    // actual answer — the credit cost — is fully computable without it.
-    try {
-        return (int)(setting('rial_per_credit', '1000') ?? '1000');
-    } catch (Throwable) {
-        return 0;
-    }
+    return 1;
 }
 
 /**
@@ -152,9 +144,7 @@ function cost_pricing_block(array $priced, bool $isAdmin = false): array {
 
     return [
         'unit'                => 'credit_per_segment',
-        // The unit `estimated_cost` and every wallet figure are denominated in: CREDITS. (The
-        // previous shape reported 'IRR' here, which described `rial_per_credit`, not the cost —
-        // now reported separately as rial_currency so neither number is ambiguous.)
+        // The unit `estimated_cost` and every wallet figure are denominated in: Rial.
         'currency'            => SMS_PRICING_CURRENCY,
         'credits_per_segment' => $isAdmin ? 0 : ($uniform ? sms_pricing_millicredits_to_credits($unitPrices[0]) : null),
         'unit_price_millicredits'     => $isAdmin ? 0 : ($uniform ? $unitPrices[0] : null),

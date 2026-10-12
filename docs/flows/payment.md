@@ -13,15 +13,15 @@ fits alongside the other places `user_.currentcredit` is touched.
 ## Validation
 - `credits = max(0, (int)$_POST['credits'])`, rejected if below `min_credit_purchase` (an admin
   setting). **No upper bound exists** — a user can request an arbitrarily large credit purchase.
-- `amount_rial` is computed **server-side** from `credits * rial_per_credit` (an admin-controlled
-  setting, not client input) — the client never supplies the charged amount directly, so there is
-  no tampering vector into the stored amount.
+- The wallet is Rial-denominated (`docs/rial-currency.md`): `credits` is the Rial amount bought,
+  and the pre-VAT `amount_rial` equals it. VAT is added server-side by `billing_invoice_create()`,
+  and the gateway is charged the invoice's stored total, never a client-supplied figure.
 - Callback: ownership check (`ellsms_payments.user_id` must equal the logged-in user) and an
   authority-echo integrity check (`Authority` query param must match the row's stored
   `authority`) both must pass before any crediting logic is reached.
 
 ## Database reads
-- `ellsms_settings` — `rial_per_credit`, `min_credit_purchase`, `credit_packages` (display only).
+- `ellsms_settings` — `min_credit_purchase` (Rial), `credit_packages` (Rial amounts, display only).
 - `ellsms_payments` — by `id` on callback, to recover `user_id`, `credits`, `amount_rial`,
   `authority`, and current `status`.
 
@@ -95,7 +95,7 @@ fits alongside the other places `user_.currentcredit` is touched.
 ```mermaid
 flowchart TD
     A["POST /buy-credit.php"] --> B["csrf_check(), validate min purchase"]
-    B --> C["amount_rial = credits * rial_per_credit (server-side, trusted)"]
+    B --> C["amount_rial = credits (1 credit = 1 Rial; VAT added by the invoice)"]
     C --> D["INSERT ellsms_payments status=pending"]
     D --> E["zarinpal_request()"]
     E -->|fail| E1["UPDATE status=failed"]

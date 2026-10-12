@@ -349,9 +349,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             /* ---------------- Legacy fallback switch (STEP 50) ---------------- */
             case 'fallback_toggle': {
+                $defaultMillis = sms_pricing_credits_to_millicredits((string)($_POST['default_price_rial'] ?? ''));
+                if ($defaultMillis === null || $defaultMillis <= 0) {
+                    flash('error', 'تعرفه‌ی پیش‌فرض باید مبلغی بزرگ‌تر از صفر به ریال باشد (حداکثر سه رقم اعشار).');
+                    break;
+                }
                 $enabled = !empty($_POST['enabled']) ? '1' : '0';
                 set_setting('sms_pricing_legacy_fallback', $enabled);
-                pricing_audit($me, 'legacy_fallback.toggle', ['enabled' => $enabled === '1']);
+                set_setting('sms_default_price_rial', (string)sms_pricing_millicredits_to_credits($defaultMillis));
+                pricing_audit($me, 'legacy_fallback.toggle', ['enabled' => $enabled === '1', 'default_price_millicredits' => $defaultMillis]);
                 flash('success', $enabled === '1' ? 'تعرفه‌ی پیش‌فرض سازگاری فعال شد.' : 'تعرفه‌ی پیش‌فرض سازگاری غیرفعال شد — از این پس ارسال بدون تعرفه انجام نمی‌شود.');
                 break;
             }
@@ -385,6 +391,7 @@ $prices    = $db->query(
 )->fetchAll();
 $numbers = $db->query('SELECT number, label FROM ellsms_numbers ORDER BY number')->fetchAll();
 $fallbackOn = sms_pricing_legacy_fallback_enabled();
+$defaultPriceRial = sms_pricing_millicredits_to_credits(sms_pricing_legacy_unit_price());
 $nowUtc = sms_pricing_now();
 
 /** Is this price row the one currently in effect for its (route, operator) pair? */
@@ -409,7 +416,10 @@ require __DIR__ . '/../app/views/header.php';
     <input type="hidden" name="tab" value="<?= e($tab) ?>">
     <label>
       <input type="checkbox" name="enabled" value="1"<?= $fallbackOn ? ' checked' : '' ?>>
-      تعرفه‌ی پیش‌فرض سازگاری (۱ واحد اعتبار برای هر بخش) وقتی تعرفه‌ای پیدا نشد
+      تعرفه‌ی پیش‌فرض سازگاری وقتی تعرفه‌ای پیدا نشد
+    </label>
+    <label>مبلغ هر بخش (ریال)
+      <input type="text" name="default_price_rial" class="ltr" size="8" value="<?= e((string)$defaultPriceRial) ?>" required>
     </label>
     <button class="btn">ذخیره</button>
     <span class="muted"><?= $fallbackOn ? 'فعال — هیچ ارسالی به دلیل نبود تعرفه متوقف نمی‌شود.' : 'غیرفعال — ارسال بدون تعرفه‌ی مشخص انجام نمی‌شود.' ?></span>
@@ -700,7 +710,7 @@ require __DIR__ . '/../app/views/header.php';
         <option value="<?= (int)$o['id'] ?>"><?= e($o['name']) ?></option>
       <?php endforeach; ?>
     </select></label>
-    <label>قیمت هر بخش (واحد اعتبار) <input type="text" name="price" class="ltr" placeholder="1.25" required></label>
+    <label>قیمت هر بخش (ریال) <input type="text" name="price" class="ltr" placeholder="1200" required></label>
     <label>توضیح <input type="text" name="note" size="20"></label>
     <label><input type="checkbox" name="confirm_replace" value="1"> تأیید جایگزینی تعرفه‌ی فعال فعلی</label>
     <button class="btn btn-primary">ثبت</button>
@@ -718,7 +728,7 @@ require __DIR__ . '/../app/views/header.php';
     <tr<?= $current ? ' style="font-weight:600"' : '' ?>>
       <td class="ltr"><?= e($p['provider_code'] . ' / ' . $p['route_code']) ?></td>
       <td><?= $p['operator_code'] === null ? '<span class="muted">پیش‌فرض مسیر</span>' : e($p['operator_code']) ?></td>
-      <td class="ltr"><?= e((string)sms_pricing_millicredits_to_credits((int)$p['price_per_segment_millicredits'])) ?> <?= e($p['currency']) ?></td>
+      <td class="ltr"><?= e((string)sms_pricing_millicredits_to_credits((int)$p['price_per_segment_millicredits'])) ?> <?= e(sms_pricing_currency_label((string)$p['currency'])) ?></td>
       <td class="ltr"><?= e((string)$p['effective_from']) ?></td>
       <td class="ltr"><?= $p['effective_to'] === null ? '—' : e((string)$p['effective_to']) ?></td>
       <td><?= $current ? 'جاری' : ($p['status'] === 'archived' ? 'بایگانی' : 'تاریخی') ?></td>

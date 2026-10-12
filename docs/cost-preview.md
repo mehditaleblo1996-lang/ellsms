@@ -27,12 +27,10 @@ The unit price is resolved per recipient from the admin-configured operator/rout
 shared call is what makes preview↔send parity true by construction rather than by convention. See
 **[docs/sms-pricing.md](sms-pricing.md)** for the full model.
 
-- The wallet ledger is denominated in credits (Phase 3); a tariff is stored in integer millicredits
-  (1 credit = 1000) and becomes credits once per message.
-- `rial_per_credit` (Settings → `ellsms_settings`) is the Rial value of one credit, used **only** to
-  render a human-readable Rial figure beside the credit figure. It is never part of wallet
-  arithmetic. It is reported separately as `rial_currency: "IRR"`, while `currency` is the unit the
-  cost itself is in: `credit`.
+- The wallet ledger is denominated in Rial (one credit = one Rial, `docs/rial-currency.md`); a tariff
+  is stored in integer millicredits (thousandths of a Rial) and becomes Rial once per message.
+- `currency` is the unit the cost is in: `IRR`. `rial_per_credit` is always `1` and is kept only so
+  existing API clients still find the field.
 - **Platform admins are exempt** — `dispatch_message()` charges them nothing, so the preview shows
   zero cost for them rather than a figure that would never be debited. An exempt preview also never
   fails closed on an unpriceable recipient: the answer is zero either way.
@@ -205,7 +203,7 @@ preview. A read-only key gets `403`.
                   "unit_price_min_millicredits": 1000, "unit_price_max_millicredits": 1000,
                   "price_source": "route_default", "message_type": "promotional",
                   "estimated_cost": 6,
-                  "rial_per_credit": 1000, "currency": "credit", "rial_currency": "IRR",
+                  "rial_per_credit": 1, "currency": "IRR", "rial_currency": "IRR",
                   "groups": [ { "operator": "mci", "operator_name": "همراه اول",
                                 "provider": "legacy", "route": "default",
                                 "message_type": "promotional", "recipients": 2, "segments": 6,

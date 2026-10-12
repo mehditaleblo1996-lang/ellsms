@@ -340,10 +340,9 @@ CREATE TABLE IF NOT EXISTS ellsms_slides (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Marketing pricing cards shown on the landing page (public/pricing.php
--- manages them). Deliberately separate from the real credit-purchase
--- rate in ellsms_settings (rial_per_credit) — this table is only for
--- how packages are presented publicly, not what buy-credit.php actually
--- charges.
+-- manages them). Deliberately separate from the real credit purchase in
+-- buy-credit.php (where one Rial paid before VAT is one Rial of wallet
+-- credit) — this table is only for how packages are presented publicly.
 CREATE TABLE IF NOT EXISTS ellsms_pricing_packages (
   id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name          VARCHAR(120) NOT NULL,
@@ -426,7 +425,8 @@ INSERT INTO ellsms_settings (skey, svalue) VALUES
   ('api_base_url',               ''),
   ('default_originator',         ''),
   ('autoreply_last_inbound_id',  '0'),
-  ('rial_per_credit',            '1000'),
+  -- In the old credit unit, like every amount before `make rial-conversion` runs; the
+  -- conversion multiplies them into Rial (docs/rial-currency.md).
   ('min_credit_purchase',        '100'),
   ('credit_packages',            '500,1000,5000,20000')
 ON DUPLICATE KEY UPDATE skey = skey;

@@ -60,7 +60,7 @@ require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
   <h2><?= $editing ? 'ویرایش بسته' : 'افزودن بسته‌ی جدید' ?></h2>
-  <p class="hint">این بسته‌ها به‌صورت کارت قیمتی در صفحه‌ی فرود (<a href="/landing.php#pricing" target="_blank">/landing.php#pricing</a>) نمایش داده می‌شوند — صرفاً برای نمایش تبلیغاتی است و مستقل از نرخ واقعی خرید اعتبار در «تنظیمات → پرداخت».</p>
+  <p class="hint">این بسته‌ها به‌صورت کارت قیمتی در صفحه‌ی فرود (<a href="/landing.php#pricing" target="_blank">/landing.php#pricing</a>) نمایش داده می‌شوند — صرفاً برای نمایش تبلیغاتی است و مستقل از خرید واقعی اعتبار است؛ در خرید واقعی هر ریال پرداختی (پیش از ارزش افزوده) یک ریال اعتبار می‌شود.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="save">
@@ -69,7 +69,7 @@ require __DIR__ . '/../app/views/header.php';
       <label>نام بسته
         <input type="text" name="name" required value="<?= e($editing['name'] ?? '') ?>" placeholder="مثلاً بسته‌ی حرفه‌ای">
       </label>
-      <label>مقدار اعتبار
+      <label>مقدار اعتبار (ریال)
         <input type="number" name="credit_amount" min="0" value="<?= (int)($editing['credit_amount'] ?? 0) ?>">
       </label>
       <label>قیمت (ریال)
@@ -101,7 +101,7 @@ require __DIR__ . '/../app/views/header.php';
   <h2>بسته‌های موجود</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>نام</th><th>اعتبار</th><th>قیمت (ریال)</th><th>ویژه</th><th>ترتیب</th><th>وضعیت</th><th></th></tr>
+    <tr><th>نام</th><th>اعتبار (ریال)</th><th>قیمت (ریال)</th><th>ویژه</th><th>ترتیب</th><th>وضعیت</th><th></th></tr>
     <?php foreach ($packages as $p): ?>
       <tr>
         <td><?= e($p['name']) ?></td>

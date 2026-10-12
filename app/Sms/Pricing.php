@@ -29,6 +29,10 @@
  *    the millicredit price is converted to credits exactly once, per message, by
  *    sms_pricing_cost_for_segments() — see its docblock for why rounding happens there and nowhere
  *    else.
+ *  - ONE CREDIT IS ONE RIAL. The wallet, user_.currentcredit (which the Negar backend reads as Rial)
+ *    and every price here share that unit, so a "millicredit" is a thousandth of a Rial and a price
+ *    of 1,200,000 millicredits is 1,200 Rial per segment. The names predate the switch to Rial and
+ *    were kept so stored columns did not need renaming (docs/rial-currency.md).
  *  - THE CLIENT NEVER SUPPLIES A PRICE. Every function here derives everything from server state;
  *    none of them accepts a caller-supplied unit price, route, provider or operator.
  *
@@ -44,8 +48,14 @@ declare(strict_types=1);
 /** Millicredits per credit. Prices are stored and computed as integers in this unit. */
 const SMS_PRICE_SCALE = 1000;
 
-/** The wallet/ledger unit every cost in this file is ultimately denominated in. */
-const SMS_PRICING_CURRENCY = 'credit';
+/** The wallet/ledger unit every cost in this file is ultimately denominated in: Rial. */
+const SMS_PRICING_CURRENCY = 'IRR';
+
+/** The currency code prices and snapshots carried before the switch to Rial (one old wallet unit). */
+const SMS_PRICING_LEGACY_CURRENCY = 'credit';
+
+/** Rial per segment charged by the legacy fallback when the setting below is absent or unusable. */
+const SMS_DEFAULT_PRICE_RIAL = '1200';
 
 /**
  * Message types a route (and therefore a price) can be scoped to. 'default' is the catch-all a
@@ -86,8 +96,8 @@ function sms_pricing_normalize_message_type(?string $type): string {
 /**
  * The explicit global legacy fallback (STEP 50). When enabled (the default, so that applying this
  * feature's migration to an existing install can never cause an outage), a send that resolves to no
- * configured price is priced at exactly 1 credit per segment — verbatim the rate this product
- * charged before route pricing existed.
+ * configured price is priced at sms_pricing_legacy_unit_price() per segment — the admin-set default
+ * Rial price (Settings → `sms_default_price_rial`, 1200 Rial unless changed).
  *
  * It is NOT a hidden fallback: `make sms-pricing-status` prints whether it is on, the integrity
  * check reports every route that depends on it, and every snapshot/preview that used it carries
@@ -112,6 +122,38 @@ function sms_pricing_legacy_fallback_enabled(): bool {
             return true;
         }
     });
+}
+
+/**
+ * The legacy fallback's per-segment price in millicredits (= thousandths of a Rial). Read from the
+ * `sms_default_price_rial` setting, which an admin enters in Rial and may carry up to three
+ * decimals; an absent, empty or unparsable value means SMS_DEFAULT_PRICE_RIAL.
+ */
+function sms_pricing_legacy_unit_price(): int {
+    return (int)sms_pricing_cached('legacy_unit_price', static function (): int {
+        $raw = SMS_DEFAULT_PRICE_RIAL;
+        try {
+            $st = db()->prepare("SELECT svalue FROM ellsms_settings WHERE skey = 'sms_default_price_rial'");
+            $st->execute();
+            $value = $st->fetchColumn();
+            if ($value !== false && trim((string)$value) !== '') {
+                $raw = (string)$value;
+            }
+        } catch (Throwable) {
+            // Same reasoning as the fallback switch above: an unreadable settings table must not
+            // turn into a refusal of every send.
+        }
+        $millis = sms_pricing_credits_to_millicredits($raw);
+        return ($millis !== null && $millis > 0) ? $millis : (int)sms_pricing_credits_to_millicredits(SMS_DEFAULT_PRICE_RIAL);
+    });
+}
+
+/**
+ * Cost of a message that carries no stored price (a bulk row queued before route pricing existed):
+ * the same per-segment default the legacy fallback charges, never a bare segment count.
+ */
+function sms_pricing_legacy_cost_for_segments(int $segments): int {
+    return sms_pricing_cost_for_segments($segments, sms_pricing_legacy_unit_price());
 }
 
 /**
@@ -567,7 +609,7 @@ function sms_pricing_resolution(array $route, array $operator, string $messageTy
         $currency = (string)$price['currency'];
     } else {
         $source = 'legacy_fallback';
-        $unit   = SMS_PRICE_SCALE;
+        $unit   = sms_pricing_legacy_unit_price();
         $ruleId = null;
         $currency = SMS_PRICING_CURRENCY;
     }
@@ -702,20 +744,30 @@ function sms_pricing_cost_for_segments(int $segments, int $unitPriceMillicredits
     return intdiv($segments * $unitPriceMillicredits + SMS_PRICE_SCALE - 1, SMS_PRICE_SCALE);
 }
 
-/** Human-facing credit figure for a millicredit price. Display only — never fed back into arithmetic. */
+/** Human-facing Rial figure for a millicredit price. Display only — never fed back into arithmetic. */
 function sms_pricing_millicredits_to_credits(int $millicredits): float {
     return $millicredits / SMS_PRICE_SCALE;
 }
 
-/** Parses an admin-entered credit price ("1.25") into integer millicredits, or null if unusable. */
+/** Parses an admin-entered Rial price ("850" or "850.5") into integer millicredits, or null if unusable. */
 function sms_pricing_credits_to_millicredits(string $raw): ?int {
-    $raw = trim(from_persian_digits($raw));
+    // Thousands separators an admin may type ("1,200", "۱٬۲۰۰") carry no value; strip them.
+    $raw = str_replace([',', '٬', '،'], '', trim(from_persian_digits($raw)));
     if ($raw === '' || !preg_match('/^\d+(\.\d{1,3})?$/', $raw)) {
         return null;
     }
     [$whole, $frac] = array_pad(explode('.', $raw, 2), 2, '');
     $frac = str_pad($frac, 3, '0');
     return (int)$whole * SMS_PRICE_SCALE + (int)$frac;
+}
+
+/** Persian label for a stored price/snapshot currency code. */
+function sms_pricing_currency_label(string $currency): string {
+    return match ($currency) {
+        SMS_PRICING_CURRENCY        => 'ریال',
+        SMS_PRICING_LEGACY_CURRENCY => 'واحد اعتبار (پیش از ریالی‌شدن)',
+        default                     => $currency,
+    };
 }
 
 /**

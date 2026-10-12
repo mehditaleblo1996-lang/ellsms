@@ -86,12 +86,12 @@ foreach ($jobs->fetchAll() as $job) {
     $rows = bulk_requeue_drop_already_sent($db, $candidates->fetchAll());
     $ids = array_map(static fn(array $r): int => (int)$r['id'], $rows);
     // The same unit price bulk_finalize_item() commits per item: the price frozen at acceptance,
-    // or the segment count for rows that predate frozen prices.
+    // or the default per-segment Rial price for rows that predate frozen prices.
     $cost = 0;
     foreach ($rows as $r) {
-        $cost += $r['price_cost_credits'] !== null ? (int)$r['price_cost_credits'] : sms_parts((string)$r['content']);
+        $cost += $r['price_cost_credits'] !== null ? (int)$r['price_cost_credits'] : sms_pricing_legacy_cost_for_segments(sms_parts((string)$r['content']));
     }
-    $costNote = $chargeOwner ? sprintf(', cost %d credit(s) charged to user #%d', $cost, (int)$job['user_id']) : ', admin-owned (not charged)';
+    $costNote = $chargeOwner ? sprintf(', cost %d Rial charged to user #%d', $cost, (int)$job['user_id']) : ', admin-owned (not charged)';
     if (!$apply || $ids === []) {
         printf("job %d (%s): %d row(s) would be requeued%s\n", $jobId, $job['title'], count($ids), $costNote);
         $total += count($ids);

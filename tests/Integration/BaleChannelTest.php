@@ -73,7 +73,7 @@ final class BaleChannelTest extends IntegrationTestCase
         @file_put_contents(self::$recordFile, '');
         @file_put_contents(self::$recordFile . '.vesal', '');
         $this->userId = $this->makeUser(['originator' => $this->line]);
-        wallet_credit($this->userId, 1000, 'purchase', 'test', 'seed:' . $this->userId, 'seed:' . $this->userId);
+        wallet_credit($this->userId, 100000, 'purchase', 'test', 'seed:' . $this->userId, 'seed:' . $this->userId);
     }
 
     protected function tearDown(): void

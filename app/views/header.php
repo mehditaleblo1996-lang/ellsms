@@ -153,7 +153,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
       <div class="topbar-right">
         <?php if ($me['role'] !== 'admin'): ?>
           <span class="credit-pill" title="اعتبار باقی‌مانده">
-            اعتبار: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong>
+            اعتبار: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> ریال
           </span>
         <?php endif; ?>
         <a class="btn btn-ghost" href="/notifications.php" title="اعلان‌ها" style="position:relative">

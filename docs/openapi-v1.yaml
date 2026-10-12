@@ -170,7 +170,7 @@ components:
             available: { type: integer }
             reserved: { type: integer }
             total: { type: integer }
-            unit: { type: string, example: credits }
+            unit: { type: string, example: IRR, description: "Balances are in Rial" }
 
     WebhookEndpoint:
       type: object

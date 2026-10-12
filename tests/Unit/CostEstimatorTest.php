@@ -138,14 +138,14 @@ final class CostEstimatorTest extends TestCase
     {
         return [
             'ok' => true, 'priced_at' => '2026-08-09 10:00:00', 'message_type' => 'promotional',
-            'currency' => 'credit', 'total_cost' => 6, 'legacy_fallback_used' => $source === 'legacy_fallback',
+            'currency' => 'IRR', 'total_cost' => 6, 'legacy_fallback_used' => $source === 'legacy_fallback',
             'groups' => [[
                 'group_key' => 'g1', 'operator_id' => 1, 'operator_code' => 'mci', 'operator_name' => 'MCI',
                 'operator_source' => 'prefix', 'provider_id' => 1, 'provider_code' => 'legacy',
                 'route_id' => 1, 'route_code' => 'default', 'message_type' => 'promotional',
                 'unit_price' => $unitPriceMillicredits,
                 'unit_price_credits' => $unitPriceMillicredits / 1000,
-                'currency' => 'credit', 'price_source' => $source, 'pricing_rule_id' => 7,
+                'currency' => 'IRR', 'price_source' => $source, 'pricing_rule_id' => 7,
                 'recipients' => 3, 'segments' => 6, 'cost' => 6,
             ]],
         ];
@@ -158,10 +158,11 @@ final class CostEstimatorTest extends TestCase
         $this->assertSame(1.0, $p['credits_per_segment'], 'a 1000-millicredit rate is one credit per SMS segment');
         $this->assertSame(1000, $p['unit_price_millicredits']);
         $this->assertSame('route_default', $p['price_source']);
-        // estimated_cost and every wallet figure are denominated in CREDITS; the Rial figure is a
-        // separate, display-only conversion and is labelled as such.
-        $this->assertSame('credit', $p['currency']);
+        // estimated_cost and every wallet figure are denominated in Rial: one wallet unit is one
+        // Rial, so the legacy rial_per_credit field is always 1.
+        $this->assertSame('IRR', $p['currency']);
         $this->assertSame('IRR', $p['rial_currency']);
+        $this->assertSame(1, $p['rial_per_credit']);
         $this->assertArrayHasKey('estimator_version', $p);
         $this->assertArrayHasKey('priced_at', $p);
     }

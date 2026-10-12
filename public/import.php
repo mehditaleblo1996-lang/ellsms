@@ -159,7 +159,7 @@ $canCancelCurrent = in_array((string)$job['status'], $cancellableStatuses, true)
     <div class="card"><strong>در صف:</strong> <span id="queuedRows"><?= to_persian_digits((string)$job['queued_rows']) ?></span></div>
   </div>
 
-  <p><strong>هزینه‌ی تخمینی:</strong> <span id="estimatedCost"><?= to_persian_digits((string)$job['estimated_cost_credits']) ?></span> اعتبار</p>
+  <p><strong>هزینه‌ی تخمینی:</strong> <span id="estimatedCost"><?= to_persian_digits(number_format((int)$job['estimated_cost_credits'])) ?></span> ریال</p>
 
   <?php if ($job['error_message']): ?><div class="alert alert-error"><?= e((string)$job['error_message']) ?></div><?php endif; ?>
 

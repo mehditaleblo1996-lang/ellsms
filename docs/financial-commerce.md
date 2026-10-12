@@ -249,7 +249,8 @@ The fake gateway reports `true` as a capability flag only, never auto-invoked.
   paid through this page.
 - **Server-derived amounts everywhere.** No POST handler in this work reads an amount, a plan
   price, or a credit rate from request input — every amount traces back to a plan row, the
-  configured `rial_per_credit` setting, or an already-issued invoice's own stored total.
+  Rial amount of credit being bought (one credit is one Rial), or an already-issued invoice's own
+  stored total.
 - **CSRF**: every mutating POST handler added by this work (`public/buy-credit.php`,
   `public/billing.php`, `public/invoices.php`, `public/financial-admin.php`) calls `csrf_check()`
   first, matching the pre-existing pattern every other mutating page in this codebase already uses.

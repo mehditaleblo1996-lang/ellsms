@@ -93,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $operationId = preg_match('/^[a-f0-9]{32}$/', (string)($_POST['op_id'] ?? '')) ? (string)$_POST['op_id'] : bin2hex(random_bytes(16));
         $result = customer_transfer_credit($meId, $childId, $amount, $direction, $meId, (string)($_POST['note'] ?? ''), $operationId);
         if ($result['ok']) {
-            flash('success', ($direction === 'give' ? 'اعتبار به زیرمجموعه منتقل شد: ' : 'اعتبار از زیرمجموعه برگشت داده شد: ') . to_persian_digits(number_format($amount)));
+            flash('success', ($direction === 'give' ? 'اعتبار به زیرمجموعه منتقل شد: ' : 'اعتبار از زیرمجموعه برگشت داده شد: ') . to_persian_digits(number_format($amount)) . ' ریال');
         } else {
             flash('error', customer_error_message((string)($result['reason'] ?? '')) . ($direction === 'take' && ($result['reason'] ?? '') === 'insufficient_balance' ? ' (اعتبار آزاد زیرمجموعه کمتر از این مبلغ است.)' : ''));
         }
@@ -196,7 +196,7 @@ require __DIR__ . '/../app/views/header.php';
     </div>
   </div>
   <div class="summary-grid">
-    <div class="summary-item"><div class="summary-label">اعتبار شما</div><div class="summary-value num"><?= to_persian_digits(number_format((int)wallet_balance($meId)['available'])) ?></div></div>
+    <div class="summary-item"><div class="summary-label">اعتبار شما (ریال)</div><div class="summary-value num"><?= to_persian_digits(number_format((int)wallet_balance($meId)['available'])) ?></div></div>
     <div class="summary-item"><div class="summary-label">تعرفه‌ی شما</div><div class="summary-value num"><?= to_persian_digits(customer_tariff_percent($myTariffBp)) ?>٪ نرخ پایه</div></div>
     <div class="summary-item"><div class="summary-label">سقف زیرمجموعه</div><div class="summary-value num"><?= to_persian_digits((string)$usedSubset) ?> از <?= to_persian_digits((string)$myAccount['max_subset_limit']) ?></div></div>
     <div class="summary-item"><div class="summary-label">انقضای حساب شما</div><div class="summary-value"><?= e($expiryText($myAccount['expires_on'])) ?></div></div>
@@ -207,7 +207,7 @@ require __DIR__ . '/../app/views/header.php';
   <h2>زیرمجموعه‌های شما</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>نام کاربری</th><th>نام</th><th>نوع</th><th>اعتبار</th><th>تعرفه</th><th>انقضا</th><th>وضعیت</th><th></th></tr></thead>
+      <thead><tr><th>نام کاربری</th><th>نام</th><th>نوع</th><th>اعتبار (ریال)</th><th>تعرفه</th><th>انقضا</th><th>وضعیت</th><th></th></tr></thead>
       <tbody>
       <?php if (!$childIds): ?>
         <tr><td colspan="8" class="muted">هنوز زیرمجموعه‌ای نساخته‌اید.</td></tr>
@@ -319,7 +319,7 @@ require __DIR__ . '/../app/views/header.php';
     <div class="flash flash-error"><?= $view['block'] === 'expired' ? 'این حساب منقضی شده و امکان ورود ندارد.' : 'این حساب غیرفعال است و امکان ورود ندارد.' ?></div>
   <?php endif; ?>
   <div class="summary-grid">
-    <div class="summary-item"><div class="summary-label">اعتبار آزاد</div><div class="summary-value num"><?= to_persian_digits(number_format($view['balance']['available'])) ?></div></div>
+    <div class="summary-item"><div class="summary-label">اعتبار آزاد (ریال)</div><div class="summary-value num"><?= to_persian_digits(number_format($view['balance']['available'])) ?></div></div>
     <div class="summary-item"><div class="summary-label">رزرو‌شده برای ارسال‌های در جریان</div><div class="summary-value num"><?= to_persian_digits(number_format($view['balance']['reserved'])) ?></div></div>
     <div class="summary-item"><div class="summary-label">تعرفه</div><div class="summary-value num"><?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp($viewId))) ?>٪</div></div>
     <div class="summary-item"><div class="summary-label">انقضا</div><div class="summary-value"><?= e($expiryText($acc['expires_on'])) ?></div></div>
@@ -355,7 +355,7 @@ require __DIR__ . '/../app/views/header.php';
 <section class="tab-panel" data-panel="credit" role="tabpanel">
   <div class="card">
     <h2>انتقال اعتبار</h2>
-    <p class="hint">اعتبار شما: <span class="num"><?= to_persian_digits(number_format((int)wallet_balance($meId)['available'])) ?></span>. «برگشت» اعتبار آزاد زیرمجموعه را به حساب شما برمی‌گرداند.</p>
+    <p class="hint">اعتبار شما: <span class="num"><?= to_persian_digits(number_format((int)wallet_balance($meId)['available'])) ?></span> ریال. «برگشت» اعتبار آزاد زیرمجموعه را به حساب شما برمی‌گرداند.</p>
     <form method="post">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="credit">
@@ -365,7 +365,7 @@ require __DIR__ . '/../app/views/header.php';
         <label>عملیات
           <select name="direction"><option value="give">انتقال از من به زیرمجموعه</option><option value="take">برگشت از زیرمجموعه به من</option></select>
         </label>
-        <label>مبلغ * <input type="text" name="amount" class="ltr" inputmode="numeric" required></label>
+        <label>مبلغ (ریال) * <input type="text" name="amount" class="ltr" inputmode="numeric" required></label>
         <label>توضیح <input type="text" name="note" maxlength="190"></label>
       </div>
       <div class="form-actions"><button class="btn btn-primary btn-sm">اعمال</button></div>

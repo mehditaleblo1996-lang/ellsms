@@ -402,7 +402,7 @@ require __DIR__ . '/../app/views/public_header.php';
           <?php if ($p['is_featured']): ?><span class="lp-price-badge">پیشنهاد ویژه</span><?php endif; ?>
           <h3><?= e($p['name']) ?></h3>
           <div class="lp-price-amount"><?= to_persian_digits(number_format((int)$p['price_rial'])) ?> <span>ریال</span></div>
-          <div class="lp-price-credit"><?= to_persian_digits(number_format((int)$p['credit_amount'])) ?> واحد اعتبار</div>
+          <div class="lp-price-credit"><?= to_persian_digits(number_format((int)$p['credit_amount'])) ?> ریال اعتبار</div>
           <?php
             $features = array_filter(array_map('trim', preg_split('/\r?\n/', (string)$p['features'])));
           ?>

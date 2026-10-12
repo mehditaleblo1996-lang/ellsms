@@ -548,7 +548,7 @@ function dispatch_message(array $user, string $originator, array $destinations, 
             if ($organizationId > 0) {
                 usage_release_messages($refType, $refId);
             }
-            return [false, "اعتبار کافی نیست: این ارسال به {$worstCaseCost} واحد اعتبار نیاز دارد، اعتبار فعلی شما " . (int)$bal . ' است.', false, 0, $total, 0];
+            return [false, "اعتبار کافی نیست: این ارسال به " . number_format($worstCaseCost) . ' ریال نیاز دارد، اعتبار فعلی شما ' . number_format((int)$bal) . ' ریال است.', false, 0, $total, 0];
         }
         if (($reservation['status'] ?? 'active') !== 'active') {
             // This exact operation (same refType/refId) was already fully
@@ -708,7 +708,7 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
             if ($organizationId > 0) {
                 usage_release_messages($refType, $refId);
             }
-            return [false, "اعتبار کافی نیست: این ارسال به {$worstCaseCost} واحد اعتبار نیاز دارد، اعتبار فعلی شما " . (int)$bal . ' است.', false];
+            return [false, "اعتبار کافی نیست: این ارسال به " . number_format($worstCaseCost) . ' ریال نیاز دارد، اعتبار فعلی شما ' . number_format((int)$bal) . ' ریال است.', false];
         }
         if (($reservation['status'] ?? 'active') !== 'active') {
             Logger::info('sms.send.reservation_already_finalized', ['ref_type' => $refType, 'ref_id' => $refId]);
@@ -1580,7 +1580,7 @@ function bulk_queue_job(
         });
     } catch (WalletInsufficientBalanceException) {
         $bal = wallet_balance($userId)['available'];
-        return [false, "اعتبار کافی نیست: این ارسال به {$totalCost} واحد اعتبار نیاز دارد، اعتبار فعلی شما " . (int)$bal . ' است.', null, 'insufficient_credit'];
+        return [false, "اعتبار کافی نیست: این ارسال به " . number_format($totalCost) . ' ریال نیاز دارد، اعتبار فعلی شما ' . number_format((int)$bal) . ' ریال است.', null, 'insufficient_credit'];
     } catch (QuotaExceededException) {
         return [false, 'سقف ارسال پیامک پلن سازمان شما در این دوره تکمیل شده است. برای ادامه، پلن خود را ارتقا دهید یا تا شروع دوره‌ی بعد صبر کنید.', null, 'quota_exceeded'];
     } catch (Throwable $t) {
@@ -1992,7 +1992,8 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
 
     if (empty($ctx['is_admin'])) {
         // The price FROZEN onto this row at acceptance (bulk_queue_job()) — never re-resolved here.
-        $unitCost   = $item['price_cost_credits'] !== null ? (int)$item['price_cost_credits'] : $parts;
+        // A row from before frozen prices has none; it pays the default per-segment Rial price.
+        $unitCost   = $item['price_cost_credits'] !== null ? (int)$item['price_cost_credits'] : sms_pricing_legacy_cost_for_segments($parts);
         $actualCost = $sentCount > 0 ? $unitCost : 0;
         if ($actualCost > 0 && $deferred !== null) {
             // Batched settlement: committed for the whole provider batch, still one ledger row and

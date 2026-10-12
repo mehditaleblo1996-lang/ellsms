@@ -172,7 +172,7 @@ function regional_bulk_count(array $criteria): array {
     return $n < 0 ? ['ok' => false, 'error' => regional_bulk_error_message($n)] : ['ok' => true, 'count' => $n];
 }
 
-/** ELLSMS credits for a Vesal price. */
+/** Wallet Rial charged for a Vesal price (Vesal price × Rial-per-price-unit setting × margin). */
 function regional_bulk_credits_for_price(float $vesalPrice): int {
     $perUnit = (float)regional_bulk_setting('regional_bulk_credits_per_price_unit', '1');
     $margin = (float)regional_bulk_setting('regional_bulk_margin_percent', '0');
@@ -290,7 +290,7 @@ function regional_bulk_confirm(array $user, int $id): array {
     if ($credits > 0) {
         $reservation = wallet_reserve($userId, $credits, 'regional_bulk', (string)$id, 'reserve:regional_bulk:' . $id);
         if (!$reservation['ok']) {
-            return ['ok' => false, 'error' => 'اعتبار کافی نیست: این ارسال به ' . to_persian_digits((string)$credits) . ' واحد اعتبار نیاز دارد.'];
+            return ['ok' => false, 'error' => 'اعتبار کافی نیست: این ارسال به ' . to_persian_digits(number_format($credits)) . ' ریال نیاز دارد.'];
         }
     }
     // Claim the transition first so a double click cannot confirm twice.

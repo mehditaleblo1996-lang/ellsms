@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $adj = wallet_manual_adjustment($id, $amount, (int)$me['id'], $reason, $idempotencyKey);
             audit((int)$me['id'], 'user.credit', "#{$id} " . ($amount >= 0 ? '+' : '') . $amount . ' — ' . $reason);
             Logger::info('user.credit_adjusted', ['actor_id' => $me['id'], 'target_id' => $id, 'amount' => $amount, 'reason' => $reason]);
-            flash('success', 'اعتبار به میزان ' . to_persian_digits(number_format($amount)) . ' تغییر کرد.');
+            flash('success', 'اعتبار به میزان ' . to_persian_digits(number_format($amount)) . ' ریال تغییر کرد.');
         } elseif ($do === 'password') {
             $p = $_POST['password'] ?? '';
             if (strlen($p) < 6) {
@@ -481,7 +481,7 @@ require __DIR__ . '/../app/views/header.php';
       <div class="summary-value"><span class="badge badge-<?= $editUser['is_admin'] ? 'admin' : 'user' ?>"><?= $editUser['is_admin'] ? 'مدیر' : 'کاربر' ?></span></div>
     </div>
     <div class="summary-item">
-      <div class="summary-label">اعتبار</div>
+      <div class="summary-label">اعتبار (ریال)</div>
       <div class="summary-value num"><?= to_persian_digits(number_format((float)$editUser['credit'])) ?></div>
     </div>
     <div class="summary-item">
@@ -565,14 +565,14 @@ require __DIR__ . '/../app/views/header.php';
     </form>
   </div>
   <div class="card">
-    <h2>اعتبار — فعلی: <span class="num"><?= to_persian_digits(number_format((float)$editUser['credit'])) ?></span></h2>
+    <h2>اعتبار — فعلی: <span class="num"><?= to_persian_digits(number_format((float)$editUser['credit'])) ?></span> ریال</h2>
     <form method="post">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="credit">
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
       <input type="hidden" name="back" value="1">
       <div class="form-grid cols-2">
-        <label>افزایش / کاهش اعتبار <input type="number" name="amount" value="1000" required>
+        <label>افزایش / کاهش اعتبار (ریال) <input type="number" name="amount" value="1000000" required>
           <span class="hint" style="display:block">برای کاهش، عدد منفی وارد کنید.</span>
         </label>
         <label>دلیل (اختیاری) <input type="text" name="reason" maxlength="190" placeholder="مثلاً: جبران خطای ارسال">
@@ -745,7 +745,7 @@ require __DIR__ . '/../app/views/header.php';
       <h3 class="subsection-title">هشدار اعتبار کم</h3>
       <div class="form-grid">
         <label class="check"><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $editNotifications['low_credit_alert_enabled'] ? ' checked' : '' ?>> هشدار اعتبار کم فعال باشد</label>
-        <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" inputmode="numeric" value="<?= e((string)$editNotifications['low_credit_threshold']) ?>"></label>
+        <label>آستانه‌ی اعتبار کم (ریال) <input type="text" name="low_credit_threshold" class="ltr" inputmode="numeric" value="<?= e((string)$editNotifications['low_credit_threshold']) ?>"></label>
       </div>
     </div>
     <div class="form-section">
@@ -906,7 +906,7 @@ if ($editOrganizationId > 0) {
     <h3 style="margin-top:var(--sp-4)">زیرمجموعه‌ها (<?= to_persian_digits((string)count($editCustomerChildren)) ?>)</h3>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>نام کاربری</th><th>نام</th><th>نوع</th><th>اعتبار</th><th>تعرفه</th></tr></thead>
+        <thead><tr><th>نام کاربری</th><th>نام</th><th>نوع</th><th>اعتبار (ریال)</th><th>تعرفه</th></tr></thead>
         <tbody>
         <?php foreach ($editCustomerChildren as $childId => $child): ?>
           <?php $childAccount = customer_account((int)$childId); ?>
@@ -960,7 +960,7 @@ if ($editOrganizationId > 0) {
   </form>
   <div class="table-wrap">
   <table>
-    <tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>نوع حساب</th><th>نوع مشتری</th><th>خط</th><th>اعتبار</th><th>ارسال‌شده</th><th>۲مرحله‌ای</th><th>وضعیت</th><th></th></tr>
+    <tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>نوع حساب</th><th>نوع مشتری</th><th>خط</th><th>اعتبار (ریال)</th><th>ارسال‌شده</th><th>۲مرحله‌ای</th><th>وضعیت</th><th></th></tr>
     <?php foreach ($panelUsers as $u): ?>
       <tr>
         <td><?= e($u['username']) ?></td>

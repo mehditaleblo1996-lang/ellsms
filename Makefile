@@ -21,7 +21,7 @@
         db-integrity-check db-cleanup db-cleanup-apply \
         wallet-backfill wallet-backfill-dry-run wallet-audit \
         payments-reconcile payments-reconcile-dry-run low-credit-alerts low-credit-alerts-dry-run subscription-reminders subscription-reminders-dry-run \
-        reseller-profit reseller-profit-dry-run \
+        reseller-profit reseller-profit-dry-run rial-conversion rial-conversion-dry-run \
         jobs-status jobs-recover jobs-recover-force jobs-recover-force-dry-run \
         rbac-integrity-check rbac-status backend-boundary-check \
         jobs-status-json performance-snapshot performance-snapshot-json \
@@ -95,6 +95,8 @@ help:
 	@echo "  make subscription-reminders  send due subscription/trial/grace reminders (the worker does this hourly)"
 	@echo "  make reseller-profit         pay resellers' profit for finished days (the worker does this hourly)"
 	@echo "  make reseller-profit-dry-run show yesterday's reseller profit without paying it"
+	@echo "  make rial-conversion-dry-run report how stored credit amounts would become Rial (FACTOR=1200 by default)"
+	@echo "  make rial-conversion        MUTATION, once: convert wallets/prices/payments to Rial (needs maintenance-on)"
 	@echo "  make subscription-reminders-dry-run  list organizations that would get a reminder"
 	@echo "                            see docs/wallet-architecture.md for the deployment order these fit into"
 	@echo ""
@@ -472,6 +474,19 @@ wallet-backfill:
 # Same as above but prints what it WOULD do without writing anything.
 wallet-backfill-dry-run:
 	docker compose run --rm worker php cron/wallet-backfill.php --dry-run
+
+# MUTATION, one-time. Multiplies every amount stored in the old wallet unit by FACTOR (the Rial value
+# of one old credit) so the wallet, prices and user_.currentcredit are all Rial — see
+# docs/rial-currency.md. Run the dry run first; the real run refuses unless maintenance mode is on,
+# resumes if interrupted, and does nothing once finished. OPENING=credit also multiplies the opening
+# balances `make wallet-backfill` copied from Negar (by default they are kept: they were already Rial).
+FACTOR ?= 1200
+OPENING ?= rial
+rial-conversion-dry-run:
+	docker compose run --rm worker php cron/rial-conversion.php --dry-run --factor=$(FACTOR) --opening-balance=$(OPENING)
+
+rial-conversion:
+	docker compose run --rm worker php cron/rial-conversion.php --factor=$(FACTOR) --opening-balance=$(OPENING)
 
 # Read-only. Compares every wallet account's available_balance against
 # user_.currentcredit and reports any mismatch -- see cron/wallet-audit.php.

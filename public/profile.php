@@ -360,7 +360,7 @@ $showCompany  = $organizationId > 0 && ($accountType === 'legal' || $hasLegalDat
       <div class="summary-value"><?= to_persian_digits((string)count(array_filter($allowedIps, fn($ip) => $ip['status'] === 'active'))) ?> از <?= to_persian_digits((string)count($allowedIps)) ?></div>
     </div>
     <div class="summary-item">
-      <div class="summary-label">حداقل اعتبار برای هشدار اتمام اعتبار</div>
+      <div class="summary-label">حداقل اعتبار برای هشدار اتمام اعتبار (ریال)</div>
       <div class="summary-value ltr"><?= $notifications['low_credit_alert_enabled'] ? to_persian_digits(number_format((int)$notifications['low_credit_threshold'])) : 'غیرفعال' ?></div>
     </div>
     <div class="summary-item">
@@ -667,14 +667,14 @@ if ($accountType === 'legal' && $organizationId > 0) {
 <section class="tab-panel" data-panel="alerts" role="tabpanel">
 <div class="card">
   <h2>هشدار اعتبار کم</h2>
-  <p class="hint">آستانه بر حسب «واحد اعتبار» است و فقط یک تنظیم است؛ موجودی کیف پول را تغییر نمی‌دهد.</p>
+  <p class="hint">آستانه بر حسب «ریال» است و فقط یک تنظیم است؛ موجودی کیف پول را تغییر نمی‌دهد.</p>
   <form method="post" style="margin-top:var(--sp-3)">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="profile_notifications">
     <div class="form-section">
       <div class="form-grid">
         <label class="check"><input type="checkbox" name="low_credit_alert_enabled" value="1"<?= $notifications['low_credit_alert_enabled'] ? ' checked' : '' ?> <?= $orgDisabled ?>> هشدار اعتبار کم فعال باشد</label>
-        <label>آستانه‌ی اعتبار کم <input type="text" name="low_credit_threshold" class="ltr" inputmode="numeric" value="<?= e((string)$notifications['low_credit_threshold']) ?>" <?= $orgDisabled ?>></label>
+        <label>آستانه‌ی اعتبار کم (ریال) <input type="text" name="low_credit_threshold" class="ltr" inputmode="numeric" value="<?= e((string)$notifications['low_credit_threshold']) ?>" <?= $orgDisabled ?>></label>
       </div>
     </div>
     <div class="form-section">

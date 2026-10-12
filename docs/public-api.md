@@ -316,7 +316,10 @@ The `pricing` object carries a per-operator/provider/route `groups` breakdown. `
 is populated only when every priced recipient shares one rate; when operators differ it is `null` and
 `unit_price_min_millicredits`/`unit_price_max_millicredits` plus `groups` carry the truth, because a
 single averaged unit price would be a number no caller is actually charged. `currency` is the unit
-the cost is in (`credit`); `rial_currency` labels the display-only Rial conversion.
+the cost is in: `IRR`, since the wallet is Rial-denominated (`docs/rial-currency.md`). Prices are
+therefore Rial per segment and the `*_millicredits` fields are thousandths of a Rial;
+`rial_per_credit` is always `1` and is kept only for existing clients. `GET /balance` reports
+`unit: "IRR"`.
 
 If any recipient cannot be priced with the current tariff configuration, the preview returns **422**
 rather than a partial estimate — pricing fails closed (`docs/sms-pricing.md`).

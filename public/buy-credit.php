@@ -9,8 +9,8 @@ if (!is_admin()) {
     require_permission(Permissions::PAYMENTS_VIEW);
 }
 
-$rialPerCredit = (int)setting('rial_per_credit', '1000');
-$minPurchase   = (int)setting('min_credit_purchase', '100');
+// The wallet is Rial-denominated: the amount bought is the Rial added to the wallet, before VAT.
+$minPurchase   = (int)setting('min_credit_purchase', '100000');
 $packages      = array_filter(array_map('intval', explode(',', (string)setting('credit_packages', ''))));
 $taxPercent    = billing_tax_percent();
 
@@ -19,12 +19,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (impersonation_guard_post('billing.payment')) {
         redirect('/buy-credit.php');
     }
-    $credits = max(0, (int)($_POST['credits'] ?? 0));
+    $credits = max(0, (int)str_replace([',', '٬'], '', from_persian_digits((string)($_POST['credits'] ?? '0'))));
 
     if ($credits < $minPurchase) {
-        flash('error', 'حداقل میزان خرید ' . to_persian_digits(number_format($minPurchase)) . ' واحد اعتبار است.');
+        flash('error', 'حداقل مبلغ خرید ' . to_persian_digits(number_format($minPurchase)) . ' ریال است.');
     } else {
-        $baseAmountRial = $credits * $rialPerCredit;
+        $baseAmountRial = $credits;
         $gateway = payment_gateway_name();
         db()->prepare('INSERT INTO ellsms_payments (user_id, organization_id, credits, amount_rial, gateway) VALUES (?,?,?,?,?)')
            ->execute([$me['id'], $me['organization_id'] ?? null, $credits, $baseAmountRial, $gateway]);
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // billing_invoice_create(); payment_gateway_create() then charges this exact immutable total.
         $invoiceResult = billing_invoice_create($paymentId, $me['organization_id'] ?? null, (int)$me['id'], 'credit', [[
             'item_type' => 'sms_credit', 'reference_code' => null,
-            'description' => "خرید {$credits} واحد اعتبار پیامک", 'quantity' => 1, 'unit_price' => $baseAmountRial,
+            'description' => 'خرید ' . number_format($credits) . ' ریال اعتبار پیامک', 'quantity' => 1, 'unit_price' => $baseAmountRial,
         ]]);
         if (!$invoiceResult['ok']) {
             db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=?")->execute([$paymentId]);
@@ -42,14 +42,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/buy-credit.php');
         }
         $totalAmountRial = (int)$invoiceResult['total_amount'];
-        audit((int)$me['id'], 'invoice.issued_for_credit_purchase', "payment=#{$paymentId} {$credits}cr total={$totalAmountRial}rial");
+        audit((int)$me['id'], 'invoice.issued_for_credit_purchase', "payment=#{$paymentId} credit={$credits}rial total={$totalAmountRial}rial");
 
-        $description = "خرید {$credits} واحد اعتبار ELLSMS";
+        $description = 'خرید ' . number_format($credits) . ' ریال اعتبار ELLSMS';
         $create = payment_gateway_create($gateway, $totalAmountRial, $paymentId, $description, (string)($me['mobile'] ?? ''));
 
         if ($create['ok']) {
             db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$create['authority'], $paymentId]);
-            audit((int)$me['id'], 'payment.request', "#{$paymentId} {$credits}cr {$totalAmountRial}rial gateway={$gateway}");
+            audit((int)$me['id'], 'payment.request', "#{$paymentId} credit={$credits}rial paid={$totalAmountRial}rial gateway={$gateway}");
             redirect(payment_gateway_redirect_url($gateway, $create['authority']));
         } else {
             db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=?")->execute([$paymentId]);
@@ -71,22 +71,22 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
 <div class="grid grid-2">
   <div class="card">
     <h2>خرید اعتبار</h2>
-    <p class="hint">اعتبار فعلی شما: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> — هر واحد اعتبار <?= to_persian_digits(number_format($rialPerCredit)) ?> ریال.</p>
+    <p class="hint">اعتبار فعلی شما: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> ریال.</p>
     <p class="hint">به مبلغ خرید <?= to_persian_digits((string)$taxPercent) ?>٪ ارزش افزوده اضافه می‌شود.</p>
 
     <?php if ($packages): ?>
     <div class="toolbar" style="margin-bottom:16px">
       <?php foreach ($packages as $p): ?>
-        <button type="button" class="btn btn-sm" onclick="pickPackage(<?= $p ?>)"><?= to_persian_digits(number_format($p)) ?> واحد</button>
+        <button type="button" class="btn btn-sm" onclick="pickPackage(<?= $p ?>)"><?= to_persian_digits(number_format($p)) ?> ریال</button>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
 
     <form method="post">
       <?= csrf_field() ?>
-      <label>تعداد واحد اعتبار
+      <label>مبلغ اعتبار (ریال)
         <input type="number" name="credits" id="creditsInput" min="<?= $minPurchase ?>" value="<?= $minPurchase ?>" oninput="updatePrice()" required>
-        <div class="hint">حداقل: <?= to_persian_digits(number_format($minPurchase)) ?> واحد</div>
+        <div class="hint">حداقل: <?= to_persian_digits(number_format($minPurchase)) ?> ریال — همین مبلغ به اعتبار شما اضافه می‌شود.</div>
       </label>
       <div class="stat" style="margin-bottom:10px">
         <div class="stat-label">مبلغ قبل از ارزش افزوده</div>
@@ -108,7 +108,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
     <h2>تاریخچه‌ی پرداخت‌ها</h2>
     <div class="table-wrap">
     <table>
-      <tr><th>واحد اعتبار</th><th>مبلغ (ریال)</th><th>وضعیت</th><th>کد پیگیری</th><th>تاریخ</th></tr>
+      <tr><th>اعتبار (ریال)</th><th>مبلغ پرداختی (ریال)</th><th>وضعیت</th><th>کد پیگیری</th><th>تاریخ</th></tr>
       <?php foreach ($payments as $p): ?>
         <tr>
           <td class="num"><?= to_persian_digits(number_format($p['credits'])) ?></td>
@@ -125,13 +125,11 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
 </div>
 
 <script>
-const rialPerCredit = <?= $rialPerCredit ?>;
 const taxPercent = <?= $taxPercent ?>;
 function faDigits(s) { return String(s).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]); }
 function money(n) { return faDigits(Math.max(0, n).toLocaleString('en-US')) + ' ریال'; }
 function updatePrice() {
-  const credits = parseInt(document.getElementById('creditsInput').value || '0', 10);
-  const subtotal = Math.max(0, credits) * rialPerCredit;
+  const subtotal = Math.max(0, parseInt(document.getElementById('creditsInput').value || '0', 10));
   const tax = Math.floor(subtotal * taxPercent / 100);
   document.getElementById('subtotalOut').textContent = money(subtotal);
   document.getElementById('taxOut').textContent = money(tax);

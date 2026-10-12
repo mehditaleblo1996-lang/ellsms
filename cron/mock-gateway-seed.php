@@ -43,11 +43,11 @@ $db->prepare(
 )->execute([$providerId, 0]);
 $routeId = (int)$db->query("SELECT id FROM ellsms_sms_routes WHERE code='mock' AND provider_id={$providerId} LIMIT 1")->fetchColumn();
 
-// Price: 1 credit per segment, effective immediately.
+// Price: 1200 Rial per segment, effective immediately.
 $now = gmdate('Y-m-d H:i:s');
 $db->prepare(
     "INSERT INTO ellsms_sms_route_prices (route_id, operator_id, price_per_segment_millicredits, currency, effective_from, status)
-     VALUES (?, NULL, 1000, 'credit', ?, 'active')
+     VALUES (?, NULL, 1200000, 'IRR', ?, 'active')
      ON DUPLICATE KEY UPDATE price_per_segment_millicredits=VALUES(price_per_segment_millicredits), status=VALUES(status)"
 )->execute([$routeId, $now]);
 

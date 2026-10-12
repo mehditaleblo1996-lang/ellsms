@@ -44,6 +44,7 @@ require_once __DIR__ . '/rbac.php';
 // Resellers / organizational customers (tariff, credit transfer, expiry) and per-user menu access.
 require_once __DIR__ . '/CustomerHierarchy.php';
 require_once __DIR__ . '/MenuAccess.php';
+require_once __DIR__ . '/RialConversion.php';
 // Platform-admin support impersonation (docs/admin-impersonation.md). Loaded after the identity,
 // tenant and RBAC primitives it re-validates against, and before anything that renders a page.
 require_once __DIR__ . '/impersonation.php';

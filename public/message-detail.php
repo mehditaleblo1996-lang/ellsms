@@ -207,7 +207,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php endforeach; ?>
   </table>
   </div>
-  <p style="opacity:.7; font-size:.9em">واحد: <?= e($pricing['currency'] === 'credit' ? 'اعتبار' : $pricing['currency']) ?> — این مقادیر در زمان ارسال ثبت شده‌اند و با تغییر تعرفه تغییر نمی‌کنند.</p>
+  <p style="opacity:.7; font-size:.9em">واحد: <?= e(sms_pricing_currency_label((string)$pricing['currency'])) ?> — این مقادیر در زمان ارسال ثبت شده‌اند و با تغییر تعرفه تغییر نمی‌کنند.</p>
 </div>
 <?php endif; ?>
 <?php endif; ?>
@@ -280,7 +280,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php endforeach; ?>
   </table>
   </div>
-  <p style="opacity:.7; font-size:.9em">واحد: <?= e($pricing['currency'] === 'credit' ? 'اعتبار' : $pricing['currency']) ?> — ثبت‌شده در زمان ارسال.</p>
+  <p style="opacity:.7; font-size:.9em">واحد: <?= e(sms_pricing_currency_label((string)$pricing['currency'])) ?> — ثبت‌شده در زمان ارسال.</p>
 </div>
 <?php endif; ?>
 <?php endif; ?>

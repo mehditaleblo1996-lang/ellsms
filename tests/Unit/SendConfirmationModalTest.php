@@ -207,7 +207,7 @@ final class SendConfirmationModalTest extends TestCase
                 'per_recipient' => 1, 'total' => 2, 'distribution' => ['1' => 2], 'exact' => true,
             ],
             'pricing' => [
-                'unit' => 'credit_per_segment', 'currency' => 'credit',
+                'unit' => 'credit_per_segment', 'currency' => 'IRR',
                 'credits_per_segment' => 1.0, 'unit_price_millicredits' => 1000,
                 'unit_price_min_millicredits' => 1000, 'unit_price_max_millicredits' => 1000,
                 'price_source' => 'route_operator', 'message_type' => 'promotional',
@@ -217,7 +217,7 @@ final class SendConfirmationModalTest extends TestCase
                     'message_type' => 'promotional', 'recipients' => 2, 'segments' => 2,
                     'unit_price' => 1.0, 'unit_price_millicredits' => 1000, 'price_source' => 'route_operator', 'cost' => 2,
                 ]],
-                'rial_per_credit' => 0, 'rial_currency' => 'IRR',
+                'rial_per_credit' => 1, 'rial_currency' => 'IRR',
                 'estimator_version' => 1, 'priced_at' => '2026-08-18 10:00:00',
                 'estimated_cost' => 2,
             ],

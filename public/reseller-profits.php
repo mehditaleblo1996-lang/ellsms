@@ -68,7 +68,7 @@ require __DIR__ . '/../app/views/header.php';
   <h2>۳۰ روز اخیر به تفکیک نماینده</h2>
   <div class="table-wrap">
     <table>
-      <thead><tr><th>نماینده</th><th>هزینه‌ی ارسال زیرمجموعه‌ها</th><th>سود</th></tr></thead>
+      <thead><tr><th>نماینده</th><th>هزینه‌ی ارسال زیرمجموعه‌ها (ریال)</th><th>سود (ریال)</th></tr></thead>
       <tbody>
       <?php if (!$byReseller): ?><tr><td colspan="3" class="muted">سودی ثبت نشده است.</td></tr><?php endif; ?>
       <?php foreach ($byReseller as $r): ?>

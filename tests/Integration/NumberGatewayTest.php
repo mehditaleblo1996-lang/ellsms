@@ -66,7 +66,7 @@ final class NumberGatewayTest extends IntegrationTestCase
         @file_put_contents(self::$recordFile, '');
         @file_put_contents(self::$recordFile . '.vesal', '');
         $this->userId = $this->makeUser(['originator' => $this->line]);
-        wallet_credit($this->userId, 1000, 'purchase', 'test', 'seed:' . $this->userId, 'seed:' . $this->userId);
+        wallet_credit($this->userId, 100000, 'purchase', 'test', 'seed:' . $this->userId, 'seed:' . $this->userId);
         $this->routeGateway = $this->makeGateway('/vesal/route-gw');
         $this->otherGateway = $this->makeGateway('/vesal/pinned-gw');
         $suffix = bin2hex(random_bytes(3));

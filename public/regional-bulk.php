@@ -107,7 +107,7 @@ require __DIR__ . '/../app/views/header.php';
       <label><input type="checkbox" name="regional_bulk_enabled" value="1"<?= regional_bulk_setting('regional_bulk_enabled', '0') === '1' ? ' checked' : '' ?>> فعال</label>
       <label style="flex:1 1 320px">آدرس سرویس <input type="url" name="vesal_bulk_base_url" class="ltr" style="width:100%" value="<?= e(regional_bulk_setting('vesal_bulk_base_url')) ?>" placeholder="https://…"></label>
       <label>نام کاربری <input type="text" name="vesal_bulk_username" class="ltr" value="<?= e(regional_bulk_setting('vesal_bulk_username')) ?>"></label>
-      <label>اعتبار به ازای هر واحد قیمت <input type="number" step="any" min="0" name="regional_bulk_credits_per_price_unit" class="ltr" value="<?= e(regional_bulk_setting('regional_bulk_credits_per_price_unit', '1')) ?>"></label>
+      <label>ریال به ازای هر واحد قیمت وصال <input type="number" step="any" min="0" name="regional_bulk_credits_per_price_unit" class="ltr" value="<?= e(regional_bulk_setting('regional_bulk_credits_per_price_unit', '1')) ?>"></label>
       <label>درصد سود <input type="number" step="any" min="0" max="1000" name="regional_bulk_margin_percent" class="ltr" value="<?= e(regional_bulk_setting('regional_bulk_margin_percent', '0')) ?>"></label>
     </div>
     <button class="btn btn-primary">ذخیره</button>
@@ -198,7 +198,7 @@ require __DIR__ . '/../app/views/header.php';
   <h2>درخواست‌ها</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>#</th><th>زمان</th><th>هدف</th><th>متن</th><th>هزینه</th><th>پیشرفت</th><th>وضعیت</th><th></th></tr>
+    <tr><th>#</th><th>زمان</th><th>هدف</th><th>متن</th><th>هزینه (ریال)</th><th>پیشرفت</th><th>وضعیت</th><th></th></tr>
     <?php foreach ($rows as $r): $criteria = json_decode((string)$r['criteria_json'], true) ?: []; ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
@@ -206,7 +206,7 @@ require __DIR__ . '/../app/views/header.php';
         <td><?= e($kindLabels[$criteria['kind'] ?? ''] ?? '—') ?>
           <span class="muted ltr"><?= e((string)($criteria['province_code'] ?? $criteria['city_code'] ?? $criteria['postal_code'] ?? $criteria['prefix'] ?? '')) ?></span></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'], 0, 50, '…')) ?></td>
-        <td class="num"><?= to_persian_digits((string)(int)($r['settled_credits'] ?? $r['charged_credits'])) ?></td>
+        <td class="num"><?= to_persian_digits(number_format((int)($r['settled_credits'] ?? $r['charged_credits']))) ?></td>
         <td class="num"><?= $r['total_request'] !== null ? to_persian_digits((int)$r['total_sent'] . ' / ' . (int)$r['total_request']) : '—' ?></td>
         <td><?= $statusLabels[$r['status']] ?? e((string)$r['status']) ?><?php if ($r['status'] === 'failed' && $r['error']): ?> <span class="muted"><?= e(mb_strimwidth((string)$r['error'], 0, 80, '…')) ?></span><?php endif; ?></td>
         <td>

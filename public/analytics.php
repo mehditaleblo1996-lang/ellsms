@@ -172,7 +172,7 @@ require __DIR__ . '/../app/views/header.php';
   </p>
   <div class="table-wrap">
   <table>
-    <tr><th>ارائه‌دهنده</th><th>مسیر</th><th>اپراتور</th><th>نوع پیام</th><th>گیرندگان</th><th>بخش</th><th>هر بخش</th><th>پذیرفته‌شده</th><th>کسرشده</th></tr>
+    <tr><th>ارائه‌دهنده</th><th>مسیر</th><th>اپراتور</th><th>نوع پیام</th><th>گیرندگان</th><th>بخش</th><th>هر بخش (ریال)</th><th>پذیرفته‌شده (ریال)</th><th>کسرشده (ریال)</th></tr>
     <?php foreach ($costByProvider as $c): ?>
       <tr>
         <td class="ltr"><?= e((string)$c['provider_code']) ?></td>

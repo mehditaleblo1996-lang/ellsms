@@ -90,8 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_setting('zarinpal_merchant_id',   trim($_POST['zarinpal_merchant_id'] ?? ''));
         set_setting('zarinpal_callback_url',  rtrim(trim($_POST['zarinpal_callback_url'] ?? ''), '/'));
         set_setting('zarinpal_sandbox',       !empty($_POST['zarinpal_sandbox']) ? '1' : '0');
-        set_setting('rial_per_credit',        (string)max(1, (int)($_POST['rial_per_credit'] ?? 1000)));
-        set_setting('min_credit_purchase',    (string)max(1, (int)($_POST['min_credit_purchase'] ?? 100)));
+        set_setting('min_credit_purchase',    (string)max(1, (int)($_POST['min_credit_purchase'] ?? 100000)));
         set_setting('credit_packages',        trim($_POST['credit_packages'] ?? ''));
         audit((int)$me['id'], 'settings.zarinpal_update');
         flash('success', 'تنظیمات پرداخت ذخیره شد.');
@@ -253,16 +252,14 @@ require __DIR__ . '/../app/views/header.php';
       حالت آزمایشی (Sandbox) — برای تست بدون پرداخت واقعی
     </label>
     <div class="form-row" style="margin-top:14px">
-      <label>هر واحد اعتبار چند ریال است؟
-        <input type="number" name="rial_per_credit" value="<?= (int)setting('rial_per_credit','1000') ?>" min="1">
+      <label>حداقل مبلغ خرید اعتبار (ریال)
+        <input type="number" name="min_credit_purchase" value="<?= (int)setting('min_credit_purchase','100000') ?>" min="1">
       </label>
-      <label>حداقل خرید (واحد اعتبار)
-        <input type="number" name="min_credit_purchase" value="<?= (int)setting('min_credit_purchase','100') ?>" min="1">
-      </label>
-      <label>بسته‌های پیشنهادی (با ویرگول جدا کنید)
-        <input type="text" name="credit_packages" value="<?= e(setting('credit_packages','')) ?>" class="ltr" placeholder="500,1000,5000,20000">
+      <label>مبالغ پیشنهادی خرید به ریال (با ویرگول جدا کنید)
+        <input type="text" name="credit_packages" value="<?= e(setting('credit_packages','')) ?>" class="ltr" placeholder="1000000,5000000,20000000">
       </label>
     </div>
+    <p class="hint">اعتبار کیف پول به ریال است: هر ریالی که مشتری می‌خرد همان یک ریال به اعتبارش اضافه می‌شود. تعرفه‌ی هر پیامک در صفحه‌ی «تعرفه‌ی پیامک» به ریال تعیین می‌شود.</p>
     <button class="btn btn-primary">ذخیره‌ی تنظیمات پرداخت</button>
   </form>
 </div>

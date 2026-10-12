@@ -40,12 +40,13 @@ no smart routing and no failover in this feature, by design.
 
 | Concept | Unit | Where |
 |---|---|---|
-| Configured tariff | **integer millicredits per segment** (1 credit = 1000) | `ellsms_sms_route_prices.price_per_segment_millicredits` |
-| Cost of a message | **whole credits** | `sms_pricing_cost_for_segments()` |
-| Wallet / ledger | **whole credits** (unchanged) | `ellsms_wallet_*` |
-| Rial display | `rial_per_credit` × credits, **display only** | Settings |
+| Configured tariff | **integer millicredits per segment** (1 credit = 1 Rial = 1000) | `ellsms_sms_route_prices.price_per_segment_millicredits` |
+| Cost of a message | **whole Rial** | `sms_pricing_cost_for_segments()` |
+| Wallet / ledger | **whole Rial** | `ellsms_wallet_*` |
 
-No float ever participates in a cost computation. `1.25 credits` is stored as `1250`.
+One credit is one Rial (`docs/rial-currency.md`); the `credit`/`millicredits` names predate that and
+were kept. No float ever participates in a cost computation. `1200 Rial` is stored as `1200000`,
+`850.5 Rial` as `850500`. The legacy fallback charges `sms_default_price_rial` (1200 by default).
 
 **Rounding happens once, per message, upward.** `cost = ceil(segments × unit_price / 1000)`.
 
@@ -219,8 +220,9 @@ are reported as CRITICAL by the integrity check if they ever appear.
 
 Setting key: `sms_pricing_legacy_fallback` (ellsms_settings), default **`1` = enabled**.
 
-When enabled, a send that resolves to no configured tariff is priced at exactly **1 credit per
-segment** — verbatim what this product charged before route pricing existed.
+When enabled, a send that resolves to no configured tariff is priced at **`sms_default_price_rial`
+per segment** — 1200 Rial unless an admin changed it on the SMS-tariff page (it was 1 credit before
+the wallet became Rial, `docs/rial-currency.md`).
 
 It exists because pricing is always-on and fails closed: applying the migration to an existing
 install and then requiring a human to configure a tariff before any SMS could go out would be an
@@ -248,6 +250,7 @@ schema-only — the catalog that reproduces the pre-existing behavior exactly:
 * one `legacy` provider
 * one `default` route, marked as the default for message type `default`
 * one route-default tariff: **1000 millicredits = 1 credit per segment**, effective from 2000-01-01
+  (`make rial-conversion` turns it into 1,200,000 = 1200 Rial; see `docs/rial-currency.md`)
 
 Every seeded row is ordinary, admin-editable configuration; none of it is special-cased anywhere in
 the code. `tests/Integration/SmsPricingTest.php` asserts byte-identical legacy parity as a hard

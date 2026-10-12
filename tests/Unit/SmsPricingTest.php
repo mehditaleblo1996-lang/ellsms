@@ -142,7 +142,7 @@ final class SmsPricingTest extends TestCase
     {
         return [
             'id' => $id, 'route_id' => 1, 'operator_id' => $operatorId,
-            'price_per_segment_millicredits' => $millicredits, 'currency' => 'credit',
+            'price_per_segment_millicredits' => $millicredits, 'currency' => 'IRR',
             'effective_from' => $from, 'effective_to' => $to,
         ];
     }
@@ -242,6 +242,30 @@ final class SmsPricingTest extends TestCase
         $this->assertSame(1500, \sms_pricing_credits_to_millicredits('1.5'));
         $this->assertSame(1, \sms_pricing_credits_to_millicredits('0.001'));
         $this->assertSame(0, \sms_pricing_credits_to_millicredits('0'));
+    }
+
+    public function testRialPricesAcceptThousandsSeparatorsAndPersianDigits(): void
+    {
+        // Prices are Rial now, so four-digit figures are normal and admins type them grouped.
+        $this->assertSame(1200000, \sms_pricing_credits_to_millicredits('1200'));
+        $this->assertSame(1200000, \sms_pricing_credits_to_millicredits('1,200'));
+        $this->assertSame(1200000, \sms_pricing_credits_to_millicredits('۱٬۲۰۰'));
+        $this->assertSame(850500, \sms_pricing_credits_to_millicredits('850.5'));
+    }
+
+    public function testOneSegmentAtTheDefaultRialPriceCostsExactlyThatManyRial(): void
+    {
+        $this->assertSame(1200, \sms_pricing_cost_for_segments(1, 1200000));
+        $this->assertSame(3600, \sms_pricing_cost_for_segments(3, 1200000));
+        // A fractional Rial rounds up per message, never down.
+        $this->assertSame(851, \sms_pricing_cost_for_segments(1, 850500));
+    }
+
+    public function testCurrencyLabelsDistinguishRialFromTheOldCreditUnit(): void
+    {
+        $this->assertSame('IRR', \SMS_PRICING_CURRENCY);
+        $this->assertSame('ریال', \sms_pricing_currency_label('IRR'));
+        $this->assertNotSame('ریال', \sms_pricing_currency_label('credit'));
     }
 
     public function testMalformedOrOverPreciseAdminPricesAreRejected(): void

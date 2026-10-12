@@ -258,7 +258,7 @@ try {
     // charged, but the send path still resolves a price and a missing one would refuse the send.
     $db->prepare(
         "INSERT INTO ellsms_sms_route_prices (route_id, operator_id, price_per_segment_millicredits, currency, effective_from, status)
-         VALUES (?, NULL, 1000, 'credit', ?, 'active')"
+         VALUES (?, NULL, 1200000, 'IRR', ?, 'active')"
     )->execute([$routeId, date('Y-m-d H:i:s', time() - 86400)]);
 
     gateway_cache_reset();

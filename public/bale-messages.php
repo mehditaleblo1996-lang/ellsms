@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_setting('bale_base_url', $baseUrl);
         set_setting('bale_bot_id', $botId);
         set_setting('bale_tps', (string)max(1, min(1000, (int)($_POST['bale_tps'] ?? 20))));
-        set_setting('bale_price_credits', (string)max(0, (int)($_POST['bale_price_credits'] ?? 1)));
+        set_setting('bale_price_credits', (string)max(0, (int)($_POST['bale_price_credits'] ?? 1200)));
         audit((int)$me['id'], 'bale.settings', 'enabled=' . (!empty($_POST['bale_enabled']) ? 1 : 0) . ' host=' . (parse_url($baseUrl, PHP_URL_HOST) ?: ''));
         flash('success', 'تنظیمات بله ذخیره شد.');
     }
@@ -66,7 +66,7 @@ require __DIR__ . '/../app/views/header.php';
       <label style="flex:1 1 320px">آدرس سرویس <input type="url" name="bale_base_url" class="ltr" style="width:100%" value="<?= e(bale_setting('bale_base_url', '')) ?>" placeholder="https://…"></label>
       <label>شناسه‌ی بات <input type="text" name="bale_bot_id" class="ltr" value="<?= e(bale_setting('bale_bot_id', '')) ?>"></label>
       <label>سقف ارسال در ثانیه <input type="number" name="bale_tps" class="ltr" min="1" max="1000" value="<?= (int)bale_setting('bale_tps', '20') ?>"></label>
-      <label>هزینه‌ی هر پیام (اعتبار) <input type="number" name="bale_price_credits" class="ltr" min="0" value="<?= bale_price_credits() ?>"></label>
+      <label>هزینه‌ی هر پیام (ریال) <input type="number" name="bale_price_credits" class="ltr" min="0" value="<?= bale_price_credits() ?>"></label>
     </div>
     <button class="btn btn-primary">ذخیره</button>
   </form>
@@ -77,14 +77,14 @@ require __DIR__ . '/../app/views/header.php';
   <h2>پیام‌های ارسال‌شده از طریق بله</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>زمان</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>هزینه</th></tr>
+    <tr><th>زمان</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>هزینه (ریال)</th></tr>
     <?php foreach ($rows as $r): ?>
       <tr>
         <td class="num"><?= jdate((string)$r['created_at']) ?></td>
         <td class="msisdn"><?= e((string)$r['destination']) ?></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'], 0, 60, '…')) ?></td>
         <td><?= $r['status'] === 'accepted' ? 'ارسال شد' : 'ناموفق' ?><?php if ($r['status'] !== 'accepted' && is_admin()): ?> <span class="muted ltr"><?= e(mb_strimwidth((string)$r['error'], 0, 80, '…')) ?></span><?php endif; ?></td>
-        <td class="num"><?= to_persian_digits((string)(int)$r['cost_credits']) ?></td>
+        <td class="num"><?= to_persian_digits(number_format((int)$r['cost_credits'])) ?></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$rows): ?><tr><td colspan="5" class="empty">هنوز پیامی از طریق بله ارسال نشده است.</td></tr><?php endif; ?>

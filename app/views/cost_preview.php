@@ -11,9 +11,7 @@
  * is recomputed server-side. Nothing here is authoritative (Invariant D: UI is not authorization).
  */
 $cp = $costPreview;
-$rialPerCredit = (int)($cp['pricing']['rial_per_credit'] ?? 0);
 $estimatedCost = (int)$cp['pricing']['estimated_cost'];
-$rialTotal = $estimatedCost * $rialPerCredit;
 $walletOk = (bool)$cp['wallet']['sufficient'];
 $quotaOk  = (bool)$cp['quota']['sufficient'];
 $canSend  = $walletOk && $quotaOk;
@@ -115,29 +113,25 @@ foreach ($groups as $g) {
     <?php else: ?>
       <tr><th>هزینه‌ی هر پیامک</th><td class="num">
         <?php if ($unitPrice !== null): ?>
-          <?= to_persian_digits(rtrim(rtrim(number_format((float)$unitPrice, 3), '0'), '.')) ?> واحد اعتبار
+          <?= to_persian_digits(rtrim(rtrim(number_format((float)$unitPrice, 3), '0'), '.')) ?> ریال
         <?php else: ?>
           <?= to_persian_digits(rtrim(rtrim(number_format($unitMin, 3), '0'), '.')) ?>
           تا
           <?= to_persian_digits(rtrim(rtrim(number_format($unitMax, 3), '0'), '.')) ?>
-          واحد اعتبار <span class="hint" style="display:inline">— بسته به اپراتور گیرنده</span>
+          ریال <span class="hint" style="display:inline">— بسته به اپراتور گیرنده</span>
         <?php endif; ?>
       </td></tr>
-      <tr><th><strong>هزینه‌ی تقریبی</strong></th><td class="num"><strong><?= to_persian_digits(number_format($estimatedCost)) ?> واحد اعتبار</strong>
-        <?php if ($rialPerCredit > 0): ?>
-          <span class="hint" style="display:inline">≈ <?= to_persian_digits(number_format($rialTotal)) ?> ریال</span>
-        <?php endif; ?>
-      </td></tr>
+      <tr><th><strong>هزینه‌ی تقریبی</strong></th><td class="num"><strong><?= to_persian_digits(number_format($estimatedCost)) ?> ریال</strong></td></tr>
     <?php endif; ?>
-    <tr><th>اعتبار فعلی</th><td class="num"><?= to_persian_digits(number_format((int)$cp['wallet']['balance'])) ?> واحد</td></tr>
+    <tr><th>اعتبار فعلی</th><td class="num"><?= to_persian_digits(number_format((int)$cp['wallet']['balance'])) ?> ریال</td></tr>
     <tr><th>اعتبار پس از ارسال</th><td class="num" style="color:<?= $walletOk ? 'inherit' : '#c0392b' ?>">
-      <?= to_persian_digits(number_format((int)$cp['wallet']['estimated_remaining'])) ?> واحد
+      <?= to_persian_digits(number_format((int)$cp['wallet']['estimated_remaining'])) ?> ریال
     </td></tr>
   </table>
   </div>
 
   <?php if (!$walletOk): ?>
-    <div class="flash flash-error">اعتبار کافی نیست — این ارسال به <?= to_persian_digits(number_format($estimatedCost)) ?> واحد اعتبار نیاز دارد.</div>
+    <div class="flash flash-error">اعتبار کافی نیست — این ارسال به <?= to_persian_digits(number_format($estimatedCost)) ?> ریال اعتبار نیاز دارد.</div>
   <?php endif; ?>
   <?php if (!$quotaOk): ?>
     <div class="flash flash-error">سهمیه‌ی پلن سازمان برای این تعداد پیام کافی نیست.</div>

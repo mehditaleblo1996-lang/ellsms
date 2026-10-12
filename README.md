@@ -93,7 +93,7 @@ from Panel → Settings (stored in `ellsms_settings`, which wins over `.env` whe
 each integration's own section below for exactly which). No secret ever needs to be committed;
 `.env` is gitignored and `.env.example` contains placeholders only.
 
-Credits = SMS parts, stored directly on the shared `user_.currentcredit` column — so it reflects the same balance the backend platform itself would see. Admins send without a credit check.
+Credit is **Rial**: the wallet, `user_.currentcredit` (which the backend platform also reads as Rial) and every SMS tariff share that unit, and a send costs its segments × the route's Rial price per segment (1200 Rial by default when no tariff matches). See `docs/rial-currency.md`, including the one-time `make rial-conversion` step for installs that held the old credit unit. Admins send without a credit check.
 
 ## Git workflow & server deployment
 
@@ -133,12 +133,11 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 
 Any logged-in user can buy credit from `/buy-credit.php` — pick a preset package or a custom amount, pay through ZarinPal, and credit lands on `user_.currentcredit` automatically once the payment is confirmed. Built against ZarinPal's real v4 REST API (endpoints and request/response shapes verified against their own sample code and official docs, not reconstructed from memory) — `app/zarinpal.php` handles the request/verify calls, `public/zarinpal-callback.php` is where ZarinPal redirects the user back to.
 
-**Important — the unit is Rial, not Toman.** ZarinPal's v4 API defaults to Rial unless a request explicitly opts into Toman; this integration never sends that opt-in, so `چند ریال معادل ۱ واحد اعتبار است` in Settings, `ellsms_payments.amount_rial`, and every amount ELLSMS sends to ZarinPal are all unambiguously Rial. Don't introduce a Toman value anywhere in this path without converting it first.
+**Important — the unit is Rial, not Toman.** ZarinPal's v4 API defaults to Rial unless a request explicitly opts into Toman; this integration never sends that opt-in, so the wallet, `ellsms_payments.amount_rial`, and every amount ELLSMS sends to ZarinPal are all unambiguously Rial. Don't introduce a Toman value anywhere in this path without converting it first.
 
 Admin configures, from **Settings → پرداخت (زرین‌پال)**:
-- Rial-per-credit exchange rate
-- Minimum purchase (in credits)
-- Suggested package sizes (comma-separated, shown as quick-pick buttons)
+- Minimum purchase (in Rial — the amount bought, before VAT, is added to the wallet as-is)
+- Suggested purchase amounts in Rial (comma-separated, shown as quick-pick buttons)
 - Merchant ID, callback URL, and sandbox mode (test payments, no real money) — these three can also come from `.env`:
   ```
   ZARINPAL_MERCHANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # from https://next.zarinpal.com
@@ -179,7 +178,7 @@ The panel now has a real mobile navigation drawer instead of stacking the entire
 `/index.php` (the site root) now shows `/landing.php` to anyone not logged in instead of bouncing straight to `/login.php` — the dashboard behavior for logged-in users is unchanged. Login is still reachable from the landing page's own CTA. Everything under this section is public, unauthenticated, and shares one chrome (`app/views/public_header.php` / `public_footer.php`) separate from the logged-in app shell in `app/views/header.php`.
 
 - **Hero slider** — an admin-managed (Settings → اسلایدر صفحه‌ی اصلی, `/slides.php`) image carousel spanning the full page width directly under the nav, above the hero text. Each slide is an image + title + optional short text + optional link. Falls back to a static decorative mockup when no slides are configured, so the page never looks broken on a fresh install. Images upload straight into `public/assets/img/slides/` (gitignored, like `storage/kyc/`) since these are public marketing banners, not sensitive documents — no access-control script needed the way `kyc-photo.php` has one.
-- **بسته‌های پیامک / pricing cards** (`/pricing.php` to manage, shown on `/landing.php#pricing`) — a separate marketing-only table (`ellsms_pricing_packages`: name, credit amount, price in Rial, feature bullets, a "پیشنهاد ویژه" badge). Deliberately independent from the real `rial_per_credit` rate in Settings → پرداخت — this is just what's advertised, not what `buy-credit.php` actually charges, so keep them in sync by hand if the real rate changes.
+- **بسته‌های پیامک / pricing cards** (`/pricing.php` to manage, shown on `/landing.php#pricing`) — a separate marketing-only table (`ellsms_pricing_packages`: name, credit amount, price in Rial, feature bullets, a "پیشنهاد ویژه" badge). Deliberately independent from the real purchase in `buy-credit.php` (one Rial paid before VAT = one Rial of credit) — this is just what's advertised.
 - **راهنمای استفاده** — a public FAQ/guide page (`/guide.php`, plain `<details>`/`<summary>` accordion, no JS needed) backed by admin-editable articles (`/guide-admin.php`, `ellsms_guide_articles`). Body text is plain, rendered with `nl2br()` — no markdown parser, consistent with this project having no `vendor/` directory anywhere else.
 - **تماس با ما** (`/contact.php`) — shows an address/phone block from Settings → تماس با ما (hidden entirely if never configured) plus a ticket form. Submitting the form doesn't write to a table — `app/telegram.php` relays it as a plain chat message to a Telegram bot via the official `sendMessage` endpoint, using a Bot Token + Chat ID configured the same `.env`-with-Settings-override pattern as ZarinPal (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`). Create the bot with `@BotFather`.
 

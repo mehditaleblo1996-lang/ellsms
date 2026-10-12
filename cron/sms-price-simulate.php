@@ -116,9 +116,9 @@ if ($report['ok']) {
     echo "\n";
     printf("  provider       %s\n", $report['route']['provider']);
     printf("  route          %s  (selected by: %s)\n", $report['route']['route'], $report['route']['selected_by']);
-    printf("  unit price     %s credit/segment  [%s, rule #%s]\n",
+    printf("  unit price     %s Rial/segment  [%s, rule #%s]\n",
         (string)$report['price']['credits_per_segment'], $report['price']['price_source'], (string)($report['price']['pricing_rule_id'] ?? '—'));
-    printf("\n  COST           %d credit(s)\n\n", $report['cost_credits']);
+    printf("\n  COST           %s Rial\n\n", number_format($report['cost_credits']));
     exit(0);
 }
 

@@ -43,7 +43,7 @@ function bale_configured(): bool {
 }
 
 function bale_price_credits(): int {
-    return max(0, (int)bale_setting('bale_price_credits', '1'));
+    return max(0, (int)bale_setting('bale_price_credits', '1200'));
 }
 
 /** Blocks just long enough to stay under bale_tps messages per second (per process). */
@@ -147,7 +147,7 @@ function bale_dispatch(array $user, array $destinations, string $content, string
         $reservation = wallet_reserve($userId, $worstCase, $refType, $refId, "reserve:{$refType}:{$refId}");
         if (!$reservation['ok']) {
             if ($organizationId > 0) usage_release_messages($refType, $refId);
-            return $fail('اعتبار کافی نیست: این ارسال به ' . $worstCase . ' واحد اعتبار نیاز دارد.', 'insufficient_credit');
+            return $fail('اعتبار کافی نیست: این ارسال به ' . number_format($worstCase) . ' ریال نیاز دارد.', 'insufficient_credit');
         }
         if (($reservation['status'] ?? 'active') !== 'active') {
             Logger::info('bale.send.already_finalized', ['ref_type' => $refType, 'ref_id' => $refId]);

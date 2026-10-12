@@ -285,7 +285,7 @@ function report_bulk_items(int $jobId, ?int $organizationId, int $limit = 200, i
 function report_pricing_for(string $referenceType, string $referenceId): array {
     $groups = sms_price_snapshot_for($referenceType, $referenceId);
     if ($groups === []) {
-        return ['available' => false, 'groups' => [], 'accepted' => 0, 'committed' => 0, 'currency' => 'credit'];
+        return ['available' => false, 'groups' => [], 'accepted' => 0, 'committed' => 0, 'currency' => SMS_PRICING_CURRENCY];
     }
     $accepted = 0;
     $committed = 0;
@@ -299,7 +299,7 @@ function report_pricing_for(string $referenceType, string $referenceId): array {
         'accepted'  => $accepted,
         'committed' => $committed,
         'settled'   => ($groups[0]['status'] ?? '') === 'settled',
-        'currency'  => (string)($groups[0]['currency'] ?? 'credit'),
+        'currency'  => (string)($groups[0]['currency'] ?? SMS_PRICING_CURRENCY),
     ];
 }
 

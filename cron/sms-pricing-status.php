@@ -103,7 +103,7 @@ if ($filters['sender'] !== null && $filters['sender'] !== '') {
 $report = [
     'generated_at_utc'       => $now,
     'legacy_fallback_enabled' => sms_pricing_legacy_fallback_enabled(),
-    'legacy_fallback_rate'   => '1 credit per segment',
+    'legacy_fallback_rate'   => sms_pricing_millicredits_to_credits(sms_pricing_legacy_unit_price()) . ' Rial per segment',
     'default_message_type'   => sms_pricing_default_message_type(),
     'currency'               => SMS_PRICING_CURRENCY,
     'price_scale'            => SMS_PRICE_SCALE,
@@ -132,9 +132,9 @@ if ($json) {
 }
 
 echo "SMS pricing status (UTC {$now})\n";
-echo '  currency: ' . $report['currency'] . "  (prices stored as integer millicredits, 1 credit = {$report['price_scale']})\n";
+echo '  currency: ' . $report['currency'] . "  (prices stored as integer thousandths of a Rial, 1 Rial = {$report['price_scale']})\n";
 echo '  default message type: ' . $report['default_message_type'] . "\n";
-echo '  legacy fallback: ' . ($report['legacy_fallback_enabled'] ? 'ENABLED (1 credit/segment when nothing matches)' : 'DISABLED (pricing fails closed)') . "\n";
+echo '  legacy fallback: ' . ($report['legacy_fallback_enabled'] ? 'ENABLED (' . $report['legacy_fallback_rate'] . ' when nothing matches)' : 'DISABLED (pricing fails closed)') . "\n";
 
 echo "\nOperators\n";
 foreach ($report['operators'] as $o) {

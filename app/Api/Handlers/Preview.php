@@ -41,7 +41,8 @@ function api_preview_response(array $estimate): array {
             'message_type'        => $estimate['pricing']['message_type'],
             'estimated_cost'      => $estimate['pricing']['estimated_cost'],
             'rial_per_credit'     => $estimate['pricing']['rial_per_credit'],
-            // 'currency' is the unit `estimated_cost` is denominated in: credits.
+            // 'currency' is the unit `estimated_cost` is denominated in: Rial ('IRR'). rial_per_credit
+            // is always 1 and is kept only for clients that still read it.
             'currency'            => $estimate['pricing']['currency'],
             'rial_currency'       => $estimate['pricing']['rial_currency'],
             'groups'              => $estimate['pricing']['groups'],

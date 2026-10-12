@@ -33,7 +33,7 @@ function low_credit_alert_check_seconds(): int {
 }
 
 const LOW_CREDIT_ALERT_DEFAULT_TEMPLATE =
-    '{name} گرامی، اعتبار حساب شما به {credit} رسیده و کمتر از حد هشدار ({threshold}) است. برای جلوگیری از توقف ارسال، حساب خود را شارژ کنید.';
+    '{name} گرامی، اعتبار حساب شما به {credit} ریال رسیده و کمتر از حد هشدار ({threshold} ریال) است. برای جلوگیری از توقف ارسال، حساب خود را شارژ کنید.';
 
 function low_credit_alert_text(string $name, int $credit, int $threshold): string {
     $template = trim((string)setting_fresh('low_credit_alert_template', ''));
