@@ -787,6 +787,10 @@ function sms_pricing_group_key(array $resolution): string {
  * have cost) but never refuses: an unpriceable recipient costs an exempt sender zero rather than
  * blocking a send that was always free.
  *
+ * $customerUserId is the account being charged. Its tariff coefficient (a reseller's price for its
+ * customer, app/CustomerHierarchy.php) scales every unit price here, before the cost is computed,
+ * so the snapshot, the reservation and the settlement all carry the price the account pays.
+ *
  * Returns ok=false when any recipient could not be priced and the sender is not exempt — fail
  * closed (Invariant H). The refusal still carries the full per-recipient reason map so the UI can
  * show "10,000 input / 9,850 priced / 150 unpriced" (STEP 44).
@@ -796,10 +800,14 @@ function sms_pricing_price_messages(
     string $sender,
     ?string $messageType = null,
     ?string $atUtc = null,
-    bool $exempt = false
+    bool $exempt = false,
+    ?int $customerUserId = null
 ): array {
     $messageType = sms_pricing_normalize_message_type($messageType);
     $atUtc       = $atUtc ?? sms_pricing_now();
+    // The account's tariff coefficient (app/CustomerHierarchy.php): a reseller's customer pays the
+    // tariff its reseller set, a reseller the one the admin set. 100% when no account is given.
+    $tariffBp    = (!$exempt && $customerUserId !== null) ? customer_effective_tariff_bp($customerUserId) : CUSTOMER_TARIFF_BASE_BP;
 
     $phones = [];
     foreach ($messages as $m) {
@@ -840,6 +848,10 @@ function sms_pricing_price_messages(
 
         if ($resolution['price_source'] === 'legacy_fallback') {
             $fallbackUsed = true;
+        }
+        if ($tariffBp !== CUSTOMER_TARIFF_BASE_BP) {
+            $resolution['list_unit_price'] = (int)$resolution['unit_price'];
+            $resolution['unit_price'] = customer_tariff_apply((int)$resolution['unit_price'], $tariffBp);
         }
         $cost = $exempt ? 0 : sms_pricing_cost_for_segments($segments, (int)$resolution['unit_price']);
         $totalCost += $cost;
@@ -909,6 +921,7 @@ function sms_pricing_price_messages(
         'unpriced'        => $unpriced,
         'legacy_fallback_used' => $fallbackUsed,
         'route'           => $batch['route'],
+        'tariff_bp'       => $tariffBp,
     ];
 }
 
@@ -919,10 +932,10 @@ function sms_pricing_price_messages(
  *
  * @param list<string> $destinations already normalized
  */
-function sms_pricing_price_single_content(array $destinations, string $content, string $sender, ?string $messageType = null, ?string $atUtc = null, bool $exempt = false): array {
+function sms_pricing_price_single_content(array $destinations, string $content, string $sender, ?string $messageType = null, ?string $atUtc = null, bool $exempt = false, ?int $customerUserId = null): array {
     $segments = sms_parts($content);
     $messages = array_map(static fn($d) => ['mobile' => (string)$d, 'segments' => $segments], $destinations);
-    $priced = sms_pricing_price_messages($messages, $sender, $messageType, $atUtc, $exempt);
+    $priced = sms_pricing_price_messages($messages, $sender, $messageType, $atUtc, $exempt, $customerUserId);
     $priced['segments_per_message'] = $segments;
     return $priced;
 }
@@ -948,16 +961,17 @@ function sms_pricing_price_single_content_for_reference(
     ?string $messageType,
     bool $exempt,
     string $referenceType,
-    string $referenceId
+    string $referenceId,
+    ?int $customerUserId = null
 ): array {
     $snapshot = sms_price_snapshot_for($referenceType, $referenceId);
     if ($snapshot === []) {
-        return sms_pricing_price_single_content($destinations, $content, $sender, $messageType, null, $exempt);
+        return sms_pricing_price_single_content($destinations, $content, $sender, $messageType, null, $exempt, $customerUserId);
     }
 
     $originalInstant = (string)$snapshot[0]['priced_at'];
     $originalType    = (string)$snapshot[0]['message_type'];
-    $priced = sms_pricing_price_single_content($destinations, $content, $sender, $originalType, $originalInstant, $exempt);
+    $priced = sms_pricing_price_single_content($destinations, $content, $sender, $originalType, $originalInstant, $exempt, $customerUserId);
     return sms_pricing_apply_snapshot_prices($priced, $snapshot);
 }
 

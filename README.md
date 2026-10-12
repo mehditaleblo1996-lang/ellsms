@@ -215,6 +215,33 @@ operator opts in. Enablement requires running `make billing-backfill` first, whi
 existing organization onto an unlimited `legacy` plan. See `docs/plans-and-entitlements.md`,
 `docs/billing-operations.md`, and `docs/phase-13-final-report.md`.
 
+## Resellers, organizational customers & menu access
+
+Modeled on the Negar platform. A platform admin marks an account as a **reseller** (نماینده) or an
+**organization** (مشتری سازمانی). The account can then create its own sub-accounts within a quota,
+following Negar's rules:
+
+- a level-0 reseller may create sub-resellers;
+- an organization creates only sub-organizations, and those cannot have sub-accounts.
+
+From **زیرمجموعه‌ها** (`/subaccounts.php`) the parent:
+
+- gives credit to its sub-accounts and takes it back;
+- sets their tariff (a coefficient on the system price list, never below its own);
+- sets expiry, suspends them and resets passwords;
+- shares its lines with them;
+- reads their sending report and can enter their panel.
+
+A reseller is paid the tariff difference on its sub-accounts' sends once a day (`make reseller-profit`;
+the worker does it hourly).
+
+Separately, an admin — or a parent for its sub-accounts — decides which **menus** a user sees, through
+roles plus per-user exceptions. A closed menu leaves the sidebar, its pages answer 403 and the
+matching API routes are refused. A sub-account never sees more than its parent.
+
+Apply `db/migrations/2026_10_12_customer_hierarchy.sql`. Until an account is configured, nothing
+changes for it. See `docs/resellers-and-menu-access.md`.
+
 ## Developer Commands
 
 A `Makefile` wraps the commands below so a new developer doesn't need to read `app/`/`docker/` to

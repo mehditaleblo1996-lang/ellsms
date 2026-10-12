@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save', 'ensure_organization', 'account_type'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save', 'ensure_organization', 'account_type', 'customer_save', 'menu_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -149,6 +149,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 flash('error', 'ساخت سازمان پیش‌فرض ممکن نشد. دوباره تلاش کنید.');
             }
+        } elseif ($do === 'customer_save') {
+            // Reseller / organization hierarchy (app/CustomerHierarchy.php). The parent is looked up
+            // by username and must itself be an ELLSMS-managed account.
+            $parentUsername = trim((string)($_POST['parent_username'] ?? ''));
+            $parentId = $parentUsername === '' ? 0 : (int)(backend_find_user_id_by_username($parentUsername) ?? -1);
+            $tariffBp = customer_tariff_bp_from_input((string)($_POST['tariff_percent'] ?? '100'));
+            if ($parentId < 0 || ($parentId > 0 && !resolve_ellsms_managed_user($parentId))) {
+                flash('error', 'حساب والد با این نام کاربری در ELLSMS پیدا نشد.');
+            } elseif ($tariffBp === null) {
+                flash('error', customer_error_message('invalid_tariff'));
+            } else {
+                $result = customer_admin_save($id, [
+                    'customer_type'    => $_POST['customer_type'] ?? 'normal',
+                    'parent_user_id'   => $parentId,
+                    'max_subset_limit' => (int)from_persian_digits((string)($_POST['max_subset_limit'] ?? '0')),
+                    'tariff_bp'        => $tariffBp,
+                    'expires_on'       => jalali_request_to_gregorian('expires_on'), // left blank = no expiry
+                    'suspended'        => !empty($_POST['suspended']),
+                ], (int)$me['id']);
+                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'نوع مشتری و نمایندگی ذخیره شد.' : customer_error_message((string)$result['reason']));
+            }
+        } elseif ($do === 'menu_save') {
+            $roleId = (int)($_POST['menu_role_id'] ?? 0) ?: null;
+            $result = menu_user_access_save($id, $roleId, (array)($_POST['menu_override'] ?? []), null, (int)$me['id']);
+            flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'دسترسی منوها ذخیره شد.' : menu_access_error_message((string)$result['reason']));
         } elseif ($do === 'account_type') {
             // Mirrors public/profile.php's own standalone account_type action exactly: resolve the
             // CURRENT full profile row and overlay only account_type, so profile_organization_save()'s
@@ -347,6 +372,13 @@ if (!empty($_GET['edit'])) {
         $editAddress = $editOrganizationId > 0 ? profile_address_get($editOrganizationId) : null;
         $editNotifications = $editOrganizationId > 0 ? profile_notifications_get($editOrganizationId) : null;
         $editOrgDocuments = $editOrganizationId > 0 ? profile_documents_list(['organization' => $editOrganizationId]) : [];
+
+        // Reseller / organization hierarchy and menu access (app/CustomerHierarchy.php, app/MenuAccess.php).
+        $editCustomer = customer_account($editUserId);
+        $editCustomerParent = $editCustomer['parent_user_id'] !== null ? (backend_users_by_ids([$editCustomer['parent_user_id']])[$editCustomer['parent_user_id']] ?? null) : null;
+        $editCustomerChildren = backend_users_by_ids(customer_child_ids($editUserId));
+        $editMenuAccess = menu_user_access_get($editUserId);
+        $editMenuEffective = menu_access_effective($editUserId);
     }
 }
 
@@ -400,15 +432,23 @@ if ($userIds) {
     }
 }
 
+// نوع مشتری (app/CustomerHierarchy.php) — one bulk query for the whole list.
+$customerAccounts = customer_accounts_by_ids($userIds);
+$customerParentNames = backend_usernames_by_ids(array_filter(array_column($customerAccounts, 'parent_user_id')));
+
 $panelUsers = [];
 foreach ($metaRows as $meta) {
     $identity = $identities[(int)$meta['user_id']] ?? null;
     if (!$identity) {
         continue; // an ellsms_meta row whose backend account vanished — not this listing's concern to guess at
     }
+    $customerAccount = $customerAccounts[(int)$meta['user_id']];
+    $customerParentAccount = $customerAccount['parent_user_id'] !== null ? ($customerAccounts[$customerAccount['parent_user_id']] ?? null) : null;
     $panelUsers[] = array_merge($identity, $meta, [
         'sent_count' => $sentCounts[(int)$meta['user_id']] ?? 0,
         'account_type' => $accountTypeByUser[(int)$meta['user_id']] ?? null,
+        'customer_label' => customer_type_label($customerAccount, $customerParentAccount),
+        'customer_parent' => $customerAccount['parent_user_id'] !== null ? ($customerParentNames[$customerAccount['parent_user_id']] ?? '#' . $customerAccount['parent_user_id']) : null,
     ]);
 }
 usort($panelUsers, static fn($a, $b) => ((int)$b['is_admin'] <=> (int)$a['is_admin']) ?: ($a['username'] <=> $b['username']));
@@ -491,6 +531,7 @@ require __DIR__ . '/../app/views/header.php';
   <?php endif; ?>
   <button type="button" role="tab" data-tab="documents">مدارک</button>
   <button type="button" role="tab" data-tab="kyc">اطلاعات هویتی (KYC)</button>
+  <button type="button" role="tab" data-tab="hierarchy">نمایندگی و دسترسی منو</button>
 </nav>
 
 <section class="tab-panel" data-panel="account" role="tabpanel">
@@ -820,6 +861,86 @@ if ($editOrganizationId > 0) {
   </form>
 </div>
 </section>
+
+<section class="tab-panel" data-panel="hierarchy" role="tabpanel">
+<?php if (!customer_hierarchy_available()): ?>
+  <div class="flash flash-error"><?= e(customer_error_message('not_migrated')) ?></div>
+<?php else: ?>
+<div class="card">
+  <h2>نوع مشتری و نمایندگی</h2>
+  <p class="hint">
+    نماینده (سطح صفر) می‌تواند مشتری عادی، سازمانی و زیرنماینده بسازد؛ زیرنماینده فقط مشتری عادی و سازمانی؛ سازمان فقط زیرسازمان، و زیرسازمان زیرمجموعه ندارد.
+    تعرفه درصدی از نرخ پایه‌ی پیامک است (۱۰۰ = نرخ پایه). سود نماینده اختلاف تعرفه‌ی زیرمجموعه با تعرفه‌ی خودش است.
+  </p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="customer_save">
+    <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
+    <input type="hidden" name="back" value="1">
+    <div class="form-grid">
+      <label>نوع مشتری
+        <select name="customer_type">
+          <?php foreach (CUSTOMER_TYPES as $typeKey => $typeLabel): ?>
+            <option value="<?= e($typeKey) ?>"<?= $editCustomer['customer_type'] === $typeKey ? ' selected' : '' ?>><?= e($typeLabel) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <label>نام کاربری والد (خالی = سطح بالا)
+        <input type="text" name="parent_username" class="ltr" value="<?= e((string)($editCustomerParent['username'] ?? '')) ?>">
+      </label>
+      <label>تعرفه (درصد نرخ پایه)
+        <input type="text" name="tariff_percent" class="ltr" inputmode="decimal" value="<?= e(customer_tariff_percent($editCustomer['tariff_bp'])) ?>">
+      </label>
+      <label>سقف زیرمجموعه
+        <input type="text" name="max_subset_limit" class="ltr" inputmode="numeric" value="<?= (int)$editCustomer['max_subset_limit'] ?>">
+        <span class="hint" style="display:block">استفاده‌شده: <?= to_persian_digits((string)customer_used_subset((int)$editUser['id'])) ?></span>
+      </label>
+      <label>تاریخ انقضا <?= jalali_date_select('expires_on', $editCustomer['expires_on'], yearsAhead: 5, yearsBack: 1, allowEmpty: true) ?>
+        <span class="hint" style="display:block">برای «بدون انقضا» روز، ماه و سال را خالی بگذارید.</span>
+      </label>
+      <label class="check"><input type="checkbox" name="suspended" value="1"<?= $editCustomer['suspended'] ? ' checked' : '' ?>> حساب معلق است (امکان ورود ندارد)</label>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary btn-sm">ذخیره</button></div>
+  </form>
+  <?php if ($editCustomerChildren): ?>
+    <h3 style="margin-top:var(--sp-4)">زیرمجموعه‌ها (<?= to_persian_digits((string)count($editCustomerChildren)) ?>)</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>نام کاربری</th><th>نام</th><th>نوع</th><th>اعتبار</th><th>تعرفه</th></tr></thead>
+        <tbody>
+        <?php foreach ($editCustomerChildren as $childId => $child): ?>
+          <?php $childAccount = customer_account((int)$childId); ?>
+          <tr>
+            <td class="ltr"><a href="/users.php?edit=<?= (int)$childId ?>"><?= e((string)$child['username']) ?></a></td>
+            <td><?= e(trim($child['first_name'] . ' ' . $child['last_name'])) ?></td>
+            <td><?= e(customer_type_label($childAccount, $editCustomer)) ?></td>
+            <td class="num"><?= to_persian_digits(number_format((float)$child['credit'])) ?></td>
+            <td class="num"><?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp((int)$childId))) ?>٪</td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php endif; ?>
+</div>
+
+<div class="card">
+  <h2>دسترسی منوها</h2>
+  <p class="hint">نقش‌ها در صفحه‌ی <a href="/menu-roles.php">نقش‌های دسترسی منو</a> تعریف می‌شوند.<?= $editCustomer['parent_user_id'] !== null ? ' این حساب زیرمجموعه است و هرگز منویی بیش از والدش نمی‌بیند.' : '' ?></p>
+  <?php
+  $menuForm = [
+      'user_id'   => (int)$editUser['id'],
+      'access'    => $editMenuAccess,
+      'roles'     => menu_roles_for(null),
+      'grantable' => null,
+      'effective' => $editMenuEffective,
+      'hidden'    => ['do' => 'menu_save', 'id' => (int)$editUser['id'], 'back' => '1'],
+  ];
+  require __DIR__ . '/../app/views/menu_access_form.php';
+  ?>
+</div>
+<?php endif; ?>
+</section>
 </div>
 <?php else: ?>
 <div class="tabs" data-tabs="users">
@@ -839,7 +960,7 @@ if ($editOrganizationId > 0) {
   </form>
   <div class="table-wrap">
   <table>
-    <tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>نوع حساب</th><th>خط</th><th>اعتبار</th><th>ارسال‌شده</th><th>۲مرحله‌ای</th><th>وضعیت</th><th></th></tr>
+    <tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>نوع حساب</th><th>نوع مشتری</th><th>خط</th><th>اعتبار</th><th>ارسال‌شده</th><th>۲مرحله‌ای</th><th>وضعیت</th><th></th></tr>
     <?php foreach ($panelUsers as $u): ?>
       <tr>
         <td><?= e($u['username']) ?></td>
@@ -852,6 +973,7 @@ if ($editOrganizationId > 0) {
             <span class="badge badge-<?= $u['account_type'] === 'legal' ? 'admin' : 'user' ?>"><?= e(profile_account_type_label($u['account_type'])) ?></span>
           <?php endif; ?>
         </td>
+        <td><?= e($u['customer_label']) ?><?php if ($u['customer_parent'] !== null): ?> <span class="hint ltr">← <?= e($u['customer_parent']) ?></span><?php endif; ?></td>
         <td class="msisdn"><?= e((string)$u['originator']) ?></td>
         <td class="num"><?= to_persian_digits(number_format((float)$u['credit'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$u['sent_count'])) ?></td>
@@ -870,7 +992,7 @@ if ($editOrganizationId > 0) {
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$panelUsers): ?><tr><td colspan="10" class="empty">هنوز حسابی وجود ندارد — از تب «ساخت حساب تازه» یا «دسترسی به حساب موجود» شروع کنید.</td></tr><?php endif; ?>
+    <?php if (!$panelUsers): ?><tr><td colspan="11" class="empty">هنوز حسابی وجود ندارد — از تب «ساخت حساب تازه» یا «دسترسی به حساب موجود» شروع کنید.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>

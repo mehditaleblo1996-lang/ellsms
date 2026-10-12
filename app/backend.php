@@ -488,6 +488,12 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         return [false, impersonation_block_message('send.direct'), false, 0, $total, 0];
     }
 
+    // A suspended or expired reseller sub-account (app/CustomerHierarchy.php) sends nothing — this
+    // also covers the public API, which never goes through a login.
+    if (!$isAdmin && ($blockReason = customer_account_block_reason($userId)) !== null) {
+        return [false, customer_block_message($blockReason), false, 0, $total, 0];
+    }
+
     // #40 — prohibited content is refused before any quota or credit is reserved.
     if (($ruleId = content_policy_violation($content)) !== null) {
         content_policy_log_refusal($ruleId, 'direct', $userId);
@@ -519,7 +525,7 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     // so an exempt pass costs zero and — crucially — never fails closed: a pricing gap must not
     // block a send that was always going to be free.
     $priced = sms_pricing_price_single_content_for_reference(
-        $destinations, $content, $originator, $messageType, $isAdmin, $refType, $refId
+        $destinations, $content, $originator, $messageType, $isAdmin, $refType, $refId, $userId
     );
     if (!$priced['ok']) {
         Logger::warning('sms.send.rejected_pricing_unavailable', [
@@ -644,6 +650,12 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
         return [false, impersonation_block_message('send.schedule'), false];
     }
 
+    // Scheduled sends and auto-replies of a suspended or expired sub-account stop (permanently for
+    // this occurrence) instead of spending its credit (app/CustomerHierarchy.php).
+    if (!$isAdmin && ($blockReason = customer_account_block_reason($userId)) !== null) {
+        return [false, customer_block_message($blockReason), false];
+    }
+
     // #40 — prohibited content: a permanent (non-retryable) refusal, before anything is reserved.
     if (($ruleId = content_policy_violation($content)) !== null) {
         content_policy_log_refusal($ruleId, 'scheduled', $userId);
@@ -673,7 +685,7 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
     // settle at a rate the customer never accepted, and could exceed the reservation attempt #1
     // took (STEP 24). See sms_pricing_price_single_content_for_reference().
     $priced = sms_pricing_price_single_content_for_reference(
-        $destinations, $content, $originator, $messageType, $isAdmin, $refType, $refId
+        $destinations, $content, $originator, $messageType, $isAdmin, $refType, $refId, $userId
     );
     if (!$priced['ok']) {
         Logger::warning('sms.send.rejected_pricing_unavailable', [
@@ -1483,7 +1495,7 @@ function bulk_queue_job(
         static fn(array $it): array => ['mobile' => (string)$it['mobile'], 'segments' => sms_parts((string)$it['content'])],
         $items
     );
-    $priced = sms_pricing_price_messages($pricedMessages, $originator, $messageType, null, $isAdmin);
+    $priced = sms_pricing_price_messages($pricedMessages, $originator, $messageType, null, $isAdmin, $userId);
     if (!$priced['ok']) {
         Logger::warning('bulk.queue_job.rejected_pricing_unavailable', [
             'user_id' => $userId, 'type' => $type, 'unpriced' => $priced['unpriced_count'],
@@ -1934,9 +1946,11 @@ function bulk_item_preflight(PDO $db, array $item): array {
     }
 
     $owner = backend_find_user_by_id((int)$item['user_id']);
-    if (!is_backend_account_active($owner) || !has_panel_access($owner)) {
+    // A suspended or expired reseller sub-account's queued items fail the same way (app/CustomerHierarchy.php).
+    $ownerBlocked = $owner && !$owner['is_admin'] && customer_account_block_reason((int)$item['user_id']) !== null;
+    if (!is_backend_account_active($owner) || !has_panel_access($owner) || $ownerBlocked) {
         $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL WHERE id=?")
-           ->execute(['حساب مالک ارسال غیرفعال است یا دیگر دسترسی پنل ندارد.', $item['id']]);
+           ->execute([$ownerBlocked ? 'حساب مالک ارسال معلق یا منقضی شده است.' : 'حساب مالک ارسال غیرفعال است یا دیگر دسترسی پنل ندارد.', $item['id']]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::warning('job.failed_permanent', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'reason' => 'owner_unauthorized']);
         Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'bulk_item', 'reason' => 'owner_unauthorized']);

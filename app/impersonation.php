@@ -98,6 +98,7 @@ function impersonation_blocked_actions(): array {
         'wallet.adjust'        => 'تغییر اعتبار در حالت پشتیبانی غیرفعال است.',
 
         // Organization structure.
+        'subaccounts.manage'   => 'مدیریت زیرمجموعه‌ها (اعتبار، تعرفه، دسترسی و رمز) در حالت پشتیبانی غیرفعال است.',
         'org.members'          => 'تغییر اعضا یا نقش‌های سازمان در حالت پشتیبانی غیرفعال است.',
         'org.transfer_owner'   => 'انتقال مالکیت سازمان در حالت پشتیبانی غیرفعال است.',
         'org.delete'           => 'حذف سازمان در حالت پشتیبانی غیرفعال است.',
@@ -255,7 +256,7 @@ function real_actor_user(): ?array {
     if ($state === null) {
         return current_user();
     }
-    return impersonation_resolve_admin($state['actor_user_id']);
+    return impersonation_resolve_actor($state['actor_user_id'], $state['target_user_id']);
 }
 
 /**
@@ -274,6 +275,28 @@ function impersonation_resolve_admin(int $userId): ?array {
         return null;
     }
     $row['role'] = 'admin';
+    $row['full_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+    return $row;
+}
+
+/**
+ * The actor of a support session on $targetUserId, re-validated: a platform admin, or a reseller /
+ * organization that is still an ancestor of the target (app/CustomerHierarchy.php) and may itself
+ * use the panel. A parent gets the same read-mostly session an admin does, never more.
+ */
+function impersonation_resolve_actor(int $actorUserId, int $targetUserId): ?array {
+    $admin = impersonation_resolve_admin($actorUserId);
+    if ($admin !== null) {
+        return $admin;
+    }
+    if ($actorUserId <= 0 || !customer_is_ancestor($actorUserId, $targetUserId)) {
+        return null;
+    }
+    $row = backend_find_user_by_id($actorUserId);
+    if (!$row || !$row['active'] || $row['deleted'] || !$row['panel_access'] || customer_account_block_reason($actorUserId) !== null) {
+        return null;
+    }
+    $row['role'] = 'user';
     $row['full_name'] = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
     return $row;
 }
@@ -306,7 +329,7 @@ function impersonation_enforce(): void {
     }
 
     // STEP 33: privilege is re-checked, never trusted from the session.
-    if (impersonation_resolve_admin($state['actor_user_id']) === null) {
+    if (impersonation_resolve_actor($state['actor_user_id'], $state['target_user_id']) === null) {
         Logger::warning('impersonation.actor_no_longer_admin', [
             'impersonator_user_id' => $state['actor_user_id'],
             'effective_user_id'    => $state['target_user_id'],
@@ -384,6 +407,7 @@ function impersonation_refusal_message(string $reason): string {
         'target_has_no_panel_access' => 'این حساب دسترسی پنل ELLSMS ندارد.',
         'already_impersonating'      => 'هم‌اکنون در حالت پشتیبانی هستید. ابتدا از آن خارج شوید.',
         'not_platform_admin'         => 'این عملیات فقط برای مدیران سامانه مجاز است.',
+        'not_parent'                 => 'این حساب زیرمجموعه‌ی شما نیست.',
         'rate_limited'               => 'تعداد تلاش‌های ورود پشتیبانی بیش از حد مجاز است. کمی بعد دوباره تلاش کنید.',
     ][$reason] ?? 'ورود به حالت پشتیبانی ممکن نشد.';
 }
@@ -398,8 +422,8 @@ function impersonation_refusal_message(string $reason): string {
 function impersonation_start(array $actor, int $targetUserId, string $reason, string $returnTo): array {
     $actorUserId = (int)($actor['id'] ?? 0);
 
-    if (impersonation_resolve_admin($actorUserId) === null) {
-        return ['ok' => false, 'reason' => 'not_platform_admin'];
+    if (impersonation_resolve_actor($actorUserId, $targetUserId) === null) {
+        return ['ok' => false, 'reason' => customer_child_ids($actorUserId) !== [] ? 'not_parent' : 'not_platform_admin'];
     }
     // Invariant G: nesting is impossible. Belt and braces — require_admin() already denies during an
     // impersonation, because the effective user is then an ordinary customer.
@@ -465,9 +489,9 @@ function impersonation_exit(): array {
         return ['ok' => false, 'reason' => 'not_impersonating'];
     }
 
-    // The actor must still be a platform admin to be restored. If they are not, there is nothing
-    // safe to return to.
-    if (impersonation_resolve_admin($state['actor_user_id']) === null) {
+    // The actor must still be a platform admin (or the target's parent) to be restored. If they are
+    // not, there is nothing safe to return to.
+    if (impersonation_resolve_actor($state['actor_user_id'], $state['target_user_id']) === null) {
         Logger::warning('impersonation.exit_actor_invalid', ['impersonator_user_id' => $state['actor_user_id']]);
         audit($state['target_user_id'], 'impersonation.ended', 'reason=actor_no_longer_platform_admin');
         impersonation_destroy_session();
@@ -552,5 +576,6 @@ function impersonation_banner_context(): ?array {
         'started_at'        => $state['started_at'],
         'expires_in'        => max(0, IMPERSONATION_MAX_SECONDS - (time() - $state['started_at'])),
         'return_to'         => $state['return_to'],
+        'actor_is_admin'    => impersonation_resolve_admin($state['actor_user_id']) !== null,
     ];
 }

@@ -41,6 +41,9 @@ require_once __DIR__ . '/ContentPolicy.php';
 require_once __DIR__ . '/BaleChannel.php';
 require_once __DIR__ . '/RegionalBulk.php';
 require_once __DIR__ . '/rbac.php';
+// Resellers / organizational customers (tariff, credit transfer, expiry) and per-user menu access.
+require_once __DIR__ . '/CustomerHierarchy.php';
+require_once __DIR__ . '/MenuAccess.php';
 // Platform-admin support impersonation (docs/admin-impersonation.md). Loaded after the identity,
 // tenant and RBAC primitives it re-validates against, and before anything that renders a page.
 require_once __DIR__ . '/impersonation.php';
@@ -612,7 +615,10 @@ function current_user(): ?array {
         // backend_find_user_by_id() (app/Backend/identity.php) — this is the ONE place ELLSMS
         // identity is read from, this function's own caching/session logic is unchanged.
         $row = backend_find_user_by_id($uid);
-        if ($row && $row['active'] && !$row['deleted'] && $row['panel_access']) {
+        // A suspended or expired reseller sub-account (app/CustomerHierarchy.php) is logged out —
+        // except inside a support session, which exists precisely to look at such an account.
+        $blocked = $row && !isset($_SESSION['impersonation']) && customer_account_block_reason($uid) !== null;
+        if ($row && $row['active'] && !$row['deleted'] && $row['panel_access'] && !$blocked) {
             $row['role']      = $row['is_admin'] ? 'admin' : 'user';
             $row['full_name'] = trim($row['first_name'] . ' ' . $row['last_name']);
             $user = $row;
@@ -648,6 +654,8 @@ function require_login(): array {
     // than degrading into an administrator silently browsing a customer's account as that customer
     // (docs/admin-impersonation.md). A no-op for ordinary sessions.
     impersonation_enforce();
+    // A page whose menu is closed for this user answers 403 (app/MenuAccess.php).
+    menu_access_enforce($u);
     $org = current_organization();
     if ($org) {
         $u['organization_id'] = (int)$org['organization_id'];

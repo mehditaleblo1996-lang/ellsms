@@ -212,7 +212,8 @@ function import_job_analyze_pass(array $job): void {
                 (string)$job['originator'],
                 (string)$job['message_type'],
                 (string)$job['analysis_started_at'],
-                false
+                false,
+                (int)$job['user_id']
             );
         }
 
@@ -305,7 +306,8 @@ function import_job_reserve_and_stage(array $job): void {
             (string)$job['originator'],
             (string)$job['message_type'],
             (string)$job['analysis_started_at'],
-            $isAdmin
+            $isAdmin,
+            (int)$job['user_id']
         );
         $totalCost += (int)$priced['total_cost'];
         $offset += $batchSize;
@@ -478,7 +480,8 @@ function import_process_insert_chunk(array $chunk): void {
             (string)$job['originator'],
             (string)$job['message_type'],
             (string)$job['analysis_started_at'],
-            false
+            false,
+            (int)$job['user_id']
         );
 
         $insertBuffer = [];

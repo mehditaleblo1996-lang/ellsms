@@ -165,6 +165,21 @@ do {
             }
         }
 
+        // Reseller profit (app/CustomerHierarchy.php): pays each finished day once. Hourly is plenty —
+        // a day is only processed after it has ended, and a processed day is never redone.
+        static $resellerProfitLastRunAt = 0.0;
+        $resellerProfitEvery = (int)(env('RESELLER_PROFIT_CHECK_SECONDS', '3600') ?? '3600');
+        if ($resellerProfitEvery > 0 && microtime(true) - $resellerProfitLastRunAt >= $resellerProfitEvery) {
+            $resellerProfitLastRunAt = microtime(true);
+            try {
+                $rp = Metrics::time('worker.pass.reseller_profit', fn() => customer_profit_run());
+                if ($rp['days'] !== []) Logger::info('worker.reseller_profit.paid', ['days' => $rp['days'], 'paid' => $rp['paid'], 'total' => $rp['total']]);
+            } catch (Throwable $t) {
+                Logger::error('worker.reseller_profit.failed', ['exception' => $t]);
+                Metrics::increment('worker.pass.failed', 1, ['pass' => 'reseller_profit']);
+            }
+        }
+
         // Regional bulk (#43): poll Vesal for confirmed requests and settle finished ones. Each request
         // is polled at most once a minute (claimed by last_polled_at), so this pass is cheap when idle.
         static $regionalBulkLastRunAt = 0.0;

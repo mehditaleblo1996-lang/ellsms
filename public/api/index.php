@@ -144,6 +144,15 @@ if ($route['scope'] !== null && !api_key_has_scope($principal, $route['scope']))
 // handler runs. An API scope and a plan entitlement are deliberately never conflated: a key may
 // legitimately hold `messages:send` while the organization's plan doesn't include API access at
 // all, and both checks must pass independently (Invariant N).
+// A key works only as far as its creator's panel menus reach (app/MenuAccess.php): closing «ارسال
+// پیامک» for a user also closes sending through the keys that user created.
+$menuRefusal = menu_access_api_refusal((int)($principal['created_by_user_id'] ?? 0), $path);
+if ($menuRefusal !== null) {
+    Logger::warning('api.menu_access_denied', ['path' => $path, 'method' => $method, 'api_key_id' => $principal['api_key_id'], 'menu' => $menuRefusal]);
+    ApiResponse::error(403, ApiResponse::CODE_FORBIDDEN, 'This account is not allowed to use this part of the panel.');
+    exit;
+}
+
 $apiOrganizationId = (int)$principal['organization_id'];
 if (!organization_subscription_serviceable($apiOrganizationId)) {
     Logger::warning('api.subscription_inactive', ['path' => $path, 'organization_id' => $apiOrganizationId, 'api_key_id' => $principal['api_key_id']]);

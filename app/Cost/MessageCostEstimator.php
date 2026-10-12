@@ -391,7 +391,7 @@ function estimate_message_cost(array $user, string $originator, string|array $de
     // ONE pricing instant for the whole estimate (STEP 48) — the same discipline the real send uses,
     // so a rate change mid-estimate cannot split one preview across two price periods.
     $priced = sms_pricing_price_single_content(
-        $recipients['eligible'], $content, $sender['originator'], $messageType, null, $isAdmin
+        $recipients['eligible'], $content, $sender['originator'], $messageType, null, $isAdmin, $userId
     );
     if (!$priced['ok']) {
         return cost_pricing_failure($priced, $recipientSummary);
@@ -529,7 +529,7 @@ function estimate_bulk_cost(array $user, string $originator, array $items, bool 
     }
     ksort($distribution, SORT_NUMERIC);
 
-    $priced = sms_pricing_price_messages($messages, $sender['originator'], $messageType, null, $isAdmin);
+    $priced = sms_pricing_price_messages($messages, $sender['originator'], $messageType, null, $isAdmin, $userId);
     if (!$priced['ok']) {
         return cost_pricing_failure($priced, [
             'input_count'         => count($items),

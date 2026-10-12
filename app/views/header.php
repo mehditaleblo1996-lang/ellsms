@@ -60,8 +60,20 @@ if ($navOrg && membership_has_permission($navOrg, Permissions::WEBHOOKS_VIEW)) {
 if ($navOrg && membership_has_permission($navOrg, Permissions::BILLING_VIEW)) {
     $integrationNav['billing'] = ['/billing.php', 'اشتراک و مصرف', '📦'];
 }
+// Resellers and organizations manage their sub-accounts (app/CustomerHierarchy.php).
+if ($me['role'] !== 'admin') {
+    $navAccount = customer_account((int)$me['id']);
+    if (customer_can_have_children($navAccount) || customer_child_ids((int)$me['id']) !== []) {
+        $nav['subaccounts'] = ['/subaccounts.php', customer_type_label($navAccount) === 'سازمانی' ? 'زیرسازمان‌ها' : 'زیرمجموعه‌ها', '👥'];
+    }
+    // Menus closed for this user (app/MenuAccess.php) are left out; their pages answer 403 too.
+    $nav = array_filter($nav, static fn(string $key): bool => menu_access_allows($me, $key), ARRAY_FILTER_USE_KEY);
+    $integrationNav = array_filter($integrationNav, static fn(string $key): bool => menu_access_allows($me, $key), ARRAY_FILTER_USE_KEY);
+}
 $adminNav = [
     'users'                 => ['/users.php',                 'کاربران',            '👤'],
+    'menu_roles'            => ['/menu-roles.php',            'نقش‌های دسترسی منو', '🧭'],
+    'reseller_profits'      => ['/reseller-profits.php',      'سود نمایندگان',       '💹'],
     'user_send_policies'    => ['/user-send-policies.php',    'محدودیت ارسال کاربران', '🛡'],
     'registration_requests' => ['/registration-requests.php', 'درخواست‌های ثبت‌نام', '📝'],
     'kyc_review'            => ['/kyc-review.php',            'بررسی احراز هویت',   '🪪'],
@@ -172,7 +184,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
           <form method="post" action="/impersonate.php" style="margin:0">
             <?= csrf_field() ?>
             <input type="hidden" name="do" value="exit">
-            <button type="submit" class="btn btn-sm btn-primary">بازگشت به پنل مدیریت</button>
+            <button type="submit" class="btn btn-sm btn-primary"><?= $impersonationBanner['actor_is_admin'] ? 'بازگشت به پنل مدیریت' : 'بازگشت به پنل خودم' ?></button>
           </form>
         </div>
       <?php endif; ?>

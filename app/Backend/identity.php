@@ -37,6 +37,22 @@ function backend_find_user_by_id(int $id): ?array {
     return $row ?: null;
 }
 
+/**
+ * The backend domain an account belongs to — a reseller's sub-accounts are created in the
+ * reseller's own domain. Null when the backend schema has no domain_id column on user_ or the
+ * account has none.
+ */
+function backend_user_domain_id(int $userId): ?int {
+    try {
+        $st = db()->prepare('SELECT domain_id FROM user_ WHERE id = ?');
+        $st->execute([$userId]);
+        $id = $st->fetchColumn();
+        return $id !== false && $id !== null && (int)$id > 0 ? (int)$id : null;
+    } catch (PDOException) {
+        return null;
+    }
+}
+
 function backend_find_user_for_login(string $username): ?array {
     $st = db()->prepare('SELECT id, password, mobile, active, deleted FROM user_ WHERE username = ?');
     $st->execute([$username]);

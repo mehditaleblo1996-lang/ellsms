@@ -30,6 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $meta = $m->fetch();
             if (!$meta || !$meta['panel_access']) {
                 $error = 'این حساب وجود دارد، اما دسترسی به پنل ELLSMS برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
+            } elseif (($blockReason = customer_account_block_reason((int)$u['id'])) !== null) {
+                Logger::warning('auth.login.blocked', ['user_id' => $u['id'], 'reason' => $blockReason]);
+                $error = customer_block_message($blockReason);
             } else {
                 $smsEnabled = !empty($meta['twofa_enabled']);
                 $totpEnabled = totp_enabled((int)$u['id']);

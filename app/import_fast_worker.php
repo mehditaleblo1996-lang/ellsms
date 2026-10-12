@@ -146,7 +146,8 @@ function import_fast_analyze_generated_job(array $job): void {
             (string)$job['originator'],
             (string)$job['message_type'],
             (string)$job['analysis_started_at'],
-            false
+            false,
+            (int)$job['user_id']
         );
 
         $insertRows = [];

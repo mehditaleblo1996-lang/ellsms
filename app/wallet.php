@@ -183,6 +183,48 @@ function wallet_debit(int $userId, int $amount, string $type, string $refType, s
 }
 
 /**
+ * Moves $amount of available credit from one account to another — a reseller or organization
+ * funding a sub-account, or taking credit back from one. Both ledger entries (transfer_out on the
+ * source, transfer_in on the destination) are written in one transaction, so credit is never
+ * created or lost. Both accounts are locked in ascending user id order, so two opposite transfers
+ * between the same pair serialize instead of deadlocking. Fails with insufficient_balance rather
+ * than overdrawing the source.
+ */
+function wallet_transfer(int $fromUserId, int $toUserId, int $amount, string $refType, string $refId, string $idempotencyKey, ?int $actorId = null, array $metadata = []): array {
+    if ($amount <= 0 || $fromUserId === $toUserId) {
+        return ['ok' => false, 'replayed' => false, 'reason' => 'invalid_amount'];
+    }
+    return db_transaction(function (PDO $db) use ($fromUserId, $toUserId, $amount, $refType, $refId, $idempotencyKey, $actorId, $metadata): array {
+        $balances = [];
+        foreach ([min($fromUserId, $toUserId), max($fromUserId, $toUserId)] as $uid) {
+            $balances[$uid] = wallet_lock_account($db, $uid);
+        }
+
+        if ($replay = wallet_ledger_entry_by_key($db, $idempotencyKey . ':out')) {
+            return $replay;
+        }
+        $fromBefore = $balances[$fromUserId];
+        if ($fromBefore < $amount) {
+            Logger::warning('wallet.transfer.insufficient_balance', ['from_user_id' => $fromUserId, 'to_user_id' => $toUserId, 'amount' => $amount, 'balance' => $fromBefore]);
+            return ['ok' => false, 'replayed' => false, 'balance' => $fromBefore, 'reason' => 'insufficient_balance'];
+        }
+        $toBefore = $balances[$toUserId];
+        $insert = $db->prepare('INSERT INTO ellsms_wallet_transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, idempotency_key, metadata, actor_user_id)
+                                VALUES (?,?,?,?,?,?,?,?,?,?)');
+        $insert->execute([$fromUserId, 'transfer_out', -$amount, $fromBefore, $fromBefore - $amount, $refType, $refId, $idempotencyKey . ':out', json_encode($metadata + ['to_user_id' => $toUserId]), $actorId]);
+        $insert->execute([$toUserId, 'transfer_in', $amount, $toBefore, $toBefore + $amount, $refType, $refId, $idempotencyKey . ':in', json_encode($metadata + ['from_user_id' => $fromUserId]), $actorId]);
+
+        $update = $db->prepare('UPDATE ellsms_wallet_accounts SET available_balance = ? WHERE user_id = ?');
+        $update->execute([$fromBefore - $amount, $fromUserId]);
+        $update->execute([$toBefore + $amount, $toUserId]);
+        wallet_sync_legacy_currentcredit($db, $fromUserId);
+        wallet_sync_legacy_currentcredit($db, $toUserId);
+        Logger::info('wallet.transfer', ['from_user_id' => $fromUserId, 'to_user_id' => $toUserId, 'amount' => $amount, 'reference_type' => $refType, 'reference_id' => $refId]);
+        return ['ok' => true, 'replayed' => false, 'balance' => $fromBefore - $amount];
+    });
+}
+
+/**
  * Reserve credit for accepted-but-not-yet-executed work (a bulk job's worst-case total cost, one
  * schedule occurrence's expected cost). Moves available -> reserved; total wallet value is
  * unchanged until a commit/release. At most one reservation can ever exist per

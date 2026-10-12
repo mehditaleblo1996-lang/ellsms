@@ -21,6 +21,7 @@
         db-integrity-check db-cleanup db-cleanup-apply \
         wallet-backfill wallet-backfill-dry-run wallet-audit \
         payments-reconcile payments-reconcile-dry-run low-credit-alerts low-credit-alerts-dry-run subscription-reminders subscription-reminders-dry-run \
+        reseller-profit reseller-profit-dry-run \
         jobs-status jobs-recover jobs-recover-force jobs-recover-force-dry-run \
         rbac-integrity-check rbac-status backend-boundary-check \
         jobs-status-json performance-snapshot performance-snapshot-json \
@@ -92,6 +93,8 @@ help:
 	@echo "  make low-credit-alerts       send due low-credit alerts now (the worker also does this every 5 min)"
 	@echo "  make low-credit-alerts-dry-run  list organizations that would get a low-credit alert"
 	@echo "  make subscription-reminders  send due subscription/trial/grace reminders (the worker does this hourly)"
+	@echo "  make reseller-profit         pay resellers' profit for finished days (the worker does this hourly)"
+	@echo "  make reseller-profit-dry-run show yesterday's reseller profit without paying it"
 	@echo "  make subscription-reminders-dry-run  list organizations that would get a reminder"
 	@echo "                            see docs/wallet-architecture.md for the deployment order these fit into"
 	@echo ""
@@ -496,6 +499,13 @@ low-credit-alerts:
 
 low-credit-alerts-dry-run:
 	docker compose run --rm worker php cron/low-credit-alerts.php --dry-run
+
+# Resellers / organizational customers -- daily reseller profit (app/CustomerHierarchy.php).
+reseller-profit:
+	docker compose run --rm worker php cron/reseller-profit.php
+
+reseller-profit-dry-run:
+	docker compose run --rm worker php cron/reseller-profit.php --dry-run
 
 # #41 -- reminders before a subscription, trial or grace period ends (app/SubscriptionReminders.php).
 # The worker already runs this every SUBSCRIPTION_REMINDER_CHECK_SECONDS; idempotent alongside it.
