@@ -387,6 +387,16 @@ if (!empty($_GET['edit'])) {
         $editCustomerParent = $editCustomer['parent_user_id'] !== null ? (backend_users_by_ids([$editCustomer['parent_user_id']])[$editCustomer['parent_user_id']] ?? null) : null;
         $editCustomerChildren = backend_users_by_ids(customer_child_ids($editUserId));
         $editMenuAccess = menu_user_access_get($editUserId);
+        // Customer-database connections (#45, app/RemoteDb/), managed on /remote-db.php; listed here
+        // so they are found from the user. Absent until 2026_10_06_remote_db_connections.sql.
+        $editRemoteDb = null;
+        try {
+            $rdb = db()->prepare('SELECT id, name, enabled, driver, host, port, database_name, consecutive_failures, poll_interval_s, last_success_at, last_error
+                                  FROM ellsms_remote_db_connections WHERE user_id = ? ORDER BY id');
+            $rdb->execute([$editUserId]);
+            $editRemoteDb = $rdb->fetchAll();
+        } catch (PDOException) {
+        }
         // The account's own price matrix (app/GatewayPrices.php).
         $editPricesReady = gateway_prices_available();
         $editPriceOwner = $editPricesReady ? customer_price_owner($editUserId) : null;
@@ -545,6 +555,7 @@ require __DIR__ . '/../app/views/header.php';
   <button type="button" role="tab" data-tab="kyc">اطلاعات هویتی (KYC)</button>
   <button type="button" role="tab" data-tab="hierarchy">نمایندگی و دسترسی منو</button>
   <button type="button" role="tab" data-tab="operator-prices">تعرفه‌ی اختصاصی</button>
+  <button type="button" role="tab" data-tab="remote-db">اتصال به دیتابیس</button>
 </nav>
 
 <section class="tab-panel" data-panel="account" role="tabpanel">
@@ -872,6 +883,45 @@ if ($editOrganizationId > 0) {
     </div>
     <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات هویتی</button></div>
   </form>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="remote-db" role="tabpanel">
+<div class="card">
+  <h2>اتصال به دیتابیس مشتری</h2>
+  <?php if ($editRemoteDb === null): ?>
+    <div class="flash flash-error">جدول‌های اتصال به دیتابیس هنوز ساخته نشده‌اند (مهاجرت 2026_10_06_remote_db_connections.sql).</div>
+  <?php else: ?>
+    <p class="hint">
+      پیام‌هایی که این کاربر در جدولی از دیتابیس خودش ثبت می‌کند، از حساب او ارسال می‌شوند و وضعیت ارسال و تحویل در همان ردیف نوشته می‌شود.
+      تنظیم کامل اتصال (مشخصات دیتابیس، جدول و ستون‌ها، تست اتصال) در صفحه‌ی <a href="/remote-db.php">اتصال به دیتابیس مشتری</a> است.
+    </p>
+    <?php if ($editRemoteDb): ?>
+    <div class="table-wrap">
+      <table>
+        <tr><th>نام</th><th>دیتابیس</th><th>وضعیت</th><th>آخرین موفقیت</th><th>آخرین خطا</th><th></th></tr>
+        <?php foreach ($editRemoteDb as $c): ?>
+          <tr>
+            <td><a href="/remote-db.php?id=<?= (int)$c['id'] ?>"><?= e((string)$c['name']) ?></a></td>
+            <td class="ltr"><?= e(REMOTE_DB_DRIVERS[$c['driver']]['label'] ?? (string)$c['driver']) ?> · <?= e($c['host'] . ':' . $c['port'] . '/' . $c['database_name']) ?></td>
+            <td><?php if (!(int)$c['enabled']): ?><span class="badge badge-closed">متوقف</span>
+                <?php elseif ((int)$c['consecutive_failures'] > 0): ?><span class="badge badge-failed">خطا</span>
+                <?php elseif ($c['last_success_at'] === null): ?><span class="badge badge-pending">در انتظار اولین اجرا</span>
+                <?php else: ?><span class="badge badge-active">فعال</span><?php endif; ?></td>
+            <td class="num"><?= $c['last_success_at'] ? jdate((string)$c['last_success_at']) : '—' ?></td>
+            <td class="muted"><?= e(mb_strimwidth((string)($c['last_error'] ?? ''), 0, 80, '…')) ?></td>
+            <td><a class="btn btn-sm" href="/remote-db.php?edit=<?= (int)$c['id'] ?>">ویرایش</a></td>
+          </tr>
+        <?php endforeach; ?>
+      </table>
+    </div>
+    <?php else: ?>
+      <p class="empty">برای این کاربر اتصالی تعریف نشده است.</p>
+    <?php endif; ?>
+    <div class="form-actions">
+      <a class="btn btn-primary btn-sm" href="/remote-db.php?new=1&amp;user=<?= urlencode((string)$editUser['username']) ?>">تعریف اتصال جدید برای این کاربر</a>
+    </div>
+  <?php endif; ?>
 </div>
 </section>
 
