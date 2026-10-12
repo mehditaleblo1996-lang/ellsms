@@ -761,6 +761,17 @@ function sms_pricing_credits_to_millicredits(string $raw): ?int {
     return (int)$whole * SMS_PRICE_SCALE + (int)$frac;
 }
 
+/** Persian label for a snapshot's price_source. */
+function sms_pricing_price_source_label(string $source): string {
+    return [
+        'route_operator'  => 'تعرفه‌ی اپراتور در مسیر',
+        'route_default'   => 'تعرفه‌ی پیش‌فرض مسیر',
+        'legacy_fallback' => 'تعرفه‌ی پیش‌فرض سازگاری',
+        'admin_exempt'    => 'مدیر (بدون کسر)',
+        'customer_price'  => 'تعرفه‌ی اختصاصی مشتری',
+    ][$source] ?? $source;
+}
+
 /** Persian label for a stored price/snapshot currency code. */
 function sms_pricing_currency_label(string $currency): string {
     return match ($currency) {
@@ -860,6 +871,10 @@ function sms_pricing_price_messages(
     // The account's tariff coefficient (app/CustomerHierarchy.php): a reseller's customer pays the
     // tariff its reseller set, a reseller the one the admin set. 100% when no account is given.
     $tariffBp    = (!$exempt && $customerUserId !== null) ? customer_effective_tariff_bp($customerUserId) : CUSTOMER_TARIFF_BASE_BP;
+    // The account's own per-operator prices (app/CustomerOperatorPrices.php), in effect at the same
+    // pricing instant. Where one applies it is the exact price: neither the route price nor the
+    // tariff percentage is used for that recipient.
+    $customPrices = (!$exempt && $customerUserId !== null) ? customer_operator_prices_at($customerUserId, $atUtc) : [];
 
     $phones = [];
     foreach ($messages as $m) {
@@ -881,6 +896,12 @@ function sms_pricing_price_messages(
         $totalSegs += $segments;
 
         $resolution = $batch['by_phone'][$mobile] ?? null;
+        if ($resolution !== null && $customPrices !== []) {
+            $custom = customer_operator_price_for($customPrices, $resolution['operator_id'] === null ? null : (int)$resolution['operator_id']);
+            if ($custom !== null) {
+                $resolution = sms_pricing_with_customer_price($resolution, $custom);
+            }
+        }
         if ($resolution === null || !$resolution['ok']) {
             $reason = $resolution['reason'] ?? 'pricing_unavailable';
             $unpriced[$mobile] = $reason;
@@ -901,7 +922,7 @@ function sms_pricing_price_messages(
         if ($resolution['price_source'] === 'legacy_fallback') {
             $fallbackUsed = true;
         }
-        if ($tariffBp !== CUSTOMER_TARIFF_BASE_BP) {
+        if ($tariffBp !== CUSTOMER_TARIFF_BASE_BP && $resolution['price_source'] !== 'customer_price') {
             $resolution['list_unit_price'] = (int)$resolution['unit_price'];
             $resolution['unit_price'] = customer_tariff_apply((int)$resolution['unit_price'], $tariffBp);
         }
@@ -975,6 +996,26 @@ function sms_pricing_price_messages(
         'route'           => $batch['route'],
         'tariff_bp'       => $tariffBp,
     ];
+}
+
+/**
+ * A recipient's resolution re-priced at the account's own price for its operator. The route,
+ * provider and operator stay as resolved (the message still travels the same way); only the price
+ * changes. A recipient the catalog could not price (no route price, fallback off) becomes priceable,
+ * because the account's price is a complete answer on its own.
+ */
+function sms_pricing_with_customer_price(array $resolution, array $custom): array {
+    if ($resolution['ok']) {
+        $resolution['list_unit_price'] = (int)$resolution['unit_price'];
+    }
+    unset($resolution['reason']);
+    $resolution['ok']              = true;
+    $resolution['unit_price']      = (int)$custom['millicredits'];
+    $resolution['currency']        = SMS_PRICING_CURRENCY;
+    $resolution['price_source']    = 'customer_price';
+    $resolution['pricing_rule_id'] = null;
+    $resolution['customer_price_id'] = (int)$custom['id'];
+    return $resolution;
 }
 
 /**

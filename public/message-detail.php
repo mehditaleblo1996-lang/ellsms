@@ -202,7 +202,7 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= to_persian_digits(report_format_millicredits((int)$g['unit_price_millicredits'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$g['total_cost_credits'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$g['committed_cost_credits'])) ?></td>
-        <td><?= e((string)$g['price_source']) ?></td>
+        <td><?= e(sms_pricing_price_source_label((string)$g['price_source'])) ?></td>
       </tr>
     <?php endforeach; ?>
   </table>
