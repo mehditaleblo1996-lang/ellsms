@@ -21,9 +21,9 @@ Code: `app/GatewayPrices.php`; table: `ellsms_gateway_prices` (migration
   to it.
 
 Every cell without a saved price shows its default in grey, editable in place: on the global table
-the route price (the default route's price for that operator, else the fallback), on an account's
-table what the account pays for it (the global cell, else the route price, times its tariff
-percentage). A grey value submitted unchanged is not saved, so the cell keeps following the default;
+the default row (whose own default is the route price: the default route's price for that operator,
+else the fallback); on an account's table the account's default row, else what the global table
+gives that cell times the account's tariff percentage — what the account pays for it. A grey value submitted unchanged is not saved, so the cell keeps following the default;
 an edited value is saved; a cleared cell has no own price and falls back to the default
 (`gateway_price_defaults()`, `gateway_prices_drop_defaults()`).
 
@@ -31,13 +31,22 @@ In both tables the top row of each column has an input and a ↓ button that wri
 every gateway of the column; an empty value clears the column. Nothing is saved unless every cell is
 a valid positive Rial amount (up to three decimals; `1,124` and Persian digits are accepted).
 
+## The default row
+
+Both tables start with a **پیش‌فرض همه‌ی درگاه‌ها** row (stored as `gateway_id` NULL,
+`gateway_slot` 0, migration `2026_10_15_gateway_price_default_row.sql`). It is the admin-set default
+tariff: it prices every gateway that has no value of its own in that cell, including gateways added
+later and sends with no gateway at all (the legacy backend path).
+
 ## How a message is priced
 
 `sms_pricing_price_messages()` works out the cell (gateway, column, encoding) for each message and
 takes, in order:
 
-1. the account's own cell → exact price, `price_source = 'customer_price'`;
-2. the global cell → price × tariff percentage, `price_source = 'gateway_price'`;
+1. the account's cell for that gateway, else the account's default row → exact price,
+   `price_source = 'customer_price'`;
+2. the global cell for that gateway, else the global default row → price × tariff percentage,
+   `price_source = 'gateway_price'`;
 3. otherwise the route price (تعرفه‌ها) or the fallback, × tariff percentage, as before.
 
 A cell also prices a recipient the route catalog could not price. Platform admins are still not

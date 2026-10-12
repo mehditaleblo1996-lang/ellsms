@@ -1,6 +1,7 @@
 <?php
 /**
- * The price matrix form (app/GatewayPrices.php): one row per sending gateway, one column pair
+ * The price matrix form (app/GatewayPrices.php): a "default for every gateway" row, then one row per
+ * sending gateway, one column pair
  * (Persian / Latin) per destination operator, plus "other" and "international". The top row of each
  * column pair fills the whole column with one value (the ↓ button, assets/js/forms.js).
  *
@@ -22,8 +23,8 @@ $matrixTint = static function (array $column) use ($matrixTints, $matrixDefaultT
 $matrixFormat = static fn(int $millis): string => (string)sms_pricing_millicredits_to_credits($millis);
 ?>
 <?php if (!$matrixGateways): ?>
-  <p class="hint">هنوز هیچ درگاه فعالی تعریف نشده است. درگاه‌ها در صفحه‌ی «درگاه‌های پیامک» ساخته می‌شوند.</p>
-<?php else: ?>
+  <p class="hint">هنوز هیچ درگاه فعالی تعریف نشده است (درگاه‌ها در صفحه‌ی «درگاه‌های پیامک» ساخته می‌شوند)؛ فعلاً فقط سطر پیش‌فرض قابل تنظیم است.</p>
+<?php endif; ?>
 <form method="post" class="price-matrix-form">
   <?= $matrixHidden ?>
   <div class="table-wrap">
@@ -58,9 +59,10 @@ $matrixFormat = static fn(int $millis): string => (string)sms_pricing_millicredi
       </tr>
     </thead>
     <tbody>
-      <?php foreach ($matrixGateways as $gateway): $gatewayId = (int)$gateway['id']; ?>
-        <tr>
-          <th scope="row" class="pm-gateway"><?= e((string)$gateway['name']) ?></th>
+      <?php foreach (array_merge([['id' => GATEWAY_PRICE_ALL, 'name' => 'پیش‌فرض همه‌ی درگاه‌ها']], $matrixGateways) as $gateway): $gatewayId = (int)$gateway['id']; ?>
+        <tr<?= $gatewayId === GATEWAY_PRICE_ALL ? ' class="pm-default-row"' : '' ?>>
+          <th scope="row" class="pm-gateway"><?= e((string)$gateway['name']) ?>
+            <?php if ($gatewayId === GATEWAY_PRICE_ALL): ?><span class="hint" style="display:block;font-weight:normal">برای درگاهی که قیمت خودش را ندارد</span><?php endif; ?></th>
           <?php foreach ($matrixColumns as $column): ?>
             <?php foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding):
                 $cellKey = gateway_price_key($gatewayId, $column['key'], $encoding);
@@ -85,4 +87,3 @@ $matrixFormat = static fn(int $millis): string => (string)sms_pricing_millicredi
   </div>
   <div class="form-actions"><button class="btn btn-primary btn-sm"><?= e($matrixSubmitLabel) ?></button></div>
 </form>
-<?php endif; ?>

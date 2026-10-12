@@ -904,11 +904,15 @@ function sms_pricing_price_messages(
         if ($resolution !== null && ($userCells !== [] || $globalCells !== [])) {
             $operatorId = $resolution['operator_id'] === null ? null : (int)$resolution['operator_id'];
             $gatewayId  = $gatewayByOperator[$operatorId ?? '-'] ??= sms_pricing_gateway_for($sender, $messageType, $mobile);
-            $cellKey    = gateway_price_key($gatewayId, gateway_price_column_for($mobile, $operatorId), (string)($m['encoding'] ?? 'fa'));
-            if (isset($userCells[$cellKey])) {
-                $resolution = sms_pricing_with_customer_price($resolution, $userCells[$cellKey]);
-            } elseif (isset($globalCells[$cellKey])) {
-                $resolution = sms_pricing_with_matrix_price($resolution, $globalCells[$cellKey]);
+            $column     = gateway_price_column_for($mobile, $operatorId);
+            $encoding   = (string)($m['encoding'] ?? 'fa');
+            $cellKey    = gateway_price_key($gatewayId, $column, $encoding);
+            $allKey     = gateway_price_key(GATEWAY_PRICE_ALL, $column, $encoding);
+            // The gateway's own cell, else the "every gateway" default row — the account's first.
+            if (($cell = $userCells[$cellKey] ?? $userCells[$allKey] ?? null) !== null) {
+                $resolution = sms_pricing_with_customer_price($resolution, $cell);
+            } elseif (($cell = $globalCells[$cellKey] ?? $globalCells[$allKey] ?? null) !== null) {
+                $resolution = sms_pricing_with_matrix_price($resolution, $cell);
             }
         }
         if ($resolution === null || !$resolution['ok']) {

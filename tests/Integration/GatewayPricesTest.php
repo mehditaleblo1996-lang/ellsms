@@ -249,6 +249,43 @@ final class GatewayPricesTest extends IntegrationTestCase
         $this->assertArrayNotHasKey($mciFa, gateway_prices_current($user));
     }
 
+    public function testTheDefaultRowCoversEveryGatewayWithoutItsOwnCell(): void
+    {
+        $all = GATEWAY_PRICE_ALL;
+        $this->set(null, [[$all, $this->mci, 'fa', 1200], [$this->otherGateway, $this->mci, 'fa', 2500]]);
+        $this->assertSame(1200, $this->cost(null, self::MCI, self::FA), 'the route gateway has no cell: the default row');
+        db()->prepare('INSERT INTO ellsms_numbers (number, label, gateway_id) VALUES (?,?,?)')->execute([$this->sender, 'pinned', $this->otherGateway]);
+        $this->resetCaches();
+        $this->assertSame(2500, $this->cost(null, self::MCI, self::FA), "a gateway's own cell beats the default row");
+
+        // An account's default row beats every global cell, and its own gateway cell beats its default row.
+        $user = $this->makeUser();
+        $this->account($user, 'normal', null, 15000);
+        $this->assertSame(3750, $this->cost($user, self::MCI, self::FA), 'global 2500 x 150%');
+        $this->set($user, [[$all, $this->mci, 'fa', 1000]]);
+        $this->assertSame(1000, $this->cost($user, self::MCI, self::FA));
+        $this->set($user, [[$this->otherGateway, $this->mci, 'fa', 800]]);
+        $this->assertSame(800, $this->cost($user, self::MCI, self::FA, gmdate('Y-m-d H:i:s', time() + 5)));
+    }
+
+    public function testTheDefaultRowIsWhatTheFormsShowAsDefault(): void
+    {
+        $all = GATEWAY_PRICE_ALL;
+        $this->set(null, [[$all, $this->mci, 'fa', 1200], [$this->routeGateway, $this->mci, 'fa', 1124]]);
+        $global = gateway_price_defaults(null);
+        $this->assertSame(1200000, $global[gateway_price_key($this->otherGateway, (string)$this->mci, 'fa')], 'a gateway cell defaults to the default row');
+        $this->assertArrayHasKey(gateway_price_key($all, (string)$this->mci, 'fa'), $global, 'the default row itself defaults to the route price');
+
+        $user = $this->makeUser();
+        $this->account($user, 'normal', null, 15000);
+        $own = gateway_price_defaults($user);
+        $this->assertSame(1800000, $own[gateway_price_key($all, (string)$this->mci, 'fa')], 'global default row x 150%');
+        $this->assertSame(1686000, $own[gateway_price_key($this->routeGateway, (string)$this->mci, 'fa')], 'global gateway cell x 150%');
+        $this->set($user, [[$all, $this->mci, 'fa', 900]]);
+        $own = gateway_price_defaults($user);
+        $this->assertSame(900000, $own[gateway_price_key($this->routeGateway, (string)$this->mci, 'fa')], "the account's default row");
+    }
+
     public function testInvalidCellsAndPricesAreRefused(): void
     {
         $this->assertSame('invalid_cell', $this->set(null, [[999999, $this->mci, 'fa', 100]])['reason']);

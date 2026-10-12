@@ -1355,3 +1355,5 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .price-matrix tbody tr:hover td, .price-matrix tbody tr:hover th { background: #f3f6ff; }
 .price-matrix input.is-default { color: #9aa1ad; background: #fafbfc; }
 .price-matrix input:not(.is-default):not(:placeholder-shown) { font-weight: 600; }
+.price-matrix tr.pm-default-row th, .price-matrix tr.pm-default-row td { background: #f2f4ff; border-bottom: 2px solid #c9cff5; }
+.price-matrix tr.pm-default-row .pm-gateway { color: #3b3fc4; }

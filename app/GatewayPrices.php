@@ -6,10 +6,13 @@
  * Each cell is the Rial price of one segment sent through a gateway (عامل ارسال) to a destination
  * column — an operator, 'other' (an Iranian number of unknown operator) or 'intl' (a number outside
  * Iran) — for Persian ('fa') or Latin ('en') text. A platform admin fills in a global matrix and,
- * per account, an own matrix. For one message sms_pricing_price_messages() takes:
+ * per account, an own matrix. Each matrix also has a "default for every gateway" row
+ * (GATEWAY_PRICE_ALL) that covers every gateway without a price of its own in that cell. For one
+ * message sms_pricing_price_messages() takes:
  *
- *   1. the account's own cell — the exact price, no tariff percentage;
- *   2. else the global cell — a list price, times the account's tariff percentage;
+ *   1. the account's cell for that gateway, else the account's default row — exact, no percentage;
+ *   2. else the global cell for that gateway, else the global default row — a list price, times
+ *      the account's tariff percentage;
  *   3. else the route price, as before.
  *
  * The gateway is the one that will carry the message: the gateway pinned to the sending number,
@@ -26,6 +29,9 @@
 declare(strict_types=1);
 
 const GATEWAY_PRICE_ENCODINGS = ['fa' => 'فارسی', 'en' => 'لاتین'];
+
+/** The gateway id of the "default for every gateway" row (stored as gateway_id NULL, gateway_slot 0). */
+const GATEWAY_PRICE_ALL = 0;
 
 /** Whether 2026_10_14_gateway_price_matrix.sql has been applied. Cached per process. */
 function gateway_prices_available(?bool $set = null): bool {
@@ -118,7 +124,7 @@ function gateway_prices_at(?int $userId, string $atUtc): array {
         return [];
     }
     try {
-        $st = db()->prepare('SELECT id, gateway_id, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
+        $st = db()->prepare('SELECT id, gateway_slot, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
                              WHERE user_slot = ? AND effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)
                              ORDER BY effective_from, id');
         $st->execute([$userId ?? 0, $atUtc, $atUtc]);
@@ -128,7 +134,7 @@ function gateway_prices_at(?int $userId, string $atUtc): array {
     }
     $out = [];
     foreach ($st as $row) {
-        $out[gateway_price_key((int)$row['gateway_id'], (string)$row['column_key'], (string)$row['encoding'])] =
+        $out[gateway_price_key((int)$row['gateway_slot'], (string)$row['column_key'], (string)$row['encoding'])] =
             ['id' => (int)$row['id'], 'millicredits' => (int)$row['price_per_segment_millicredits']];
     }
     return $out;
@@ -142,12 +148,12 @@ function gateway_prices_current(?int $userId): array {
     if (!gateway_prices_available()) {
         return [];
     }
-    $st = db()->prepare('SELECT gateway_id, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
+    $st = db()->prepare('SELECT gateway_slot, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
                          WHERE user_slot = ? AND effective_to IS NULL');
     $st->execute([$userId ?? 0]);
     $out = [];
     foreach ($st as $row) {
-        $out[gateway_price_key((int)$row['gateway_id'], (string)$row['column_key'], (string)$row['encoding'])] = (int)$row['price_per_segment_millicredits'];
+        $out[gateway_price_key((int)$row['gateway_slot'], (string)$row['column_key'], (string)$row['encoding'])] = (int)$row['price_per_segment_millicredits'];
     }
     return $out;
 }
@@ -177,16 +183,17 @@ function gateway_price_matrix_columns(): array {
 
 /**
  * What each cell costs when it is left empty, keyed by gateway_price_key() (millicredits), for the
- * forms to show in place of an empty cell:
+ * forms to show in grey in place of an empty cell. The "every gateway" row is GATEWAY_PRICE_ALL.
  *
- *  - global matrix ($userId null): the route price — the default route's price for that operator,
- *    else its route-default price, else the fallback price when the fallback is on;
- *  - an account's matrix: the global cell, else that route price, times the account's tariff
- *    percentage — exactly what the account pays for an empty cell.
+ *  - global matrix ($userId null): a gateway cell defaults to the global default row, which itself
+ *    defaults to the route price (the default route's price for that operator, else the fallback);
+ *  - an account's matrix: a gateway cell defaults to the account's default row; failing that, and
+ *    for the default row itself, to what the global matrix gives that cell times the account's
+ *    tariff percentage — exactly what the account pays when the cell is left empty.
  *
- * The route price is per operator, not per gateway or encoding, so it repeats along those axes.
- * A send routed by sender or operator assignment can still land on another route's price; this is
- * the default the admin sees, not a guarantee for every sender.
+ * The route price is per operator, not per gateway or encoding. A send routed by sender or operator
+ * assignment can land on another route's price; this is the default the admin sees, not a guarantee
+ * for every sender.
  */
 function gateway_price_defaults(?int $userId): array {
     $now = gmdate('Y-m-d H:i:s');
@@ -204,16 +211,27 @@ function gateway_price_defaults(?int $userId): array {
         $routePrices[$column['key']] = $price !== null ? (int)$price['price_per_segment_millicredits'] : $fallback;
     }
 
-    $global = $userId !== null ? gateway_prices_current(null) : [];
+    $global = gateway_prices_current(null);
+    $own = $userId !== null ? gateway_prices_current($userId) : [];
     $tariffBp = $userId !== null ? customer_effective_tariff_bp($userId) : CUSTOMER_TARIFF_BASE_BP;
+    $rows = array_merge([GATEWAY_PRICE_ALL], array_map(static fn(array $g): int => (int)$g['id'], gateway_price_matrix_gateways()));
     $defaults = [];
-    foreach (gateway_price_matrix_gateways() as $gateway) {
+    foreach ($rows as $gatewayId) {
         foreach ($routePrices as $columnKey => $routePrice) {
             foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding) {
-                $key = gateway_price_key((int)$gateway['id'], (string)$columnKey, $encoding);
-                $base = $global[$key] ?? $routePrice;
-                if ($base !== null) {
-                    $defaults[$key] = customer_tariff_apply($base, $tariffBp);
+                $key = gateway_price_key($gatewayId, (string)$columnKey, $encoding);
+                $allKey = gateway_price_key(GATEWAY_PRICE_ALL, (string)$columnKey, $encoding);
+                if ($userId === null) {
+                    $default = $gatewayId === GATEWAY_PRICE_ALL ? $routePrice : ($global[$allKey] ?? $routePrice);
+                } else {
+                    $list = $gatewayId === GATEWAY_PRICE_ALL
+                        ? ($global[$allKey] ?? $routePrice)
+                        : ($global[$key] ?? $global[$allKey] ?? $routePrice);
+                    $listed = $list !== null ? customer_tariff_apply($list, $tariffBp) : null;
+                    $default = $gatewayId === GATEWAY_PRICE_ALL ? $listed : ($own[$allKey] ?? $listed);
+                }
+                if ($default !== null) {
+                    $defaults[$key] = $default;
                 }
             }
         }
@@ -249,6 +267,7 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
         return ['ok' => false, 'reason' => 'not_eligible', 'changed' => 0];
     }
     $gateways = array_flip(array_map(static fn(array $g): int => (int)$g['id'], gateway_price_matrix_gateways()));
+    $gateways[GATEWAY_PRICE_ALL] = true;
     $columns = array_flip(array_column(gateway_price_matrix_columns(), 'key'));
     foreach ($cells as $key => $millis) {
         [$gatewayId, $column, $encoding] = array_pad(explode('|', (string)$key), 3, '');
@@ -262,12 +281,12 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
 
     $slot = $userId ?? 0;
     $changed = db_transaction(function (PDO $db) use ($userId, $slot, $cells, $actorId): int {
-        $open = $db->prepare('SELECT gateway_id, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
+        $open = $db->prepare('SELECT gateway_slot, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
                               WHERE user_slot = ? AND effective_to IS NULL FOR UPDATE');
         $open->execute([$slot]);
         $current = [];
         foreach ($open as $row) {
-            $current[gateway_price_key((int)$row['gateway_id'], (string)$row['column_key'], (string)$row['encoding'])] = (int)$row['price_per_segment_millicredits'];
+            $current[gateway_price_key((int)$row['gateway_slot'], (string)$row['column_key'], (string)$row['encoding'])] = (int)$row['price_per_segment_millicredits'];
         }
 
         // effective_from has one-second granularity and is part of the unique key: a second save in
@@ -281,10 +300,10 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
         }
 
         $close = $db->prepare('UPDATE ellsms_gateway_prices SET effective_to = ?
-                               WHERE user_slot = ? AND gateway_id = ? AND column_key = ? AND encoding = ? AND effective_to IS NULL');
+                               WHERE user_slot = ? AND gateway_slot = ? AND column_key = ? AND encoding = ? AND effective_to IS NULL');
         $insert = $db->prepare('INSERT INTO ellsms_gateway_prices
-            (user_id, user_slot, gateway_id, column_key, encoding, price_per_segment_millicredits, effective_from, created_by)
-            VALUES (?,?,?,?,?,?,?,?)');
+            (user_id, user_slot, gateway_id, gateway_slot, column_key, encoding, price_per_segment_millicredits, effective_from, created_by)
+            VALUES (?,?,?,?,?,?,?,?,?)');
         $changed = 0;
         foreach ($cells as $key => $millis) {
             if (($current[$key] ?? null) === $millis) {
@@ -293,7 +312,7 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
             [$gatewayId, $column, $encoding] = explode('|', (string)$key);
             $close->execute([$now, $slot, (int)$gatewayId, $column, $encoding]);
             if ($millis !== null) {
-                $insert->execute([$userId, $slot, (int)$gatewayId, $column, $encoding, $millis, $now, $actorId]);
+                $insert->execute([$userId, $slot, (int)$gatewayId === GATEWAY_PRICE_ALL ? null : (int)$gatewayId, (int)$gatewayId, $column, $encoding, $millis, $now, $actorId]);
             }
             $changed++;
         }
