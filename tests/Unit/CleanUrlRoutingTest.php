@@ -69,6 +69,9 @@ final class CleanUrlRoutingTest extends TestCase
             // Pure implementation file for reports.php's own stable route (`require`d directly, no
             // wrapping) -- reports.php already owns the canonical /messages/reports URL.
             'reports-v2.php',
+            // Telegram POSTs updates to the URL registered with setWebhook; it is not a page and is
+            // never linked, so it keeps its one stable address.
+            'telegram-webhook.php',
         ];
 
         $missing = [];
@@ -83,6 +86,39 @@ final class CleanUrlRoutingTest extends TestCase
         }
 
         self::assertSame([], $missing, 'Root public PHP files missing a clean URL rewrite: ' . implode(', ', $missing));
+    }
+
+    /**
+     * A clean route alone is not enough: the menu and many redirect() calls still use the .php URL,
+     * so a page also needs the GET/HEAD 301 to its clean URL (this file) and the same mapping in the
+     * Location-header rewrite of app/Support/AuditPrepend.php, or it stays on its .php address.
+     */
+    public function testEveryRoutedPageRedirectsItsPhpUrlAndItsLocationHeaders(): void
+    {
+        $prepend = (string)file_get_contents(dirname(__DIR__, 2) . '/app/Support/AuditPrepend.php');
+        $exempt = [
+            'health.php', 'health-ready.php', 'zarinpal-callback.php', 'send-queue.php', 'import-cancel.php',
+            'reports-v2.php', 'telegram-webhook.php',
+            // The Prometheus scrape endpoint: scraped at /metrics, never linked as metrics.php.
+            'metrics.php',
+        ];
+
+        $missing = [];
+        foreach (glob(dirname(__DIR__, 2) . '/public/*.php') ?: [] as $file) {
+            $name = basename($file);
+            if (in_array($name, $exempt, true)) {
+                continue;
+            }
+            $base = substr($name, 0, -4);
+            if (!str_contains($this->config, 'RewriteRule ^' . $base . '\\.php$ ')) {
+                $missing[] = $name . ' (no 301 redirect)';
+            }
+            if (!str_contains($prepend, "'/" . $name . "' =>")) {
+                $missing[] = $name . ' (not in the AuditPrepend Location map)';
+            }
+        }
+
+        self::assertSame([], $missing, 'Pages left on their .php address: ' . implode(', ', $missing));
     }
 
     public function testSensitiveProviderCallbackIsNotCanonicallyRedirected(): void

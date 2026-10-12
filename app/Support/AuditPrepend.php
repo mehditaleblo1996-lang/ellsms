@@ -115,6 +115,23 @@ if (PHP_SAPI !== 'cli') {
                 '/slides.php' => '/admin/content/slides',
                 '/settings.php' => '/admin/settings',
                 '/bootstrap-admin.php' => '/admin/bootstrap',
+                '/api-guide.php' => '/developers/api-guide',
+                '/subaccounts.php' => '/account/subaccounts',
+                '/line-optouts.php' => '/contacts/optouts',
+                '/menu-roles.php' => '/admin/users/menu-roles',
+                '/reseller-profits.php' => '/admin/users/reseller-profits',
+                '/queue-cancellation.php' => '/admin/queue/cancellation',
+                '/bulk-archive.php' => '/admin/bulk-archive',
+                '/alerts.php' => '/admin/alerts',
+                '/prohibited-words.php' => '/admin/prohibited-words',
+                '/remote-db.php' => '/admin/remote-db',
+                '/landing-videos.php' => '/admin/content/videos',
+                '/price-quote.php' => '/admin/price-quote',
+                '/bale-messages.php' => '/messages/bale',
+                '/regional-bulk.php' => '/messages/regional',
+                '/reports-bulk.php' => '/messages/reports/bulk',
+                '/bulk-job.php' => '/messages/bulk-jobs',
+                '/integrations.php' => '/integrations',
             ];
 
             foreach (headers_list() as $headerLine) {
