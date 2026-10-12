@@ -171,35 +171,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'نوع مشتری و نمایندگی ذخیره شد.' : customer_error_message((string)$result['reason']));
             }
         } elseif ($do === 'operator_prices_save') {
-            // Per-operator custom prices (app/CustomerOperatorPrices.php). One input per operator plus
-            // "other"; an empty input removes that operator's price. Every value is validated before
-            // anything is saved, so a typo in one row never leaves the others half-applied.
-            $submitted = (array)($_POST['price'] ?? []);
-            $changes = [];
-            $invalid = false;
-            $operatorIds = array_map('intval', db()->query("SELECT id FROM ellsms_sms_operators WHERE status = 'active'")->fetchAll(PDO::FETCH_COLUMN));
-            foreach (array_merge(['other'], $operatorIds) as $key) {
-                $raw = trim((string)($submitted[(string)$key] ?? ''));
-                $millis = $raw === '' ? null : sms_pricing_credits_to_millicredits($raw);
-                if ($raw !== '' && ($millis === null || $millis <= 0)) {
-                    $invalid = true;
-                    break;
-                }
-                $changes[] = [$key === 'other' ? null : (int)$key, $millis];
-            }
-            if ($invalid) {
-                flash('error', customer_operator_price_error_message('invalid_price'));
-            } else {
-                $error = null;
-                foreach ($changes as [$operatorId, $millis]) {
-                    $result = customer_operator_price_set($id, $operatorId, $millis, (int)$me['id'], trim((string)($_POST['note'] ?? '')));
-                    if (!$result['ok']) {
-                        $error = customer_operator_price_error_message((string)$result['reason']);
-                        break;
-                    }
-                }
-                flash($error === null ? 'success' : 'error', $error ?? 'تعرفه‌ی اختصاصی ذخیره شد. از همین لحظه برای ارسال‌های جدید اعمال می‌شود.');
-            }
+            // The account's own price matrix (app/GatewayPrices.php): gateway x operator x encoding.
+            // An empty cell falls back to the global matrix. Nothing is saved unless every cell parses.
+            [$cells, $error] = gateway_prices_from_form((array)($_POST['price'] ?? []));
+            $result = $error === null ? gateway_prices_save($id, $cells, (int)$me['id']) : ['ok' => false, 'reason' => $error];
+            flash($result['ok'] ? 'success' : 'error', $result['ok']
+                ? 'تعرفه‌ی اختصاصی ذخیره شد. از همین لحظه برای ارسال‌های جدید اعمال می‌شود.'
+                : gateway_price_error_message((string)$result['reason']));
         } elseif ($do === 'menu_save') {
             $roleId = (int)($_POST['menu_role_id'] ?? 0) ?: null;
             $result = menu_user_access_save($id, $roleId, (array)($_POST['menu_override'] ?? []), null, (int)$me['id']);
@@ -408,14 +386,9 @@ if (!empty($_GET['edit'])) {
         $editCustomerParent = $editCustomer['parent_user_id'] !== null ? (backend_users_by_ids([$editCustomer['parent_user_id']])[$editCustomer['parent_user_id']] ?? null) : null;
         $editCustomerChildren = backend_users_by_ids(customer_child_ids($editUserId));
         $editMenuAccess = menu_user_access_get($editUserId);
-        // Per-operator custom prices (app/CustomerOperatorPrices.php).
-        $editOperatorPricesReady = customer_operator_prices_available();
-        $editOperatorPriceOwner = $editOperatorPricesReady ? customer_operator_price_owner($editUserId) : null;
-        $editOperatorPrices = [];
-        foreach ($editOperatorPricesReady ? customer_operator_prices_current($editUserId) : [] as $priceRow) {
-            $editOperatorPrices[$priceRow['operator_id'] ?? 'other'] = $priceRow;
-        }
-        $editOperators = db()->query("SELECT id, name, code FROM ellsms_sms_operators WHERE status = 'active' ORDER BY priority, code")->fetchAll();
+        // The account's own price matrix (app/GatewayPrices.php).
+        $editPricesReady = gateway_prices_available();
+        $editPriceOwner = $editPricesReady ? customer_price_owner($editUserId) : null;
         $editMenuEffective = menu_access_effective($editUserId);
     }
 }
@@ -903,52 +876,35 @@ if ($editOrganizationId > 0) {
 
 <section class="tab-panel" data-panel="operator-prices" role="tabpanel">
 <div class="card">
-  <h2>تعرفه‌ی اختصاصی هر اپراتور</h2>
-  <?php if (!$editOperatorPricesReady): ?>
-    <div class="flash flash-error"><?= e(customer_operator_price_error_message('not_migrated')) ?></div>
-  <?php elseif ($editOperatorPriceOwner !== (int)$editUser['id']): ?>
+  <h2>تعرفه‌ی اختصاصی (عامل ارسال × اپراتور)</h2>
+  <?php if (!$editPricesReady): ?>
+    <div class="flash flash-error"><?= e(gateway_price_error_message('not_migrated')) ?></div>
+  <?php elseif ($editPriceOwner !== (int)$editUser['id']): ?>
     <p class="hint">
-      <?php if ($editOperatorPriceOwner === null): ?>
+      <?php if ($editPriceOwner === null): ?>
         این حساب زیرمجموعه‌ی یک نماینده است؛ قیمتش را تعرفه‌ای که نماینده تعیین کرده مشخص می‌کند و تعرفه‌ی اختصاصی برایش تعریف نمی‌شود.
       <?php else: ?>
         این حساب زیرسازمان است و با تعرفه‌ی سازمان والدش ارسال می‌کند.
-        <a href="/users.php?edit=<?= (int)$editOperatorPriceOwner ?>">تعرفه‌ی اختصاصی سازمان والد</a>
+        <a href="/users.php?edit=<?= (int)$editPriceOwner ?>">تعرفه‌ی اختصاصی سازمان والد</a>
       <?php endif; ?>
     </p>
   <?php else: ?>
     <p class="hint">
-      قیمت هر بخش پیامک به ریال، برای هر اپراتور. اپراتوری که قیمت دارد دقیقاً با همین مبلغ حساب می‌شود و درصد تعرفه‌ی حساب
+      قیمت هر بخش پیامک به ریال برای همین کاربر. هر خانه‌ای که پر شود دقیقاً با همان مبلغ حساب می‌شود و درصد تعرفه‌ی حساب
       (<?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp((int)$editUser['id']))) ?>٪) رویش اعمال نمی‌شود.
-      خانه‌ی خالی یعنی قیمت عادی: تعرفه‌ی مسیر × درصد تعرفه. «سایر اپراتورها» برای اپراتورهای بدون قیمت و شماره‌های ناشناخته است.
-      تغییرات از همین لحظه برای ارسال‌های جدید اعمال می‌شود و هزینه‌ی ارسال‌های قبلی تغییر نمی‌کند.
+      خانه‌ی خالی یعنی تعرفه‌ی عمومی (عدد کم‌رنگ داخل خانه) × درصد تعرفه. تعرفه‌ی عمومی در «تعرفه‌ی پیامک ← تعرفه‌ی درگاه‌ها» است.
+      با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تغییرات از همین لحظه برای ارسال‌های جدید اعمال می‌شود.
       <?php if ($editCustomerChildren): ?>زیرسازمان‌های این حساب هم با همین قیمت‌ها ارسال می‌کنند.<?php endif; ?>
     </p>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="do" value="operator_prices_save">
-      <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
-      <input type="hidden" name="back" value="1">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>اپراتور</th><th>قیمت هر بخش (ریال)</th><th>از تاریخ</th></tr></thead>
-          <tbody>
-          <?php foreach (array_merge($editOperators, [['id' => 'other', 'name' => 'سایر اپراتورها و شماره‌های ناشناخته']]) as $operatorRow):
-              $current = $editOperatorPrices[$operatorRow['id']] ?? null; ?>
-            <tr>
-              <td><?= $operatorRow['id'] === 'other' ? e((string)$operatorRow['name']) : operator_label((string)$operatorRow['code'], (string)$operatorRow['name'], 32) ?></td>
-              <td><input type="text" name="price[<?= e((string)$operatorRow['id']) ?>]" class="ltr" inputmode="decimal" size="10"
-                         value="<?= $current ? e((string)sms_pricing_millicredits_to_credits($current['millicredits'])) : '' ?>" placeholder="قیمت عادی"></td>
-              <td class="num"><?= $current ? jdate($current['since'] . ' UTC') : '—' ?></td>
-            </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-      <div class="form-grid">
-        <label>توضیح (اختیاری) <input type="text" name="note" maxlength="190"></label>
-      </div>
-      <div class="form-actions"><button class="btn btn-primary btn-sm">ذخیره‌ی تعرفه‌ی اختصاصی</button></div>
-    </form>
+    <?php
+      $matrixGateways = gateway_price_matrix_gateways();
+      $matrixColumns = gateway_price_matrix_columns();
+      $matrixValues = gateway_prices_current((int)$editUser['id']);
+      $matrixPlaceholders = gateway_prices_current(null);
+      $matrixHidden = csrf_field() . '<input type="hidden" name="do" value="operator_prices_save"><input type="hidden" name="id" value="' . (int)$editUser['id'] . '"><input type="hidden" name="back" value="1">';
+      $matrixSubmitLabel = 'ذخیره‌ی تعرفه‌ی اختصاصی';
+      require __DIR__ . '/../app/views/price_matrix.php';
+    ?>
   <?php endif; ?>
 </div>
 </section>

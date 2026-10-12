@@ -202,7 +202,7 @@ function import_job_analyze_pass(array $job): void {
             if (isset($blockedMobiles[$c['mobile']])) {
                 continue;
             }
-            $toPrice[] = ['mobile' => $c['mobile'], 'segments' => sms_parts($c['content'])];
+            $toPrice[] = ['mobile' => $c['mobile'], 'segments' => sms_parts($c['content']), 'encoding' => sms_encoding($c['content'])];
         }
 
         $priced = null;
@@ -300,7 +300,7 @@ function import_job_reserve_and_stage(array $job): void {
         if ($batch === []) {
             break;
         }
-        $toPrice = array_map(static fn(array $r): array => ['mobile' => (string)$r['mobile'], 'segments' => (int)$r['segments']], $batch);
+        $toPrice = array_map(static fn(array $r): array => ['mobile' => (string)$r['mobile'], 'segments' => (int)$r['segments'], 'encoding' => sms_encoding((string)$r['content'])], $batch);
         $priced = sms_pricing_price_messages(
             $toPrice,
             (string)$job['originator'],
@@ -472,7 +472,7 @@ function import_process_insert_chunk(array $chunk): void {
         }
 
         $toPrice = array_map(
-            static fn(array $r): array => ['mobile' => (string)$r['mobile'], 'segments' => (int)$r['segments']],
+            static fn(array $r): array => ['mobile' => (string)$r['mobile'], 'segments' => (int)$r['segments'], 'encoding' => sms_encoding((string)$r['content'])],
             $batch
         );
         $priced = sms_pricing_price_messages(

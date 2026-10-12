@@ -24,7 +24,7 @@ $pageTitle = 'تعرفه‌ی پیامک';
 $active = 'sms_pricing';
 
 $tab = $_GET['tab'] ?? 'operators';
-$validTabs = ['operators', 'prefixes', 'providers', 'routes', 'senders', 'prices'];
+$validTabs = ['matrix', 'operators', 'prefixes', 'providers', 'routes', 'senders', 'operator_routes', 'prices'];
 if (!in_array($tab, $validTabs, true)) $tab = 'operators';
 
 /** Audit helper — one shape for every pricing mutation, so the trail is greppable. */
@@ -348,6 +348,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             /* ---------------- Legacy fallback switch (STEP 50) ---------------- */
+            /* ---------------- Price matrix: gateway x operator x encoding (app/GatewayPrices.php) ---------------- */
+            case 'matrix_save': {
+                [$cells, $error] = gateway_prices_from_form((array)($_POST['price'] ?? []));
+                $result = $error === null ? gateway_prices_save(null, $cells, (int)$me['id']) : ['ok' => false, 'reason' => $error];
+                flash($result['ok'] ? 'success' : 'error', $result['ok']
+                    ? 'تعرفه‌ی درگاه‌ها ذخیره شد' . ($result['changed'] > 0 ? ' (' . to_persian_digits((string)$result['changed']) . ' خانه تغییر کرد).' : '؛ تغییری نبود.')
+                    : gateway_price_error_message((string)$result['reason']));
+                break;
+            }
+
             case 'fallback_toggle': {
                 $defaultMillis = sms_pricing_credits_to_millicredits((string)($_POST['default_price_rial'] ?? ''));
                 if ($defaultMillis === null || $defaultMillis <= 0) {
@@ -429,7 +439,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <div class="toolbar">
     <?php foreach ([
-      'operators' => 'اپراتورها', 'prefixes' => 'پیش‌شماره‌ها', 'providers' => 'ارائه‌دهنده‌ها',
+      'matrix' => 'تعرفه‌ی درگاه‌ها', 'operators' => 'اپراتورها', 'prefixes' => 'پیش‌شماره‌ها', 'providers' => 'ارائه‌دهنده‌ها',
       'routes' => 'مسیرها', 'senders' => 'خط ← مسیر', 'operator_routes' => 'اپراتور ← مسیر', 'prices' => 'تعرفه‌ها',
     ] as $key => $label): ?>
       <a class="btn<?= $tab === $key ? ' btn-primary' : '' ?>" href="/sms-pricing.php?tab=<?= $key ?>"><?= $label ?></a>
@@ -437,7 +447,29 @@ require __DIR__ . '/../app/views/header.php';
   </div>
 </div>
 
-<?php if ($tab === 'operators'): ?>
+<?php if ($tab === 'matrix'): ?>
+<div class="card">
+  <h2>تعرفه‌ی درگاه‌ها (عامل ارسال × اپراتور)</h2>
+  <p class="hint">
+    قیمت هر بخش پیامک به ریال، برای هر درگاه ارسال و اپراتور مقصد، جدا برای متن فارسی و لاتین. «سایر» شماره‌های ایرانی با اپراتور
+    نامشخص و «بین‌الملل» شماره‌های خارج از ایران است. درگاه هر پیام همان درگاهی است که آن را می‌فرستد: درگاه متصل به شماره‌ی فرستنده،
+    وگرنه درگاه مسیر، وگرنه درگاه پیش‌فرض. درصد تعرفه‌ی هر مشتری روی این قیمت‌ها اعمال می‌شود. خانه‌ی خالی یعنی تعرفه‌ی مسیر (برگه‌ی «تعرفه‌ها»).
+    با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تعرفه‌ی اختصاصی هر مشتری در صفحه‌ی ویرایش کاربر است.
+  </p>
+  <?php
+    $matrixGateways = gateway_price_matrix_gateways();
+    $matrixColumns = gateway_price_matrix_columns();
+    $matrixValues = gateway_prices_current(null);
+    $matrixPlaceholders = [];
+    $matrixHidden = csrf_field() . '<input type="hidden" name="do" value="matrix_save"><input type="hidden" name="tab" value="matrix">';
+    $matrixSubmitLabel = 'ذخیره‌ی تعرفه‌ی درگاه‌ها';
+    if (!gateway_prices_available()):
+  ?>
+    <div class="flash flash-error"><?= e(gateway_price_error_message('not_migrated')) ?></div>
+  <?php else: require __DIR__ . '/../app/views/price_matrix.php'; endif; ?>
+</div>
+
+<?php elseif ($tab === 'operators'): ?>
 <div class="card">
   <h2>افزودن اپراتور</h2>
   <form method="post" class="toolbar">

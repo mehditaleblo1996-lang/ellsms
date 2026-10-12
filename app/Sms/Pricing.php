@@ -769,6 +769,7 @@ function sms_pricing_price_source_label(string $source): string {
         'legacy_fallback' => 'تعرفه‌ی پیش‌فرض سازگاری',
         'admin_exempt'    => 'مدیر (بدون کسر)',
         'customer_price'  => 'تعرفه‌ی اختصاصی مشتری',
+        'gateway_price'   => 'تعرفه‌ی درگاه',
     ][$source] ?? $source;
 }
 
@@ -842,7 +843,8 @@ function sms_pricing_group_key(array $resolution): string {
  * ("Cost Preview and actual send use the same pricing engine") is true because both call this exact
  * function, not because two implementations were kept in step by hand.
  *
- * $messages is [['mobile' => normalizedMsisdn, 'segments' => int], ...] — segments always come from
+ * $messages is [['mobile' => normalizedMsisdn, 'segments' => int, 'encoding' => 'fa'|'en'], ...] — the
+ * encoding (sms_encoding(), defaults to 'fa') picks the Persian or Latin price-matrix cell; segments always come from
  * sms_parts() upstream, never recomputed here, so pricing and segmentation can never disagree.
  *
  * $exempt mirrors the long-standing platform-admin exemption (dispatch_message() charges an admin
@@ -871,10 +873,13 @@ function sms_pricing_price_messages(
     // The account's tariff coefficient (app/CustomerHierarchy.php): a reseller's customer pays the
     // tariff its reseller set, a reseller the one the admin set. 100% when no account is given.
     $tariffBp    = (!$exempt && $customerUserId !== null) ? customer_effective_tariff_bp($customerUserId) : CUSTOMER_TARIFF_BASE_BP;
-    // The account's own per-operator prices (app/CustomerOperatorPrices.php), in effect at the same
-    // pricing instant. Where one applies it is the exact price: neither the route price nor the
-    // tariff percentage is used for that recipient.
-    $customPrices = (!$exempt && $customerUserId !== null) ? customer_operator_prices_at($customerUserId, $atUtc) : [];
+    // The price matrix (app/GatewayPrices.php), read once per pass at the same pricing instant:
+    // the account's own cells (exact prices) and the global cells (list prices). An exempt pass
+    // costs nothing, so it skips both.
+    $priceOwner  = (!$exempt && $customerUserId !== null) ? customer_price_owner($customerUserId) : null;
+    $userCells   = $priceOwner !== null ? gateway_prices_at($priceOwner, $atUtc) : [];
+    $globalCells = !$exempt ? gateway_prices_at(null, $atUtc) : [];
+    $gatewayByOperator = [];
 
     $phones = [];
     foreach ($messages as $m) {
@@ -896,10 +901,14 @@ function sms_pricing_price_messages(
         $totalSegs += $segments;
 
         $resolution = $batch['by_phone'][$mobile] ?? null;
-        if ($resolution !== null && $customPrices !== []) {
-            $custom = customer_operator_price_for($customPrices, $resolution['operator_id'] === null ? null : (int)$resolution['operator_id']);
-            if ($custom !== null) {
-                $resolution = sms_pricing_with_customer_price($resolution, $custom);
+        if ($resolution !== null && ($userCells !== [] || $globalCells !== [])) {
+            $operatorId = $resolution['operator_id'] === null ? null : (int)$resolution['operator_id'];
+            $gatewayId  = $gatewayByOperator[$operatorId ?? '-'] ??= sms_pricing_gateway_for($sender, $messageType, $mobile);
+            $cellKey    = gateway_price_key($gatewayId, gateway_price_column_for($mobile, $operatorId), (string)($m['encoding'] ?? 'fa'));
+            if (isset($userCells[$cellKey])) {
+                $resolution = sms_pricing_with_customer_price($resolution, $userCells[$cellKey]);
+            } elseif (isset($globalCells[$cellKey])) {
+                $resolution = sms_pricing_with_matrix_price($resolution, $globalCells[$cellKey]);
             }
         }
         if ($resolution === null || !$resolution['ok']) {
@@ -999,23 +1008,34 @@ function sms_pricing_price_messages(
 }
 
 /**
- * A recipient's resolution re-priced at the account's own price for its operator. The route,
+ * A recipient's resolution re-priced from a price-matrix cell (app/GatewayPrices.php). The route,
  * provider and operator stay as resolved (the message still travels the same way); only the price
  * changes. A recipient the catalog could not price (no route price, fallback off) becomes priceable,
- * because the account's price is a complete answer on its own.
+ * because a matrix cell is a complete answer on its own.
+ *
+ * 'customer_price' (the account's own cell) is charged exactly; 'gateway_price' (the global cell) is
+ * a list price, so the account's tariff percentage still applies to it.
  */
-function sms_pricing_with_customer_price(array $resolution, array $custom): array {
+function sms_pricing_with_cell_price(array $resolution, array $cell, string $source): array {
     if ($resolution['ok']) {
         $resolution['list_unit_price'] = (int)$resolution['unit_price'];
     }
     unset($resolution['reason']);
     $resolution['ok']              = true;
-    $resolution['unit_price']      = (int)$custom['millicredits'];
+    $resolution['unit_price']      = (int)$cell['millicredits'];
     $resolution['currency']        = SMS_PRICING_CURRENCY;
-    $resolution['price_source']    = 'customer_price';
+    $resolution['price_source']    = $source;
     $resolution['pricing_rule_id'] = null;
-    $resolution['customer_price_id'] = (int)$custom['id'];
+    $resolution['matrix_price_id'] = (int)$cell['id'];
     return $resolution;
+}
+
+function sms_pricing_with_customer_price(array $resolution, array $cell): array {
+    return sms_pricing_with_cell_price($resolution, $cell, 'customer_price');
+}
+
+function sms_pricing_with_matrix_price(array $resolution, array $cell): array {
+    return sms_pricing_with_cell_price($resolution, $cell, 'gateway_price');
 }
 
 /**
@@ -1027,7 +1047,8 @@ function sms_pricing_with_customer_price(array $resolution, array $custom): arra
  */
 function sms_pricing_price_single_content(array $destinations, string $content, string $sender, ?string $messageType = null, ?string $atUtc = null, bool $exempt = false, ?int $customerUserId = null): array {
     $segments = sms_parts($content);
-    $messages = array_map(static fn($d) => ['mobile' => (string)$d, 'segments' => $segments], $destinations);
+    $encoding = sms_encoding($content);
+    $messages = array_map(static fn($d) => ['mobile' => (string)$d, 'segments' => $segments, 'encoding' => $encoding], $destinations);
     $priced = sms_pricing_price_messages($messages, $sender, $messageType, $atUtc, $exempt, $customerUserId);
     $priced['segments_per_message'] = $segments;
     return $priced;

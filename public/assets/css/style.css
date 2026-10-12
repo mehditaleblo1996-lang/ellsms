@@ -1338,3 +1338,18 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .op-logo { width: auto; vertical-align: middle; object-fit: contain; flex: none; }
 .op-label { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .op-label .op-logo { min-width: 20px; }
+
+/* Price matrix: gateway x operator x encoding (app/views/price_matrix.php). */
+.price-matrix { border-collapse: separate; border-spacing: 0; min-width: 100%; }
+.price-matrix th, .price-matrix td { padding: 5px 3px; text-align: center; border-bottom: 1px solid var(--border, #e6e8ee); }
+.price-matrix thead th { font-weight: 600; white-space: nowrap; }
+.price-matrix .pm-col-head { border-inline-start: 1px solid var(--border, #e6e8ee); }
+.price-matrix .pm-col-head .op-label { justify-content: center; }
+.price-matrix .pm-enc-head { font-size: .85em; font-weight: 500; color: var(--muted, #6b7280); }
+.price-matrix .pm-gateway-head, .price-matrix .pm-gateway { text-align: start; white-space: nowrap; background: var(--surface-2, #f7f8fa); position: sticky; inset-inline-start: 0; z-index: 1; }
+.price-matrix .pm-gateway { font-weight: 500; }
+.price-matrix input { width: 62px; min-width: 0; padding: 5px 4px; text-align: center; margin: 0; font-size: .92em; }
+.price-matrix .pm-fill { display: inline-flex; gap: 2px; align-items: center; }
+.price-matrix .pm-fill input { width: 44px; }
+.price-matrix .pm-fill .btn { padding: 4px 5px; line-height: 1; min-width: 0; }
+.price-matrix tbody tr:hover td, .price-matrix tbody tr:hover th { background: #f3f6ff; }

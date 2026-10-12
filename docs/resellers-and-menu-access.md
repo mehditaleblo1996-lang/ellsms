@@ -61,8 +61,8 @@ price.
 - The reseller sets each child's coefficient, never below its own (`tariff_below_parent`).
 - A sub-reseller cannot lower its own tariff below what its children are charged.
 - Every change is kept in `ellsms_customer_tariff_history`.
-- An account not under a reseller can also get an exact Rial price per operator from the admin,
-  which replaces the coefficient for that operator (`docs/customer-operator-prices.md`).
+- An account not under a reseller can also get exact Rial prices per gateway, operator and encoding from the admin,
+  which replaces the coefficient for that cell (`docs/gateway-price-matrix.md`).
 
 **Profit** (`customer_profit_run()`; the worker runs it hourly, also `make reseller-profit`, or the
 button on «سود نمایندگان»):

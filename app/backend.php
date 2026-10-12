@@ -1492,7 +1492,7 @@ function bulk_queue_job(
     // so the worker settles at the accepted rate no matter how long the queue takes or how many
     // times a row is retried (STEP 24).
     $pricedMessages = array_map(
-        static fn(array $it): array => ['mobile' => (string)$it['mobile'], 'segments' => sms_parts((string)$it['content'])],
+        static fn(array $it): array => ['mobile' => (string)$it['mobile'], 'segments' => sms_parts((string)$it['content']), 'encoding' => sms_encoding((string)$it['content'])],
         $items
     );
     $priced = sms_pricing_price_messages($pricedMessages, $originator, $messageType, null, $isAdmin, $userId);

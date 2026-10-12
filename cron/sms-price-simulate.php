@@ -48,7 +48,7 @@ $type     = sms_pricing_normalize_message_type($opts['type'] !== null ? (string)
 $at       = $opts['at'] !== null && $opts['at'] !== '' ? (string)$opts['at'] : sms_pricing_now();
 
 $priced = sms_pricing_price_messages(
-    [['mobile' => $normalized, 'segments' => $segments]],
+    [['mobile' => $normalized, 'segments' => $segments, 'encoding' => $opts['content'] !== null ? sms_encoding((string)$opts['content']) : 'fa']],
     $sender,
     $type,
     $at,

@@ -493,7 +493,7 @@ function estimate_bulk_cost(array $user, string $originator, array $items, bool 
             $segments = sms_parts($candidate['content']);
             $totalSegments += $segments;
             $distribution[(string)$segments] = ($distribution[(string)$segments] ?? 0) + 1;
-            $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $segments];
+            $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $segments, 'encoding' => sms_encoding($candidate['content'])];
         }
     } else {
         // Segment counting (not pricing) is what becomes expensive at this scale, so the first
@@ -509,11 +509,11 @@ function estimate_bulk_cost(array $user, string $originator, array $items, bool 
             $segments = sms_parts($candidate['content']);
             $sampleSegments += $segments;
             $distribution[(string)$segments] = ($distribution[(string)$segments] ?? 0) + 1;
-            $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $segments];
+            $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $segments, 'encoding' => sms_encoding($candidate['content'])];
         }
         $meanSegments = (int)ceil($sampleSegments / max(1, count($sample)));
         foreach (array_slice($candidates, $ceiling) as $candidate) {
-            $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $meanSegments];
+            $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $meanSegments, 'encoding' => sms_encoding($candidate['content'])];
         }
         $totalSegments = $sampleSegments + $meanSegments * ($eligibleCount - count($sample));
     }

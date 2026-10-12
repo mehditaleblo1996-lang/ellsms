@@ -138,7 +138,7 @@ function import_fast_analyze_generated_job(array $job): void {
 
         $candidateList = array_values($candidates);
         $toPrice = array_map(
-            static fn(array $c): array => ['mobile' => $c['mobile'], 'segments' => $c['segments']],
+            static fn(array $c): array => ['mobile' => $c['mobile'], 'segments' => $c['segments'], 'encoding' => sms_encoding($c['content'])],
             $candidateList
         );
         $priced = $toPrice === [] ? null : sms_pricing_price_messages(

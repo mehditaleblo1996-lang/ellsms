@@ -8,6 +8,8 @@
  *     with that province's cities; choosing a country other than Iran disables both.
  *  3. Tabs (.tabs > .tabs-nav + .tab-panel): one panel at a time. The open tab is remembered per page
  *     for the browser session, so the redirect after saving a form lands back on the same tab.
+ *  4. Fill down ([data-fill-down] buttons, the price matrix): copies the value of the matching
+ *     [data-fill-source] input into every [data-fill-target] input of the same key in its form.
  */
 (function () {
   'use strict';
@@ -146,6 +148,19 @@
     root.classList.add('is-ready');
     show(initial, false);
   }
+
+  // 4. Fill down: the source's value (or an empty cell, to clear) goes into every target of its key.
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest('[data-fill-down]');
+    if (!button) return;
+    var key = button.getAttribute('data-fill-down');
+    var scope = button.closest('form') || document;
+    var source = scope.querySelector('[data-fill-source="' + key + '"]');
+    if (!source) return;
+    scope.querySelectorAll('[data-fill-target="' + key + '"]').forEach(function (input) {
+      input.value = source.value.trim();
+    });
+  });
 
   document.querySelectorAll('.tabs').forEach(initTabs);
   document.querySelectorAll('[data-jdate]').forEach(initDate);
