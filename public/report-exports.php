@@ -26,7 +26,7 @@ $scopeOrgId = is_admin() ? null : (int)($me['organization_id'] ?? 0);
 /* ---------- Download ---------- */
 if (isset($_GET['download'])) {
     $exportId = (int)$_GET['download'];
-    $export = $exportId > 0 ? report_export_get($exportId, $scopeOrgId) : null;
+    $export = $exportId > 0 ? report_export_get($exportId, $scopeOrgId, (int)$me['id']) : null;
 
     // One indistinguishable response for "does not exist", "belongs to another organization" and
     // "not finished". Distinguishing them would let a caller probe which export ids exist.
@@ -75,7 +75,7 @@ if (isset($_GET['download'])) {
 $pageTitle = 'خروجی‌های گزارش';
 $active = 'reports';
 
-$exports = report_export_list((int)($me['organization_id'] ?? 0), 20);
+$exports = report_export_list((int)($me['organization_id'] ?? 0), 20, (int)$me['id']);
 
 $statusLabels = [
     'queued'     => ['در صف', 'warn'],
@@ -141,6 +141,6 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   </div>
 
-  <p style="margin-top:16px"><a class="btn" href="/reports.php">← بازگشت به گزارش‌ها</a></p>
+  <p style="margin-top:16px"><a class="btn" href="/messages/reports">← بازگشت به گزارش‌ها</a></p>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

@@ -36,15 +36,23 @@ Page size defaults to 50 and is capped at 200.
 
 ### Durable export jobs
 
-An export larger than 5,000 rows becomes a row in `ellsms_report_exports`, and the request returns
-immediately. The `export-worker` container claims it, streams the rows to a file, and marks it ready;
-the user downloads it from `/report-exports.php`.
+The report page (`/messages/reports`) has a «دریافت خروجی CSV همین گزارش» button. It queues the
+report exactly as filtered on screen (date range, status, sender, recipient, text, and the user for
+an admin) as a row in `ellsms_report_exports`, and the request returns immediately. The
+`export-worker` container claims it, streams the rows to a file, and marks it ready; the user
+downloads it from `/messages/reports/exports`. An account has at most
+`REPORT_EXPORT_MAX_OPEN_PER_USER` (3) exports queued or in preparation at once.
 
-The ≤5,000-row path stays synchronous because it was already bounded — it streams through a cursor
-with a hard `LIMIT` and flushes every 500 rows, so it never materializes the result set.
+The file holds every message the page counts, one row each, its first column naming the source:
+`مستقیم` (backend sends, `outbound_message`), `مستقیم (درگاه)` (direct/API and scheduled sends straight to
+a gateway, `ellsms_message_attempts`) and `انبوه` (the items of the bulk jobs created in the range).
+Each source has its own filter builder (`report_export_filter_sql()`,
+`report_export_gateway_filter_sql()`, `report_export_bulk_filter_sql()`) applying the page's own
+scope and status grouping. Times are written in Tehran time. An account without an organization
+sees and downloads only its own exports.
 
 ```
-public/reports.php ──queue──► ellsms_report_exports ──claim──► cron/export-worker.php
+public/reports-v2.php ─queue─► ellsms_report_exports ──claim──► cron/export-worker.php
                                                                       │ writes
                                     storage/exports/<32-hex>.csv ◄─────┘
                                                                       │ reads
@@ -56,11 +64,11 @@ Properties that make it safe:
 | Concern | How it is handled |
 |---|---|
 | Bounded memory | Rows are read in keyset pages of `EXPORT_CHUNK_ROWS` and written straight to the file handle. Nothing accumulates. |
-| Resumability | `last_row_id` is committed as it advances, so a killed worker resumes instead of restarting a million-row scan. |
+| Resumability | A job whose worker died is reclaimed once its lease expires and written again from the start (`last_row_id` records progress). |
 | Crash safety | Written to `<key>.csv.part` and `rename()`d only on success. A reader never sees a partial file. |
 | Tenant isolation | Filters *and* the requester's org scope are captured at queue time and re-applied by the worker. It never re-resolves "who can see what" later. |
 | Fail closed | An unresolvable member list emits `1 = 0`, so a misconfigured job returns nothing rather than everything. |
-| No SQL injection | Filters are stored as JSON **data** and re-compiled through `report_export_filter_sql()`. Stored SQL is never executed. |
+| No SQL injection | Filters are stored as JSON **data** and re-compiled through the filter builders above. Stored SQL is never executed. |
 | Files outside the web root | `storage/exports/`, not `public/`. The only way to obtain one is the authenticated endpoint. |
 | Opaque filenames | 32 random hex characters. The name leaks no phone number, search term, or date range into directory listings or proxy logs. |
 | Path-traversal proof | `report_export_path()` rejects any key that does not match `^[a-f0-9]{32}\.csv$`. |

@@ -24,6 +24,9 @@ declare(strict_types=1);
  * must not retroactively widen an export they already requested.
  */
 
+/** Exports one account may have queued or in preparation at once (public/reports-v2.php). */
+const REPORT_EXPORT_MAX_OPEN_PER_USER = 3;
+
 /** Where generated export files live. Deliberately OUTSIDE public/ — see report_export_path(). */
 function report_export_dir(): string {
     return dirname(__DIR__, 2) . '/storage/exports';
@@ -48,19 +51,21 @@ function report_export_path(string $storageKey): string {
  * Compile a stored filter set into a WHERE clause and bound parameters.
  *
  * $filters keys (all optional except the date range):
- *   from, to        Y-m-d date bounds, inclusive of the whole `to` day
- *   status          one of the canonical outbound statuses
- *   dest            destination substring (digits only)
- *   q               message-content substring
- *   user_id         a specific sender (admin-only; ignored otherwise)
- *   member_ids      the organization member ids an ordinary user may see
- *   is_admin        whether the REQUESTER was an admin when the job was created
+ *   from_utc, to_utc  UTC instants [from_utc, to_utc): the report page's Tehran days, converted
+ *                     (report_export_filters_from_request()). Preferred over from/to.
+ *   from, to          Y-m-d date bounds, inclusive of the whole `to` day (older stored jobs)
+ *   status            pending / sent / delivered / failed, as the report page groups them
+ *   dest              destination substring (digits only)
+ *   sender            sender-line substring (digits only)
+ *   q                 message-content substring
+ *   user_id           a specific sender (admin-only; ignored otherwise)
+ *   member_ids        the organization member ids an ordinary user may see
+ *   is_admin          whether the REQUESTER was an admin when the job was created
  *
  * Returns [$whereSql, $params]. Every value is bound, never interpolated.
  */
 function report_export_filter_sql(array $filters): array {
-    $where  = ['m.sent_at >= ?', 'm.sent_at < DATE_ADD(?, INTERVAL 1 DAY)'];
-    $params = [(string)($filters['from'] ?? ''), (string)($filters['to'] ?? '')];
+    [$where, $params] = report_export_date_clause('m.sent_at', $filters);
 
     $isAdmin = !empty($filters['is_admin']);
 
@@ -89,27 +94,217 @@ function report_export_filter_sql(array $filters): array {
         }
     }
 
-    $status = (string)($filters['status'] ?? '');
-    if ($status !== '' && in_array($status, ['pending','sent','send_failed','delivered','failed'], true)) {
-        $where[]  = 'm.status = ?';
-        $params[] = $status;
+    // The report page's grouping: send_failed counts as failed, anything not yet final as pending.
+    $statusSql = [
+        'delivered'   => "m.status = 'delivered'",
+        'sent'        => "m.status = 'sent'",
+        'failed'      => "m.status IN ('send_failed','failed')",
+        'send_failed' => "m.status = 'send_failed'",
+        'pending'     => "m.status NOT IN ('delivered','sent','send_failed','failed')",
+    ][(string)($filters['status'] ?? '')] ?? null;
+    if ($statusSql !== null) {
+        $where[] = $statusSql;
     }
 
-    $dest = (string)($filters['dest'] ?? '');
-    if ($dest !== '') {
-        $where[]  = 'm.destination LIKE ?';
-        $params[] = '%' . preg_replace('/\D/', '', $dest) . '%';
-    }
-
-    $text = (string)($filters['q'] ?? '');
-    if ($text !== '') {
-        $where[]  = 'm.content LIKE ?';
-        $params[] = '%' . $text . '%';
-    }
+    report_export_text_clauses($filters, 'm.destination', 'm.originator', 'm.content', $where, $params);
 
     // A message an admin removed from the customer's panel (app/HiddenMessages.php) is not exported
     // for the customer either. Keyed on who REQUESTED the export, not on who runs the worker.
     return [implode(' AND ', $where) . hidden_messages_exclude_sql('outbound', 'm.id', !$isAdmin), $params];
+}
+
+/** [$where, $params] for the date range on $column: from_utc/to_utc when stored, else from/to days. */
+function report_export_date_clause(string $column, array $filters): array {
+    if (!empty($filters['from_utc']) && !empty($filters['to_utc'])) {
+        return [["{$column} >= ?", "{$column} < ?"], [(string)$filters['from_utc'], (string)$filters['to_utc']]];
+    }
+    return [["{$column} >= ?", "{$column} < DATE_ADD(?, INTERVAL 1 DAY)"], [(string)($filters['from'] ?? ''), (string)($filters['to'] ?? '')]];
+}
+
+/** Appends the destination / sender / content substring filters shared by every source. */
+function report_export_text_clauses(array $filters, string $destColumn, string $senderColumn, ?string $contentColumn, array &$where, array &$params): void {
+    $dest = preg_replace('/\D/', '', (string)($filters['dest'] ?? '')) ?? '';
+    if ($dest !== '') {
+        $where[]  = "{$destColumn} LIKE ?";
+        $params[] = '%' . $dest . '%';
+    }
+    $sender = preg_replace('/\D/', '', (string)($filters['sender'] ?? '')) ?? '';
+    if ($sender !== '') {
+        $where[]  = "{$senderColumn} LIKE ?";
+        $params[] = '%' . $sender . '%';
+    }
+    $text = (string)($filters['q'] ?? '');
+    if ($text !== '') {
+        if ($contentColumn === null) {
+            $where[] = '1 = 0'; // this source keeps no text, so nothing in it can match
+        } else {
+            $where[]  = "{$contentColumn} LIKE ?";
+            $params[] = '%' . $text . '%';
+        }
+    }
+}
+
+/**
+ * The sender scope of a non-admin requester on a column holding user ids: the organization's
+ * members. An empty list matches nothing (never "no restriction").
+ */
+function report_export_member_clause(string $column, array $filters, array &$where, array &$params): void {
+    $memberIds = array_values(array_filter(array_map('intval', (array)($filters['member_ids'] ?? []))));
+    if ($memberIds === []) {
+        $where[] = '1 = 0';
+        return;
+    }
+    $where[] = "{$column} IN (" . implode(',', array_fill(0, count($memberIds), '?')) . ')';
+    array_push($params, ...$memberIds);
+}
+
+/**
+ * Sends that went straight to a gateway (SMS_GATEWAY_TRANSPORT=1): they never reach
+ * outbound_message, their only record is the accepted ellsms_message_attempts row. Bulk items are
+ * not here, they have their own source. Same filters as report_export_filter_sql(); alias `a`.
+ */
+function report_export_gateway_filter_sql(array $filters): array {
+    [$where, $params] = report_export_date_clause('a.attempted_at', $filters);
+    $where[] = "a.status = 'accepted'";
+    $where[] = "a.reference_type IN ('direct_send','schedule')";
+    $isAdmin = !empty($filters['is_admin']);
+    if ($isAdmin) {
+        if ((int)($filters['user_id'] ?? 0) > 0) {
+            $where[]  = 'a.user_id = ?';
+            $params[] = (int)$filters['user_id'];
+        }
+    } else {
+        report_export_member_clause('a.user_id', $filters, $where, $params);
+    }
+    $statusSql = [
+        'delivered' => "a.delivery_status = 'delivered'",
+        'failed'    => "a.delivery_status IN ('failed','rejected','expired')",
+        'sent'      => "(a.delivery_status IS NULL OR a.delivery_status NOT IN ('delivered','failed','rejected','expired'))",
+        'pending'   => '1 = 0', // an accepted attempt has left; it is never pending
+    ][(string)($filters['status'] ?? '')] ?? null;
+    if ($statusSql !== null) {
+        $where[] = $statusSql;
+    }
+    $hasText = backend_message_attempts_have_report_columns();
+    report_export_text_clauses($filters, 'a.destination', $hasText ? 'a.originator' : "''", $hasText ? 'a.content' : null, $where, $params);
+    return [implode(' AND ', $where) . hidden_messages_exclude_sql('attempt', 'a.id', !$isAdmin), $params];
+}
+
+/**
+ * Every item of the bulk jobs created in the range (alias `bi`, joined to its job `bj`). A
+ * non-admin sees its organization's jobs, or its own without an organization — the report page's
+ * rule for bulk jobs.
+ */
+function report_export_bulk_filter_sql(array $filters): array {
+    [$where, $params] = report_export_date_clause('bj.created_at', $filters);
+    $isAdmin = !empty($filters['is_admin']);
+    if ($isAdmin) {
+        if ((int)($filters['user_id'] ?? 0) > 0) {
+            $where[]  = 'bj.user_id = ?';
+            $params[] = (int)$filters['user_id'];
+        }
+    } elseif ((int)($filters['organization_id'] ?? 0) > 0) {
+        $where[]  = 'bj.organization_id = ?';
+        $params[] = (int)$filters['organization_id'];
+    } else {
+        report_export_member_clause('bj.user_id', $filters, $where, $params);
+    }
+    $statusSql = [
+        'delivered' => "bi.delivery_status = 'delivered'",
+        'failed'    => "(bi.status = 'failed' OR bi.delivery_status IN ('failed','rejected','expired'))",
+        'sent'      => "(bi.status = 'sent' AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN ('delivered','failed','rejected','expired')))",
+        'pending'   => "bi.status IN ('pending','processing')",
+    ][(string)($filters['status'] ?? '')] ?? null;
+    if ($statusSql !== null) {
+        $where[] = $statusSql;
+    }
+    report_export_text_clauses($filters, 'bi.mobile', 'bj.originator', 'bi.content', $where, $params);
+    return [implode(' AND ', $where) . hidden_messages_exclude_sql('bulk_job', 'bj.id', !$isAdmin), $params];
+}
+
+function report_export_gateway_count(string $whereSql, array $params): int {
+    $st = db()->prepare("SELECT COUNT(*) FROM ellsms_message_attempts a WHERE {$whereSql}");
+    $st->execute($params);
+    return (int)$st->fetchColumn();
+}
+
+/** One keyset page of gateway sends, newest first, below $afterId (0 = from the newest). */
+function report_export_gateway_page(string $whereSql, array $params, int $limit, int $afterId = 0): array {
+    $text = backend_message_attempts_have_report_columns() ? 'a.originator, a.content' : "'' AS originator, '' AS content";
+    if ($afterId > 0) {
+        $whereSql .= ' AND a.id < ?';
+        $params[] = $afterId;
+    }
+    $st = db()->prepare(
+        "SELECT a.id, a.user_id, {$text}, a.destination, a.reference_type, a.reference_id, a.error_code,
+                a.provider_message_id, a.provider_status, a.delivery_status, a.delivery_attempts,
+                a.delivery_checked_at, a.delivered_at, a.attempted_at
+         FROM ellsms_message_attempts a
+         WHERE {$whereSql}
+         ORDER BY a.id DESC
+         LIMIT " . max(1, $limit)
+    );
+    $st->execute($params);
+    return $st->fetchAll();
+}
+
+function report_export_bulk_count(string $whereSql, array $params): int {
+    $st = db()->prepare("SELECT COUNT(*) FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id WHERE {$whereSql}");
+    $st->execute($params);
+    return (int)$st->fetchColumn();
+}
+
+/** One keyset page of bulk items, newest first, below $afterId (0 = from the newest). */
+function report_export_bulk_page(string $whereSql, array $params, int $limit, int $afterId = 0): array {
+    if ($afterId > 0) {
+        $whereSql .= ' AND bi.id < ?';
+        $params[] = $afterId;
+    }
+    $st = db()->prepare(
+        "SELECT bi.id, bi.job_id, bj.user_id, bj.originator, bi.mobile AS destination, bi.content, bi.status, bi.error,
+                bi.provider_message_id, bi.provider_status, bi.delivery_status, bi.delivery_attempts,
+                bi.delivery_checked_at, bi.delivered_at, COALESCE(bi.claimed_at, bi.created_at) AS sent_at
+         FROM ellsms_bulk_items bi
+         JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
+         WHERE {$whereSql}
+         ORDER BY bi.id DESC
+         LIMIT " . max(1, $limit)
+    );
+    $st->execute($params);
+    return $st->fetchAll();
+}
+
+/**
+ * The stored filter set for the report page's current filters ($query = its GET parameters), with
+ * the requester's scope captured now: its organization, the organization's members, admin-ness.
+ */
+function report_export_filters_from_request(array $me, array $query, bool $isAdmin): array {
+    $from = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-29 day'));
+    $to   = jalali_request_to_gregorian('to') ?? date('Y-m-d');
+    [$fromUtc, $toUtc] = local_day_range_to_utc($from, $to);
+    $status = (string)($query['status'] ?? '');
+    $orgId = (int)($me['organization_id'] ?? 0);
+    $memberIds = [];
+    if (!$isAdmin) {
+        $memberIds = $orgId > 0 ? organization_member_user_ids($orgId) : [];
+        if ($memberIds === []) {
+            $memberIds = [(int)$me['id']];
+        }
+    }
+    return [
+        'from'            => $from,
+        'to'              => $to,
+        'from_utc'        => $fromUtc,
+        'to_utc'          => $toUtc,
+        'status'          => in_array($status, ['pending', 'sent', 'delivered', 'failed'], true) ? $status : '',
+        'dest'            => preg_replace('/\D/', '', (string)($query['dest'] ?? '')) ?? '',
+        'sender'          => preg_replace('/\D/', '', (string)($query['sender'] ?? '')) ?? '',
+        'q'               => mb_substr(trim((string)($query['q'] ?? '')), 0, 200),
+        'user_id'         => $isAdmin ? max(0, (int)($query['user_id'] ?? 0)) : 0,
+        'member_ids'      => $memberIds,
+        'organization_id' => $orgId,
+        'is_admin'        => $isAdmin,
+    ];
 }
 
 /**
@@ -248,16 +443,21 @@ function report_export_fail(int $exportId, Throwable $t): void {
  * Bounded by construction — this is a status list, not a report. Scoping is in the SQL, not applied
  * after the fetch, so a tampered id can never widen it.
  */
-function report_export_list(int $organizationId, int $limit = 20): array {
+function report_export_list(int $organizationId, int $limit = 20, ?int $userId = null): array {
+    // Accounts without an organization are all stored under organization 0: for them the export
+    // belongs to its requester alone, never to every other account without an organization.
+    [$scopeSql, $scopeParams] = $organizationId > 0 || $userId === null
+        ? ['organization_id = ?', [$organizationId]]
+        : ['organization_id = 0 AND user_id = ?', [$userId]];
     $st = db()->prepare(
         "SELECT id, status, download_filename, total_rows, exported_rows, file_bytes,
                 error_message, created_at, completed_at, expires_at
          FROM ellsms_report_exports
-         WHERE organization_id = ?
+         WHERE {$scopeSql}
          ORDER BY id DESC
          LIMIT " . max(1, min(100, $limit))
     );
-    $st->execute([$organizationId]);
+    $st->execute($scopeParams);
     return $st->fetchAll();
 }
 
@@ -268,12 +468,16 @@ function report_export_list(int $organizationId, int $limit = 20): array {
  * "not found" rather than another tenant's file. Platform admins pass null to bypass, matching the
  * report page's existing admin rule — this does not widen any permission.
  */
-function report_export_get(int $exportId, ?int $organizationId): ?array {
+function report_export_get(int $exportId, ?int $organizationId, ?int $userId = null): ?array {
     $sql    = 'SELECT * FROM ellsms_report_exports WHERE id = ?';
     $params = [$exportId];
     if ($organizationId !== null) {
         $sql .= ' AND organization_id = ?';
         $params[] = $organizationId;
+        if ($organizationId === 0 && $userId !== null) {
+            $sql .= ' AND user_id = ?'; // no organization: only the requester's own (report_export_list())
+            $params[] = $userId;
+        }
     }
     $st = db()->prepare($sql);
     $st->execute($params);

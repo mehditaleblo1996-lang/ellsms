@@ -77,7 +77,10 @@ Logger::info('report_export.worker.started', [
 ]);
 
 /**
- * Stream one export to disk.
+ * Stream one export to disk: every message the report page shows for the stored filters, from its
+ * three sources in turn — direct/API sends through the backend (outbound_message), direct/API and
+ * scheduled sends straight to a gateway (ellsms_message_attempts), and bulk items — one row each,
+ * the first column saying which.
  *
  * Writes to a temporary file and renames only on success, so a reader can never observe a partially
  * written CSV: the file either does not exist yet or is complete. rename() within one filesystem is
@@ -90,17 +93,20 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
         throw new RuntimeException('Export job has an unreadable filter set.');
     }
 
-    // The SAME builder public/reports.php uses, applied to the filters captured when the job was
-    // queued -- including the tenant scope. An export can therefore never contain a row the report
-    // itself would not have shown.
-    [$whereSql, $params] = report_export_filter_sql($filters);
-
-    // A progress denominator only. It is allowed to drift as new messages arrive mid-export; the
-    // file is defined by the cursor walk, not by this number. Goes through the backend adapter —
-    // outbound_message is backend-owned and this worker must not query it directly
-    // (docs/service-boundaries.md §1, enforced by cron/backend-boundary-check.php).
-    $totalRows = backend_outbound_export_count($whereSql, $params);
-    db()->prepare('UPDATE ellsms_report_exports SET total_rows = ? WHERE id = ?')->execute([$totalRows, $exportId]);
+    $db = db();
+    $sources = [
+        'outbound' => ['label' => 'مستقیم', 'sql' => report_export_filter_sql($filters),
+                       'count' => 'backend_outbound_export_count', 'page' => 'backend_outbound_export_page'],
+        'gateway'  => ['label' => 'مستقیم (درگاه)', 'sql' => report_export_gateway_filter_sql($filters),
+                       'count' => 'report_export_gateway_count', 'page' => 'report_export_gateway_page'],
+        'bulk'     => ['label' => 'انبوه', 'sql' => report_export_bulk_filter_sql($filters),
+                       'count' => 'report_export_bulk_count', 'page' => 'report_export_bulk_page'],
+    ];
+    $totalRows = 0;
+    foreach ($sources as $source) {
+        $totalRows += ($source['count'])(...$source['sql']);
+    }
+    $db->prepare('UPDATE ellsms_report_exports SET total_rows = ? WHERE id = ?')->execute([$totalRows, $exportId]);
 
     $storageKey = bin2hex(random_bytes(16)) . '.csv';
     $finalPath  = report_export_path($storageKey);
@@ -113,61 +119,39 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
 
     try {
         fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads UTF-8 Persian correctly
-        fputcsv($out, ['شناسه','کاربر','خط ارسال','گیرنده','متن پیام','تعداد پارت','وضعیت','شناسه‌ی گیت‌وی',
+        fputcsv($out, ['نوع ارسال','شناسه','کاربر','خط ارسال','گیرنده','متن پیام','تعداد پارت','وضعیت','شناسه‌ی مرجع',
                        'مرجع اپراتور','وضعیت خام درگاه','تعداد تلاش استعلام','کد خطا','زمان ارسال','آخرین استعلام','زمان تحویل']);
 
-        $cursor    = 0;               // 0 = start from the newest row
         $written   = 0;
         $truncated = false;
-        $db        = db();
 
-        while (true) {
-            // Bounded by $chunkRows, never the whole result set. The keyset cursor lives in the
-            // adapter so this worker never names a backend-owned table.
-            $rows = backend_outbound_export_page($whereSql, $params, $chunkRows, $cursor);
-            if ($rows === []) {
-                break;
-            }
-
-            // Delivery lifecycle for just this page: ONE extra query per page, not one per row.
-            $delivery = export_delivery_for_page($db, $rows);
-
-            foreach ($rows as $r) {
-                $d = $delivery[(string)$r['destination']] ?? null;
-                fputcsv($out, [
-                    $r['id'],
-                    $r['username'],
-                    $r['originator'],
-                    $r['destination'],
-                    $r['content'],
-                    sms_parts((string)$r['content']),
-                    $d !== null && !empty($d['delivery_status']) ? (string)$d['delivery_status'] : (string)$r['status'],
-                    $r['reference_id'] ?? '',
-                    // A 19-digit provider reference is written with a leading tab so Excel keeps it
-                    // as TEXT. Without it the cell becomes 4.47362E+18 and the reference is lost.
-                    $d !== null && $d['provider_message_id'] !== null ? "\t" . (string)$d['provider_message_id'] : '',
-                    $d !== null ? (string)($d['provider_status'] ?? '') : '',
-                    $d !== null ? (string)(int)$d['delivery_attempts'] : '',
-                    $r['error_code'],
-                    $r['sent_at'],
-                    $d !== null ? (string)($d['delivery_checked_at'] ?? '') : '',
-                    $d !== null && !empty($d['delivered_at']) ? (string)$d['delivered_at'] : (string)($r['delivered_at'] ?? ''),
-                ]);
-                $cursor = (int)$r['id'];
-                $written++;
-
-                if ($written >= $maxRows) {
-                    $truncated = true;
-                    break 2;
+        foreach ($sources as $kind => $source) {
+            [$whereSql, $params] = $source['sql'];
+            $cursor = 0; // 0 = start from the newest row
+            while (true) {
+                $rows = ($source['page'])($whereSql, $params, $chunkRows, $cursor);
+                if ($rows === []) {
+                    break;
                 }
-            }
+                $usernames = $kind === 'outbound' ? [] : backend_usernames_by_ids(array_column($rows, 'user_id'));
+                $delivery  = $kind === 'outbound' ? export_delivery_for_page($db, $rows) : [];
 
-            // Commit progress as we go: this both extends the lease (so a slow-but-alive worker is
-            // not reclaimed) and records the resume point for a crashed one.
-            report_export_touch($exportId, $written, $cursor, $leaseSeconds);
+                foreach ($rows as $r) {
+                    fputcsv($out, array_merge([$source['label']], export_csv_row($kind, $r, $usernames, $delivery)));
+                    $cursor = (int)$r['id'];
+                    $written++;
 
-            if (count($rows) < $chunkRows) {
-                break;   // short page = last page
+                    if ($written >= $maxRows) {
+                        $truncated = true;
+                        break 3;
+                    }
+                }
+
+                report_export_touch($exportId, $written, $cursor, $leaseSeconds);
+
+                if (count($rows) < $chunkRows) {
+                    break;   // short page = last page
+                }
             }
         }
 
@@ -197,6 +181,65 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
         }
         throw $t;
     }
+}
+
+/** A UTC timestamp as Tehran local time, the time the panel shows. */
+function export_local_time(?string $utc): string {
+    if ($utc === null || trim($utc) === '') {
+        return '';
+    }
+    try {
+        return (new DateTimeImmutable($utc, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('Asia/Tehran'))->format('Y-m-d H:i:s');
+    } catch (Throwable) {
+        return $utc;
+    }
+}
+
+/**
+ * One CSV row (after the source column) for a row of $kind. A provider message id is prefixed
+ * with a tab so a spreadsheet keeps it as text instead of rounding a long number.
+ */
+function export_csv_row(string $kind, array $r, array $usernames, array $delivery): array {
+    $providerId = static fn($id): string => $id !== null && $id !== '' ? "\t" . (string)$id : '';
+    if ($kind === 'outbound') {
+        $d = $delivery[(string)$r['destination']] ?? null;
+        return [
+            $r['id'],
+            $r['username'],
+            $r['originator'],
+            $r['destination'],
+            $r['content'],
+            sms_parts((string)$r['content']),
+            $d !== null && !empty($d['delivery_status']) ? (string)$d['delivery_status'] : (string)$r['status'],
+            $r['reference_id'] ?? '',
+            $d !== null ? $providerId($d['provider_message_id']) : '',
+            $d !== null ? (string)($d['provider_status'] ?? '') : '',
+            $d !== null ? (string)(int)$d['delivery_attempts'] : '',
+            $r['error_code'],
+            export_local_time($r['sent_at']),
+            $d !== null ? export_local_time($d['delivery_checked_at'] ?? null) : '',
+            export_local_time($d !== null && !empty($d['delivered_at']) ? (string)$d['delivered_at'] : ($r['delivered_at'] ?? null)),
+        ];
+    }
+    $content = (string)($r['content'] ?? '');
+    $status = !empty($r['delivery_status']) ? (string)$r['delivery_status'] : (string)($r['status'] ?? 'sent');
+    return [
+        $r['id'],
+        $usernames[(int)$r['user_id']] ?? ('#' . $r['user_id']),
+        $r['originator'],
+        $r['destination'],
+        $content,
+        $content !== '' ? sms_parts($content) : '',
+        $status,
+        $kind === 'bulk' ? 'bulk_job:' . $r['job_id'] : $r['reference_type'] . ':' . $r['reference_id'],
+        $providerId($r['provider_message_id']),
+        (string)($r['provider_status'] ?? ''),
+        (string)(int)($r['delivery_attempts'] ?? 0),
+        $kind === 'bulk' ? (string)($r['error'] ?? '') : (string)($r['error_code'] ?? ''),
+        export_local_time($kind === 'bulk' ? $r['sent_at'] : $r['attempted_at']),
+        export_local_time($r['delivery_checked_at'] ?? null),
+        export_local_time($r['delivered_at'] ?? null),
+    ];
 }
 
 /**

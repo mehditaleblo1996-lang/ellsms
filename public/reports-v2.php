@@ -13,6 +13,25 @@ if (!is_admin()) {
 hidden_messages_handle_post();
 $hideRemoved = hidden_messages_apply_to_viewer();
 
+// "CSV export" (app/Reports/ExportJobs.php): queues the report as it is filtered right now — the
+// filters ride in the form's action URL, so they are the same $_GET the page itself reads — and
+// export-worker prepares the file in the background. At most a few open exports per account.
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['do'] ?? '') === 'export') {
+    csrf_check();
+    $open = db()->prepare("SELECT COUNT(*) FROM ellsms_report_exports WHERE user_id = ? AND status IN ('queued','processing')");
+    $open->execute([(int)$me['id']]);
+    if ((int)$open->fetchColumn() >= REPORT_EXPORT_MAX_OPEN_PER_USER) {
+        flash('error', 'چند خروجی شما هنوز در حال آماده‌سازی است؛ پس از آماده شدن آن‌ها دوباره درخواست کنید.');
+    } else {
+        $exportFilters = report_export_filters_from_request($me, $_GET, is_admin());
+        $exportId = report_export_queue((int)($me['organization_id'] ?? 0), (int)$me['id'], $exportFilters,
+            'ellsms-report-' . $exportFilters['from'] . '-to-' . $exportFilters['to'] . '.csv');
+        audit((int)$me['id'], 'report_export_request', 'export_id=' . $exportId);
+        flash('success', 'خروجی در صف آماده‌سازی قرار گرفت؛ پس از آماده شدن از همین صفحه دانلود کنید.');
+    }
+    redirect('/messages/reports/exports');
+}
+
 function report_v2_local_time(?string $value): string {
     if ($value === null || trim($value) === '') return '';
     try {
@@ -238,6 +257,13 @@ require __DIR__ . '/../app/views/header.php';
   <label>شامل متن <input type="text" name="q" value="<?= e($text) ?>"></label>
   <label>تعداد در صفحه <select name="per_page"><?php foreach([25,50,100,200] as $n): ?><option value="<?= $n ?>" <?= $per===$n?'selected':'' ?>><?= to_persian_digits((string)$n) ?></option><?php endforeach; ?></select></label>
   <button class="btn btn-primary">اعمال فیلتر</button>
+</form>
+<form method="post" action="?<?= e(http_build_query(array_diff_key($_GET, array_flip(['before_time', 'before_id', 'gw_page', 'per_page'])))) ?>" class="toolbar" style="margin-top:10px">
+  <?= csrf_field() ?>
+  <input type="hidden" name="do" value="export">
+  <button class="btn btn-sm">⬇ دریافت خروجی CSV همین گزارش</button>
+  <a class="btn btn-sm btn-ghost" href="/messages/reports/exports">خروجی‌های قبلی</a>
+  <span class="hint">همه‌ی پیام‌های این بازه با فیلترهای بالا (مستقیم، درگاه و انبوه) در پس‌زمینه آماده می‌شود.</span>
 </form>
 </div>
 
