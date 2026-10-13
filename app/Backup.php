@@ -234,6 +234,18 @@ function backup_sha256_file(string $path): string {
 function backup_write_credentials_file(string $host, string $port, string $name, string $user, string $pass): string {
     $path = tempnam(sys_get_temp_dir(), 'ellsms_dbcred_');
     $content = "[client]\nhost={$host}\nport={$port}\nuser={$user}\npassword={$pass}\n";
+    // Same TLS rule as db() (app/bootstrap.php): the server's certificate is only verified with
+    // BACKEND_DB_SSL_VERIFY=1, since an internal database commonly offers a self-signed one —
+    // which mysqldump/mysql otherwise refuse to connect to ("self-signed certificate in chain").
+    if ((env('BACKEND_DB_SSL_VERIFY', '0') ?? '0') === '1') {
+        $content .= "ssl-verify-server-cert=1\n";
+        $sslCa = (string)env('BACKEND_DB_SSL_CA', '');
+        if ($sslCa !== '') {
+            $content .= "ssl-ca={$sslCa}\n";
+        }
+    } else {
+        $content .= "ssl-verify-server-cert=0\n";
+    }
     file_put_contents($path, $content);
     chmod($path, 0600);
     return $path;
