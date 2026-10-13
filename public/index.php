@@ -54,9 +54,62 @@ require __DIR__ . '/../app/views/header.php';
   <div class="stat"><div class="stat-label">در صف ارسال<?php if ($pendingSch > 0): ?> <span class="hint">· <?= to_persian_digits((string)$pendingSch) ?> زمان‌بندی فعال</span><?php endif; ?></div><div class="stat-value"><?= to_persian_digits(number_format($queued)) ?></div></div>
 </div>
 
-<?php if ($jobs): ?>
 <div class="card" style="margin-top:22px">
+  <h2>پیامک‌های ۷ روز اخیر</h2>
+  <div class="bars">
+    <?php foreach ($days as $d => $c):
+        $ts = strtotime($d);
+        $wd = (int)date('w', $ts); // 0=Sun..6=Sat (PHP)
+        $faWeekday = JALALI_WEEKDAYS[($wd + 1) % 7];
+    ?>
+      <div class="bar">
+        <div class="bar-v"><?= to_persian_digits(number_format($c)) ?></div>
+        <div class="bar-fill" style="height:<?= (int)round($c / $max * 110) ?>px"></div>
+        <div class="bar-x"><?= e($weekdayShort[$faWeekday] ?? '') ?></div>
+      </div>
+    <?php endforeach; ?>
+  </div>
+</div>
+
+<?php
+/*
+ * The two lists share one place below the chart (same tabs as the reports page, assets/js/forms.js);
+ * today's numbers and the chart stay visible. The open tab is remembered for the browser session, so
+ * the 30-second refresh while a bulk job is sending keeps it.
+ */
+?>
+<div class="tabs" data-tabs="dashboard" style="margin-top:22px">
+<nav class="tabs-nav" role="tablist" aria-label="فعالیت‌های اخیر">
+  <button type="button" role="tab" data-tab="recent">آخرین پیامک‌ها<span class="tab-count">(<?= to_persian_digits((string)count($recent)) ?>)</span></button>
+  <button type="button" role="tab" data-tab="bulk">ارسال‌های حجیم اخیر<span class="tab-count">(<?= to_persian_digits((string)count($jobs)) ?>)</span></button>
+</nav>
+
+<section class="tab-panel" data-panel="recent" role="tabpanel">
+<div class="card">
+  <h2>آخرین پیامک‌ها <a class="btn btn-sm btn-ghost" style="float:left" href="/reports.php">مشاهده‌ی گزارش کامل ←</a></h2>
+  <div class="table-wrap">
+  <table>
+    <tr><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>گیرنده</th><th>متن پیام</th><th>نوع ارسال</th><th>وضعیت</th><th>زمان</th></tr>
+    <?php foreach ($recent as $m): ?>
+      <tr>
+        <?php if (is_admin()): ?><td><?= e($usernames[$m['user_id']] ?? ('#' . $m['user_id'])) ?></td><?php endif; ?>
+        <td class="msisdn"><?= e($m['destination'] !== '' ? $m['destination'] : '—') ?></td>
+        <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e($m['content'] !== '' ? mb_strimwidth($m['content'], 0, 60, '…') : '—') ?></td>
+        <td><?php if ($m['source'] === 'bulk'): ?><a href="/messages/bulk-jobs?id=<?= (int)$m['job_id'] ?>"><?= e($m['job_title'] ?: ('ارسال #' . $m['job_id'])) ?></a><?php else: ?><?= e(report_reference_type_label($m['reference_type'])) ?><?php endif; ?></td>
+        <td><span class="badge badge-<?= e($m['status']['class']) ?>"><?= e($m['status']['label']) ?></span></td>
+        <td class="num"><?= jdate_from_utc($m['at']) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$recent): ?><tr><td colspan="6" class="empty">هنوز پیامکی ارسال نشده — از <a href="/send.php">ارسال پیامک</a> شروع کنید.</td></tr><?php endif; ?>
+  </table>
+  </div>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="bulk" role="tabpanel">
+<div class="card">
   <h2>ارسال‌های حجیم اخیر <a class="btn btn-sm btn-ghost" style="float:left" href="/reports-bulk.php">همه‌ی ارسال‌های حجیم ←</a></h2>
+  <?php if (!$jobs): ?><p class="empty">هنوز ارسال حجیمی ثبت نشده است.</p><?php endif; ?>
   <div class="dash-jobs">
     <?php foreach ($jobs as $j):
       $total = max(1, (int)$j['total_rows']);
@@ -82,43 +135,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php endforeach; ?>
   </div>
 </div>
-<?php endif; ?>
-
-<div class="card" style="margin-top:22px">
-  <h2>پیامک‌های ۷ روز اخیر</h2>
-  <div class="bars">
-    <?php foreach ($days as $d => $c):
-        $ts = strtotime($d);
-        $wd = (int)date('w', $ts); // 0=Sun..6=Sat (PHP)
-        $faWeekday = JALALI_WEEKDAYS[($wd + 1) % 7];
-    ?>
-      <div class="bar">
-        <div class="bar-v"><?= to_persian_digits(number_format($c)) ?></div>
-        <div class="bar-fill" style="height:<?= (int)round($c / $max * 110) ?>px"></div>
-        <div class="bar-x"><?= e($weekdayShort[$faWeekday] ?? '') ?></div>
-      </div>
-    <?php endforeach; ?>
-  </div>
-</div>
-
-<div class="card">
-  <h2>آخرین پیامک‌ها <a class="btn btn-sm btn-ghost" style="float:left" href="/reports.php">مشاهده‌ی گزارش کامل ←</a></h2>
-  <div class="table-wrap">
-  <table>
-    <tr><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>گیرنده</th><th>متن پیام</th><th>نوع ارسال</th><th>وضعیت</th><th>زمان</th></tr>
-    <?php foreach ($recent as $m): ?>
-      <tr>
-        <?php if (is_admin()): ?><td><?= e($usernames[$m['user_id']] ?? ('#' . $m['user_id'])) ?></td><?php endif; ?>
-        <td class="msisdn"><?= e($m['destination'] !== '' ? $m['destination'] : '—') ?></td>
-        <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e($m['content'] !== '' ? mb_strimwidth($m['content'], 0, 60, '…') : '—') ?></td>
-        <td><?php if ($m['source'] === 'bulk'): ?><a href="/messages/bulk-jobs?id=<?= (int)$m['job_id'] ?>"><?= e($m['job_title'] ?: ('ارسال #' . $m['job_id'])) ?></a><?php else: ?><?= e(report_reference_type_label($m['reference_type'])) ?><?php endif; ?></td>
-        <td><span class="badge badge-<?= e($m['status']['class']) ?>"><?= e($m['status']['label']) ?></span></td>
-        <td class="num"><?= jdate_from_utc($m['at']) ?></td>
-      </tr>
-    <?php endforeach; ?>
-    <?php if (!$recent): ?><tr><td colspan="6" class="empty">هنوز پیامکی ارسال نشده — از <a href="/send.php">ارسال پیامک</a> شروع کنید.</td></tr><?php endif; ?>
-  </table>
-  </div>
+</section>
 </div>
 <?php if ($hasRunning): ?>
 <script>
