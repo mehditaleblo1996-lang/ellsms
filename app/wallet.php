@@ -624,10 +624,10 @@ function wallet_drift_report(): array {
         if (!isset($users[$userId])) {
             continue;
         }
-        $legacyCredit = (int)$users[$userId]['legacy_credit'];
+        $legacyCredit = (int)round((float)$users[$userId]['legacy_credit']);
         $available = (int)$a['available_balance'];
-        if ($available === $legacyCredit) {
-            continue;
+        if (abs($available - $legacyCredit) <= backend_legacy_credit_tolerance($available)) {
+            continue; // equal, or as equal as a FLOAT currentcredit can be
         }
         $out[] = [
             'user_id'               => $userId,

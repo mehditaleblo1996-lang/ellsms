@@ -26,19 +26,38 @@ require_once __DIR__ . '/../Support/Logger.php';
 /**
  * An account's balance is its ELLSMS wallet (ellsms_wallet_accounts.available_balance): `credit`
  * reads it. user_.currentcredit is only a copy ELLSMS writes for the backend
- * (app/Backend/credit_projection.php); it is read as `legacy_credit`, and as `credit` only for an
+ * (app/Backend/credit_projection.php); it is read as `legacy_credit` (`+ 0`: a FLOAT column's full
+ * stored value rather than its 6-digit display), and as `credit` only for an
  * account whose wallet doesn't exist yet, because the wallet is opened with exactly that amount
  * (wallet_ensure_account(), app/wallet.php). Selected from `user_ u LEFT JOIN
  * ellsms_wallet_accounts w`.
  */
-const BACKEND_CREDIT_COLUMNS = 'COALESCE(w.available_balance, u.currentcredit) AS credit, u.currentcredit AS legacy_credit';
+const BACKEND_CREDIT_COLUMNS = 'COALESCE(w.available_balance, CAST(ROUND(u.currentcredit + 0) AS SIGNED)) AS credit, u.currentcredit + 0 AS legacy_credit';
+
+/**
+ * How far user_.currentcredit may legitimately sit from the wallet balance $amount it was written
+ * from. The backend platform declares the column FLOAT on some installs: a single-precision float
+ * holds only ~7 significant digits, so 6,876,385,000 is stored as 6,876,384,768 (and shown as
+ * 6.87638e9). Such a copy is as exact as the column allows and is not drift. 0 for an integer or
+ * decimal column, which stores the balance exactly.
+ */
+function backend_legacy_credit_tolerance(int $amount): int {
+    static $isFloat = null;
+    if ($isFloat === null) {
+        $st = db()->query("SELECT DATA_TYPE FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_' AND COLUMN_NAME = 'currentcredit'");
+        $isFloat = strtolower((string)$st->fetchColumn()) === 'float';
+    }
+    // A float's spacing is 2^-23 of its magnitude; a nearest-rounded value is within half of that.
+    return $isFloat ? (int)ceil(abs($amount) / 2 ** 23) : 0;
+}
 
 /**
  * user_.currentcredit of one account: the opening balance of a wallet created for it
  * (wallet_ensure_account()). 0 for an id with no user_ row.
  */
 function backend_user_legacy_credit(PDO $db, int $userId): int {
-    $st = $db->prepare('SELECT currentcredit FROM user_ WHERE id = ?');
+    $st = $db->prepare('SELECT CAST(ROUND(currentcredit + 0) AS SIGNED) FROM user_ WHERE id = ?');
     $st->execute([$userId]);
     $credit = $st->fetchColumn();
     return $credit === false || $credit === null ? 0 : max(0, (int)$credit);
