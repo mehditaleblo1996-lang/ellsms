@@ -9,8 +9,17 @@
 # "already exists, created by someone else" — it is not published or
 # owned by ELLSMS).
 ########################################################################
+# Every container's stdout log is capped (docker's json-file default never rotates, and the
+# always-on workers would fill the disk): 5 files x 10 MB per container.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   app:
+    logging: *default-logging
     # The ONE build of docker/Dockerfile. Every other PHP service below runs this same image instead
     # of carrying its own `build:` — eight identical builds used to run in parallel, each compiling
     # ext-mongodb from source, so a cold `docker compose build` took 8x the CPU/RAM it needed.
@@ -101,6 +110,7 @@ services:
       - backend_net
 
   worker:
+    logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
     image: ellsms-app:latest
     pull_policy: never
@@ -187,6 +197,7 @@ services:
   # twice. No container_name, so it can be scaled: set BULK_WORKER_REPLICAS in .env (default 0 = off)
   # and run `docker compose up -d`. Mind the provider's own rate limit before raising it.
   bulk-worker:
+    logging: *default-logging
     image: ellsms-app:latest
     pull_policy: never
     restart: unless-stopped
@@ -206,6 +217,7 @@ services:
   # single throwaway pass (safe to run alongside this persistent service — same atomic-claim
   # guarantee as every other Phase 4-style claim query in this project).
   webhook-worker:
+    logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
     image: ellsms-app:latest
     pull_policy: never
@@ -241,6 +253,7 @@ services:
   # competes with the send worker or web requests. Claims import chunks atomically; multiple
   # import-worker containers are safe but not required.
   import-worker:
+    logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
     image: ellsms-app:latest
     pull_policy: never
@@ -283,6 +296,7 @@ services:
   # alongside this service (gateway_status_claim()'s compare-and-swap makes concurrent pollers safe,
   # exactly like every other claim in this project).
   status-worker:
+    logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
     image: ellsms-app:latest
     pull_policy: never
@@ -348,6 +362,7 @@ services:
   # populate in the documented deployment -- every report reading from them would stay empty
   # forever. Added rather than left as a documented gap, matching status-worker's own shape exactly.
   report-summary-worker:
+    logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
     image: ellsms-app:latest
     pull_policy: never
@@ -397,6 +412,7 @@ services:
   # resource the send workers use (see docs/provider-health-model.md), so it cannot contend with or
   # overload them.
   provider-health-checker:
+    logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
     image: ellsms-app:latest
     pull_policy: never
@@ -445,6 +461,7 @@ services:
   # No external egress: it only answers the /send and /status endpoints.
   # It is reachable from other ELLSMS containers as http://ellsms-mock-sms-gateway:8080.
   mock-sms-gateway:
+    logging: *default-logging
     build:
       context: .
       dockerfile: mock/Dockerfile
@@ -467,6 +484,7 @@ services:
   # delay a scheduled send or a delivery-status poll, and a wedged export must not take the send
   # pipeline down with it.
   export-worker:
+    logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
     image: ellsms-app:latest
     pull_policy: never
@@ -517,6 +535,7 @@ services:
   # the bulk pass of `worker`/`bulk-worker` then actually sends them. Idle until an admin enables a
   # connection on /admin/remote-db. Connections are leased, so scaling it is safe.
   remote-db-worker:
+    logging: *default-logging
     image: ellsms-app:latest
     pull_policy: never
     container_name: ellsms-remote-db-worker
@@ -543,6 +562,7 @@ services:
   # NOT published to the host: only the other containers on backend_net can reach it, and every call
   # but /health needs SMPP_BRIDGE_TOKEN.
   smpp-bridge:
+    logging: *default-logging
     build:
       context: ./smpp-bridge
     image: ellsms-smpp-bridge:latest
@@ -573,6 +593,7 @@ services:
   # auth/reverse-proxy before exposing outside a trusted network -- same posture as this compose
   # file already takes for the app's own APP_PORT.
   prometheus:
+    logging: *default-logging
     image: prom/prometheus:v2.55.1
     container_name: ellsms-prometheus
     restart: unless-stopped
@@ -593,6 +614,7 @@ services:
   # off-the-shelf exporter -- deliberately not reimplemented in application code. Read-only bind
   # mounts of the host's own /proc, /sys, / -- never writes anything back.
   node-exporter:
+    logging: *default-logging
     image: prom/node-exporter:v1.8.2
     container_name: ellsms-node-exporter
     restart: unless-stopped
@@ -613,6 +635,7 @@ services:
   # Read-only access to the Docker socket and host cgroup/filesystem info only -- never starts,
   # stops, or modifies a container.
   cadvisor:
+    logging: *default-logging
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: ellsms-cadvisor
     restart: unless-stopped
@@ -625,6 +648,7 @@ services:
       - backend_net
 
   grafana:
+    logging: *default-logging
     image: grafana/grafana:11.3.1
     container_name: ellsms-grafana
     restart: unless-stopped

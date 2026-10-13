@@ -1,5 +1,14 @@
+# Every container's stdout log is capped (docker's json-file default never rotates, and the
+# always-on workers would fill the disk): 5 files x 10 MB per container.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   app:
+    logging: *default-logging
     environment:
       MFA_MASTER_KEY: ${MFA_MASTER_KEY:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
@@ -14,6 +23,7 @@ services:
       - mongo
 
   worker:
+    logging: *default-logging
     environment:
       BILLING_TAX_PERCENT: 10
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
@@ -26,6 +36,7 @@ services:
       METRICS_LOG_SAMPLE_RATE: ${WORKER_METRICS_LOG_SAMPLE_RATE:-0.01}
 
   import-worker:
+    logging: *default-logging
     environment:
       # Keep the worker on the same hard 2,000,000-row ceiling as the web app.
       IMPORT_MAX_ROWS: 2000000
@@ -35,10 +46,12 @@ services:
       METRICS_LOG_SAMPLE_RATE: ${IMPORT_METRICS_LOG_SAMPLE_RATE:-0.001}
 
   status-worker:
+    logging: *default-logging
     environment:
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
 
   mongo:
+    logging: *default-logging
     image: mongo:6.0.27-jammy
     container_name: ellsms-mongo
     restart: unless-stopped
