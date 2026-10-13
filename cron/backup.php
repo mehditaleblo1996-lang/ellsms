@@ -5,7 +5,8 @@
  * Consistent logical backup of the entire configured database (`BACKEND_DB_NAME`) via
  * `mysqldump --single-transaction` — a real InnoDB-consistent snapshot without holding any
  * application-level transaction open (Invariant B/H). See app/Backup.php's own docblock for why
- * this is a whole-database backup, not an ellsms_*-only allowlist.
+ * this is a whole-database backup, not an ellsms_*-only allowlist. The message tables
+ * (backup_schema_only_tables()) are dumped without their rows, which keeps the daily backup small.
  *
  * Success is NEVER declared from mysqldump's exit code alone (Invariant B) — the dump file is also
  * checked for mysqldump's own "-- Dump completed on" trailer AND at least one `CREATE TABLE`
@@ -49,6 +50,12 @@ if ($dbHost === '' || $dbName === '' || $dbUser === '') {
     backup_fail($json, 'BACKEND_DB_HOST/NAME/USER must be set (see `make config-check`)');
 }
 
+try {
+    $schemaOnlyTables = backup_schema_only_tables();
+} catch (InvalidArgumentException $e) {
+    backup_fail($json, $e->getMessage());
+}
+
 $encryptionError = backup_validate_encryption_config();
 if ($encryptionError !== null) {
     backup_fail($json, "encryption configuration invalid: {$encryptionError}");
@@ -62,6 +69,8 @@ if ($dryRun) {
         'compression' => backup_compression_enabled() ? 'gzip' : 'none',
         'encryption' => backup_encryption_enabled() ? 'gpg-aes256' : 'none',
         'retention_days' => backup_retention_days(),
+        'schema_only_tables' => $schemaOnlyTables,
+        'offsite' => backup_rclone_remote() !== '' ? backup_rclone_remote() : 'none',
     ];
     echo $json ? json_encode($plan, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n"
                : "DRY RUN — would create a backup of \"{$dbName}\" in " . backup_dir()
@@ -122,6 +131,11 @@ register_shutdown_function(static function () use ($credFile): void {
 try {
     $dumpPath = $workDir . '/dump.sql';
     $startedAt = microtime(true);
+    // Bulk items not sent yet are a bulk job's queue, not message history: they are added back by a
+    // second dump below. Bounded to the jobs that already exist when the main dump starts, so the
+    // restored database has no item without its job.
+    $keepUnsentBulkItems = in_array('ellsms_bulk_items', $schemaOnlyTables, true);
+    $maxBulkJobId = $keepUnsentBulkItems ? (int)$db->query('SELECT COALESCE(MAX(id), 0) FROM ellsms_bulk_jobs')->fetchColumn() : 0;
     [$exitCode, , $stderr] = backup_run([
         'mysqldump',
         '--defaults-extra-file=' . $credFile,
@@ -131,6 +145,8 @@ try {
         '--triggers',
         '--hex-blob',
         '--default-character-set=utf8mb4',
+        // Messages and their logs: structure only (app/Backup.php BACKUP_SCHEMA_ONLY_TABLES_DEFAULT).
+        ...array_map(static fn(string $t): string => '--ignore-table-data=' . $dbName . '.' . $t, $schemaOnlyTables),
         $dbName,
     ], null, $dumpPath);
 
@@ -139,21 +155,46 @@ try {
         backup_fail($json, "mysqldump exited {$exitCode}", $workDir);
     }
 
+    if ($keepUnsentBulkItems) {
+        // Taken AFTER the main dump: an item sent in between is then in neither dump, so a restore
+        // can never send it a second time (its job's unspent reservation is released instead).
+        $unsentPath = $workDir . '/unsent-bulk-items.sql';
+        [$exitCode, , $stderr] = backup_run([
+            'mysqldump',
+            '--defaults-extra-file=' . $credFile,
+            '--single-transaction',
+            '--no-create-info',
+            '--skip-triggers',
+            '--hex-blob',
+            '--default-character-set=utf8mb4',
+            "--where=status IN ('pending','processing') AND job_id <= {$maxBulkJobId}",
+            $dbName,
+            'ellsms_bulk_items',
+        ], null, $unsentPath);
+        if ($exitCode !== 0) {
+            Logger::error('backup.mysqldump_unsent_failed', ['exit_code' => $exitCode, 'stderr' => mb_strimwidth($stderr, 0, 500, '…')]);
+            backup_fail($json, "mysqldump of unsent bulk items exited {$exitCode}", $workDir);
+        }
+        $in = fopen($unsentPath, 'rb');
+        $out = fopen($dumpPath, 'ab');
+        if ($in === false || $out === false || stream_copy_to_stream($in, $out) === false) {
+            backup_fail($json, 'could not append the unsent bulk items to the dump', $workDir);
+        }
+        fclose($in);
+        fclose($out);
+        unlink($unsentPath);
+    }
+
     // Invariant B: exit code alone is not proof of a real, complete dump -- also check the file
     // actually looks like one. mysqldump writes its own completion trailer as the LAST line only
     // when it finished normally (a truncated/killed dump won't have it), and a real schema dump
     // must contain at least one CREATE TABLE.
-    $dumpContent = file_get_contents($dumpPath);
-    if ($dumpContent === false || filesize($dumpPath) === 0) {
+    if (!is_file($dumpPath) || filesize($dumpPath) === 0) {
         backup_fail($json, 'dump file is empty or unreadable after mysqldump reported success', $workDir);
     }
-    if (!str_contains($dumpContent, '-- Dump completed on')) {
-        backup_fail($json, 'dump file is missing mysqldump\'s own completion trailer — treating as incomplete/truncated', $workDir);
+    if (!backup_dump_looks_complete($dumpPath)) {
+        backup_fail($json, 'dump file has no CREATE TABLE or is missing mysqldump\'s own completion trailer — treating as incomplete/truncated', $workDir);
     }
-    if (!preg_match('/CREATE TABLE/i', $dumpContent)) {
-        backup_fail($json, 'dump file contains no CREATE TABLE statements — refusing to treat this as a valid database backup', $workDir);
-    }
-    unset($dumpContent); // don't hold the whole dump in memory longer than needed for this check
 
     $artifactPath = $dumpPath;
     $compression = 'none';
@@ -215,7 +256,9 @@ try {
         'mysql_version'    => $mysqlVersion,
         'migration_head'   => $migrationHead,
         'migration_count'  => $migrationCount,
-        'table_scope'      => 'complete_database',
+        'table_scope'      => $schemaOnlyTables === [] ? 'complete_database' : 'complete_database_without_message_rows',
+        'schema_only_tables' => $schemaOnlyTables,
+        'unsent_bulk_items_kept' => $keepUnsentBulkItems,
         'compression'      => $compression,
         'encryption'       => $encryption,
         'artifact_filename' => basename($artifactPath),

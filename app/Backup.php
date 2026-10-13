@@ -50,6 +50,87 @@ function backup_compression_enabled(): bool {
     return env('BACKUP_COMPRESSION', 'gzip') !== 'none';
 }
 
+/**
+ * Tables the daily backup keeps the structure of but not the rows: sent and received messages and
+ * the per-message logs around them. They are by far the largest tables and grow with every send,
+ * while what a restore must bring back is accounts, money and configuration. A restored database
+ * has these tables, empty. Message history lives in the backend platform's own backups and in the
+ * report summaries, which are kept. ellsms_bulk_items keeps its unsent rows (pending/processing):
+ * those are a running bulk job's queue, which a restore must be able to finish (cron/backup.php).
+ */
+const BACKUP_SCHEMA_ONLY_TABLES_DEFAULT = [
+    // the backend platform's message tables
+    'outbound_message', 'inbound_message',
+    // every message ELLSMS sent or received, and its per-message trail
+    'ellsms_bulk_items', 'ellsms_bulk_items_archive', 'ellsms_message_attempts', 'ellsms_api_messages',
+    'ellsms_channel_messages', 'ellsms_inbound_messages', 'ellsms_direct_send_queue', 'ellsms_autoreply_log',
+    'ellsms_provider_response_audit', 'ellsms_send_dimension_log', 'ellsms_smpp_events',
+    'ellsms_remote_db_rows', 'ellsms_import_chunks', 'ellsms_import_dedupe',
+    'ellsms_webhook_deliveries', 'ellsms_webhook_events',
+    // short-lived operational rows
+    'ellsms_api_request_metrics', 'ellsms_rate_limits', 'ellsms_2fa_codes', 'ellsms_idempotency_keys',
+];
+
+/**
+ * The tables dumped without rows. BACKUP_SCHEMA_ONLY_TABLES replaces the default list
+ * (comma-separated); `none` backs every table up with its rows.
+ *
+ * @return list<string>
+ */
+function backup_schema_only_tables(): array {
+    $raw = trim((string)env('BACKUP_SCHEMA_ONLY_TABLES', ''));
+    if ($raw === '') {
+        return BACKUP_SCHEMA_ONLY_TABLES_DEFAULT;
+    }
+    if (strtolower($raw) === 'none') {
+        return [];
+    }
+    $tables = array_values(array_unique(array_filter(array_map('trim', explode(',', $raw)))));
+    foreach ($tables as $table) {
+        if (!restore_valid_db_identifier($table)) {
+            throw new InvalidArgumentException("BACKUP_SCHEMA_ONLY_TABLES: not a table name: {$table}");
+        }
+    }
+    return $tables;
+}
+
+/**
+ * Whether a plain dump file looks like complete mysqldump output: at least one CREATE TABLE, and
+ * mysqldump's "-- Dump completed on" trailer at the end (a killed dump has none). Streams the
+ * file instead of loading it, since a dump can be larger than the PHP memory limit.
+ */
+function backup_dump_looks_complete(string $path): bool {
+    $fh = @fopen($path, 'rb');
+    if ($fh === false) {
+        return false;
+    }
+    try {
+        $hasCreateTable = false;
+        $carry = '';
+        while (!$hasCreateTable && !feof($fh)) {
+            $chunk = $carry . (string)fread($fh, 1 << 20);
+            $hasCreateTable = stripos($chunk, 'CREATE TABLE') !== false;
+            $carry = substr($chunk, -16);
+        }
+        $size = filesize($path);
+        fseek($fh, max(0, $size - 4096));
+        $tail = (string)stream_get_contents($fh);
+        return $hasCreateTable && str_contains($tail, '-- Dump completed on');
+    } finally {
+        fclose($fh);
+    }
+}
+
+/** rclone destination for the off-server copy, e.g. "arvan:ellsms-backups". Empty = no copy. */
+function backup_rclone_remote(): string {
+    return trim((string)env('BACKUP_RCLONE_REMOTE', ''));
+}
+
+/** Days the off-server copy keeps a backup (BACKUP_OFFSITE_RETENTION_DAYS, default 30; 0 = forever). */
+function backup_offsite_retention_days(): int {
+    return max(0, (int)env('BACKUP_OFFSITE_RETENTION_DAYS', '30'));
+}
+
 function backup_verify_after_create(): bool {
     return env('BACKUP_VERIFY_AFTER_CREATE', '1') === '1';
 }
@@ -266,8 +347,7 @@ function backup_verify_artifact(string $workDir, array $manifest): ?string {
             $tempFiles[] = $decompressed;
             $plainPath = $decompressed;
         }
-        $content = file_get_contents($plainPath);
-        if ($content === false || !str_contains($content, '-- Dump completed on') || !preg_match('/CREATE TABLE/i', $content)) {
+        if (!backup_dump_looks_complete($plainPath)) {
             return 'decoded artifact does not look like a valid, complete mysqldump output';
         }
         return null;

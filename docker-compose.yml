@@ -556,6 +556,37 @@ services:
       retries: 3
     stop_grace_period: 30s
 
+  # Periodic jobs (cron/scheduler.php, docs/scheduler.md): payment reconciliation, subscription
+  # expiry, invoice expiry, bulk archiving, the retention prunes, usage reconciliation, the wallet
+  # audit and the nightly backup with its off-server copy. Each job runs as its own process; a
+  # failure raises an alert. Reads the whole .env (env_file), since its jobs between them need
+  # nearly every setting: payments, billing, backups (BACKUP_*), rclone (RCLONE_*). Exactly one
+  # scheduler runs jobs at a time (MySQL named lock), so it is never scaled.
+  scheduler:
+    logging: *default-logging
+    image: ellsms-app:latest
+    pull_policy: never
+    container_name: ellsms-scheduler
+    restart: unless-stopped
+    command: php /var/www/html/cron/scheduler.php
+    env_file:
+      - .env
+    environment:
+      <<: *worker_environment
+      # rclone remotes for the off-server backup copy, unless configured by RCLONE_CONFIG_* variables.
+      RCLONE_CONFIG: ${RCLONE_CONFIG:-/var/www/html/storage/rclone/rclone.conf}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(0);"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    # A job in progress (a backup) is stopped with it; the next start re-runs whatever is due.
+    stop_grace_period: 30s
+
   # #46 — SMPP bridge (smpp-bridge/, docs/smpp-gateway.md). Keeps SMPP sessions open for every gateway
   # whose protocol is SMPP (Admin → درگاه‌های پیامک); PHP submits through its internal API and receives
   # delivery receipts / MOs through ellsms_smpp_events. Idle (no sessions) until such a gateway exists.

@@ -18,6 +18,17 @@ point-in-time copy of backend-owned table DATA too. This does **not** make ELLSM
 backend platform recovery — see §14 for the exact boundary. See `app/Backup.php`'s own docblock for
 the same reasoning in code.
 
+**Message tables: structure only.** Sent and received messages and their per-message logs
+(`outbound_message`, `inbound_message`, `ellsms_bulk_items`, `ellsms_message_attempts`, the delivery
+and provider-response logs, webhook deliveries, … — `BACKUP_SCHEMA_ONLY_TABLES_DEFAULT` in
+`app/Backup.php`) are dumped with `--ignore-table-data`: the backup has their `CREATE TABLE` but not
+their rows. They are the largest tables by far and grow with every send, while what a restore must
+bring back is accounts, wallets and ledger, payments, invoices, prices and configuration — all kept.
+After a restore those tables exist, empty; message history stays in the backend platform's own
+backups and the daily report summaries (kept). `BACKUP_SCHEMA_ONLY_TABLES` replaces the list,
+`none` backs up every row. The manifest records the list (`schema_only_tables`) and says
+`table_scope: complete_database_without_message_rows`.
+
 ## 2. Backup command (`make backup`, `cron/backup.php`)
 
 `mysqldump --single-transaction --routines --events --triggers --hex-blob` — an InnoDB-consistent
@@ -281,36 +292,37 @@ repo:
   ciphertexts it protects are *in* the database, so storing the key with them would defeat the
   encryption entirely. See §26 for what happens on a restore without it.
 
-## 17. Offsite backup guidance (documentation only — no vendor integration)
+## 17. Off-server copy (`make backup-offsite`, `cron/backup-offsite.php`)
 
-This repo does not integrate any cloud storage vendor (no S3/GCS/Azure client, per this phase's own
-"no cloud backup vendor integration unless already supported" instruction). Recommended pattern for
-production, to implement outside this repo:
+Right after the nightly backup and its retention prune, the scheduler copies every finished backup
+(a directory with `manifest.json`) to `BACKUP_RCLONE_REMOTE` with rclone (installed in the image),
+then deletes there what is older than `BACKUP_OFFSITE_RETENTION_DAYS` (default 30; 0 = keep
+forever). rclone sends only what the destination doesn't have yet. Empty `BACKUP_RCLONE_REMOTE`
+= no copy (the step succeeds and says so).
 
-- After `make backup` completes, sync the resulting artifact + manifest to remote storage (object
-  storage with versioning, or WORM/immutable storage if the provider supports it) via whatever tool
-  the hosting environment already provides (`rclone`, `aws s3 sync`, provider-specific CLI).
-- Verify the remote copy's checksum matches `manifest.json`'s `artifact_sha256` before trusting it.
-- Apply the SAME retention policy remotely as `BACKUP_RETENTION_DAYS` locally (or a longer one —
-  remote storage is usually cheaper per GB than local disk).
-- Never sync the unencrypted local intermediate — only the final artifact (already
-  compressed+encrypted if `BACKUP_ENCRYPTION_ENABLED=1`) ever needs to leave this host.
-
-## 18. Scheduled backup guidance (documentation only)
-
-No production cron/systemd schedule is installed automatically by this repo. Example `cron`
-entry (adjust path/user):
+Setting it up, for example on ArvanCloud object storage (S3-compatible):
 
 ```
-# Daily at 03:00, ellsms_backup lock makes overlapping runs with a manual backup safe
-0 3 * * * cd /path/to/ellsms && docker compose run --rm worker php cron/backup.php >> /var/log/ellsms-backup.log 2>&1
-30 3 * * * cd /path/to/ellsms && docker compose run --rm worker php cron/backup-prune.php >> /var/log/ellsms-backup-prune.log 2>&1
+docker compose run --rm scheduler rclone config     # writes storage/rclone/rclone.conf (git-ignored)
+# .env:
+BACKUP_RCLONE_REMOTE=arvan:ellsms-backups
+BACKUP_ENCRYPTION_ENABLED=1
+BACKUP_ENCRYPTION_KEY_FILE=/var/www/html/storage/backup.key   # keep a copy of the key OFF this server
+docker compose up -d scheduler
+make backup-offsite-dry-run && make scheduler-run JOB=backup
 ```
 
-Or a `systemd` timer unit calling the same command. Either way: the `ellsms_backup` MySQL named
-lock already makes an overlapping run (a scheduled backup firing while an operator runs one by
-hand, or two schedules overlapping after a slow run) safe — the second invocation waits up to 10s
-for the lock, then fails loudly rather than corrupting anything, per §9.
+Any rclone remote works (S3/MinIO, SFTP to another server, Google Drive, …); remotes can also be
+defined by `RCLONE_CONFIG_<NAME>_*` variables in `.env` instead of the file. Turn encryption on
+before backups leave the server: the step warns on every run while it is off.
+
+## 18. Schedule
+
+The `scheduler` container (`docs/scheduler.md`) runs the `backup` job daily at `BACKUP_DAILY_AT`
+(03:30 Asia/Tehran by default): `backup.php` → `backup-prune.php` → `backup-offsite.php`, stopping
+at the first step that fails. A failure raises an alert; `make scheduler-status` shows the last
+run and its output. The `ellsms_backup` MySQL named lock still makes a manual `make backup` alongside
+it safe (§9). No host cron entry is needed.
 
 ## 19. Backup monitoring (`make backup-status`, `cron/backup-status.php`)
 
@@ -374,6 +386,10 @@ volume snapshot alone doesn't provide the checksum/manifest/verification guarant
 | `BACKUP_ENCRYPTION_KEY_FILE` | (none) | path to the gpg symmetric passphrase file — required if encryption is enabled |
 | `BACKUP_COMPRESSION` | `gzip` | `none` to disable |
 | `BACKUP_VERIFY_AFTER_CREATE` | `1` | post-creation artifact verification |
+| `BACKUP_SCHEMA_ONLY_TABLES` | the message tables (§1) | tables dumped without rows; `none` = every row |
+| `BACKUP_DAILY_AT` | `03:30` | nightly backup time, server local time (§18) |
+| `BACKUP_RCLONE_REMOTE` | (none) | rclone destination of the off-server copy (§17) |
+| `BACKUP_OFFSITE_RETENTION_DAYS` | `30` | days a backup is kept off the server; `0` = forever |
 | `ALLOW_DESTRUCTIVE_RESTORE` | `0` | must be `1` for a replacement restore over an existing non-empty database |
 | `DB_MIGRATIONS_DIR` | `db/migrations` | test-only escape hatch (`db-migrate.php`) — never set in production |
 | `MAINTENANCE_MODE_FILE` | `storage/maintenance.flag` | see `docs/production-runbook.md` |

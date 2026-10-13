@@ -186,7 +186,10 @@ function billing_invoice_create(
  * both read status='issued' and both think they're the one marking it paid.
  */
 function billing_invoice_mark_paid(PDO $db, int $invoiceId): bool {
-    $st = $db->prepare("UPDATE ellsms_invoices SET status='paid', paid_at=UTC_TIMESTAMP() WHERE id=? AND status='issued'");
+    // 'expired' too: a payment ZarinPal completed is fulfilled even when its callback or the
+    // reconciliation reaches it after the invoice's due_at (cron/invoices-expire.php), and the
+    // invoice must then say paid.
+    $st = $db->prepare("UPDATE ellsms_invoices SET status='paid', paid_at=UTC_TIMESTAMP() WHERE id=? AND status IN ('issued','expired')");
     $st->execute([$invoiceId]);
     return $st->rowCount() > 0;
 }
@@ -202,7 +205,7 @@ function billing_invoice_cancel(int $invoiceId, string $reason = ''): bool {
     return $changed;
 }
 
-/** Read-only. Server-side expiry sweep for invoices whose due_at has passed while still 'issued' — called from cron, never blocks a live request. */
+/** Server-side expiry sweep for invoices whose due_at has passed while still 'issued' — run by cron/invoices-expire.php, never blocks a live request. */
 function billing_invoices_expire_overdue(int $limit = 500): int {
     $st = db()->prepare("UPDATE ellsms_invoices SET status='expired' WHERE status='issued' AND due_at IS NOT NULL AND due_at < UTC_TIMESTAMP() LIMIT ?");
     $st->bindValue(1, $limit, PDO::PARAM_INT);

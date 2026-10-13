@@ -406,4 +406,47 @@ final class BackupLibraryTest extends TestCase
         putenv('BACKUP_ENCRYPTION_ENABLED=0');
         $this->assertNull(\backup_validate_encryption_config());
     }
+
+    public function testMessageTablesAreDumpedWithoutRowsByDefault(): void
+    {
+        putenv('BACKUP_SCHEMA_ONLY_TABLES');
+        $tables = backup_schema_only_tables();
+        foreach (['outbound_message', 'inbound_message', 'ellsms_bulk_items', 'ellsms_message_attempts'] as $table) {
+            $this->assertContains($table, $tables);
+        }
+        foreach (['user_', 'ellsms_wallet_accounts', 'ellsms_wallet_transactions', 'ellsms_payments', 'ellsms_invoices', 'ellsms_meta', 'ellsms_sms_price_snapshots'] as $table) {
+            $this->assertNotContains($table, $tables, "{$table} must be backed up with its rows");
+        }
+    }
+
+    public function testSchemaOnlyTablesCanBeReplacedOrTurnedOff(): void
+    {
+        try {
+            putenv('BACKUP_SCHEMA_ONLY_TABLES=outbound_message, ellsms_bulk_items');
+            $this->assertSame(['outbound_message', 'ellsms_bulk_items'], backup_schema_only_tables());
+            putenv('BACKUP_SCHEMA_ONLY_TABLES=none');
+            $this->assertSame([], backup_schema_only_tables());
+            putenv('BACKUP_SCHEMA_ONLY_TABLES=outbound_message;DROP TABLE x');
+            $this->expectException(\InvalidArgumentException::class);
+            backup_schema_only_tables();
+        } finally {
+            putenv('BACKUP_SCHEMA_ONLY_TABLES');
+        }
+    }
+
+    public function testDumpCompletenessIsCheckedWithoutLoadingTheFile(): void
+    {
+        $complete = $this->baseDir . '/complete.sql';
+        file_put_contents($complete, "-- MySQL dump\nCREATE TABLE `a` (id int);\n" . str_repeat("INSERT INTO `a` VALUES (1);\n", 100000) . "-- Dump completed on 2026-10-13\n");
+        $this->assertTrue(backup_dump_looks_complete($complete));
+
+        $truncated = $this->baseDir . '/truncated.sql';
+        file_put_contents($truncated, "CREATE TABLE `a` (id int);\n" . str_repeat("INSERT INTO `a` VALUES (1);\n", 100000));
+        $this->assertFalse(backup_dump_looks_complete($truncated), 'no trailer: killed mid-dump');
+
+        $noTables = $this->baseDir . '/notables.sql';
+        file_put_contents($noTables, "-- nothing\n-- Dump completed on 2026-10-13\n");
+        $this->assertFalse(backup_dump_looks_complete($noTables));
+        $this->assertFalse(backup_dump_looks_complete($this->baseDir . '/missing.sql'));
+    }
 }

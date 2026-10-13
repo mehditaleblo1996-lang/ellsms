@@ -29,7 +29,8 @@
         config-check predeploy-check smoke-test production-integrity-check \
         release-check dependency-audit \
         backup backup-json backup-verify backup-prune-dry-run backup-prune backup-status \
-        restore restore-test dr-drill \
+        restore restore-test dr-drill backup-offsite backup-offsite-dry-run \
+        scheduler-status scheduler-run scheduler-logs \
         maintenance-on maintenance-off maintenance-status \
         release-preflight release-plan release-apply \
         api-keys-status webhooks-status webhook-retry-failed \
@@ -122,6 +123,9 @@ help:
 	@echo "  make backup-prune         MUTATION: actually deletes backups older than BACKUP_RETENTION_DAYS,"
 	@echo "                            never deletes the newest valid backup"
 	@echo "  make backup-status        read-only: latest backup age/size/verification status, no secrets/paths"
+	@echo "  make backup-offsite       copy finished backups to BACKUP_RCLONE_REMOTE (rclone), prune old ones there"
+	@echo "  make scheduler-status     read-only: every periodic job's cadence, last run and result"
+	@echo "  make scheduler-run JOB=x  run one periodic job now (e.g. JOB=backup)"
 	@echo "  make restore BACKUP=<id>  restore a backup -- disposable/new-DB by default; production overwrite"
 	@echo "                            requires ALLOW_DESTRUCTIVE_RESTORE=1 + explicit target -- CLI-only,"
 	@echo "                            see docs/backup-and-disaster-recovery.md before running"
@@ -659,44 +663,44 @@ release-check: lint test backend-boundary-check
 # BACKUP_ENCRYPTION_ENABLED=1 + BACKUP_ENCRYPTION_KEY_FILE=<path> encrypts with gpg AES-256.
 # Serialized via the ellsms_backup MySQL named lock -- safe to schedule, never overlaps itself.
 backup:
-	docker compose run --rm worker php cron/backup.php
+	docker compose run --rm scheduler php cron/backup.php
 
 backup-json:
-	docker compose run --rm worker php cron/backup.php --json
+	docker compose run --rm scheduler php cron/backup.php --json
 
 # Read-only. Verifies an existing backup artifact's checksum and (if it can access the key/gzip)
 # that it decrypts/decompresses into a structurally complete mysqldump -- does not touch any
 # database. Usage: make backup-verify FILE=20260802-105135-d0c4514b
 backup-verify:
-	docker compose run --rm worker php cron/backup-verify.php $(FILE)
+	docker compose run --rm scheduler php cron/backup-verify.php $(FILE)
 
 # Restore BACKUP=<id> into a fresh disposable database by default -- SAFE, never overwrites
 # anything. A destructive replacement restore (--target-db=<existing db with data>) additionally
 # needs ALLOW_DESTRUCTIVE_RESTORE=1 and CONFIRM=<same db name> -- see docs/backup-and-disaster-recovery.md.
 # CLI-only (STEP 36): there is no web/admin-panel equivalent of this command.
 restore:
-	docker compose run --rm worker php cron/restore.php $(BACKUP) $(if $(TARGET_DB),--target-db=$(TARGET_DB)) $(if $(CONFIRM),--confirm=$(CONFIRM))
+	docker compose run --rm scheduler php cron/restore.php $(BACKUP) $(if $(TARGET_DB),--target-db=$(TARGET_DB)) $(if $(CONFIRM),--confirm=$(CONFIRM))
 
 # Read-only. Reports which backups BACKUP_RETENTION_DAYS/BACKUP_RETENTION_MIN_COUNT would delete
 # -- deletes nothing. Never touches a corrupt/unreadable-manifest entry (reported, not deleted).
 backup-prune-dry-run:
-	docker compose run --rm worker php cron/backup-prune.php --dry-run
+	docker compose run --rm scheduler php cron/backup-prune.php --dry-run
 
 # MUTATION. Same policy as above, actually deletes. Always keeps the newest valid backup
 # regardless of age (Invariant G) -- see docs/backup-and-disaster-recovery.md.
 backup-prune:
-	docker compose run --rm worker php cron/backup-prune.php
+	docker compose run --rm scheduler php cron/backup-prune.php
 
 # Read-only. Latest backup age/size/verification status -- no filesystem paths or secrets.
 backup-status:
-	docker compose run --rm worker php cron/backup-status.php
+	docker compose run --rm scheduler php cron/backup-status.php
 
 # Hard acceptance criterion (Phase 11, STEP 42): a REAL restore into a disposable database,
 # followed by migration-status + every read-only integrity tool + a representative cross-table
 # query, all run against the RESTORED data (never the source). Disposable database is dropped
 # afterward unless KEEP=1. Never targets production.
 restore-test:
-	docker compose run --rm worker php cron/restore-test.php $(BACKUP) $(if $(KEEP),--keep)
+	docker compose run --rm scheduler php cron/restore-test.php $(BACKUP) $(if $(KEEP),--keep)
 
 # Full timed disaster-recovery drill: seed/snapshot -> real backup -> simulate total loss (DROPs
 # the configured database) -> real restore -> integrity checks -> live throwaway app server +
@@ -704,7 +708,29 @@ restore-test:
 # looks disposable ("test" in the name) or ELLSMS_ALLOW_DR_DRILL=1 is explicitly set -- see
 # docs/backup-and-disaster-recovery.md. Never targets production automatically.
 dr-drill:
-	docker compose run --rm worker php cron/dr-drill.php
+	docker compose run --rm scheduler php cron/dr-drill.php
+
+# Copies finished backups to BACKUP_RCLONE_REMOTE and prunes what's older than
+# BACKUP_OFFSITE_RETENTION_DAYS there. The scheduler runs it right after the nightly backup.
+backup-offsite:
+	docker compose run --rm scheduler php cron/backup-offsite.php
+
+backup-offsite-dry-run:
+	docker compose run --rm scheduler php cron/backup-offsite.php --dry-run
+
+## ---------- Scheduler (periodic jobs -- see docs/scheduler.md) ----------
+
+# Read-only. Every scheduled job: cadence, last run, result, and the output of a failed one.
+scheduler-status:
+	docker compose exec -T scheduler php cron/scheduler.php --status
+
+# Runs one job now, due or not: make scheduler-run JOB=backup
+scheduler-run:
+	@test -n "$(JOB)" || (echo "usage: make scheduler-run JOB=<name>  (see make scheduler-status)"; exit 2)
+	docker compose exec -T scheduler php cron/scheduler.php --run=$(JOB)
+
+scheduler-logs:
+	docker compose logs -f --tail=200 scheduler
 
 ## ---------- Maintenance mode (Phase 11, STEP 22/23 -- see app/maintenance.php) ----------
 

@@ -2,9 +2,10 @@ FROM php:8.2-apache
 
 # pcntl is needed by cron/worker.php for graceful SIGTERM/SIGINT handling.
 # ext-mongodb backs the dedicated MongoDB audit trail. qrencode renders TOTP provisioning QR codes
-# locally inside the app container so MFA secrets are never sent to an external QR service.
+# locally inside the app container so MFA secrets are never sent to an external QR service. rclone
+# sends the nightly backups off the server (cron/backup-offsite.php).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libzip-dev default-mysql-client gnupg libssl-dev pkg-config qrencode $PHPIZE_DEPS \
+      libzip-dev default-mysql-client gnupg libssl-dev pkg-config qrencode rclone $PHPIZE_DEPS \
  && docker-php-ext-install pdo_mysql zip pcntl \
  && pecl install mongodb \
  && docker-php-ext-enable mongodb \

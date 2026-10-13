@@ -26,3 +26,12 @@ public/assets/img/slides/*
 __pycache__/
 *.pyc
 smpp-bridge/target/
+
+# Runtime state the containers write into the bind-mounted checkout — never commit it.
+# Backups hold the whole database; rclone.conf holds the off-server storage credentials.
+storage/backups/
+storage/rclone/
+storage/logs/*
+!storage/logs/.gitkeep
+storage/maintenance.flag
+storage/dr-drill-status.json
