@@ -179,44 +179,27 @@ $g = trim($_GET['group'] ?? '');
 $ownership = '(organization_id = ? OR (organization_id IS NULL AND user_id = ?))';
 
 // Group chips are aggregate rows, not contacts themselves; this result is bounded by the number of
-// distinct group names. The contact table below is always keyset-paged and never fetches the whole set.
+// distinct group names. The contact table below is paged (100 a page) and never fetches the whole set.
 $gr = db()->prepare("SELECT group_name, COUNT(*) c FROM ellsms_contacts WHERE {$ownership} AND group_name<>'' GROUP BY group_name ORDER BY group_name");
 $gr->execute([$myOrgId, $me['id']]);
 $groups = $gr->fetchAll();
 
 $per = 100;
-$beforeId = (isset($_GET['before_id']) && $_GET['before_id'] !== '') ? (int)$_GET['before_id'] : null;
-$afterId  = (isset($_GET['after_id']) && $_GET['after_id'] !== '') ? (int)$_GET['after_id'] : null;
 $where = $ownership;
 $params = [$myOrgId, $me['id']];
 if ($g !== '') {
     $where .= ' AND group_name = ?';
     $params[] = $g;
 }
-$order = 'DESC';
-if ($beforeId !== null && $beforeId > 0) {
-    $where .= ' AND id < ?';
-    $params[] = $beforeId;
-} elseif ($afterId !== null && $afterId > 0) {
-    $where .= ' AND id > ?';
-    $params[] = $afterId;
-    $order = 'ASC';
-}
+$count = db()->prepare("SELECT COUNT(*) FROM ellsms_contacts WHERE {$where}");
+$count->execute($params);
+$total = (int)$count->fetchColumn();
+[$page, $offset] = pager_offset($total, $per);
 $hasDetails = contacts_have_detail_columns();
 $columns = 'id, name, mobile, group_name, created_at' . ($hasDetails ? ', last_name, phone, gender, birth_date, occasion_date, email, address' : '');
-$st = db()->prepare("SELECT {$columns} FROM ellsms_contacts WHERE {$where} ORDER BY id {$order} LIMIT " . ($per + 1));
+$st = db()->prepare("SELECT {$columns} FROM ellsms_contacts WHERE {$where} ORDER BY id DESC LIMIT {$per} OFFSET {$offset}");
 $st->execute($params);
-$fetched = $st->fetchAll();
-$hasMore = count($fetched) > $per;
-$rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
-if ($afterId !== null && $afterId > 0) {
-    $rows = array_reverse($rows);
-}
-$ids = $rows ? array_map('intval', array_column($rows, 'id')) : [];
-$nextBeforeId = $ids ? min($ids) : null;
-$prevAfterId = $ids ? max($ids) : null;
-$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null);
-$hasNext = $rows !== [] && (($afterId !== null) || $hasMore);
+$rows = $st->fetchAll();
 $baseQuery = $g !== '' ? ['group' => $g] : [];
 
 $importReport = $_SESSION['contacts_import_report'] ?? null;
@@ -308,11 +291,11 @@ require __DIR__ . '/../app/views/header.php';
     <div class="form-section">
       <h3>گزارش فایل «<?= e($importReport['file']) ?>» (<?= to_persian_digits(number_format((int)$importReport['rows'])) ?> ردیف)</h3>
       <?php foreach (['errors' => ['ردیف‌های ثبت‌نشده', 'text-danger'], 'warnings' => ['ردیف‌های ثبت‌شده با فیلد خالی', 'hint']] as $key => [$title, $class]): ?>
-        <?php if ($importReport[$key]): $list = $importReport[$key]; $total = (int)($importReport[substr($key, 0, -1) . '_count'] ?? count($list)); ?>
-          <p><strong><?= e($title) ?> (<?= to_persian_digits(number_format($total)) ?>)</strong></p>
+        <?php if ($importReport[$key]): $list = $importReport[$key]; $lineTotal = (int)($importReport[substr($key, 0, -1) . '_count'] ?? count($list)); ?>
+          <p><strong><?= e($title) ?> (<?= to_persian_digits(number_format($lineTotal)) ?>)</strong></p>
           <ul class="<?= $class ?>">
             <?php foreach ($list as $line): ?><li><?= e($line) ?></li><?php endforeach; ?>
-            <?php if ($total > count($list)): ?><li>… و <?= to_persian_digits(number_format($total - count($list))) ?> مورد دیگر</li><?php endif; ?>
+            <?php if ($lineTotal > count($list)): ?><li>… و <?= to_persian_digits(number_format($lineTotal - count($list))) ?> مورد دیگر</li><?php endif; ?>
           </ul>
         <?php endif; ?>
       <?php endforeach; ?>
@@ -386,11 +369,6 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   </div>
 
-  <?php if ($hasPrev || $hasNext): ?>
-  <div class="pagination">
-    <?php if ($hasPrev && $prevAfterId): ?><a class="btn btn-sm" href="?<?= e(http_build_query(array_merge($baseQuery, ['after_id' => $prevAfterId]))) ?>">→ جدیدتر</a><?php endif; ?>
-    <?php if ($hasNext && $nextBeforeId): ?><a class="btn btn-sm" href="?<?= e(http_build_query(array_merge($baseQuery, ['before_id' => $nextBeforeId]))) ?>">قدیمی‌تر ←</a><?php endif; ?>
-  </div>
-  <?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $per), $baseQuery, 'page', $total) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

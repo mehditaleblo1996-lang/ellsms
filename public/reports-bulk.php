@@ -109,25 +109,10 @@ if ($dest === '' && $text === '' && $userId === 0) {
     }
 }
 
-$beforeId = isset($_GET['before_bulk_id']) && $_GET['before_bulk_id'] !== '' ? (int)$_GET['before_bulk_id'] : null;
-$afterId  = isset($_GET['after_bulk_id']) && $_GET['after_bulk_id'] !== '' ? (int)$_GET['after_bulk_id'] : null;
-$page = max(1, (int)($_GET['page'] ?? 1));
-
+[$page, $offset] = pager_offset($cnt, $per);
 $rowWhere = $where;
 $rowParams = $params;
-$order = 'bi.id DESC';
-if ($beforeId !== null && $beforeId > 0) {
-    $rowWhere[] = 'bi.id < ?';
-    $rowParams[] = $beforeId;
-} elseif ($afterId !== null && $afterId > 0) {
-    $rowWhere[] = 'bi.id > ?';
-    $rowParams[] = $afterId;
-    $order = 'bi.id ASC';
-} else {
-    $page = 1;
-}
 $rowW = implode(' AND ', $rowWhere);
-$limit = $per + 1;
 $rowSql = "SELECT
     bi.id, bi.job_id, bi.mobile AS destination, bi.content, bi.status AS queue_status,
     bi.gateway_id, bi.provider_message_id, bi.delivery_status, bi.delivery_attempts,
@@ -137,21 +122,11 @@ $rowSql = "SELECT
 FROM ellsms_bulk_items bi
 JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
 WHERE {$rowW}
-ORDER BY {$order}
-LIMIT {$limit}";
+ORDER BY bi.id DESC
+LIMIT {$per} OFFSET {$offset}";
 $rowSt = db()->prepare($rowSql);
 $rowSt->execute($rowParams);
-$fetched = $rowSt->fetchAll();
-$hasMore = count($fetched) > $per;
-$rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
-if ($afterId !== null && $afterId > 0) $rows = array_reverse($rows);
-
-$ids = $rows ? array_map('intval', array_column($rows, 'id')) : [];
-$nextBeforeId = $ids ? min($ids) : null;
-$prevAfterId = $ids ? max($ids) : null;
-$hasNext = $rows !== [] && (($beforeId === null && $afterId === null) || $beforeId !== null) ? $hasMore : true;
-$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null) && ($afterId !== null ? $hasMore : true);
-$totalPages = max(1, (int)ceil($cnt / max(1, $per)));
+$rows = $rowSt->fetchAll();
 
 $users = is_admin() ? backend_list_users_summary() : [];
 $userNames = [];
@@ -241,10 +216,6 @@ require __DIR__ . '/../app/views/header.php';
     <?php if (!$rows): ?><tr><td colspan="<?= is_admin()?11:10 ?>" class="empty">هیچ پیام حجیمی با این فیلترها یافت نشد.</td></tr><?php endif; ?>
   </table></div>
 
-  <div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
-    <?php if ($hasPrev): ?><a class="btn btn-sm" href="?<?= e($qs(['before_bulk_id'=>null,'after_bulk_id'=>$prevAfterId,'page'=>max(1,$page-1)])) ?>">→ جدیدتر</a><?php else: ?><span class="btn btn-sm btn-ghost" style="opacity:.45">→ جدیدتر</span><?php endif; ?>
-    <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits(number_format($page)) ?> از <?= to_persian_digits(number_format($totalPages)) ?> · <?= to_persian_digits(number_format(count($rows))) ?> ردیف</span>
-    <?php if ($hasNext): ?><a class="btn btn-sm" href="?<?= e($qs(['after_bulk_id'=>null,'before_bulk_id'=>$nextBeforeId,'page'=>$page+1])) ?>">قدیمی‌تر ←</a><?php else: ?><span class="btn btn-sm btn-ghost" style="opacity:.45">قدیمی‌تر ←</span><?php endif; ?>
-  </div>
+  <?= pager_links($page, pager_pages($cnt, $per), array_filter(array_diff_key($_GET, ['before_bulk_id' => 1, 'after_bulk_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $cnt) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

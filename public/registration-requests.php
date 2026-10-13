@@ -8,8 +8,7 @@ $active = 'registration_requests';
 $state = trim((string)($_GET['state'] ?? 'pending_admin_approval'));
 $allowed = ['pending_admin_approval','approved','rejected','pending_mobile_verification','all'];
 if (!in_array($state, $allowed, true)) $state = 'pending_admin_approval';
-$beforeId = max(0, (int)($_GET['before_id'] ?? 0));
-$limit = 51;
+$per = 50;
 
 $where = [];
 $params = [];
@@ -17,19 +16,16 @@ if ($state !== 'all') {
     $where[] = 'state = ?';
     $params[] = $state;
 }
-if ($beforeId > 0) {
-    $where[] = 'id < ?';
-    $params[] = $beforeId;
-}
+$whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+$count = db()->prepare('SELECT COUNT(*) FROM ellsms_registration_requests' . $whereSql);
+$count->execute($params);
+$total = (int)$count->fetchColumn();
+[$page, $offset] = pager_offset($total, $per);
 $sql = 'SELECT id,first_name,last_name,mobile,email,username,account_type,company_name,state,mobile_verified_at,admin_notified_at,created_at FROM ellsms_registration_requests';
-if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
-$sql .= ' ORDER BY id DESC LIMIT ' . $limit;
+$sql .= $whereSql . " ORDER BY id DESC LIMIT {$per} OFFSET {$offset}";
 $st = db()->prepare($sql);
 $st->execute($params);
 $rows = $st->fetchAll();
-$hasMore = count($rows) > 50;
-if ($hasMore) array_pop($rows);
-$nextBefore = $hasMore && $rows ? (int)end($rows)['id'] : 0;
 
 $labels = [
     'pending_mobile_verification' => 'منتظر تأیید موبایل',
@@ -76,8 +72,6 @@ require __DIR__ . '/../app/views/header.php';
       </tbody>
     </table>
   </div>
-  <?php if ($nextBefore > 0): ?>
-    <div style="margin-top:16px"><a class="btn" href="/registration-requests.php?state=<?= e($state) ?>&before_id=<?= $nextBefore ?>">صفحه بعد</a></div>
-  <?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $per), ['state' => $state], 'page', $total) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

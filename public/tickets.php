@@ -117,9 +117,9 @@ if ($ticketId) {
 } else {
     $statusFilter = $_GET['status'] ?? '';
     $per  = 50;
-    $page = max(1, (int)($_GET['page'] ?? 1));
+    $page = pager_page();
     [$tickets, $total] = ticket_list(is_admin() ? 0 : (int)$me['id'], $statusFilter, $page, $per);
-    $pages = max(1, (int)ceil($total / $per));
+    $pages = pager_pages($total, $per);
     $qs = fn(array $extra = []) => http_build_query(array_merge($_GET, $extra));
 
     require __DIR__ . '/../app/views/header.php';
@@ -171,13 +171,7 @@ if ($ticketId) {
       </table>
       </div>
 
-      <?php if ($pages > 1): ?>
-      <div class="pagination">
-        <?php if ($page > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page - 1])) ?>">→ قبلی</a><?php endif; ?>
-        <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits((string)$page) ?> از <?= to_persian_digits((string)$pages) ?></span>
-        <?php if ($page < $pages): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page + 1])) ?>">بعدی ←</a><?php endif; ?>
-      </div>
-      <?php endif; ?>
+      <?= pager_links(min($page, $pages), $pages, array_filter($_GET, static fn($v) => is_scalar($v) && $v !== ''), 'page', $total) ?>
     </div>
     <?php
 }

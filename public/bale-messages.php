@@ -39,14 +39,15 @@ if (!is_admin()) {
     if ($orgId > 0) { $where[] = 'organization_id = ?'; $params[] = $orgId; }
     else { $where[] = 'user_id = ?'; $params[] = (int)$me['id']; }
 }
-$beforeId = max(0, (int)($_GET['before_id'] ?? 0));
-if ($beforeId > 0) { $where[] = 'id < ?'; $params[] = $beforeId; }
+$per = 100;
+$count = db()->prepare('SELECT COUNT(*) FROM ellsms_channel_messages WHERE ' . implode(' AND ', $where));
+$count->execute($params);
+$total = (int)$count->fetchColumn();
+[$page, $offset] = pager_offset($total, $per);
 $st = db()->prepare('SELECT id, destination, content, status, provider_message_id, error, cost_credits, created_at
-                     FROM ellsms_channel_messages WHERE ' . implode(' AND ', $where) . ' ORDER BY id DESC LIMIT 101');
+                     FROM ellsms_channel_messages WHERE ' . implode(' AND ', $where) . " ORDER BY id DESC LIMIT {$per} OFFSET {$offset}");
 $st->execute($params);
 $rows = $st->fetchAll();
-$hasMore = count($rows) > 100;
-$rows = array_slice($rows, 0, 100);
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -90,6 +91,6 @@ require __DIR__ . '/../app/views/header.php';
     <?php if (!$rows): ?><tr><td colspan="5" class="empty">هنوز پیامی از طریق بله ارسال نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
-  <?php if ($hasMore): ?><a class="btn btn-sm" href="?before_id=<?= (int)end($rows)['id'] ?>">موارد قدیمی‌تر ←</a><?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $per), [], 'page', $total) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

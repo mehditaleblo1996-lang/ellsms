@@ -13,11 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/notifications.php');
 }
 
-$beforeId = max(0, (int)($_GET['before_id'] ?? 0));
-$rows = notification_list((int)$me['id'], $beforeId, 51);
-$hasMore = count($rows) > 50;
-if ($hasMore) array_pop($rows);
-$nextBefore = $hasMore && $rows ? (int)end($rows)['id'] : 0;
+$per = 50;
+$total = notification_count((int)$me['id']);
+[$page, $offset] = pager_offset($total, $per);
+$rows = notification_list((int)$me['id'], 0, $per, $offset);
 $unread = notification_unread_count((int)$me['id']);
 
 require __DIR__ . '/../app/views/header.php';
@@ -71,6 +70,6 @@ require __DIR__ . '/../app/views/header.php';
       <?php endforeach; ?>
     </div>
   <?php endif; ?>
-  <?php if ($nextBefore > 0): ?><div style="margin-top:16px"><a class="btn" href="/notifications.php?before_id=<?= $nextBefore ?>">صفحه بعد</a></div><?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $per), [], 'page', $total) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

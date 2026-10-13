@@ -64,8 +64,6 @@ $status = trim((string)($_GET['status'] ?? ''));
 $dest = trim((string)($_GET['dest'] ?? ''));
 $per = (int)($_GET['per_page'] ?? 100);
 if (!in_array($per, [50,100,200], true)) $per = 100;
-$beforeId = isset($_GET['before_id']) && $_GET['before_id'] !== '' ? (int)$_GET['before_id'] : null;
-$afterId = isset($_GET['after_id']) && $_GET['after_id'] !== '' ? (int)$_GET['after_id'] : null;
 
 $canonicalStatusSql = "CASE
     WHEN bi.delivery_status = 'delivered' THEN 'delivered'
@@ -98,36 +96,29 @@ if ($dest !== '') {
     }
 }
 
-$order = 'bi.id DESC';
-if ($beforeId !== null && $beforeId > 0) {
-    $where[] = 'bi.id < ?';
-    $params[] = $beforeId;
-} elseif ($afterId !== null && $afterId > 0) {
-    $where[] = 'bi.id > ?';
-    $params[] = $afterId;
-    $order = 'bi.id ASC';
+// The rows matching the filter: the summary already counts them unless a number is searched.
+$statusFilter = in_array($status, ['pending','sent','delivered','failed'], true) ? $status : '';
+if (count($where) === 1) {
+    $listTotal = (int)$summary['total'];
+} elseif ($dest === '' || preg_replace('/\D/', '', $dest) === '') {
+    $listTotal = (int)$summary[$statusFilter . '_count'];
+} else {
+    $countSt = db()->prepare('SELECT COUNT(*) FROM ellsms_bulk_items bi WHERE ' . implode(' AND ', $where));
+    $countSt->execute($params);
+    $listTotal = (int)$countSt->fetchColumn();
 }
+[$page, $offset] = pager_offset($listTotal, $per);
 
-$limit = $per + 1;
 $sql = "SELECT bi.id,bi.mobile,bi.content,bi.status queue_status,bi.provider_message_id,
                bi.delivery_status,bi.delivery_attempts,bi.delivery_checked_at,bi.created_at,
                {$canonicalStatusSql} canonical_status
         FROM ellsms_bulk_items bi
         WHERE " . implode(' AND ', $where) . "
-        ORDER BY {$order}
-        LIMIT {$limit}";
+        ORDER BY bi.id DESC
+        LIMIT {$per} OFFSET {$offset}";
 $st = db()->prepare($sql);
 $st->execute($params);
-$fetched = $st->fetchAll();
-$hasMore = count($fetched) > $per;
-$rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
-if ($afterId !== null && $afterId > 0) $rows = array_reverse($rows);
-
-$ids = $rows ? array_map('intval', array_column($rows, 'id')) : [];
-$nextBefore = $ids ? min($ids) : null;
-$prevAfter = $ids ? max($ids) : null;
-$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null);
-$hasNext = $rows !== [] && (($beforeId === null && $afterId === null) ? $hasMore : ($beforeId !== null ? $hasMore : true));
+$rows = $st->fetchAll();
 
 $statusFa = ['pending'=>'در انتظار','sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','failed'=>'ناموفق'];
 $statusClass = ['pending'=>'pending','sent'=>'success','delivered'=>'success','failed'=>'error'];
@@ -227,10 +218,6 @@ require __DIR__ . '/../app/views/header.php';
     <?php if (!$rows): ?><tr><td colspan="8" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
   </table></div>
 
-  <div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
-    <?php if ($hasPrev): ?><a class="btn btn-sm" href="?<?= e($qs(['before_id'=>null,'after_id'=>$prevAfter])) ?>">→ جدیدتر</a><?php endif; ?>
-    <span class="btn btn-sm btn-ghost"><?= to_persian_digits(number_format(count($rows))) ?> ردیف</span>
-    <?php if ($hasNext): ?><a class="btn btn-sm" href="?<?= e($qs(['after_id'=>null,'before_id'=>$nextBefore])) ?>">قدیمی‌تر ←</a><?php endif; ?>
-  </div>
+  <?= pager_links($page, pager_pages($listTotal, $per), array_filter(array_diff_key($_GET, ['before_id' => 1, 'after_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $listTotal) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

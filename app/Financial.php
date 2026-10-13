@@ -256,6 +256,17 @@ function billing_invoice_with_payment(int $invoiceId, ?int $organizationId, ?int
 }
 
 /** Bounded, DB-paginated invoice list for a customer (their own organization/user scope only). */
+function billing_invoices_count_for_organization(?int $organizationId, ?int $userId): int {
+    if ($organizationId !== null) {
+        $st = db()->prepare('SELECT COUNT(*) FROM ellsms_invoices WHERE organization_id = ?');
+        $st->execute([$organizationId]);
+    } else {
+        $st = db()->prepare('SELECT COUNT(*) FROM ellsms_invoices WHERE organization_id IS NULL AND user_id = ?');
+        $st->execute([$userId]);
+    }
+    return (int)$st->fetchColumn();
+}
+
 function billing_invoices_for_organization(?int $organizationId, ?int $userId, int $limit = 30, int $offset = 0): array {
     $limit = max(1, min(100, $limit));
     if ($organizationId !== null) {

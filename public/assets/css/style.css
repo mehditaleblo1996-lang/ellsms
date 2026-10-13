@@ -416,6 +416,14 @@ tr:hover td { background: #f9f9ff; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin-bottom: 16px; }
 .toolbar > * { margin-bottom: 0; }
 .pagination { display: flex; gap: 8px; margin-top: 16px; }
+.pager { flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: 18px; }
+.pager .btn { min-width: 36px; justify-content: center; }
+.pager .is-disabled { opacity: .45; pointer-events: none; }
+.pager-gap { color: var(--muted); padding: 0 2px; }
+.pager-info { color: var(--muted); font-size: var(--fs-sm); margin-inline-start: 8px; }
+.pager-jump { display: flex; align-items: center; gap: 6px; margin: 0 0 0 0; margin-inline-start: 8px; }
+.pager-jump label { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-sm); color: var(--muted); font-weight: 400; }
+.pager-jump input { width: 80px; padding: 5px 8px; margin: 0; }
 .msg-preview { max-width: 340px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty { color: var(--muted); text-align: center; padding: 34px 0; }
 

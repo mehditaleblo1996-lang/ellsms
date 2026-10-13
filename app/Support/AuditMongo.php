@@ -262,16 +262,43 @@ function audit_request_register(): void {
 }
 
 /** @return list<array<string,mixed>> */
-function audit_mongo_list(array $filters, int $limit = 100, ?string $beforeId = null): array {
-    $manager = audit_mongo_manager();
-    if (!$manager) return [];
-    audit_mongo_ensure_indexes();
+/** The audit_events query for the log page's filters. */
+function audit_mongo_filter(array $filters): array {
     $q = [];
     foreach (['event_type','username','ip','path','request_id'] as $key) {
         $v = trim((string)($filters[$key] ?? ''));
         if ($v !== '') $q[$key] = $v;
     }
     if (($filters['user_id'] ?? '') !== '') $q['user_id'] = (int)$filters['user_id'];
+    return $q;
+}
+
+/**
+ * How many audit events match the filters, or null when Mongo is unavailable or the count takes
+ * longer than a few seconds (the log page then pages without a total).
+ */
+function audit_mongo_count(array $filters): ?int {
+    $manager = audit_mongo_manager();
+    if (!$manager) return null;
+    try {
+        $cursor = $manager->executeCommand(audit_mongo_database(), new MongoDB\Driver\Command([
+            'count' => 'audit_events',
+            'query' => (object)audit_mongo_filter($filters),
+            'maxTimeMS' => 3000,
+        ]));
+        $res = current($cursor->toArray());
+        return isset($res->n) ? (int)$res->n : null;
+    } catch (Throwable $e) {
+        error_log('ELLSMS audit count failed: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function audit_mongo_list(array $filters, int $limit = 100, ?string $beforeId = null, int $skip = 0): array {
+    $manager = audit_mongo_manager();
+    if (!$manager) return [];
+    audit_mongo_ensure_indexes();
+    $q = audit_mongo_filter($filters);
     if ($beforeId) {
         try { $q['_id'] = ['$lt' => new MongoDB\BSON\ObjectId($beforeId)]; } catch (Throwable) {}
     }
@@ -279,6 +306,7 @@ function audit_mongo_list(array $filters, int $limit = 100, ?string $beforeId = 
         $cursor = $manager->executeQuery(audit_mongo_database() . '.audit_events', new MongoDB\Driver\Query($q, [
             'sort' => ['_id' => -1],
             'limit' => max(1, min(201, $limit)),
+            'skip' => max(0, $skip),
         ]));
         $out = [];
         foreach ($cursor as $doc) {

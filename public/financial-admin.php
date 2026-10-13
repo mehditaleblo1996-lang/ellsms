@@ -52,9 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $tab = in_array($_GET['tab'] ?? 'invoices', ['invoices','payments','wallet'], true) ? $_GET['tab'] : 'invoices';
-$page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 30;
-$offset = ($page - 1) * $perPage;
 $filterStatus = trim((string)($_GET['status'] ?? ''));
 $filterOrg = (int)($_GET['organization_id'] ?? 0);
 $filterGateway = trim((string)($_GET['gateway'] ?? ''));
@@ -68,19 +66,22 @@ if ($tab === 'invoices') {
     if ($filterStatus !== '') { $where[]='status=?'; $params[]=$filterStatus; }
     if ($filterOrg > 0) { $where[]='organization_id=?'; $params[]=$filterOrg; }
     if ($filterPurpose !== '') { $where[]='purpose=?'; $params[]=$filterPurpose; }
-    $sql = 'SELECT * FROM ellsms_invoices ' . ($where ? 'WHERE '.implode(' AND ',$where) : '') . ' ORDER BY id DESC LIMIT '.($perPage+1).' OFFSET '.$offset;
+    $table = 'ellsms_invoices';
 } elseif ($tab === 'payments') {
     if ($filterStatus !== '') { $where[]='status=?'; $params[]=$filterStatus; }
     if ($filterOrg > 0) { $where[]='organization_id=?'; $params[]=$filterOrg; }
     if ($filterGateway !== '') { $where[]='gateway=?'; $params[]=$filterGateway; }
     if ($filterPurpose !== '') { $where[]='purpose=?'; $params[]=$filterPurpose; }
-    $sql = 'SELECT * FROM ellsms_payments ' . ($where ? 'WHERE '.implode(' AND ',$where) : '') . ' ORDER BY id DESC LIMIT '.($perPage+1).' OFFSET '.$offset;
+    $table = 'ellsms_payments';
 } else {
     if ($filterOrg > 0) { $where[]='user_id IN (SELECT user_id FROM ellsms_organization_memberships WHERE organization_id=?)'; $params[]=$filterOrg; }
-    $sql = 'SELECT * FROM ellsms_wallet_transactions ' . ($where ? 'WHERE '.implode(' AND ',$where) : '') . ' ORDER BY id DESC LIMIT '.($perPage+1).' OFFSET '.$offset;
+    $table = 'ellsms_wallet_transactions';
 }
-$st = db()->prepare($sql); $st->execute($params); $rows = $st->fetchAll();
-if (count($rows) > $perPage) { $hasMore=true; $rows=array_slice($rows,0,$perPage); }
+$whereSql = $where ? ' WHERE '.implode(' AND ',$where) : '';
+$countSt = db()->prepare('SELECT COUNT(*) FROM '.$table.$whereSql); $countSt->execute($params);
+$total = (int)$countSt->fetchColumn();
+[$page, $offset] = pager_offset($total, $perPage);
+$st = db()->prepare('SELECT * FROM '.$table.$whereSql.' ORDER BY id DESC LIMIT '.$perPage.' OFFSET '.$offset); $st->execute($params); $rows = $st->fetchAll();
 
 $invoiceStatusFa=['issued'=>'پرداخت‌نشده','paid'=>'پرداخت‌شده','cancelled'=>'لغوشده','expired'=>'منقضی','refunded'=>'بازگشت‌داده‌شده'];
 $paymentStatusFa=['pending'=>'در انتظار','verification_failed'=>'در حال بررسی مجدد','paid'=>'موفق','failed'=>'ناموفق'];
@@ -153,10 +154,6 @@ require __DIR__ . '/../app/views/header.php';
   <?php if(!$rows): ?><p class="empty">رکوردی یافت نشد.</p><?php endif; ?>
   </div>
 
-  <div class="toolbar" style="margin-top:14px">
-    <?php $qs=['tab'=>$tab,'status'=>$filterStatus,'organization_id'=>$filterOrg?:'','gateway'=>$filterGateway,'purpose'=>$filterPurpose]; ?>
-    <?php if($page>1): ?><a class="btn btn-sm" href="?<?= http_build_query($qs+['page'=>$page-1]) ?>">صفحه قبل</a><?php endif; ?>
-    <?php if($hasMore): ?><a class="btn btn-sm" href="?<?= http_build_query($qs+['page'=>$page+1]) ?>">صفحه بعد</a><?php endif; ?>
-  </div>
+  <?= pager_links($page, pager_pages($total, $perPage), array_filter(['tab'=>$tab,'status'=>$filterStatus,'organization_id'=>$filterOrg?:'','gateway'=>$filterGateway,'purpose'=>$filterPurpose], 'strlen'), 'page', $total) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

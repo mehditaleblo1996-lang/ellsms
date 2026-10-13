@@ -52,10 +52,11 @@ if (isset($_GET['export'])) {
     exit;
 }
 
-$per = 50; $page = max(1, (int)($_GET['page'] ?? 1));
+$per = 50;
 $cnt = backend_inbound_count($W, $params);
-$pages = max(1, (int)ceil($cnt / $per));
-$rows = backend_inbound_rows($W, $params, $per, ($page - 1) * $per);
+[$page, $offset] = pager_offset($cnt, $per);
+$pages = pager_pages($cnt, $per);
+$rows = backend_inbound_rows($W, $params, $per, $offset);
 
 $qs = fn(array $extra = []) => http_build_query(array_merge($_GET, $extra));
 require __DIR__ . '/../app/views/header.php';
@@ -93,12 +94,6 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   </div>
 
-  <?php if ($pages > 1): ?>
-  <div class="pagination">
-    <?php if ($page > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page - 1])) ?>">→ قبلی</a><?php endif; ?>
-    <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits((string)$page) ?> از <?= to_persian_digits((string)$pages) ?></span>
-    <?php if ($page < $pages): ?><a class="btn btn-sm" href="?<?= e($qs(['page' => $page + 1])) ?>">بعدی ←</a><?php endif; ?>
-  </div>
-  <?php endif; ?>
+  <?= pager_links($page, $pages, array_filter($_GET, static fn($v) => is_scalar($v) && $v !== ''), 'page', $cnt) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

@@ -160,13 +160,19 @@ function notification_unread_count(int $userId): int {
     } catch (Throwable) { return 0; }
 }
 
-function notification_list(int $userId, int $beforeId = 0, int $limit = 51): array {
+function notification_list(int $userId, int $beforeId = 0, int $limit = 51, int $offset = 0): array {
     $limit = max(1, min(101, $limit));
     $sql = 'SELECT id,event_key,title,body,action_url,severity,read_at,created_at FROM ellsms_notifications WHERE user_id=?';
     $params = [$userId];
     if ($beforeId > 0) { $sql .= ' AND id < ?'; $params[] = $beforeId; }
-    $sql .= ' ORDER BY id DESC LIMIT ' . $limit;
+    $sql .= ' ORDER BY id DESC LIMIT ' . $limit . ' OFFSET ' . max(0, $offset);
     $st = db()->prepare($sql); $st->execute($params); return $st->fetchAll();
+}
+
+function notification_count(int $userId): int {
+    $st = db()->prepare('SELECT COUNT(*) FROM ellsms_notifications WHERE user_id=?');
+    $st->execute([$userId]);
+    return (int)$st->fetchColumn();
 }
 
 function notification_mark_read(int $userId, int $notificationId): void {

@@ -149,18 +149,16 @@ $GW = implode(' AND ', $gw) . hidden_messages_exclude_sql('attempt', 'a.id', $hi
 $gs = db()->prepare("SELECT COUNT(*) total, SUM(($gwCanonical) IN ('sent','delivered')) ok_count, SUM(($gwCanonical)='failed') failed_count FROM ellsms_message_attempts a WHERE $GW");
 $gs->execute($gp); $G = $gs->fetch() ?: [];
 
-$gwPage = max(1, (int)($_GET['gw_page'] ?? 1));
+[$gwPage, $gwOffset] = pager_offset((int)($G['total'] ?? 0), $per, 'gw_page');
 $gwSelect = $gwReport ? 'a.originator, a.content' : 'NULL originator, NULL content';
 $gwRowsSt = db()->prepare("SELECT a.id, a.user_id, a.reference_type,
                                   a.destination, $gwSelect, a.attempted_at, a.delivered_at, $gwCanonical canonical_status
                            FROM ellsms_message_attempts a
                            WHERE $GW
                            ORDER BY a.attempted_at DESC, a.id DESC
-                           LIMIT " . ($per + 1) . ' OFFSET ' . (($gwPage - 1) * $per));
+                           LIMIT {$per} OFFSET {$gwOffset}");
 $gwRowsSt->execute($gp);
 $gwRows = $gwRowsSt->fetchAll();
-$gwHasNext = count($gwRows) > $per;
-$gwRows = array_slice($gwRows, 0, $per);
 $gwUsernames = backend_usernames_by_ids(array_column($gwRows, 'user_id'));
 foreach ($gwRows as &$gr) {
     $gr['username'] = $gwUsernames[(int)$gr['user_id']] ?? ('#' . $gr['user_id']);
@@ -201,29 +199,18 @@ $S = [
     'scheduled'=>$scheduleCount,
 ];
 
-/* ---------------- Keyset pagination for direct details ---------------- */
-$cursorTime = trim((string)($_GET['before_time'] ?? ''));
-$cursorId = (int)($_GET['before_id'] ?? 0);
-$cursorSql = '';
-$dpRows = $dp;
-if ($cursorTime !== '' && $cursorId > 0) {
-    $cursorSql = " AND (m.sent_at < ? OR (m.sent_at = ? AND m.id < ?))";
-    array_push($dpRows, $cursorTime, $cursorTime, $cursorId);
-}
-$limit = $per + 1;
+/* ---------------- Numbered pages for direct details ($D['total'] is the filtered count) ---------------- */
+[$directPage, $directOffset] = pager_offset((int)($D['total'] ?? 0), $per, 'direct_page');
 $directSql = "SELECT m.id,m.sent_at sort_time,m.sent_at,m.delivered_at,m.sender_user_id user_id,
                      COALESCE(u.username, CONCAT('#',m.sender_user_id)) username,m.originator,m.destination,m.content,$directCanonical canonical_status
               FROM outbound_message m
               LEFT JOIN user_ u ON u.id=m.sender_user_id
-              WHERE $DW $cursorSql
+              WHERE $DW
               ORDER BY m.sent_at DESC,m.id DESC
-              LIMIT $limit";
+              LIMIT {$per} OFFSET {$directOffset}";
 $directSt = db()->prepare($directSql);
-$directSt->execute($dpRows);
-$directRows = $directSt->fetchAll();
-$hasNext = count($directRows) > $per;
-$rows = array_slice($directRows, 0, $per);
-$last = $rows ? $rows[count($rows)-1] : null;
+$directSt->execute($dp);
+$rows = $directSt->fetchAll();
 
 // Which of the rows on screen an admin has removed from the customer's panel (empty for a customer,
 // who never receives those rows in the first place).
@@ -234,6 +221,8 @@ $canHide = is_admin() && hidden_messages_available();
 
 $users = is_admin() ? backend_list_users_summary() : [];
 $qs = fn(array $extra=[]) => http_build_query(array_filter(array_merge($_GET,$extra), static fn($v)=>$v!==null && $v!==''));
+// The filters every pagination link keeps (each list moves only its own page parameter).
+$pagerQuery = array_filter(array_diff_key($_GET, ['before_time' => 1, 'before_id' => 1]), static fn($v) => is_scalar($v) && $v !== '');
 $bulkStatusFa = ['pending'=>'در صف','processing'=>'در حال ارسال','done'=>'انجام‌شده','cancelled'=>'لغوشده','staged'=>'منتظر تأیید'];
 $scheduleStatusFa = ['active'=>'فعال','processing'=>'در حال ارسال','done'=>'انجام‌شده','cancelled'=>'لغوشده'];
 $repeatFa = ['none'=>'یک‌بار','daily'=>'روزانه','weekly'=>'هفتگی','monthly'=>'ماهانه'];
@@ -258,7 +247,7 @@ require __DIR__ . '/../app/views/header.php';
   <label>تعداد در صفحه <select name="per_page"><?php foreach([25,50,100,200] as $n): ?><option value="<?= $n ?>" <?= $per===$n?'selected':'' ?>><?= to_persian_digits((string)$n) ?></option><?php endforeach; ?></select></label>
   <button class="btn btn-primary">اعمال فیلتر</button>
 </form>
-<form method="post" action="?<?= e(http_build_query(array_diff_key($_GET, array_flip(['before_time', 'before_id', 'gw_page', 'per_page'])))) ?>" class="toolbar" style="margin-top:10px">
+<form method="post" action="?<?= e(http_build_query(array_diff_key($_GET, array_flip(['before_time', 'before_id', 'gw_page', 'direct_page', 'per_page'])))) ?>" class="toolbar" style="margin-top:10px">
   <?= csrf_field() ?>
   <input type="hidden" name="do" value="export">
   <button class="btn btn-sm">⬇ دریافت خروجی CSV همین گزارش</button>
@@ -305,11 +294,7 @@ require __DIR__ . '/../app/views/header.php';
 <?php endforeach; ?>
 <?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?($canHide?11:10):9 ?>" class="empty">پیامی با این فیلترها از درگاه ارسال نشده است.</td></tr><?php endif; ?>
 </table></div>
-<div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
-  <?php if($gwPage > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['gw_page'=>$gwPage-1])) ?>#gateway">→ جدیدتر</a><?php endif; ?>
-  <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits((string)$gwPage) ?></span>
-  <?php if($gwHasNext): ?><a class="btn btn-sm" href="?<?= e($qs(['gw_page'=>$gwPage+1])) ?>#gateway">قدیمی‌تر ←</a><?php endif; ?>
-</div>
+<?= pager_links($gwPage, pager_pages((int)($G['total'] ?? 0), $per), $pagerQuery, 'gw_page', (int)($G['total'] ?? 0), 'gateway') ?>
 </div>
 </section>
 
@@ -393,11 +378,7 @@ require __DIR__ . '/../app/views/header.php';
 <?php endforeach; ?>
 <?php if(!$rows): ?><tr><td colspan="<?= is_admin()?($canHide?10:9):8 ?>" class="empty">هیچ پیام عادی/API با این فیلترها یافت نشد.</td></tr><?php endif; ?>
 </table></div>
-<div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
-  <a class="btn btn-sm" href="?<?= e($qs(['before_time'=>null,'before_id'=>null])) ?>#direct">↻ جدیدترین</a>
-  <span class="btn btn-sm btn-ghost"><?= to_persian_digits(number_format(count($rows))) ?> ردیف</span>
-  <?php if($hasNext && $last): ?><a class="btn btn-sm" href="?<?= e($qs(['before_time'=>$last['sort_time'],'before_id'=>$last['id']])) ?>#direct">قدیمی‌تر ←</a><?php endif; ?>
-</div>
+<?= pager_links($directPage, pager_pages((int)($D['total'] ?? 0), $per), $pagerQuery, 'direct_page', (int)($D['total'] ?? 0), 'direct') ?>
 </div>
 </section>
 

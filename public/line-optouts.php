@@ -74,14 +74,14 @@ $filterLine = normalize_originator((string)($_GET['line'] ?? '')) ?? '';
 $filterMobile = preg_replace('/\D/', '', from_persian_digits((string)($_GET['mobile'] ?? ''))) ?? '';
 if ($filterLine !== '') { $where[] = 'originator = ?'; $params[] = $filterLine; }
 if ($filterMobile !== '') { $where[] = 'mobile LIKE ?'; $params[] = '%' . $filterMobile . '%'; }
-$beforeId = max(0, (int)($_GET['before_id'] ?? 0));
-if ($beforeId > 0) { $where[] = 'id < ?'; $params[] = $beforeId; }
-
-$st = db()->prepare('SELECT id, originator, mobile, source, created_at FROM ellsms_line_optouts WHERE ' . implode(' AND ', $where) . ' ORDER BY id DESC LIMIT 101');
+$per = 100;
+$count = db()->prepare('SELECT COUNT(*) FROM ellsms_line_optouts WHERE ' . implode(' AND ', $where));
+$count->execute($params);
+$total = (int)$count->fetchColumn();
+[$page, $offset] = pager_offset($total, $per);
+$st = db()->prepare('SELECT id, originator, mobile, source, created_at FROM ellsms_line_optouts WHERE ' . implode(' AND ', $where) . " ORDER BY id DESC LIMIT {$per} OFFSET {$offset}");
 $st->execute($params);
 $rows = $st->fetchAll();
-$hasMore = count($rows) > 100;
-$rows = array_slice($rows, 0, 100);
 
 $exemptTypes = array_filter(array_map('trim', explode(',', (string)setting_fresh('line_optout_exempt_types', 'otp'))));
 $typeLabels = ['promotional' => 'تبلیغاتی', 'transactional' => 'خدماتی', 'otp' => 'رمز یک‌بارمصرف', 'default' => 'پیش‌فرض'];
@@ -122,9 +122,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php if (!$rows): ?><tr><td colspan="5" class="empty">موردی ثبت نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
-  <?php if ($hasMore): ?>
-    <a class="btn btn-sm" href="?<?= e(http_build_query(['line' => $filterLine, 'mobile' => $filterMobile, 'before_id' => (int)end($rows)['id']])) ?>">موارد قدیمی‌تر ←</a>
-  <?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $per), array_filter(['line' => $filterLine, 'mobile' => $filterMobile], 'strlen'), 'page', $total) ?>
 </div>
 
 <?php if (is_admin()): ?>

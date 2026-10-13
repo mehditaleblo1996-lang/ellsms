@@ -134,8 +134,10 @@ if ($invoiceId > 0) {
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; return; }
 
-$page=max(1,(int)($_GET['page']??1)); $perPage=20;
-$invoices=billing_invoices_for_organization($orgId,(int)$me['id'],$perPage,($page-1)*$perPage);
+$perPage=20;
+$invoiceTotal=billing_invoices_count_for_organization($orgId,(int)$me['id']);
+[$page,$offset]=pager_offset($invoiceTotal,$perPage);
+$invoices=billing_invoices_for_organization($orgId,(int)$me['id'],$perPage,$offset);
 $statusFa=['issued'=>'پرداخت‌نشده','paid'=>'پرداخت‌شده','cancelled'=>'لغوشده','expired'=>'منقضی','refunded'=>'بازگشت‌داده‌شده'];
 $purposeFa=['credit'=>'خرید اعتبار','subscription'=>'اشتراک'];
 require __DIR__ . '/../app/views/header.php';
@@ -144,5 +146,5 @@ require __DIR__ . '/../app/views/header.php';
 <tr><th>شماره فاکتور</th><th>نوع</th><th>مبلغ (ریال)</th><th>وضعیت</th><th>دسترسی</th><th>تاریخ</th><th></th></tr>
 <?php foreach($invoices as $inv): $as=invoice_admin_state($inv); ?><tr><td class="num ltr"><?= e($inv['invoice_number']) ?></td><td><?= e($purposeFa[$inv['purpose']]??$inv['purpose']) ?></td><td class="num"><?= to_persian_digits(number_format((int)$inv['total_amount'])) ?></td><td><span class="badge badge-<?= $inv['status']==='paid'?'ok':($inv['status']==='issued'?'pending':'off') ?>"><?= e($statusFa[$inv['status']]??$inv['status']) ?></span></td><td><span class="badge badge-<?= $as==='approved'?'ok':'off' ?>"><?= $as==='approved'?'فعال':'غیرفعال' ?></span></td><td class="num"><?= jdate($inv['created_at']) ?></td><td><a class="btn btn-sm" href="/invoices.php?id=<?= (int)$inv['id'] ?>">مشاهده</a></td></tr><?php endforeach; ?>
 <?php if(!$invoices): ?><tr><td colspan="7" class="empty">فاکتوری ثبت نشده.</td></tr><?php endif; ?>
-</table></div><div class="toolbar" style="margin-top:14px"><?php if($page>1): ?><a class="btn btn-sm" href="?page=<?= $page-1 ?>">صفحه قبل</a><?php endif; ?><?php if(count($invoices)===$perPage): ?><a class="btn btn-sm" href="?page=<?= $page+1 ?>">صفحه بعد</a><?php endif; ?></div></div>
+</table></div><?= pager_links($page,pager_pages($invoiceTotal,$perPage),[],'page',$invoiceTotal) ?></div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

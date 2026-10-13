@@ -13,12 +13,19 @@ $filters = [
     'path'       => trim($_GET['path'] ?? ''),
     'request_id' => trim($_GET['request_id'] ?? ''),
 ];
-$beforeId = trim($_GET['before_id'] ?? '');
 $per = 100;
-$fetched = audit_mongo_list($filters, $per + 1, $beforeId !== '' ? $beforeId : null);
+$total = audit_mongo_count($filters);
+if ($total !== null) {
+    [$page, $offset] = pager_offset($total, $per);
+} else {
+    $page = pager_page();
+    $offset = ($page - 1) * $per;
+}
+$fetched = audit_mongo_list($filters, $per + 1, null, $offset);
 $hasMore = count($fetched) > $per;
 $rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
-$nextId = $rows ? (string)end($rows)['_id'] : null;
+// Without a total (Mongo too slow to count), the bar still offers the next page while one exists.
+$pages = $total !== null ? pager_pages($total, $per) : $page + ($hasMore ? 1 : 0);
 
 $eventFa = static function (string $event): string {
     return match ($event) {
@@ -80,8 +87,6 @@ require __DIR__ . '/../app/views/header.php';
       <?php if (!$rows): ?><tr><td colspan="10" class="empty">لاگی با این فیلترها پیدا نشد.</td></tr><?php endif; ?>
     </table>
   </div>
-  <?php if ($hasMore && $nextId): ?>
-    <div class="pagination"><a class="btn btn-sm" href="?<?= e($qs(['before_id' => $nextId])) ?>">قدیمی‌تر ←</a></div>
-  <?php endif; ?>
+  <?= pager_links($page, $pages, array_filter($filters, 'strlen'), 'page', $total) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

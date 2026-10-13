@@ -43,37 +43,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/blacklist.php');
 }
 
-// Never materialize the whole blacklist in one HTTP request. Use id-based keyset pagination so
-// page cost stays constant even if an account eventually has hundreds of thousands of entries.
+// Never materialize the whole blacklist in one HTTP request: one page of 100 at a time.
 $per = 100;
-$beforeId = (isset($_GET['before_id']) && $_GET['before_id'] !== '') ? (int)$_GET['before_id'] : null;
-$afterId  = (isset($_GET['after_id']) && $_GET['after_id'] !== '') ? (int)$_GET['after_id'] : null;
-
-$where = 'user_id = ?';
-$params = [(int)$me['id']];
-$order = 'DESC';
-if ($beforeId !== null && $beforeId > 0) {
-    $where .= ' AND id < ?';
-    $params[] = $beforeId;
-} elseif ($afterId !== null && $afterId > 0) {
-    $where .= ' AND id > ?';
-    $params[] = $afterId;
-    $order = 'ASC';
-}
-
-$st = db()->prepare("SELECT id, mobile, note, created_at FROM ellsms_blacklist WHERE {$where} ORDER BY id {$order} LIMIT " . ($per + 1));
-$st->execute($params);
-$fetched = $st->fetchAll();
-$hasMore = count($fetched) > $per;
-$rows = $hasMore ? array_slice($fetched, 0, $per) : $fetched;
-if ($afterId !== null && $afterId > 0) {
-    $rows = array_reverse($rows);
-}
-$ids = $rows ? array_map('intval', array_column($rows, 'id')) : [];
-$nextBeforeId = $ids ? min($ids) : null;
-$prevAfterId = $ids ? max($ids) : null;
-$hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null);
-$hasNext = $rows !== [] && ($afterId !== null || $hasMore);
+$count = db()->prepare('SELECT COUNT(*) FROM ellsms_blacklist WHERE user_id = ?');
+$count->execute([(int)$me['id']]);
+$total = (int)$count->fetchColumn();
+[$page, $offset] = pager_offset($total, $per);
+$st = db()->prepare("SELECT id, mobile, note, created_at FROM ellsms_blacklist WHERE user_id = ? ORDER BY id DESC LIMIT {$per} OFFSET {$offset}");
+$st->execute([(int)$me['id']]);
+$rows = $st->fetchAll();
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -122,11 +100,6 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   </div>
 
-  <?php if ($hasPrev || $hasNext): ?>
-  <div class="pagination">
-    <?php if ($hasPrev && $prevAfterId): ?><a class="btn btn-sm" href="?after_id=<?= (int)$prevAfterId ?>">→ جدیدتر</a><?php endif; ?>
-    <?php if ($hasNext && $nextBeforeId): ?><a class="btn btn-sm" href="?before_id=<?= (int)$nextBeforeId ?>">قدیمی‌تر ←</a><?php endif; ?>
-  </div>
-  <?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $per), [], 'page', $total) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
