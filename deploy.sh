@@ -25,9 +25,13 @@ fi
 # Re-read env after first-run generation so Compose and schema commands share the same values.
 set -a; . ./.env; set +a
 
-echo "==> Rebuilding and restarting containers..."
+# Build first, migrate with a throwaway container of the NEW image, and only then restart the
+# services: started before the migrations, the new code would run against the old schema until
+# they finished (a worker would fail its passes, or write half-shaped rows, in that window). The
+# running containers keep serving the old code during the migration; migrations are additive, so
+# the old code keeps working against the new schema for those few seconds.
+echo "==> Building the image..."
 docker compose build
-docker compose up -d
 
 # Run the mysql CLI from INSIDE the app container (which already has default-mysql-client -- see
 # docker/Dockerfile) and connects to BACKEND_DB_HOST over the network, rather than `docker exec`ing
@@ -48,7 +52,7 @@ if [ "${BACKEND_DB_SSL_VERIFY:-0}" != "1" ]; then
 fi
 
 echo "==> Applying ELLSMS supplementary schema (safe to re-run)..."
-docker compose exec -T app \
+docker compose run --rm --no-deps -T app \
   mysql "${MYSQL_SSL_OPTS[@]}" -h"${BACKEND_DB_HOST}" -P"${BACKEND_DB_PORT:-3306}" -u"${BACKEND_DB_USER}" -p"${BACKEND_DB_PASS}" "${BACKEND_DB_NAME}" \
   < db/ellsms_extra.sql
 
@@ -62,7 +66,10 @@ docker compose exec -T app \
 # Removed rather than fixed the filename again: a hardcoded filename here will only go stale the
 # same way again on the next rename; the glob below is what's supposed to be the source of truth.
 echo "==> Applying versioned DB migrations..."
-docker compose exec -T app php cron/db-migrate.php --apply
+docker compose run --rm --no-deps -T app php cron/db-migrate.php --apply
+
+echo "==> Restarting containers on the new code..."
+docker compose up -d
 
 echo "==> Done. Status:"
 docker compose ps
