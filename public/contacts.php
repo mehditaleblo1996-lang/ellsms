@@ -337,13 +337,14 @@ require __DIR__ . '/../app/views/header.php';
   <div class="table-wrap">
   <table>
     <tr>
-      <th>نام</th><th>موبایل</th>
+      <th>نام</th><?php if ($hasDetails): ?><th>نام خانوادگی</th><?php endif; ?><th>موبایل</th>
       <?php if ($hasDetails): ?><th>تلفن</th><th>جنسیت</th><th>تاریخ تولد</th><th>تاریخ مناسبت</th><th>ایمیل</th><th>آدرس</th><?php endif; ?>
       <th>گروه</th><th>تاریخ افزودن</th><th></th>
     </tr>
     <?php foreach ($rows as $c): ?>
       <tr>
-        <td><?= e(trim($c['name'] . ' ' . ($c['last_name'] ?? ''))) ?></td>
+        <td><?= e($c['name']) ?></td>
+        <?php if ($hasDetails): ?><td><?= e($c['last_name']) ?></td><?php endif; ?>
         <td class="msisdn"><?= e($c['mobile']) ?></td>
         <?php if ($hasDetails): ?>
           <td class="msisdn"><?= e($c['phone']) ?></td>
@@ -365,7 +366,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= $hasDetails ? 11 : 5 ?>" class="empty">هنوز مخاطبی وجود ندارد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= $hasDetails ? 12 : 5 ?>" class="empty">هنوز مخاطبی وجود ندارد.</td></tr><?php endif; ?>
   </table>
   </div>
 
