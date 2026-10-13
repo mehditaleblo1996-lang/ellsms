@@ -56,10 +56,25 @@ class WalletInsufficientBalanceException extends RuntimeException {
 class QuotaExceededException extends RuntimeException {
 }
 
-/** Must be called with an existing PDO instance inside an open transaction. Never backfills from currentcredit — that's the explicit, separate STEP 4 backfill script (cron/wallet-backfill.php). */
+/**
+ * Opens the account's wallet if it has none. Must be called inside an open transaction.
+ *
+ * The wallet is the only balance an account has; user_.currentcredit is just the copy ELLSMS keeps
+ * for the backend. An account that never had a wallet (one created after the
+ * cron/wallet-backfill.php run) still has its balance only in currentcredit, so the wallet opens
+ * with that amount and the same 'migration_opening_balance' entry the backfill records, under the
+ * backfill's idempotency key. Opening it at 0 instead would refuse the account's sends and, at its
+ * first purchase, overwrite currentcredit with just the purchased amount.
+ */
 function wallet_ensure_account(PDO $db, int $userId): void {
-    $db->prepare('INSERT IGNORE INTO ellsms_wallet_accounts (user_id, available_balance, reserved_balance) VALUES (?, 0, 0)')
-       ->execute([$userId]);
+    $opening = backend_user_legacy_credit($db, $userId);
+    $st = $db->prepare('INSERT IGNORE INTO ellsms_wallet_accounts (user_id, available_balance, reserved_balance) VALUES (?, ?, 0)');
+    $st->execute([$userId, $opening]);
+    if ($st->rowCount() === 1 && $opening > 0) { // a wallet opened at 0 needs no entry to explain it
+        $db->prepare('INSERT IGNORE INTO ellsms_wallet_transactions (user_id, type, amount, balance_before, balance_after, reference_type, reference_id, idempotency_key)
+                      VALUES (?,?,?,?,?,?,?,?)')
+           ->execute([$userId, 'migration_opening_balance', $opening, 0, $opening, 'wallet_backfill', (string)$userId, 'wallet_backfill:' . $userId]);
+    }
 }
 
 /**
@@ -86,7 +101,7 @@ function wallet_lock_account(PDO $db, int $userId): int {
     return (int)$row['available_balance'];
 }
 
-/** Read-only. available = currentcredit's value; total = what the user actually "owns" including reserved-but-unspent credit. */
+/** Read-only. available = spendable balance; total = what the user actually "owns" including reserved-but-unspent credit. */
 function wallet_balance(int $userId): array {
     $st = db()->prepare('SELECT available_balance, reserved_balance FROM ellsms_wallet_accounts WHERE user_id = ?');
     $st->execute([$userId]);
@@ -609,7 +624,7 @@ function wallet_drift_report(): array {
         if (!isset($users[$userId])) {
             continue;
         }
-        $legacyCredit = (int)$users[$userId]['credit'];
+        $legacyCredit = (int)$users[$userId]['legacy_credit'];
         $available = (int)$a['available_balance'];
         if ($available === $legacyCredit) {
             continue;

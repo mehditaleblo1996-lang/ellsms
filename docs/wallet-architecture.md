@@ -16,6 +16,12 @@ exactly the one call inside `wallet_sync_legacy_currentcredit()`). The backend p
 `currentcredit` directly and continues to see an accurate, real-time spendable balance — nothing
 about that integration changed from its perspective.
 
+**The wallet is the only balance.** The panel reads it everywhere (`credit` in
+`app/Backend/identity.php` is the wallet's `available_balance`); `user_.currentcredit` is a copy
+ELLSMS writes for the backend and is never read back as a balance. The backend must not write it:
+such a write is lost at the account's next wallet mutation, and `make wallet-audit` reports it as
+drift.
+
 ```mermaid
 flowchart LR
     A[Every wallet mutation] --> B["ellsms_wallet_accounts.available_balance<br/>(new source of truth)"]
@@ -38,7 +44,7 @@ that makes a retried operation a safe no-op (Invariant C/F).
 | `sms_debit` | `wallet_commit_reservation()` (spending part/all of a reservation) or `wallet_debit()` directly |
 | `manual_credit` / `manual_debit` | `wallet_manual_adjustment()` (admin credit/debit, STEP 17) |
 | `reservation_release` | `wallet_release_reservation()` (unused reserved credit returned) |
-| `migration_opening_balance` | `wallet_backfill_user()` (STEP 4, one row per user, once) |
+| `migration_opening_balance` | `wallet_backfill_user()` (STEP 4), or `wallet_ensure_account()` for an account first touched after it: one row per user, once |
 
 ## Idempotency — how it actually works
 
@@ -184,7 +190,9 @@ creates an `ellsms_wallet_accounts` row for every ELLSMS-managed user who doesn'
 seeded from their **current** `user_.currentcredit` — never reset, never double-credited. Each new
 account gets exactly one `migration_opening_balance` ledger row. Idempotent: a user who already has
 a wallet account is skipped entirely on a re-run (e.g. for accounts granted access after the first
-run). Not automatic — no request path or container startup calls it.
+run). An account created after the backfill run doesn't wait for the next one: the first wallet
+operation on it (`wallet_ensure_account()`) opens its wallet the same way, from `currentcredit`,
+with the same ledger row and idempotency key.
 
 ## Drift detection (STEP 19)
 

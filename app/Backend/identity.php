@@ -23,13 +23,35 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../Support/Logger.php';
 
+/**
+ * An account's balance is its ELLSMS wallet (ellsms_wallet_accounts.available_balance): `credit`
+ * reads it. user_.currentcredit is only a copy ELLSMS writes for the backend
+ * (app/Backend/credit_projection.php); it is read as `legacy_credit`, and as `credit` only for an
+ * account whose wallet doesn't exist yet, because the wallet is opened with exactly that amount
+ * (wallet_ensure_account(), app/wallet.php). Selected from `user_ u LEFT JOIN
+ * ellsms_wallet_accounts w`.
+ */
+const BACKEND_CREDIT_COLUMNS = 'COALESCE(w.available_balance, u.currentcredit) AS credit, u.currentcredit AS legacy_credit';
+
+/**
+ * user_.currentcredit of one account: the opening balance of a wallet created for it
+ * (wallet_ensure_account()). 0 for an id with no user_ row.
+ */
+function backend_user_legacy_credit(PDO $db, int $userId): int {
+    $st = $db->prepare('SELECT currentcredit FROM user_ WHERE id = ?');
+    $st->execute([$userId]);
+    $credit = $st->fetchColumn();
+    return $credit === false || $credit === null ? 0 : max(0, (int)$credit);
+}
+
 function backend_find_user_by_id(int $id): ?array {
     if ($id <= 0) return null;
     $st = db()->prepare(
         'SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.email, u.mobile,
-                u.active, u.deleted, u.currentcredit AS credit,
+                u.active, u.deleted, ' . BACKEND_CREDIT_COLUMNS . ',
                 m.panel_access, m.is_admin, m.originator, m.twofa_enabled
          FROM user_ u JOIN ellsms_meta m ON m.user_id = u.id
+         LEFT JOIN ellsms_wallet_accounts w ON w.user_id = u.id
          WHERE u.id = ?'
     );
     $st->execute([$id]);
@@ -102,8 +124,9 @@ function backend_users_by_ids(array $userIds): array {
     if (!$ids) return [];
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
     $st = db()->prepare(
-        "SELECT id, username, firstname AS first_name, lastname AS last_name, currentcredit AS credit, active, deleted
-         FROM user_ WHERE id IN ({$placeholders})"
+        "SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, " . BACKEND_CREDIT_COLUMNS . ", u.active, u.deleted
+         FROM user_ u LEFT JOIN ellsms_wallet_accounts w ON w.user_id = u.id
+         WHERE u.id IN ({$placeholders})"
     );
     $st->execute($ids);
     $out = [];

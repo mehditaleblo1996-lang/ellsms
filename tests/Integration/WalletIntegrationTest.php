@@ -333,4 +333,60 @@ final class WalletIntegrationTest extends IntegrationTestCase
         $this->assertTrue($result['skipped']);
         $this->assertSame(42, wallet_balance($userId)['available'], 'An existing wallet account must never be re-seeded or re-credited.');
     }
+
+    /**
+     * An account created after the backfill run has its balance only in currentcredit: its wallet
+     * must open with that amount (and the backfill's ledger entry), not at 0. At 0 its sends were
+     * refused and its first purchase overwrote currentcredit with just the purchased amount.
+     */
+    public function testAWalletOpenedByAPurchaseStartsFromCurrentcredit(): void
+    {
+        $userId = $this->makeUser();
+        db()->prepare('UPDATE user_ SET currentcredit = 5000 WHERE id = ?')->execute([$userId]);
+
+        $result = wallet_credit($userId, 100, 'purchase', 'payment', '1', 'open_from_legacy_1');
+
+        $this->assertSame(5100, $result['balance']);
+        $this->assertSame(5100, wallet_balance($userId)['available']);
+        $legacy = db()->prepare('SELECT currentcredit FROM user_ WHERE id = ?');
+        $legacy->execute([$userId]);
+        $this->assertSame(5100, (int)$legacy->fetchColumn(), 'the copy for the backend follows the wallet');
+
+        $opening = db()->prepare("SELECT amount FROM ellsms_wallet_transactions WHERE user_id = ? AND type = 'migration_opening_balance'");
+        $opening->execute([$userId]);
+        $this->assertSame([5000], array_map('intval', $opening->fetchAll(\PDO::FETCH_COLUMN)));
+        $this->assertSame([], array_values(array_filter(wallet_drift_report(), fn(array $r): bool => $r['user_id'] === $userId)));
+
+        // A later backfill run must not open it a second time.
+        $this->assertTrue(wallet_backfill_user($userId, 5000)['skipped']);
+        $this->assertSame(5100, wallet_balance($userId)['available']);
+    }
+
+    public function testAWalletOpenedByADebitCanSpendTheCurrentcreditBalance(): void
+    {
+        $userId = $this->makeUser();
+        db()->prepare('UPDATE user_ SET currentcredit = 300 WHERE id = ?')->execute([$userId]);
+
+        $result = wallet_debit($userId, 120, 'sms_debit', 'direct_send', 'x', 'open_from_legacy_2');
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame(180, wallet_balance($userId)['available']);
+    }
+
+    /** The panel shows the wallet balance; currentcredit is only read as legacy_credit. */
+    public function testIdentityReadsTheWalletBalance(): void
+    {
+        $userId = $this->makeUser();
+        $this->seedWallet($userId, 700);
+        db()->prepare('UPDATE user_ SET currentcredit = 1 WHERE id = ?')->execute([$userId]); // an out-of-band write
+
+        $this->assertSame(700, (int)backend_find_user_by_id($userId)['credit']);
+        $row = backend_users_by_ids([$userId])[$userId];
+        $this->assertSame(700, (int)$row['credit']);
+        $this->assertSame(1, (int)$row['legacy_credit']);
+
+        $noWallet = $this->makeUser();
+        db()->prepare('UPDATE user_ SET currentcredit = 40 WHERE id = ?')->execute([$noWallet]);
+        $this->assertSame(40, (int)backend_find_user_by_id($noWallet)['credit'], 'no wallet yet: the amount it will open with');
+    }
 }

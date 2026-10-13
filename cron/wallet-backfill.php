@@ -38,7 +38,7 @@ $usersById = backend_users_by_ids($candidateIds);
 $candidates = [];
 foreach ($candidateIds as $userId) {
     if (isset($usersById[$userId])) {
-        $candidates[] = ['id' => $userId, 'currentcredit' => $usersById[$userId]['credit']];
+        $candidates[] = ['id' => $userId, 'currentcredit' => $usersById[$userId]['legacy_credit']];
     }
 }
 
