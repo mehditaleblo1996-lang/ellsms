@@ -331,6 +331,9 @@ function cost_quota_preview(int $organizationId, int $recipientCount): array {
  * Returns ['ok'=>true,'originator'=>normalized] or ['ok'=>false,'reason'=>code].
  */
 function cost_validate_sender(array $user, string $originator): array {
+    if (user_has_no_send_line($user)) {
+        return ['ok' => false, 'reason' => 'no_assigned_line'];
+    }
     $normalized = normalize_originator($originator);
     if ($normalized === null) {
         return ['ok' => false, 'reason' => 'sender_missing_or_invalid'];
@@ -701,6 +704,7 @@ function cost_preview_reason_message(string $reason): string {
     return [
         'sender_missing_or_invalid' => 'خط ارسال‌کننده خالی یا غیرعددی است.',
         'sender_not_allowed'        => 'استفاده از این خط ارسال برای شما مجاز نیست.',
+        'no_assigned_line'          => NO_ASSIGNED_LINE_MESSAGE,
         'content_empty'             => 'متن پیام خالی است.',
         'no_items'                  => 'هیچ ردیفی برای ارسال وجود ندارد.',
         'no_eligible_recipients'    => 'هیچ گیرنده‌ی قابل ارسالی باقی نماند (شماره‌ی نامعتبر، تکراری، یا در لیست سیاه).',

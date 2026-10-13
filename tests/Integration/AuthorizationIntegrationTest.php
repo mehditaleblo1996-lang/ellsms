@@ -80,13 +80,64 @@ final class AuthorizationIntegrationTest extends IntegrationTestCase
         $this->assertFalse(can_use_originator($user, '9892222222'));
     }
 
-    public function testCanUseOriginatorFallsBackToDefaultOriginatorSetting(): void
+    /** The system line (default_originator) carries OTP/notifications only — never a user's send. */
+    public function testCanUseOriginatorRefusesTheSystemLineToAUserWithNoLine(): void
     {
         $userId = $this->makeUser(); // no assigned numbers, no legacy originator
         $user = ['id' => $userId, 'role' => 'user', 'originator' => ''];
 
-        $this->assertTrue(can_use_originator($user, self::DEFAULT_ORIGINATOR));
+        $this->assertFalse(can_use_originator($user, self::SYSTEM_ORIGINATOR));
         $this->assertFalse(can_use_originator($user, '9900000000'));
+        $this->assertTrue(user_has_no_send_line($user));
+        $this->assertSame('', user_default_send_originator($user));
+    }
+
+    public function testCanUseOriginatorRefusesTheSystemLineEvenToAUserWithLines(): void
+    {
+        $userId = $this->makeUser();
+        db()->prepare('INSERT INTO ellsms_numbers (number, assigned_user_id) VALUES (?, ?)')
+            ->execute(['9891111111', $userId]);
+        $user = ['id' => $userId, 'role' => 'user', 'originator' => ''];
+
+        $this->assertFalse(can_use_originator($user, self::SYSTEM_ORIGINATOR));
+        $this->assertSame('9891111111', user_default_send_originator($user));
+    }
+
+    /** Accounts used to be created with the system line copied into ellsms_meta.originator. */
+    public function testALegacyOriginatorEqualToTheSystemLineGrantsNothing(): void
+    {
+        $userId = $this->makeUser(['originator' => self::SYSTEM_ORIGINATOR]);
+        $user = ['id' => $userId, 'role' => 'user', 'originator' => self::SYSTEM_ORIGINATOR];
+
+        $this->assertSame([], allowed_originators($user));
+        $this->assertSame([], user_sendable_numbers($user));
+        $this->assertFalse(can_use_originator($user, self::SYSTEM_ORIGINATOR));
+        $this->assertTrue(user_has_no_send_line($user));
+    }
+
+    public function testDispatchIsRefusedForAUserWithNoLine(): void
+    {
+        $userId = $this->makeUser();
+        $user = ['id' => $userId, 'role' => 'user', 'credit' => 0, 'originator' => '', 'organization_id' => null];
+
+        [$ok, $info] = dispatch_message_raw($user, self::SYSTEM_ORIGINATOR, ['09120000000'], 'hi');
+        $this->assertFalse($ok);
+        $this->assertSame(NO_ASSIGNED_LINE_MESSAGE, $info);
+    }
+
+    public function testAdminMayStillSendFromTheSystemLine(): void
+    {
+        $adminId = $this->makeUser(['is_admin' => 1]);
+        $admin = ['id' => $adminId, 'role' => 'admin', 'originator' => ''];
+
+        $this->assertTrue(can_use_originator($admin, self::SYSTEM_ORIGINATOR));
+        $this->assertSame(self::SYSTEM_ORIGINATOR, user_default_send_originator($admin));
+    }
+
+    public function testABareUserArrayStillGetsTheUsersOwnLegacyLine(): void
+    {
+        $userId = $this->makeUser(['originator' => '9895550001']);
+        $this->assertSame(['9895550001'], allowed_originators(['id' => $userId, 'role' => 'user']));
     }
 
     public function testResolveEllsmsManagedUserReturnsRowWhenPanelAccessGranted(): void

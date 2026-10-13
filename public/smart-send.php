@@ -36,7 +36,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $title      = trim($_POST['title'] ?? '') ?: ($uploadName !== '' ? $uploadName : 'بدون عنوان');
         $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
 
-        if ($originator === '') {
+        if (user_has_no_send_line($me)) {
+            flash('error', NO_ASSIGNED_LINE_MESSAGE);
+        } elseif ($originator === '') {
             flash('error', 'خط ارسال معتبر نیست.');
         } else {
             $upload = import_validate_upload($_FILES['file'] ?? []);
@@ -162,8 +164,10 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
               <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?></option>
             <?php endforeach; ?>
           </select>
+        <?php elseif (($me['role'] ?? null) === 'admin'): ?>
+          <input type="text" name="originator" class="ltr" value="<?= e(user_default_send_originator($me)) ?>">
         <?php else: ?>
-          <input type="text" name="originator" class="ltr" value="<?= e($me['originator'] ?: setting('default_originator', '')) ?>">
+          <div class="flash flash-error"><?= e(NO_ASSIGNED_LINE_MESSAGE) ?></div>
         <?php endif; ?>
       </label>
       <label>فایل (xlsx یا csv) <input type="file" name="file" accept=".xlsx,.csv" required></label>

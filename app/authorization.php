@@ -24,6 +24,44 @@
 
 declare(strict_types=1);
 
+/**
+ * The panel-wide system line (تنظیمات → default_originator). It carries the platform's OWN messages —
+ * login/2FA codes, registration OTPs, notifications (send_2fa_code(), registration_system_sms(),
+ * notification_send_sms()) — and is never a line a customer may send from. A user sends only from a
+ * line actually given to them on /admin/numbers (own, organization or shared); until then they have
+ * no sender at all, rather than silently falling back to this one.
+ */
+function system_default_originator(): ?string {
+    return normalize_originator((string)(setting('default_originator', '') ?? ''));
+}
+
+/**
+ * The user's legacy ellsms_meta.originator, when it is a real line of theirs. Accounts used to be
+ * created with the system line copied into that column, so a value equal to the system line is
+ * treated as "nothing set" — otherwise every such account could keep sending from it.
+ */
+function user_legacy_originator(array $user): ?string {
+    $raw = $user['originator'] ?? null;
+    if (!array_key_exists('originator', $user) && (int)($user['id'] ?? 0) > 0) {
+        // A caller that built a bare ['id','role',...] array (API handlers, workers) still gets the
+        // user's own legacy line, rather than a user with only that line being refused there.
+        $st = db()->prepare('SELECT originator FROM ellsms_meta WHERE user_id = ?');
+        $st->execute([(int)$user['id']]);
+        $raw = $st->fetchColumn();
+    }
+    $legacy = normalize_originator((string)($raw ?? ''));
+    if ($legacy === null || $legacy === system_default_originator()) return null;
+    return $legacy;
+}
+
+/** True for a non-admin user who has no line at all to send from (see system_default_originator()). */
+function user_has_no_send_line(array $user): bool {
+    return ($user['role'] ?? null) !== 'admin' && sendable_originators($user) === [];
+}
+
+/** Shown wherever a non-admin user with no sendable line tries to send. */
+const NO_ASSIGNED_LINE_MESSAGE = 'هنوز هیچ خط ارسالی به حساب شما اختصاص داده نشده است؛ تا زمان تخصیص خط از سوی مدیر، امکان ارسال پیامک وجود ندارد.';
+
 function user_assigned_numbers(array $user): array {
     if (($user['role'] ?? null) === 'admin') return [];
     $st = db()->prepare('SELECT number, label FROM ellsms_numbers WHERE assigned_user_id = ? ORDER BY number');
@@ -40,7 +78,7 @@ function allowed_originators(array $user): array {
         $numbers = array_values(array_unique(array_merge($numbers, $orgNumbers)));
     }
     if ($numbers) return $numbers;
-    $legacy = normalize_originator((string)($user['originator'] ?? ''));
+    $legacy = user_legacy_originator($user);
     return $legacy ? [$legacy] : [];
 }
 
@@ -92,15 +130,13 @@ function user_sendable_numbers(array $user): array {
     );
     $shared = user_shared_numbers($user);
 
-    // A user with no line of their own still sends today: allowed_originators() falls back to their
-    // legacy ellsms_meta.originator, and can_use_originator() accepts the panel's default_originator
-    // on top of that — which is why the send pages show a free-text field when this returns nothing.
-    // A share would otherwise turn that field into a dropdown holding ONLY the shared line, quietly
-    // taking their usual sender away, so it is carried into the list it is about to be replaced by.
-    if (!$owned && $shared) {
-        $fallback = normalize_originator((string)($user['originator'] ?? ''))
-            ?? normalize_originator((string)(setting('default_originator', '') ?? ''));
-        if ($fallback !== null) $owned[] = ['number' => $fallback, 'label' => 'پیش‌فرض'];
+    // A user with no numbers row still sends from a legacy ellsms_meta.originator that an admin set
+    // by hand (allowed_originators() falls back to it), so it is listed here too — this list and
+    // sendable_originators() must stay the same set. The system line is never part of it
+    // (user_legacy_originator()); a user with nothing here cannot send at all.
+    if (!$owned) {
+        $legacy = user_legacy_originator($user);
+        if ($legacy !== null) $owned[] = ['number' => $legacy, 'label' => 'قدیمی'];
     }
 
     $rows = array_merge($owned, $shared);
@@ -298,9 +334,24 @@ function can_use_originator(array $user, string $originator): bool {
     if (($user['role'] ?? null) === 'admin') return true;
     // sendable_originators(), not allowed_originators(): a line shared with this user may be sent
     // from, while its inbox/auto-reply/opt-out list stay with its owner (docs/shared-numbers.md).
-    if (in_array($normalized, sendable_originators($user), true)) return true;
-    $default = normalize_originator((string)(setting('default_originator', '') ?? ''));
-    return $default !== null && $normalized === $default;
+    // The system line (default_originator) is deliberately NOT accepted here: it is reserved for the
+    // platform's own OTP/notification messages, which are sent outside this check.
+    return in_array($normalized, sendable_originators($user), true);
+}
+
+/**
+ * The sender a send form/API call uses when the caller names none: the user's legacy line if it is
+ * still one of theirs, else the first line they may send from; '' when they have none (the send is
+ * then refused). Only an admin falls back to the system line.
+ */
+function user_default_send_originator(array $user): string {
+    if (($user['role'] ?? null) === 'admin') {
+        return normalize_originator((string)($user['originator'] ?? '')) ?? system_default_originator() ?? '';
+    }
+    $numbers = array_map('strval', array_column(user_sendable_numbers($user), 'number'));
+    if ($numbers === []) return '';
+    $legacy = normalize_originator((string)($user['originator'] ?? ''));
+    return $legacy !== null && in_array($legacy, $numbers, true) ? $legacy : $numbers[0];
 }
 
 function is_backend_account_active(?array $backendUserRow): bool {

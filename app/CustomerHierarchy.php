@@ -541,7 +541,7 @@ function customer_create_sub_account(array $parentUser, array $input): array {
     db_transaction(function () use ($childId, $username, $firstName, $lastName, $accountType, $parentId): void {
         db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator) VALUES (?,1,0,?)
                        ON DUPLICATE KEY UPDATE panel_access = 1')
-           ->execute([$childId, setting('default_originator', '')]);
+           ->execute([$childId, '']); // no sender until a line is assigned (system_default_originator())
         $displayName = trim($firstName . ' ' . $lastName) ?: $username;
         $org = ensure_user_has_organization($childId, $displayName . "'s Workspace");
         if ($org['ok'] && $org['organization_id']) {

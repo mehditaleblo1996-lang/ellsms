@@ -67,7 +67,7 @@ function registration_activate_account(int $registrationId, int $adminUserId, ar
 
         $organizationId = db_transaction(function (PDO $db) use ($row, $userId, $adminUserId): int {
             $db->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator) VALUES (?,1,0,?) ON DUPLICATE KEY UPDATE panel_access=1, is_admin=0')
-               ->execute([$userId, setting('default_originator', '')]);
+               ->execute([$userId, '']); // no sender until a line is assigned (system_default_originator())
 
             $displayName = trim((string)$row['first_name'] . ' ' . (string)$row['last_name']) ?: (string)$row['username'];
             $orgName = $row['account_type'] === 'legal' && trim((string)$row['company_name']) !== '' ? trim((string)$row['company_name']) : $displayName . "'s Workspace";

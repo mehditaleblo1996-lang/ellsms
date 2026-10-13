@@ -148,12 +148,20 @@ final class SharedNumbersTest extends IntegrationTestCase
         $this->assertTrue(can_use_originator($user, '9895000888'));
     }
 
-    public function testUserWithNoLinesAtAllStillGetsTheFreeTextFallback(): void
+    public function testALegacyOnlyUserIsListedTheirLegacyLineEvenWithoutAShare(): void
     {
-        // Unchanged behaviour: an empty list is what makes the send pages render the free-text
-        // sender field, so the fallback row must appear only when a share forces a dropdown.
+        // The send pages no longer offer a free-text sender to regular users, so a user whose only
+        // line is a legacy ellsms_meta.originator must see it in the list itself.
         $user = ['id' => $this->makeUser(['originator' => '9890002222']), 'role' => 'user', 'originator' => '9890002222'];
+        $this->assertSame(['9890002222'], array_column(user_sendable_numbers($user), 'number'));
+    }
+
+    public function testUserWithNoLinesAtAllIsOfferedNothing(): void
+    {
+        // Not even the system line: it only carries the platform's own OTP/notification messages.
+        $user = ['id' => $this->makeUser(['originator' => '']), 'role' => 'user', 'originator' => ''];
         $this->assertSame([], user_sendable_numbers($user));
+        $this->assertTrue(user_has_no_send_line($user));
     }
 
     public function testAdminIsUnaffectedByShares(): void

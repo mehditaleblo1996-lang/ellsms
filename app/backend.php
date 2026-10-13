@@ -269,6 +269,11 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     if (!$destinations)          return [false, 'شماره مقصد معتبری وارد نشده است.', 0, 0, 0, false, []];
     if (trim($content) === '')   return [false, 'متن پیام خالی است.', 0, 0, 0, false, []];
 
+    if (user_has_no_send_line($user)) {
+        Logger::warning('sms.send.rejected_no_assigned_line', ['user_id' => $user['id'] ?? null]);
+        return [false, NO_ASSIGNED_LINE_MESSAGE, 0, count($destinations), 0, false, []];
+    }
+
     $originator = normalize_originator($originator);
     if ($originator === null) return [false, 'خط ارسال‌کننده خالی یا غیرعددی است — آن را بالا یا در تنظیمات وارد کنید.', 0, count($destinations), 0, false, []];
 
@@ -1461,6 +1466,9 @@ function bulk_queue_job(
 ): array {
     $messageClass = normalize_bulk_message_class($messageClass);
     if (!$items) return [false, 'هیچ ردیف معتبری در فایل پیدا نشد.', null];
+    // Refused before anything is priced or reserved: the worker would reject every row anyway
+    // (dispatch_message_raw()), but only after the credit had been held.
+    if (user_has_no_send_line($user)) return [false, NO_ASSIGNED_LINE_MESSAGE, null, 'no_assigned_line'];
 
     // #40 — refuse the whole job up front, before pricing or reserving anything, and say how many
     // rows are affected so the user can fix the file.

@@ -29,7 +29,7 @@ $categories = $categories->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    $originator = trim($_POST['originator'] ?? '') ?: ($me['originator'] ?: setting('default_originator', ''));
+    $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     $content    = trim($_POST['content'] ?? '');
     $dests      = parse_destinations($_POST['destinations'] ?? '');
 
@@ -198,9 +198,11 @@ if (isset($costPreview) && $costPreview) {
               </option>
             <?php endforeach; ?>
           </select>
-        <?php else: ?>
-          <input type="text" name="originator" class="msisdn" value="<?= e($me['originator'] ?: setting('default_originator','')) ?>">
+        <?php elseif (($me['role'] ?? null) === 'admin'): ?>
+          <input type="text" name="originator" class="msisdn" value="<?= e(user_default_send_originator($me)) ?>">
           <div class="hint">خطی که گیرنده می‌بیند، مثلاً ۵۰۰۰۴۳۵۸۰۰.</div>
+        <?php else: ?>
+          <div class="flash flash-error"><?= e(NO_ASSIGNED_LINE_MESSAGE) ?></div>
         <?php endif; ?>
       </label>
       <?php if ($groups): ?>

@@ -34,7 +34,7 @@ final class ScheduleQueueTest extends IntegrationTestCase
     {
         putenv('JOB_MAX_ATTEMPTS=5');
         putenv('JOB_RETRY_BASE_SECONDS=30');
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $id = $this->makeActiveSchedule($userId);
 
@@ -55,7 +55,7 @@ final class ScheduleQueueTest extends IntegrationTestCase
 
     public function testNotClaimableAgainBeforeItsBackoffWindowPasses(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $id = $this->makeActiveSchedule($userId);
         run_due_schedules(); // schedules a retry with next_attempt_at in the future
@@ -71,7 +71,7 @@ final class ScheduleQueueTest extends IntegrationTestCase
     {
         putenv('JOB_MAX_ATTEMPTS=2');
         putenv('JOB_RETRY_BASE_SECONDS=1');
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $id = $this->makeActiveSchedule($userId);
 
@@ -93,7 +93,7 @@ final class ScheduleQueueTest extends IntegrationTestCase
 
     public function testExpiredLeaseOnAStuckProcessingRowBecomesReclaimable(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $id = $this->makeActiveSchedule($userId);
 
@@ -109,7 +109,7 @@ final class ScheduleQueueTest extends IntegrationTestCase
 
     public function testRevokedUserSchedulePermanentlyFailsWithoutRetrying(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $id = $this->makeActiveSchedule($userId);
         db()->prepare('UPDATE ellsms_meta SET panel_access = 0 WHERE user_id = ?')->execute([$userId]);
 
@@ -133,7 +133,7 @@ final class ScheduleQueueTest extends IntegrationTestCase
      */
     public function testFinalizeGuardPreservesCancelledStatusInsteadOfOverwritingIt(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $id = $this->makeActiveSchedule($userId);
 
         // Simulate: worker claimed it (status='processing'), then the user cancelled it, all before
@@ -158,7 +158,7 @@ final class ScheduleQueueTest extends IntegrationTestCase
 
     public function testRecurringScheduleAdvancesRunAtExactlyOnceOnSuccessPath(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         db()->prepare(
             "INSERT INTO ellsms_schedule (user_id, originator, destinations, content, run_at, repeat_type, status)
              VALUES (?, ?, ?, ?, NOW(), 'daily', 'active')"

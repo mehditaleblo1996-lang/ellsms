@@ -110,7 +110,7 @@ final class PublicApiHttpTest extends TestCase
         self::dbConnectIfNeeded();
         self::$db->prepare('INSERT INTO user_ (username, active, deleted) VALUES (?, 1, 0)')->execute(['pubapi_' . bin2hex(random_bytes(4))]);
         $userId = (int)self::$db->lastInsertId();
-        self::$db->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator) VALUES (?, 1, 0, ?)')->execute([$userId, '']);
+        self::$db->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator) VALUES (?, 1, 0, ?)')->execute([$userId, IntegrationTestCase::DEFAULT_ORIGINATOR]);
         $org = create_organization($userId, $name);
         return ['organization_id' => (int)$org['organization_id'], 'owner_id' => $userId];
     }

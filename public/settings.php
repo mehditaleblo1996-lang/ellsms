@@ -121,8 +121,9 @@ require __DIR__ . '/../app/views/header.php';
         <input type="text" name="api_base_url" value="<?= e(setting('api_base_url', '')) ?>" placeholder="https://rest.example.com" class="ltr">
         <div class="hint">پیام‌ها به آدرس <span class="num">{base}/api/messages/send</span> ارسال می‌شوند.</div>
       </label>
-      <label>خط ارسال‌کننده‌ی پیش‌فرض
+      <label>خط ارسال‌کننده‌ی پیش‌فرض (خط سامانه)
         <input type="text" name="default_originator" value="<?= e(setting('default_originator', '')) ?>" class="ltr">
+        <div class="hint">فقط برای کد یکبارمصرف (OTP)، ورود دومرحله‌ای و پیام‌های سامانه به کاربران استفاده می‌شود. کاربران نمی‌توانند با این خط پیامک بفرستند؛ هر کاربر تا وقتی از صفحه‌ی «شماره‌ها» خطی به او تخصیص داده نشود، امکان ارسال ندارد.</div>
       </label>
     </div>
     <button class="btn btn-primary">ذخیره‌ی تنظیمات</button>

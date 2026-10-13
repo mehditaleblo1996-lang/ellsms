@@ -57,7 +57,7 @@ function api_preview_response(array $estimate): array {
 /** Maps an estimator refusal onto the API's existing stable error model (STEP 30). */
 function api_preview_error(string $reason): void {
     match ($reason) {
-        'sender_not_allowed', 'sender_missing_or_invalid' =>
+        'sender_not_allowed', 'sender_missing_or_invalid', 'no_assigned_line' =>
             ApiResponse::validationFailed(['originator' => [$reason]]),
         'content_empty' =>
             ApiResponse::validationFailed(['content' => ['required']]),
@@ -122,7 +122,7 @@ function api_handle_messages_preview(array $ctx): void {
         return;
     }
 
-    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : (string)(setting('default_originator', '') ?? '');
+    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : user_default_send_originator($user);
     $estimate = estimate_message_cost($user, $originator, $destinationsRaw, trim($content));
     cost_preview_record($estimate, (int)$principal['organization_id'], $user['id'], 'api_messages');
 
@@ -177,7 +177,7 @@ function api_handle_bulk_jobs_preview(array $ctx): void {
         }
     }
 
-    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : (string)(setting('default_originator', '') ?? '');
+    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : user_default_send_originator($user);
     $estimate = estimate_bulk_cost($user, $originator, $items);
     cost_preview_record($estimate, (int)$principal['organization_id'], $user['id'], 'api_bulk');
 

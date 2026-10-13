@@ -37,8 +37,16 @@ abstract class IntegrationTestCase extends TestCase
      * default_originator is seeded exactly once here, before any test
      * transaction opens, and treated as a fixed constant for the whole
      * suite rather than something individual tests vary.
+     *
+     * SYSTEM_ORIGINATOR is that setting: the platform's own OTP/notification
+     * line, which no customer may send from (system_default_originator()).
+     * DEFAULT_ORIGINATOR is an ordinary line the tests hand to their users
+     * (as a legacy ellsms_meta.originator or a numbers row) — the two must
+     * differ, or every such user would be refused as sending from the
+     * system line.
      */
     public const DEFAULT_ORIGINATOR = '5000';
+    public const SYSTEM_ORIGINATOR = '59999';
 
     private static bool $schemaLoaded = false;
 
@@ -96,7 +104,7 @@ abstract class IntegrationTestCase extends TestCase
 
         $pdo->prepare('INSERT INTO ellsms_settings (skey, svalue) VALUES (?, ?)
                        ON DUPLICATE KEY UPDATE svalue = VALUES(svalue)')
-            ->execute(['default_originator', self::DEFAULT_ORIGINATOR]);
+            ->execute(['default_originator', self::SYSTEM_ORIGINATOR]);
 
         // backend_api_base_url() (app/Backend/ApiClient.php) resolves setting('api_base_url', ...)
         // BEFORE ever consulting API_BASE_URL's env value -- a DB-stored setting always wins over

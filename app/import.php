@@ -111,6 +111,11 @@ function import_create_job(
     // disagrees with how sms_pricing_price_messages() will price it moments later.
     $messageType = sms_pricing_normalize_message_type($messageType);
 
+    if (user_has_no_send_line($user)) {
+        import_delete_storage($storageKey);
+        return ['ok' => false, 'job_id' => null, 'error' => NO_ASSIGNED_LINE_MESSAGE];
+    }
+
     $countResult = import_count_rows($storageKey);
     if (!$countResult['ok']) {
         import_delete_storage($storageKey);

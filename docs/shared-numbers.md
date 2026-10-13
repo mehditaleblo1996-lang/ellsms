@@ -33,11 +33,15 @@ For the pickers the same split holds:
   `sendable_originators()`).
 - `user_assigned_numbers($user)` — unchanged, own lines only; still what `autoreply.php` lists.
 
-One edge case is handled explicitly. A user with no line of their own sends from their legacy
-`ellsms_meta.originator` (or the panel's `default_originator`) through a **free-text** sender field,
-which is what an empty `user_sendable_numbers()` renders. Granting such a user a share turns that
-field into a dropdown — so the fallback sender is carried into the list, rather than being quietly
-replaced by the shared line. A user with no lines at all still gets the free-text field, unchanged.
+A user with no numbers row of their own whose legacy `ellsms_meta.originator` an admin set by hand
+gets that line listed too (label «قدیمی»), so the list always equals `sendable_originators()`.
+
+The panel's `default_originator` (`system_default_originator()`) is **never** a customer sender: it
+only carries the platform's own messages (login/2FA codes, registration OTPs, notifications), and a
+legacy `ellsms_meta.originator` equal to it counts as unset. A non-admin user with no line at all
+(`user_has_no_send_line()`) cannot send: the send pages show `NO_ASSIGNED_LINE_MESSAGE` instead of a
+sender field, and `dispatch_message_raw()`, `bulk_queue_job()`, `import_create_job()` and the cost
+estimator refuse with the same message. Only admins still get a free-text sender field.
 
 ### A drift this closed
 

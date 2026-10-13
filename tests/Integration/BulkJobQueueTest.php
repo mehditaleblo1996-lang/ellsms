@@ -18,7 +18,7 @@ final class BulkJobQueueTest extends IntegrationTestCase
 {
     /** @return array{userId:int, jobId:int, itemIds:int[]} */
     private function makeFundedBulkJob(int $itemCount = 3, ?int $throttleCount = null, ?int $throttleMinutes = null): array {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         wallet_credit($userId, 1000, 'purchase', 'test', 'seed:' . $userId, 'seed:' . $userId);
         $user = ['id' => $userId, 'role' => 'user'];
 

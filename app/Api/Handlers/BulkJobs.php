@@ -108,13 +108,14 @@ function api_handle_bulk_jobs_create(array $ctx): void {
         return;
     }
 
-    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : (string)(setting('default_originator', '') ?? '');
     if (!organization_has_entitlement($principal['organization_id'], Entitlements::BULK_SEND)) {
         api_bulk_jobs_finish($lockId, 403, ['error' => ['code' => ApiResponse::CODE_FEATURE_NOT_AVAILABLE, 'message' => 'Bulk sending is not included in this organization\'s current plan.', 'request_id' => Logger::currentRequestId()]]);
         return;
     }
 
-    $user = ['id' => (int)$owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'organization_id' => $principal['organization_id']];
+    $user = ['id' => (int)$owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'originator' => (string)($owner['originator'] ?? ''), 'organization_id' => $principal['organization_id']];
+    // No originator in the body → the key owner's own line, never the system (OTP) line.
+    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : user_default_send_originator($user);
     if (!can_use_originator($user, $originator)) {
         api_bulk_jobs_finish($lockId, 422, ['error' => ['code' => ApiResponse::CODE_VALIDATION_FAILED, 'message' => 'Request validation failed.', 'fields' => ['originator' => ['not_allowed']], 'request_id' => Logger::currentRequestId()]]);
         return;

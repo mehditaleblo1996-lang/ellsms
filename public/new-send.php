@@ -38,7 +38,7 @@ $campaigns = $cst->fetchAll();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $mode       = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? $_POST['mode'] : 'direct';
-    $originator = trim($_POST['originator'] ?? '') ?: ($me['originator'] ?: setting('default_originator', ''));
+    $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     $content    = trim($_POST['content'] ?? '');
     $notes      = trim($_POST['notes'] ?? '');
     $dests      = parse_destinations($_POST['destinations'] ?? '');
@@ -262,8 +262,10 @@ if (isset($costPreview) && $costPreview) {
               <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?></option>
             <?php endforeach; ?>
           </select>
+        <?php elseif (($me['role'] ?? null) === 'admin'): ?>
+          <input type="text" name="originator" id="originatorField" class="ltr" value="<?= e(user_default_send_originator($me)) ?>">
         <?php else: ?>
-          <input type="text" name="originator" id="originatorField" class="ltr" value="<?= e($me['originator'] ?: setting('default_originator','')) ?>">
+          <div class="flash flash-error"><?= e(NO_ASSIGNED_LINE_MESSAGE) ?></div>
         <?php endif; ?>
       </label>
 

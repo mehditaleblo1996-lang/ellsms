@@ -33,7 +33,7 @@ final class CostPreviewApiTest extends TestCase
         $org = create_organization($userId, 'Cost Preview API Org ' . bin2hex(random_bytes(3)));
         self::$org = ['organization_id' => (int)$org['organization_id'], 'owner_id' => $userId];
         self::$db->prepare('UPDATE ellsms_wallet_accounts SET available_balance = 50000 WHERE user_id = ?')->execute([$userId]);
-        self::$db->prepare("INSERT INTO ellsms_settings (skey, svalue) VALUES ('default_originator','5000') ON DUPLICATE KEY UPDATE svalue='5000'")->execute();
+        self::$db->prepare("INSERT INTO ellsms_settings (skey, svalue) VALUES ('default_originator',?) ON DUPLICATE KEY UPDATE svalue=VALUES(svalue)")->execute([IntegrationTestCase::SYSTEM_ORIGINATOR]);
 
         self::$sendKey = api_key_create(self::$org['organization_id'], $userId, 'preview', [
             \ApiScopes::MESSAGES_SEND, \ApiScopes::BULK_WRITE,

@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
                            VALUES (?,1,0,?)
                            ON DUPLICATE KEY UPDATE panel_access=1')
-               ->execute([$targetUserId, setting('default_originator', '')]);
+               ->execute([$targetUserId, '']); // no sender until a line is assigned (system_default_originator())
             audit((int)$me['id'], 'user.grant_access', (string)$targetUserId);
             Logger::info('user.grant_access', ['actor_id' => $me['id'], 'target_id' => $targetUserId]);
             // Every ELLSMS-managed account needs a valid organization context (docs/profile-kyc.md)
@@ -78,10 +78,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('info', 'وضعیت ورود دومرحله‌ای تغییر کرد.');
         } elseif ($do === 'originator') {
             $newOriginator = normalize_originator($_POST['originator'] ?? '') ?? '';
-            db()->prepare('UPDATE ellsms_meta SET originator=? WHERE user_id=?')
-               ->execute([$newOriginator, $id]);
-            audit((int)$me['id'], 'user.originator_update', "#{$id}");
-            flash('success', 'خط ارسال به‌روزرسانی شد.');
+            if ($newOriginator !== '' && $newOriginator === system_default_originator()) {
+                // The system line only carries the platform's own OTP/notification messages.
+                flash('error', 'خط پیش‌فرض سامانه فقط برای ارسال کد یکبارمصرف و پیام‌های سامانه است و به کاربر اختصاص داده نمی‌شود.');
+            } else {
+                db()->prepare('UPDATE ellsms_meta SET originator=? WHERE user_id=?')
+                   ->execute([$newOriginator, $id]);
+                audit((int)$me['id'], 'user.originator_update', "#{$id}");
+                flash('success', 'خط ارسال به‌روزرسانی شد.');
+            }
         } elseif ($do === 'credit') {
             // Phase 3 (STEP 17): goes through the wallet ledger instead of
             // a direct UPDATE currentcredit — every manual adjustment is
@@ -255,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
                                    VALUES (?,1,0,?)
                                    ON DUPLICATE KEY UPDATE panel_access=1')
-                       ->execute([$newUserId, setting('default_originator', '')]);
+                       ->execute([$newUserId, '']); // no sender until a line is assigned (system_default_originator())
 
                     $displayName = trim($firstName . ' ' . $lastName) ?: $username;
                     $orgResult = ensure_user_has_organization($newUserId, $displayName . "'s Workspace");
@@ -377,6 +382,15 @@ if (!empty($_GET['edit'])) {
         // explanation — see the "no organization" branch further down for that case specifically.
         $editOrganizationId = (int)(user_default_organization_id($editUserId) ?? user_primary_organization_id_for_display($editUserId) ?? 0);
         $editOrganization = $editOrganizationId > 0 ? organization_membership($editUserId, $editOrganizationId) : null;
+        // The lines this user may actually send from — the same rule the send path enforces
+        // (app/authorization.php). The system line is never one of them.
+        $editSendUser = [
+            'id' => $editUserId, 'role' => $editUser['is_admin'] ? 'admin' : 'user',
+            'organization_id' => $editOrganizationId ?: null, 'originator' => (string)$editUser['originator'],
+        ];
+        $editSendNumbers = user_sendable_numbers($editSendUser);
+        $editLegacyOriginator = user_legacy_originator($editSendUser) ?? '';
+        $systemOriginator = system_default_originator() ?? '';
         $editOrgProfile = $editOrganizationId > 0 ? profile_organization_get($editOrganizationId) : null;
         $editAddress = $editOrganizationId > 0 ? profile_address_get($editOrganizationId) : null;
         $editNotifications = $editOrganizationId > 0 ? profile_notifications_get($editOrganizationId) : null;
@@ -560,15 +574,31 @@ require __DIR__ . '/../app/views/header.php';
 
 <section class="tab-panel" data-panel="account" role="tabpanel">
 <div class="card">
-    <h2>خط ارسال پیش‌فرض</h2>
+    <h2>خطوط ارسال</h2>
+    <p class="hint">
+      خط پیش‌فرض سامانه<?php if ($systemOriginator !== ''): ?> (<span class="ltr msisdn"><?= e($systemOriginator) ?></span>)<?php endif; ?>
+      فقط برای ارسال کد یکبارمصرف (OTP) و پیام‌های سامانه به کاربران است و کاربر نمی‌تواند با آن پیامک بفرستد.
+    </p>
+    <?php if ($editUser['is_admin']): ?>
+      <p class="hint">مدیر می‌تواند از هر خطی ارسال کند.</p>
+    <?php elseif ($editSendNumbers): ?>
+      <p>خطوطی که این کاربر می‌تواند با آن‌ها ارسال کند:
+        <?php foreach ($editSendNumbers as $i => $n): ?><?= $i ? '، ' : '' ?><span class="ltr msisdn"><?= e((string)$n['number']) ?></span><?php endforeach; ?>
+      </p>
+    <?php else: ?>
+      <div class="flash flash-error">
+        هنوز هیچ خطی به این کاربر اختصاص داده نشده و تا آن زمان امکان ارسال پیامک ندارد.
+        برای تخصیص خط به صفحه‌ی <a href="/numbers.php">شماره‌ها</a> بروید.
+      </div>
+    <?php endif; ?>
     <form method="post">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="originator">
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
       <div class="form-grid">
-        <label>خط ارسال پیش‌فرض (قدیمی) <input type="text" name="originator" value="<?= e((string)$editUser['originator']) ?>" class="ltr"></label>
+        <label>خط اختصاصی قدیمی <input type="text" name="originator" value="<?= e($editLegacyOriginator) ?>" class="ltr"></label>
         <div class="field span-2" style="align-self:end">
-          <div class="hint">اگر از صفحه‌ی «شماره‌ها» شماره‌ای به این کاربر تخصیص داده شده باشد، در ارسال پیامک به‌جای این مقدار از آن استفاده می‌شود.</div>
+          <div class="hint">روش قدیمی تخصیص خط؛ فقط وقتی از صفحه‌ی «شماره‌ها» هیچ شماره‌ای به این کاربر یا سازمانش تخصیص داده نشده باشد استفاده می‌شود. خط پیش‌فرض سامانه را نمی‌توان اینجا ثبت کرد. ترجیحاً خالی بگذارید و از صفحه‌ی «شماره‌ها» تخصیص دهید.</div>
         </div>
       </div>
       <div class="form-actions"><button class="btn btn-primary btn-sm">ذخیره‌ی خط</button></div>
@@ -1074,7 +1104,7 @@ if ($editOrganizationId > 0) {
           <?php endif; ?>
         </td>
         <td><?= e($u['customer_label']) ?><?php if ($u['customer_parent'] !== null): ?> <span class="hint ltr">← <?= e($u['customer_parent']) ?></span><?php endif; ?></td>
-        <td class="msisdn"><?= e((string)$u['originator']) ?></td>
+        <td class="msisdn"><?= e(user_legacy_originator(['originator' => (string)$u['originator']]) ?? '—') ?></td>
         <td class="num"><?= to_persian_digits(number_format((float)$u['credit'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$u['sent_count'])) ?></td>
         <td><span class="badge badge-<?= $u['twofa_enabled'] ? 'ok' : 'off' ?>"><?= $u['twofa_enabled'] ? 'فعال' : 'غیرفعال' ?></span></td>

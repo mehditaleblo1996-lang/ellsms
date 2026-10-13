@@ -40,7 +40,7 @@ final class AutoreplyQueueTest extends IntegrationTestCase
     {
         putenv('JOB_MAX_ATTEMPTS=5');
         putenv('JOB_RETRY_BASE_SECONDS=30');
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $this->makeRule($userId, '5000', 'hi');
         $msgId = $this->makeInbound('5000', '09121234567', 'hi');
@@ -59,7 +59,7 @@ final class AutoreplyQueueTest extends IntegrationTestCase
 
     public function testDuplicateInboundRowNeverProducesASecondReply(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $this->makeRule($userId, '5000', 'hi');
         $msgId = $this->makeInbound('5000', '09121234567', 'hi');
@@ -75,7 +75,7 @@ final class AutoreplyQueueTest extends IntegrationTestCase
 
     public function testExpiredLeaseBecomesReclaimableAndCountsAsATrueRetry(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $this->makeRule($userId, '5000', 'hi');
         $msgId = $this->makeInbound('5000', '09121234567', 'hi');
@@ -94,7 +94,7 @@ final class AutoreplyQueueTest extends IntegrationTestCase
     public function testBecomesTerminalAfterMaxAttemptsAndIsNeverReclaimedAgain(): void
     {
         putenv('JOB_MAX_ATTEMPTS=2');
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $this->makeRule($userId, '5000', 'hi');
         $msgId = $this->makeInbound('5000', '09121234567', 'hi');
@@ -122,7 +122,7 @@ final class AutoreplyQueueTest extends IntegrationTestCase
 
     public function testRevokedRuleOwnerFailsPermanentlyWithoutRetrying(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->fundWallet($userId);
         $this->makeRule($userId, '5000', 'hi');
         db()->prepare('UPDATE ellsms_meta SET panel_access = 0 WHERE user_id = ?')->execute([$userId]);
@@ -137,7 +137,7 @@ final class AutoreplyQueueTest extends IntegrationTestCase
 
     public function testSelfLoopAndNoMatchingRuleNeverInsertALogRow(): void
     {
-        $userId = $this->makeUser();
+        $userId = $this->makeUser(['originator' => self::DEFAULT_ORIGINATOR]);
         $this->makeRule($userId, '5000', 'hi');
         $unmatched = $this->makeInbound('5000', '09121234567', 'this does not match any rule');
 

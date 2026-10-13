@@ -39,7 +39,7 @@ if (!$policy['ok']) {
     redirect($returnTo);
 }
 
-$originator = trim((string)($_POST['originator'] ?? '')) ?: (string)($me['originator'] ?: setting('default_originator', ''));
+$originator = trim((string)($_POST['originator'] ?? '')) ?: user_default_send_originator($me);
 $content = trim((string)($_POST['content'] ?? ''));
 $dests = parse_destinations((string)($_POST['destinations'] ?? ''));
 $myOrgId = $me['organization_id'] ?? null;
@@ -79,6 +79,10 @@ if ($dests === []) {
 }
 if ($content === '') {
     flash('error', 'متن پیام خالی است.');
+    redirect($returnTo);
+}
+if (user_has_no_send_line($me)) {
+    flash('error', NO_ASSIGNED_LINE_MESSAGE);
     redirect($returnTo);
 }
 if (!can_use_originator($me, $originator)) {

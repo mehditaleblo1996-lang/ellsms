@@ -130,12 +130,14 @@ function api_handle_messages_send(array $ctx): void {
         return;
     }
 
-    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : (string)(setting('default_originator', '') ?? '');
     $user = [
         'id'               => (int)$owner['id'],
         'role'             => $owner['is_admin'] ? 'admin' : 'user',
+        'originator'       => (string)($owner['originator'] ?? ''),
         'organization_id'  => $principal['organization_id'],
     ];
+    // No originator in the body → the key owner's own line, never the system (OTP) line.
+    $originator = is_string($body['originator'] ?? null) ? $body['originator'] : user_default_send_originator($user);
     if (!can_use_originator($user, $originator)) {
         api_messages_finish($lockId, 422, api_messages_error_body(ApiResponse::CODE_VALIDATION_FAILED, 'Request validation failed.', ['originator' => ['not_allowed']]));
         return;

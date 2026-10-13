@@ -205,6 +205,7 @@ final class TenantIsolationTest extends IntegrationTestCase
     {
         $orgA = $this->makeOrganization('Org A');
         wallet_credit($orgA['owner_id'], 1000, 'purchase', 'test', 'seed:bulk', 'seed:bulk');
+        $this->makeOrgSender($orgA['organization_id'], self::DEFAULT_ORIGINATOR);
         $user = ['id' => $orgA['owner_id'], 'role' => 'user', 'organization_id' => $orgA['organization_id']];
         [$ok, , $jobId] = bulk_queue_job($user, 'p2p', 't', self::DEFAULT_ORIGINATOR, null, [['mobile' => '0912', 'content' => 'hi']]);
         $this->assertTrue($ok);
