@@ -708,7 +708,10 @@ function csrf_field(): string {
 
 function csrf_check(): void {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['_csrf'] ?? '')) {
+        // A session that never rendered a form has no token; an empty token must never match.
+        $expected = (string)($_SESSION['csrf'] ?? '');
+        $posted = $_POST['_csrf'] ?? '';
+        if ($expected === '' || !is_string($posted) || !hash_equals($expected, $posted)) {
             http_response_code(400);
             exit('نشانه‌ی درخواست نامعتبر است. بازگردید و دوباره تلاش کنید.');
         }

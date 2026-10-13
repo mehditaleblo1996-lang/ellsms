@@ -60,6 +60,21 @@ final class CsrfTest extends TestCase
         $this->assertStringNotContainsString('MUTATION_EXECUTED', $result['output']);
     }
 
+    /** A session without a token yet (no form ever rendered) must not accept an empty posted token. */
+    public function testEmptySessionTokenRejectsEmptyPostedToken(): void
+    {
+        $result = $this->runRealCsrfCheck(sessionToken: null, postedToken: '');
+        $this->assertSame(400, $result['http_code']);
+        $result = $this->runRealCsrfCheck(sessionToken: null, postedToken: null);
+        $this->assertSame(400, $result['http_code']);
+    }
+
+    public function testArrayPostedTokenIsRejected(): void
+    {
+        $result = $this->runRealCsrfCheck(sessionToken: 'real-session-token-abc', postedToken: null, postedRaw: "['x']");
+        $this->assertSame(400, $result['http_code']);
+    }
+
     public function testMatchingTokenLetsTheRealFunctionAllowTheRequestThrough(): void
     {
         $result = $this->runRealCsrfCheck(sessionToken: 'real-session-token-abc', postedToken: 'real-session-token-abc');
@@ -68,10 +83,10 @@ final class CsrfTest extends TestCase
     }
 
     /** @return array{http_code: int, output: string} */
-    private function runRealCsrfCheck(string $sessionToken, ?string $postedToken): array {
+    private function runRealCsrfCheck(?string $sessionToken, ?string $postedToken, ?string $postedRaw = null): array {
         $bootstrapPath = dirname(__DIR__, 2) . '/app/bootstrap.php';
-        $postedTokenPhp = $postedToken === null ? 'null' : var_export($postedToken, true);
-        $sessionTokenPhp = var_export($sessionToken, true);
+        $postedTokenPhp = $postedRaw ?? ($postedToken === null ? 'null' : var_export($postedToken, true));
+        $sessionTokenPhp = $sessionToken === null ? 'null' : var_export($sessionToken, true);
         $script = <<<PHP
 <?php
 require {$this->phpExport($bootstrapPath)};
