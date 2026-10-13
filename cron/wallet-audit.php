@@ -20,8 +20,24 @@
  *
  * Exit code is 1 if any drift is found (so this is also usable as a CI/
  * monitoring check), 0 otherwise.
+ *
+ * --sync-currentcredit: the one correction it can make, and only when asked. The wallet is the
+ * only balance (docs/wallet-architecture.md) and currentcredit just the copy kept for the backend,
+ * so a drifted copy is rewritten from the wallet — each change logged with both values — and the
+ * wallet itself is never touched.
  */
 require_once __DIR__ . '/../app/backend.php';
+
+if (in_array('--sync-currentcredit', $argv ?? [], true)) {
+    foreach (wallet_drift_report() as $row) {
+        db_transaction(static function (PDO $db) use ($row): void {
+            wallet_sync_legacy_currentcredit($db, (int)$row['user_id']);
+        });
+        Logger::warning('wallet.audit.currentcredit_resynced', $row);
+        fwrite(STDOUT, sprintf("  user_id=%d currentcredit %d -> %d (the wallet's balance)\n",
+            $row['user_id'], $row['legacy_currentcredit'], $row['wallet_available']));
+    }
+}
 
 $drift = wallet_drift_report();
 
@@ -39,5 +55,5 @@ foreach ($drift as $row) {
         $row['user_id'], $row['wallet_available'], $row['legacy_currentcredit'], $row['drift']
     ));
 }
-fwrite(STDOUT, "Nothing has been changed — investigate before correcting (see docs/wallet-architecture.md).\n");
+fwrite(STDOUT, "Nothing has been changed. The wallet is the balance: once investigated, `php cron/wallet-audit.php --sync-currentcredit` rewrites currentcredit from it (see docs/wallet-architecture.md).\n");
 exit(1);
