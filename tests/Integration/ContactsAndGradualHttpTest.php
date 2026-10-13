@@ -11,6 +11,8 @@ use PHPUnit\Framework\TestCase;
  * session, real CSRF.
  *
  *  - importing the same contact list twice stores each contact once;
+ *  - an Excel/CSV upload stores every column of each row in every ticked group, and only replaces
+ *    the details of an existing number when "replace" is ticked;
  *  - a gradual (throttled) bulk job is listed on the Schedules page with a cancel button, and that
  *    button really cancels it — but only for its owner.
  *
@@ -126,6 +128,90 @@ final class ContactsAndGradualHttpTest extends TestCase
         $this->assertSame(3, (int)$count->fetchColumn());
     }
 
+    public function testTheExcelTemplateIsStoredWithEveryColumnInEachTickedGroup(): void
+    {
+        $session = $this->sessionFor($this->ownerId, $this->organizationId);
+        $csrf = $this->csrfFor($session, '/contacts.php');
+        $sample = dirname(__DIR__, 2) . '/public/assets/samples/contacts-sample.xlsx';
+
+        $r = $this->request('POST', '/contacts.php', $session,
+            ['_csrf' => $csrf, 'do' => 'import_file', 'groups[0]' => 'vip', 'new_group' => 'customers'],
+            ['file' => new \CURLFile($sample, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'contacts.xlsx')]);
+        $this->assertSame(302, $r['code'], 'upload did not redirect back: ' . substr($r['body'], 0, 300));
+
+        $st = db()->prepare('SELECT group_name, mobile, name, last_name, phone, gender, birth_date, occasion_date, email, address
+                             FROM ellsms_contacts WHERE user_id = ? ORDER BY mobile, group_name');
+        $st->execute([$this->ownerId]);
+        $rows = $st->fetchAll();
+        $this->assertSame(['customers', 'vip', 'customers', 'vip'], array_column($rows, 'group_name'), 'both template rows, in both groups');
+        $this->assertSame([
+            'group_name' => 'customers', 'mobile' => '989121234567', 'name' => 'علی', 'last_name' => 'رضایی',
+            'phone' => '02144452586', 'gender' => 0, 'birth_date' => '1983-09-03', 'occasion_date' => '2019-02-01',
+            'email' => 'ali@example.com', 'address' => 'تهران – خیابان ولیعصر',
+        ], array_merge($rows[0], ['gender' => (int)$rows[0]['gender']]));
+        $this->assertSame(1, (int)$rows[2]['gender']);
+
+        $page = $this->request('GET', '/contacts.php', $session);
+        $this->assertStringContainsString('۲ مخاطب ثبت شد', $page['body']);
+        $this->assertStringContainsString('ali@example.com', $page['body'], 'the list shows the new columns');
+    }
+
+    public function testReplacingDetailsOfAnExistingNumberNeedsTheCheckbox(): void
+    {
+        db()->prepare("INSERT INTO ellsms_contacts (user_id, organization_id, name, mobile, group_name, email) VALUES (?, ?, 'Old', '989121234567', 'vip', 'keep@example.com')")
+            ->execute([$this->ownerId, $this->organizationId]);
+        $session = $this->sessionFor($this->ownerId, $this->organizationId);
+        $csrf = $this->csrfFor($session, '/contacts.php');
+        $csv = sys_get_temp_dir() . '/contacts_' . bin2hex(random_bytes(6)) . '.csv';
+        file_put_contents($csv, "شماره موبایل,نام,نام خانوادگی,ایمیل\n09121234567,New,Name,\nnot-a-number,Bad,,\n");
+
+        try {
+            $upload = fn(array $extra) => $this->request('POST', '/contacts.php', $session,
+                ['_csrf' => $csrf, 'do' => 'import_file', 'groups[0]' => 'vip'] + $extra,
+                ['file' => new \CURLFile($csv, 'text/csv', 'contacts.csv')]);
+
+            $upload([]);
+            $this->assertSame(['Old', '', 'keep@example.com'], $this->ownerContact('989121234567'), 'without the checkbox nothing changes');
+            $page = $this->request('GET', '/contacts.php', $session);
+            $this->assertStringContainsString('ردیف ۳: شماره موبایل «not-a-number» نامعتبر است', $page['body'], 'the bad row is reported');
+
+            $upload(['replace' => '1']);
+            $this->assertSame(['New', 'Name', 'keep@example.com'], $this->ownerContact('989121234567'), 'replaced, but an empty cell keeps the stored email');
+        } finally {
+            @unlink($csv);
+        }
+        $count = db()->prepare('SELECT COUNT(*) FROM ellsms_contacts WHERE user_id = ?');
+        $count->execute([$this->ownerId]);
+        $this->assertSame(1, (int)$count->fetchColumn(), 'replacing never adds a second row');
+    }
+
+    public function testTheSingleContactFormStoresDetailsInEveryChosenGroup(): void
+    {
+        $session = $this->sessionFor($this->ownerId, $this->organizationId);
+        $csrf = $this->csrfFor($session, '/contacts.php');
+        $r = $this->request('POST', '/contacts.php', $session, [
+            '_csrf' => $csrf, 'do' => 'add', 'mobile' => '۰۹۱۲۰۰۰۰۰۰۹', 'name' => 'Zahra', 'last_name' => 'Ahmadi',
+            'phone' => '2144452587', 'gender' => '1', 'birth_date_y' => '1363', 'birth_date_m' => '6', 'birth_date_d' => '12',
+            'email' => 'z@example.com', 'address' => 'Tajrish', 'groups[0]' => 'a', 'groups[1]' => 'b',
+        ]);
+        $this->assertSame(302, $r['code']);
+
+        $st = db()->prepare('SELECT group_name, last_name, phone, gender, birth_date, occasion_date FROM ellsms_contacts WHERE user_id = ? ORDER BY group_name');
+        $st->execute([$this->ownerId]);
+        $rows = $st->fetchAll();
+        $this->assertSame(['a', 'b'], array_column($rows, 'group_name'));
+        $this->assertSame(['Ahmadi', '02144452587', 1, '1984-09-03', null],
+            [$rows[1]['last_name'], $rows[1]['phone'], (int)$rows[1]['gender'], $rows[1]['birth_date'], $rows[1]['occasion_date']]);
+    }
+
+    /** [name, last_name, email] of the owner's contact with this mobile. */
+    private function ownerContact(string $mobile): array
+    {
+        $st = db()->prepare('SELECT name, last_name, email FROM ellsms_contacts WHERE user_id = ? AND mobile = ?');
+        $st->execute([$this->ownerId, $mobile]);
+        return array_values($st->fetch(\PDO::FETCH_ASSOC) ?: []);
+    }
+
     public function testAGradualJobIsListedOnSchedulesAndCanBeCancelledByItsOwner(): void
     {
         $jobId = $this->makeGradualJob($this->ownerId, $this->organizationId, 5);
@@ -225,7 +311,7 @@ final class ContactsAndGradualHttpTest extends TestCase
     }
 
     /** @return array{code:int, body:string, headers:string} */
-    private function request(string $method, string $path, ?string $sessionId = null, array $post = []): array
+    private function request(string $method, string $path, ?string $sessionId = null, array $post = [], array $files = []): array
     {
         $ch = curl_init("http://127.0.0.1:{$this->port}{$path}");
         $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HEADER => true];
@@ -234,7 +320,8 @@ final class ContactsAndGradualHttpTest extends TestCase
         }
         if ($method === 'POST') {
             $opts[CURLOPT_POST] = true;
-            $opts[CURLOPT_POSTFIELDS] = http_build_query($post);
+            // A real multipart body when a file is attached, so the page sees a genuine $_FILES upload.
+            $opts[CURLOPT_POSTFIELDS] = $files === [] ? http_build_query($post) : array_merge($post, $files);
         }
         curl_setopt_array($ch, $opts);
         $raw = (string)curl_exec($ch);

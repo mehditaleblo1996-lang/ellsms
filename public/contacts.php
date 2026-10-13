@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/xlsx_reader.php';
 $me = require_login();
 $pageTitle = 'مخاطبین';
 $active = 'contacts';
@@ -22,20 +23,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $myOrgId = $me['organization_id'] ?? null;
 
     if ($do === 'add') {
-        $mobile = normalize_msisdn($_POST['mobile'] ?? '');
+        $mobile = normalize_msisdn(from_persian_digits($_POST['mobile'] ?? ''));
+        [$details, $problems] = contact_normalize_details([
+            'name'          => $_POST['name'] ?? '',
+            'last_name'     => $_POST['last_name'] ?? '',
+            'phone'         => $_POST['phone'] ?? '',
+            'gender'        => $_POST['gender'] ?? '',
+            'birth_date'    => jalali_request_to_gregorian('birth_date') ?? '',
+            'occasion_date' => jalali_request_to_gregorian('occasion_date') ?? '',
+            'email'         => $_POST['email'] ?? '',
+            'address'       => $_POST['address'] ?? '',
+        ]);
         if (!$mobile) {
             flash('error', 'شماره موبایل معتبر نیست.');
+        } elseif ($problems) {
+            flash('error', implode('؛ ', $problems) . '.');
         } else {
-            $slot = entitlement_with_resource_slot((int)$myOrgId, Limits::CONTACTS, static function (PDO $db) use ($me, $myOrgId, $mobile) {
-                return contact_insert($db, (int)$me['id'], $myOrgId !== null ? (int)$myOrgId : null, trim($_POST['name'] ?? ''), $mobile, trim($_POST['group_name'] ?? ''));
-            });
-            if (!$slot['ok']) {
-                flash('error', 'به سقف تعداد مخاطبین پلن فعلی رسیده‌اید (' . to_persian_digits((string)$slot['limit']) . ' مخاطب). مخاطبین موجود شما دست‌نخورده باقی می‌مانند؛ برای افزودن مخاطب جدید پلن خود را ارتقا دهید.');
-            } elseif ($slot['result']) {
+            $stats = contacts_store((int)$me['id'], $myOrgId !== null ? (int)$myOrgId : null,
+                [['mobile' => $mobile, 'details' => $details]], contacts_groups_from_request($_POST), !empty($_POST['replace']));
+            if ($stats['over_limit'] > 0 && $stats['added'] === 0) {
+                flash('error', 'به سقف تعداد مخاطبین پلن فعلی رسیده‌اید (' . to_persian_digits((string)$stats['limit']) . ' مخاطب). مخاطبین موجود شما دست‌نخورده باقی می‌مانند؛ برای افزودن مخاطب جدید پلن خود را ارتقا دهید.');
+            } elseif ($stats['added'] > 0) {
                 flash('success', 'مخاطب افزوده شد.');
+            } elseif ($stats['updated'] > 0) {
+                flash('success', 'این شماره از قبل ثبت شده بود؛ اطلاعات آن به‌روزرسانی شد.');
             } else {
-                flash('info', 'این شماره قبلاً در همین گروه ثبت شده است؛ مخاطب تکراری افزوده نشد.');
+                flash('info', 'این شماره قبلاً در همین گروه ثبت شده است؛ مخاطب تکراری افزوده نشد. برای جایگزینی اطلاعات، گزینه‌ی جایگزینی را تیک بزنید.');
             }
+        }
+    }
+
+    if ($do === 'import_file') {
+        $file = $_FILES['file'] ?? [];
+        $name = (string)($file['name'] ?? '');
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $error = null;
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            $error = 'فایل اکسل را انتخاب کنید.';
+        } elseif (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || !is_uploaded_file((string)($file['tmp_name'] ?? ''))) {
+            $error = 'بارگذاری فایل با خطا مواجه شد.';
+        } elseif ((int)($file['size'] ?? 0) > CONTACT_IMPORT_MAX_BYTES) {
+            $error = 'حجم فایل بیش از ' . to_persian_digits((string)(CONTACT_IMPORT_MAX_BYTES / 1024 / 1024)) . ' مگابایت است.';
+        } elseif ($ext === 'xls') {
+            $error = 'فرمت قدیمی xls پشتیبانی نمی‌شود؛ فایل را در Excel با «Save As» و فرمت xlsx ذخیره کنید.';
+        } elseif (!in_array($ext, ['xlsx', 'csv'], true)) {
+            $error = 'فرمت فایل باید xlsx یا csv باشد.';
+        }
+
+        $parsed = null;
+        if ($error === null) {
+            try {
+                $parsed = contacts_parse_sheet(read_spreadsheet_rows((string)$file['tmp_name'], $name));
+            } catch (RuntimeException $e) {
+                $error = $e->getMessage();
+            }
+        }
+
+        if ($error !== null) {
+            flash('error', $error);
+        } else {
+            $stats = $parsed['contacts']
+                ? contacts_store((int)$me['id'], $myOrgId !== null ? (int)$myOrgId : null, $parsed['contacts'], contacts_groups_from_request($_POST), !empty($_POST['replace']))
+                : ['added' => 0, 'updated' => 0, 'duplicate' => 0, 'over_limit' => 0, 'limit' => null];
+            [$type, $message] = contacts_store_summary($stats);
+            if ($parsed['repeated'] > 0) {
+                $message .= ' ' . to_persian_digits((string)$parsed['repeated']) . ' ردیف شماره‌ی تکراری داخل همین فایل داشت و فقط اولین ردیف هر شماره خوانده شد.';
+            }
+            if (!$parsed['contacts']) {
+                $type = 'error';
+                $message = 'هیچ ردیفی با شماره موبایل معتبر در فایل پیدا نشد.';
+            }
+            flash($type, $message);
+            // Shown once on the next page load, under the upload form.
+            $_SESSION['contacts_import_report'] = [
+                'file'     => mb_substr(basename(str_replace('\\', '/', $name)), 0, 120),
+                'rows'     => count($parsed['contacts']) + count($parsed['errors']) + $parsed['repeated'],
+                'errors'   => $parsed['errors'],
+                'warnings' => $parsed['warnings'],
+            ];
         }
     }
 
@@ -118,7 +183,9 @@ if ($beforeId !== null && $beforeId > 0) {
     $params[] = $afterId;
     $order = 'ASC';
 }
-$st = db()->prepare("SELECT id, name, mobile, group_name, created_at FROM ellsms_contacts WHERE {$where} ORDER BY id {$order} LIMIT " . ($per + 1));
+$hasDetails = contacts_have_detail_columns();
+$columns = 'id, name, mobile, group_name, created_at' . ($hasDetails ? ', last_name, phone, gender, birth_date, occasion_date, email, address' : '');
+$st = db()->prepare("SELECT {$columns} FROM ellsms_contacts WHERE {$where} ORDER BY id {$order} LIMIT " . ($per + 1));
 $st->execute($params);
 $fetched = $st->fetchAll();
 $hasMore = count($fetched) > $per;
@@ -133,34 +200,121 @@ $hasPrev = $rows !== [] && ($beforeId !== null || $afterId !== null);
 $hasNext = $rows !== [] && (($afterId !== null) || $hasMore);
 $baseQuery = $g !== '' ? ['group' => $g] : [];
 
+$importReport = $_SESSION['contacts_import_report'] ?? null;
+unset($_SESSION['contacts_import_report']);
+
+/** Ticked groups + a new group, shared by the single-contact form and the file upload. */
+$groupPicker = static function (string $id) use ($groups): string {
+    ob_start(); ?>
+    <div class="field span-full">
+      <span class="field-label">گروه‌ها</span>
+      <?php if ($groups): ?>
+        <div class="group-picker" id="<?= e($id) ?>">
+          <?php foreach ($groups as $x): ?>
+            <label class="check"><input type="checkbox" name="groups[]" value="<?= e($x['group_name']) ?>"> <?= e($x['group_name']) ?></label>
+          <?php endforeach; ?>
+        </div>
+      <?php endif; ?>
+      <label style="margin-top:var(--sp-2)">گروه جدید <input type="text" name="new_group" maxlength="80" placeholder="مثلاً مشتریان"></label>
+      <p class="hint">مخاطب در همه‌ی گروه‌های انتخاب‌شده ثبت می‌شود؛ بدون انتخاب گروه، بدون گروه ثبت می‌شود.</p>
+    </div>
+    <label class="check span-full"><input type="checkbox" name="replace" value="1"> در صورت وجود شماره، اطلاعات فردی جدید جایگزین اطلاعات قدیم شود</label>
+    <?php return (string)ob_get_clean();
+};
+
 require __DIR__ . '/../app/views/header.php';
 ?>
-<div class="grid grid-2">
-  <div class="card">
-    <h2>افزودن مخاطب</h2>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="do" value="add">
-      <div class="form-row">
-        <label>نام <input type="text" name="name"></label>
-        <label>موبایل <input type="text" name="mobile" required placeholder="۰۹۱۲… یا ۹۸۹۱۲…" class="ltr"></label>
-        <label>گروه <input type="text" name="group_name" list="grouplist" placeholder="مثلاً مشتریان"></label>
-      </div>
-      <button class="btn btn-primary">افزودن مخاطب</button>
-    </form>
-  </div>
-  <div class="card">
-    <h2>وارد کردن گروهی</h2>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="do" value="import">
-      <label>هر خط را جدا وارد کنید — <span class="hint" style="display:inline">شماره یا «نام، شماره»</span>
-        <textarea name="bulk" placeholder="علی، ۰۹۱۲۱۲۳۴۵۶۷&#10;۰۹۳۵۱۲۳۴۵۶۷"></textarea>
+<div class="tabs" data-tabs="contacts">
+<nav class="tabs-nav" role="tablist" aria-label="افزودن مخاطب">
+  <button type="button" role="tab" data-tab="add">افزودن مخاطب</button>
+  <button type="button" role="tab" data-tab="excel">افزودن از فایل Excel</button>
+  <button type="button" role="tab" data-tab="text">وارد کردن متنی</button>
+</nav>
+
+<section class="tab-panel" data-panel="add" role="tabpanel">
+<div class="card">
+  <h2>افزودن مخاطب</h2>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="add">
+    <div class="form-grid">
+      <label>نام <input type="text" name="name" maxlength="120"></label>
+      <label>نام خانوادگی <input type="text" name="last_name" maxlength="120"></label>
+      <label>موبایل<span class="req">*</span> <input type="text" name="mobile" required placeholder="۰۹۱۲… یا ۹۸۹۱۲…" class="ltr"></label>
+      <label>تلفن ثابت <input type="text" name="phone" class="ltr" placeholder="۰۲۱۴۴۴۵۲۵۸۶"><span class="hint">با ۰ و کد شهرستان</span></label>
+      <label>جنسیت
+        <select name="gender">
+          <option value="">—</option>
+          <?php foreach (CONTACT_GENDER_LABELS as $code => $label): ?><option value="<?= $code ?>"><?= e($label) ?></option><?php endforeach; ?>
+        </select>
       </label>
-      <label>در گروه <input type="text" name="group_name" list="grouplist"></label>
-      <button class="btn btn-primary">وارد کردن</button>
-    </form>
-  </div>
+      <label>پست الکترونیکی <input type="email" name="email" maxlength="190" class="ltr"></label>
+      <label>تاریخ تولد <?= jalali_date_select('birth_date', null, 0, 100, true) ?></label>
+      <label>تاریخ مناسبت <?= jalali_date_select('occasion_date', null, 2, 50, true) ?></label>
+      <label class="span-full">آدرس <textarea name="address" maxlength="500" rows="2"></textarea></label>
+      <?= $groupPicker('groups-add') ?>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary">افزودن مخاطب</button>
+      <span class="hint">با جایگزینی، فقط فیلدهای پرشده روی اطلاعات قبلی نوشته می‌شوند.</span>
+    </div>
+  </form>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="excel" role="tabpanel">
+<div class="card">
+  <h2>افزودن مخاطب/مخاطبین از طریق فایل Excel</h2>
+  <p class="hint">
+    ستون‌های فایل به ترتیب: شماره موبایل، نام، نام خانوادگی، تلفن، تاریخ تولد، تاریخ مناسبت، جنسیت، ایمیل، آدرس.
+    ردیف اول عنوان ستون‌هاست و ستون‌ها از روی همین عنوان‌ها شناخته می‌شوند. فقط «شماره موبایل» اجباری است.
+    تاریخ‌ها شمسی مثل ۱۳۶۲/۰۶/۱۲ و جنسیت ۰ برای آقا و ۱ برای خانم.
+    حداکثر <?= to_persian_digits(number_format(CONTACT_IMPORT_MAX_ROWS)) ?> ردیف در هر فایل (xlsx یا csv).
+  </p>
+  <p><a class="btn btn-sm" href="/assets/samples/contacts-sample.xlsx" download>دریافت فایل نمونه</a></p>
+  <form method="post" enctype="multipart/form-data">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="import_file">
+    <div class="form-grid">
+      <label class="span-full">فایل Excel <input type="file" name="file" accept=".xlsx,.csv" required></label>
+      <?= $groupPicker('groups-excel') ?>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary">بارگذاری و ثبت مخاطبین</button>
+    </div>
+  </form>
+
+  <?php if ($importReport && ($importReport['errors'] || $importReport['warnings'])): ?>
+    <div class="form-section">
+      <h3>گزارش فایل «<?= e($importReport['file']) ?>» (<?= to_persian_digits(number_format((int)$importReport['rows'])) ?> ردیف)</h3>
+      <?php foreach (['errors' => ['ردیف‌های ثبت‌نشده', 'text-danger'], 'warnings' => ['ردیف‌های ثبت‌شده با فیلد خالی', 'hint']] as $key => [$title, $class]): ?>
+        <?php if ($importReport[$key]): $list = $importReport[$key]; ?>
+          <p><strong><?= e($title) ?> (<?= to_persian_digits(number_format(count($list))) ?>)</strong></p>
+          <ul class="<?= $class ?>">
+            <?php foreach (array_slice($list, 0, 50) as $line): ?><li><?= e($line) ?></li><?php endforeach; ?>
+            <?php if (count($list) > 50): ?><li>… و <?= to_persian_digits(number_format(count($list) - 50)) ?> مورد دیگر</li><?php endif; ?>
+          </ul>
+        <?php endif; ?>
+      <?php endforeach; ?>
+    </div>
+  <?php endif; ?>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="text" role="tabpanel">
+<div class="card">
+  <h2>وارد کردن متنی</h2>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="import">
+    <label>هر خط را جدا وارد کنید — <span class="hint" style="display:inline">شماره یا «نام، شماره»</span>
+      <textarea name="bulk" placeholder="علی، ۰۹۱۲۱۲۳۴۵۶۷&#10;۰۹۳۵۱۲۳۴۵۶۷"></textarea>
+    </label>
+    <label>در گروه <input type="text" name="group_name" list="grouplist"></label>
+    <button class="btn btn-primary">وارد کردن</button>
+  </form>
+</div>
+</section>
 </div>
 
 <datalist id="grouplist">
@@ -179,11 +333,23 @@ require __DIR__ . '/../app/views/header.php';
   </p>
   <div class="table-wrap">
   <table>
-    <tr><th>نام</th><th>موبایل</th><th>گروه</th><th>تاریخ افزودن</th><th></th></tr>
+    <tr>
+      <th>نام</th><th>موبایل</th>
+      <?php if ($hasDetails): ?><th>تلفن</th><th>جنسیت</th><th>تاریخ تولد</th><th>تاریخ مناسبت</th><th>ایمیل</th><th>آدرس</th><?php endif; ?>
+      <th>گروه</th><th>تاریخ افزودن</th><th></th>
+    </tr>
     <?php foreach ($rows as $c): ?>
       <tr>
-        <td><?= e($c['name']) ?></td>
+        <td><?= e(trim($c['name'] . ' ' . ($c['last_name'] ?? ''))) ?></td>
         <td class="msisdn"><?= e($c['mobile']) ?></td>
+        <?php if ($hasDetails): ?>
+          <td class="msisdn"><?= e($c['phone']) ?></td>
+          <td><?= $c['gender'] !== null ? e(CONTACT_GENDER_LABELS[(int)$c['gender']] ?? '') : '' ?></td>
+          <td class="num"><?= jdate($c['birth_date'], false) ?></td>
+          <td class="num"><?= jdate($c['occasion_date'], false) ?></td>
+          <td class="ltr"><?= e($c['email']) ?></td>
+          <td title="<?= e($c['address']) ?>"><?= e(mb_strimwidth((string)$c['address'], 0, 40, '…')) ?></td>
+        <?php endif; ?>
         <td><?= e($c['group_name']) ?></td>
         <td class="num"><?= jdate($c['created_at'], false) ?></td>
         <td>
@@ -196,7 +362,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="5" class="empty">هنوز مخاطبی وجود ندارد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= $hasDetails ? 11 : 5 ?>" class="empty">هنوز مخاطبی وجود ندارد.</td></tr><?php endif; ?>
   </table>
   </div>
 

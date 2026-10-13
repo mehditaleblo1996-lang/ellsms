@@ -491,6 +491,9 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
   padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--canvas); cursor: pointer;
 }
 label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--indigo); flex: none; }
+/* A wrapping list of checkbox options (the contact form's groups); scrolls once it gets long. */
+.group-picker { display: flex; flex-wrap: wrap; gap: var(--sp-2); max-height: 220px; overflow-y: auto; padding: 2px; }
+.group-picker label.check { padding: 6px 10px; margin: 0; font-weight: 400; }
 .req { color: var(--err); margin-inline-start: 2px; }
 /* The caption of a field that is not a single control (e.g. a segmented radio group). */
 .field-label { display: block; font-weight: 600; font-size: var(--fs-sm); line-height: var(--lh-snug); margin-bottom: var(--sp-1); }
