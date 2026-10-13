@@ -267,7 +267,54 @@ require __DIR__ . '/../app/views/header.php';
 </form>
 </div>
 
-<div class="card" style="margin-top:18px">
+<?php
+/*
+ * One table at a time (same tabs as the users page, assets/js/forms.js): the stats, filters and CSV
+ * export above apply to every tab. Pagination links carry the tab as #fragment, because the open tab
+ * is otherwise remembered per query string and a "next page" link changes the query string.
+ */
+?>
+<div class="tabs" data-tabs="reports" style="margin-top:18px">
+<nav class="tabs-nav" role="tablist" aria-label="بخش‌های گزارش ارسال">
+  <button type="button" role="tab" data-tab="gateway">ارسال مستقیم از درگاه<span class="tab-count">(<?= to_persian_digits(number_format((int)($G['total'] ?? 0))) ?>)</span></button>
+  <button type="button" role="tab" data-tab="bulk">ارسال‌های حجیم<span class="tab-count">(<?= to_persian_digits((string)count($bulkJobs)) ?><?= count($bulkJobs) >= 50 ? '+' : '' ?>)</span></button>
+  <button type="button" role="tab" data-tab="schedules">زمان‌بندی‌ها<span class="tab-count">(<?= to_persian_digits(number_format($scheduleCount)) ?>)</span></button>
+  <button type="button" role="tab" data-tab="direct">پیام‌های عادی / API<span class="tab-count">(<?= to_persian_digits(number_format((int)($D['total'] ?? 0))) ?>)</span></button>
+</nav>
+
+<section class="tab-panel" data-panel="gateway" role="tabpanel">
+<div class="card">
+<h2>پیام‌های عادی / API / زمان‌بندی (ارسال مستقیم از درگاه)</h2>
+<p class="hint">پیام‌هایی که مستقیم از درگاه پیامک ارسال شده‌اند. تعداد: <?= to_persian_digits(number_format((int)($G['total'] ?? 0))) ?></p>
+<div class="table-wrap"><table>
+<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>نوع</th><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
+<?php foreach($gwRows as $r): $cs=(string)$r['canonical_status']; $gc=(string)($r['content'] ?? ''); ?>
+<tr>
+<td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
+<?php if(is_admin()): ?><td><?= e((string)$r['username']) ?></td><?php endif; ?>
+<td><?= $r['reference_type'] === 'schedule' ? 'زمان‌بندی' : 'عادی / API' ?></td>
+<td class="msisdn"><?= $r['originator'] !== null ? e((string)$r['originator']) : '—' ?></td>
+<td class="msisdn"><?= e((string)$r['destination']) ?></td>
+<td class="msg-preview" title="<?= e($gc) ?>"><?= $gc !== '' ? e(mb_strimwidth($gc,0,60,'…')) : '—' ?></td>
+<td class="num"><?= $gc !== '' ? to_persian_digits((string)sms_parts($gc)) : '—' ?></td>
+<td><span class="badge badge-<?= e(report_v2_status_class($cs)) ?>"><?= e(report_v2_status_label($cs)) ?></span></td>
+<td class="num"><?= report_v2_jdate((string)$r['attempted_at']) ?></td>
+<td class="num"><?= !empty($r['delivered_at']) ? report_v2_jdate((string)$r['delivered_at']) : '—' ?></td>
+<?php if($canHide): $isHidden = isset($hiddenAttempts[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('attempt', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
+</tr>
+<?php endforeach; ?>
+<?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?($canHide?11:10):9 ?>" class="empty">پیامی با این فیلترها از درگاه ارسال نشده است.</td></tr><?php endif; ?>
+</table></div>
+<div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
+  <?php if($gwPage > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['gw_page'=>$gwPage-1])) ?>#gateway">→ جدیدتر</a><?php endif; ?>
+  <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits((string)$gwPage) ?></span>
+  <?php if($gwHasNext): ?><a class="btn btn-sm" href="?<?= e($qs(['gw_page'=>$gwPage+1])) ?>#gateway">قدیمی‌تر ←</a><?php endif; ?>
+</div>
+</div>
+</section>
+
+<section class="tab-panel" data-panel="bulk" role="tabpanel">
+<div class="card">
   <h2>ارسال‌های حجیم / نظیر به نظیر</h2>
   <p class="hint">هر Job فقط یک ردیف نمایش داده می‌شود؛ حتی اگر ۸۵۰هزار گیرنده داشته باشد. برای دیدن تک‌تک شماره‌ها «جزئیات» را بزنید.</p>
   <div class="table-wrap"><table>
@@ -296,8 +343,10 @@ require __DIR__ . '/../app/views/header.php';
     <?php if(!$bulkJobs): ?><tr><td colspan="13" class="empty">ارسال حجیمی در این بازه وجود ندارد.</td></tr><?php endif; ?>
   </table></div>
 </div>
+</section>
 
-<div class="card" style="margin-top:18px">
+<section class="tab-panel" data-panel="schedules" role="tabpanel">
+<div class="card">
   <h2>زمان‌بندی‌ها</h2>
   <div class="table-wrap"><table>
     <tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>عنوان</th><th>زمان اجرا</th><th>تکرار</th><th>خط</th><th>گیرندگان</th><th>متن</th><th>وضعیت</th><th>تعداد اجرا</th><th>آخرین اجرا</th><th>آخرین نتیجه</th></tr>
@@ -321,37 +370,10 @@ require __DIR__ . '/../app/views/header.php';
   </table></div>
   <div style="margin-top:10px"><a class="btn btn-sm" href="/schedules.php">مشاهده زمان‌بندی‌ها و مراحل تدریجی</a></div>
 </div>
+</section>
 
-<div class="card" style="margin-top:18px">
-<h2>پیام‌های عادی / API / زمان‌بندی (ارسال مستقیم از درگاه)</h2>
-<p class="hint">پیام‌هایی که مستقیم از درگاه پیامک ارسال شده‌اند. تعداد: <?= to_persian_digits(number_format((int)($G['total'] ?? 0))) ?></p>
-<div class="table-wrap"><table>
-<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>نوع</th><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
-<?php foreach($gwRows as $r): $cs=(string)$r['canonical_status']; $gc=(string)($r['content'] ?? ''); ?>
-<tr>
-<td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
-<?php if(is_admin()): ?><td><?= e((string)$r['username']) ?></td><?php endif; ?>
-<td><?= $r['reference_type'] === 'schedule' ? 'زمان‌بندی' : 'عادی / API' ?></td>
-<td class="msisdn"><?= $r['originator'] !== null ? e((string)$r['originator']) : '—' ?></td>
-<td class="msisdn"><?= e((string)$r['destination']) ?></td>
-<td class="msg-preview" title="<?= e($gc) ?>"><?= $gc !== '' ? e(mb_strimwidth($gc,0,60,'…')) : '—' ?></td>
-<td class="num"><?= $gc !== '' ? to_persian_digits((string)sms_parts($gc)) : '—' ?></td>
-<td><span class="badge badge-<?= e(report_v2_status_class($cs)) ?>"><?= e(report_v2_status_label($cs)) ?></span></td>
-<td class="num"><?= report_v2_jdate((string)$r['attempted_at']) ?></td>
-<td class="num"><?= !empty($r['delivered_at']) ? report_v2_jdate((string)$r['delivered_at']) : '—' ?></td>
-<?php if($canHide): $isHidden = isset($hiddenAttempts[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('attempt', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
-</tr>
-<?php endforeach; ?>
-<?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?($canHide?11:10):9 ?>" class="empty">پیامی با این فیلترها از درگاه ارسال نشده است.</td></tr><?php endif; ?>
-</table></div>
-<div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
-  <?php if($gwPage > 1): ?><a class="btn btn-sm" href="?<?= e($qs(['gw_page'=>$gwPage-1])) ?>">→ جدیدتر</a><?php endif; ?>
-  <span class="btn btn-sm btn-ghost">صفحه <?= to_persian_digits((string)$gwPage) ?></span>
-  <?php if($gwHasNext): ?><a class="btn btn-sm" href="?<?= e($qs(['gw_page'=>$gwPage+1])) ?>">قدیمی‌تر ←</a><?php endif; ?>
-</div>
-</div>
-
-<div class="card" style="margin-top:18px">
+<section class="tab-panel" data-panel="direct" role="tabpanel">
+<div class="card">
 <h2>پیام‌های عادی / API</h2>
 <div class="table-wrap"><table>
 <tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
@@ -372,9 +394,12 @@ require __DIR__ . '/../app/views/header.php';
 <?php if(!$rows): ?><tr><td colspan="<?= is_admin()?($canHide?10:9):8 ?>" class="empty">هیچ پیام عادی/API با این فیلترها یافت نشد.</td></tr><?php endif; ?>
 </table></div>
 <div class="pagination" style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:18px">
-  <a class="btn btn-sm" href="?<?= e($qs(['before_time'=>null,'before_id'=>null])) ?>">↻ جدیدترین</a>
+  <a class="btn btn-sm" href="?<?= e($qs(['before_time'=>null,'before_id'=>null])) ?>#direct">↻ جدیدترین</a>
   <span class="btn btn-sm btn-ghost"><?= to_persian_digits(number_format(count($rows))) ?> ردیف</span>
-  <?php if($hasNext && $last): ?><a class="btn btn-sm" href="?<?= e($qs(['before_time'=>$last['sort_time'],'before_id'=>$last['id']])) ?>">قدیمی‌تر ←</a><?php endif; ?>
+  <?php if($hasNext && $last): ?><a class="btn btn-sm" href="?<?= e($qs(['before_time'=>$last['sort_time'],'before_id'=>$last['id']])) ?>#direct">قدیمی‌تر ←</a><?php endif; ?>
 </div>
+</div>
+</section>
+
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
