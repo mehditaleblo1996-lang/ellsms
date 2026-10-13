@@ -31,6 +31,7 @@ smpp-bridge/target/
 # Backups hold the whole database; rclone.conf holds the off-server storage credentials.
 storage/backups/
 storage/rclone/
+storage/*.key
 storage/logs/*
 !storage/logs/.gitkeep
 storage/maintenance.flag
