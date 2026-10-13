@@ -510,7 +510,9 @@ if (!$keep) {
         // Prices reference the route, so they must go first or the route delete hits the FK.
         if ($seeded['route']) {
             $db->prepare('DELETE FROM ellsms_sms_route_prices WHERE route_id = ?')->execute([$seeded['route']]);
-            $db->prepare('DELETE FROM ellsms_sms_price_snapshots WHERE reference_type = ?')->execute(['bulk_job']);
+            // Only the snapshots priced on this run's own route: every other bulk job's snapshot is
+            // the record of what a real customer was charged.
+            $db->prepare('DELETE FROM ellsms_sms_price_snapshots WHERE route_id = ?')->execute([$seeded['route']]);
         }
         if ($seeded['gateway']) {
             $db->prepare('DELETE FROM ellsms_sms_gateway_operators WHERE gateway_id = ?')->execute([$seeded['gateway']]);
