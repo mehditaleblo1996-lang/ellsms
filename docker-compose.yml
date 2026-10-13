@@ -570,7 +570,8 @@ services:
     restart: unless-stopped
     command: php /var/www/html/cron/scheduler.php
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       <<: *worker_environment
       # rclone remotes for the off-server backup copy, unless configured by RCLONE_CONFIG_* variables.
