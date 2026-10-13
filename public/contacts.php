@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
-require_once __DIR__ . '/../app/xlsx_reader.php';
 $me = require_login();
 $pageTitle = 'مخاطبین';
 $active = 'contacts';
@@ -58,22 +57,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = (string)($file['name'] ?? '');
         $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
         $error = null;
+        $sizeError = 'حجم فایل بیش از ' . to_persian_digits((string)(CONTACT_IMPORT_MAX_BYTES / 1024 / 1024)) . ' مگابایت است.';
         if (($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
             $error = 'فایل اکسل را انتخاب کنید.';
+        } elseif (in_array($file['error'] ?? UPLOAD_ERR_OK, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+            $error = $sizeError;
         } elseif (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK || !is_uploaded_file((string)($file['tmp_name'] ?? ''))) {
             $error = 'بارگذاری فایل با خطا مواجه شد.';
         } elseif ((int)($file['size'] ?? 0) > CONTACT_IMPORT_MAX_BYTES) {
-            $error = 'حجم فایل بیش از ' . to_persian_digits((string)(CONTACT_IMPORT_MAX_BYTES / 1024 / 1024)) . ' مگابایت است.';
+            $error = $sizeError;
         } elseif ($ext === 'xls') {
             $error = 'فرمت قدیمی xls پشتیبانی نمی‌شود؛ فایل را در Excel با «Save As» و فرمت xlsx ذخیره کنید.';
         } elseif (!in_array($ext, ['xlsx', 'csv'], true)) {
             $error = 'فرمت فایل باید xlsx یا csv باشد.';
         }
 
-        $parsed = null;
+        $report = null;
+        $stats = ['added' => 0, 'updated' => 0, 'duplicate' => 0, 'over_limit' => 0, 'limit' => null];
         if ($error === null) {
+            // Up to CONTACT_IMPORT_MAX_ROWS rows are stored in this one request: read row by row, stored
+            // 1,000 at a time, all in one transaction — a file that turns out to be too long, or any
+            // failure half-way, stores nothing.
+            set_time_limit(600);
+            $groups = contacts_groups_from_request($_POST);
+            $replace = !empty($_POST['replace']);
             try {
-                $parsed = contacts_parse_sheet(read_spreadsheet_rows((string)$file['tmp_name'], $name));
+                $report = db_transaction(function () use ($file, $ext, $me, $myOrgId, $groups, $replace, &$stats): array {
+                    return contacts_import_rows(
+                        contacts_file_rows((string)$file['tmp_name'], $ext),
+                        function (array $chunk) use ($me, $myOrgId, $groups, $replace, &$stats): void {
+                            $part = contacts_store((int)$me['id'], $myOrgId !== null ? (int)$myOrgId : null, $chunk, $groups, $replace);
+                            foreach (['added', 'updated', 'duplicate', 'over_limit'] as $k) {
+                                $stats[$k] += $part[$k];
+                            }
+                            $stats['limit'] = $part['limit'];
+                        }
+                    );
+                });
             } catch (RuntimeException $e) {
                 $error = $e->getMessage();
             }
@@ -82,24 +102,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($error !== null) {
             flash('error', $error);
         } else {
-            $stats = $parsed['contacts']
-                ? contacts_store((int)$me['id'], $myOrgId !== null ? (int)$myOrgId : null, $parsed['contacts'], contacts_groups_from_request($_POST), !empty($_POST['replace']))
-                : ['added' => 0, 'updated' => 0, 'duplicate' => 0, 'over_limit' => 0, 'limit' => null];
             [$type, $message] = contacts_store_summary($stats);
-            if ($parsed['repeated'] > 0) {
-                $message .= ' ' . to_persian_digits((string)$parsed['repeated']) . ' ردیف شماره‌ی تکراری داخل همین فایل داشت و فقط اولین ردیف هر شماره خوانده شد.';
+            if ($report['repeated'] > 0) {
+                $message .= ' ' . to_persian_digits(number_format($report['repeated'])) . ' ردیف شماره‌ی تکراری داخل همین فایل داشت و فقط اولین ردیف هر شماره خوانده شد.';
             }
-            if (!$parsed['contacts']) {
+            if ($report['contacts'] === 0) {
                 $type = 'error';
                 $message = 'هیچ ردیفی با شماره موبایل معتبر در فایل پیدا نشد.';
             }
             flash($type, $message);
             // Shown once on the next page load, under the upload form.
             $_SESSION['contacts_import_report'] = [
-                'file'     => mb_substr(basename(str_replace('\\', '/', $name)), 0, 120),
-                'rows'     => count($parsed['contacts']) + count($parsed['errors']) + $parsed['repeated'],
-                'errors'   => $parsed['errors'],
-                'warnings' => $parsed['warnings'],
+                'file'          => mb_substr(basename(str_replace('\\', '/', $name)), 0, 120),
+                'rows'          => $report['rows'],
+                'errors'        => $report['errors'],
+                'error_count'   => $report['error_count'],
+                'warnings'      => $report['warnings'],
+                'warning_count' => $report['warning_count'],
             ];
         }
     }
@@ -269,10 +288,11 @@ require __DIR__ . '/../app/views/header.php';
     ستون‌های فایل به ترتیب: شماره موبایل، نام، نام خانوادگی، تلفن، تاریخ تولد، تاریخ مناسبت، جنسیت، ایمیل، آدرس.
     ردیف اول عنوان ستون‌هاست و ستون‌ها از روی همین عنوان‌ها شناخته می‌شوند. فقط «شماره موبایل» اجباری است.
     تاریخ‌ها شمسی مثل ۱۳۶۲/۰۶/۱۲ و جنسیت ۰ برای آقا و ۱ برای خانم.
-    حداکثر <?= to_persian_digits(number_format(CONTACT_IMPORT_MAX_ROWS)) ?> ردیف در هر فایل (xlsx یا csv).
+    حداکثر <?= to_persian_digits(number_format(CONTACT_IMPORT_MAX_ROWS)) ?> ردیف و <?= to_persian_digits((string)(CONTACT_IMPORT_MAX_BYTES / 1024 / 1024)) ?> مگابایت در هر فایل (xlsx یا csv).
+    ثبت فایل‌های بزرگ ممکن است یکی دو دقیقه طول بکشد؛ تا پایان، صفحه را نبندید.
   </p>
   <p><a class="btn btn-sm" href="/assets/samples/contacts-sample.xlsx" download>دریافت فایل نمونه</a></p>
-  <form method="post" enctype="multipart/form-data">
+  <form method="post" enctype="multipart/form-data" onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='در حال ثبت مخاطبین…';">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="import_file">
     <div class="form-grid">
@@ -280,7 +300,7 @@ require __DIR__ . '/../app/views/header.php';
       <?= $groupPicker('groups-excel') ?>
     </div>
     <div class="form-actions">
-      <button class="btn btn-primary">بارگذاری و ثبت مخاطبین</button>
+      <button class="btn btn-primary" type="submit">بارگذاری و ثبت مخاطبین</button>
     </div>
   </form>
 
@@ -288,11 +308,11 @@ require __DIR__ . '/../app/views/header.php';
     <div class="form-section">
       <h3>گزارش فایل «<?= e($importReport['file']) ?>» (<?= to_persian_digits(number_format((int)$importReport['rows'])) ?> ردیف)</h3>
       <?php foreach (['errors' => ['ردیف‌های ثبت‌نشده', 'text-danger'], 'warnings' => ['ردیف‌های ثبت‌شده با فیلد خالی', 'hint']] as $key => [$title, $class]): ?>
-        <?php if ($importReport[$key]): $list = $importReport[$key]; ?>
-          <p><strong><?= e($title) ?> (<?= to_persian_digits(number_format(count($list))) ?>)</strong></p>
+        <?php if ($importReport[$key]): $list = $importReport[$key]; $total = (int)($importReport[substr($key, 0, -1) . '_count'] ?? count($list)); ?>
+          <p><strong><?= e($title) ?> (<?= to_persian_digits(number_format($total)) ?>)</strong></p>
           <ul class="<?= $class ?>">
-            <?php foreach (array_slice($list, 0, 50) as $line): ?><li><?= e($line) ?></li><?php endforeach; ?>
-            <?php if (count($list) > 50): ?><li>… و <?= to_persian_digits(number_format(count($list) - 50)) ?> مورد دیگر</li><?php endif; ?>
+            <?php foreach ($list as $line): ?><li><?= e($line) ?></li><?php endforeach; ?>
+            <?php if ($total > count($list)): ?><li>… و <?= to_persian_digits(number_format($total - count($list))) ?> مورد دیگر</li><?php endif; ?>
           </ul>
         <?php endif; ?>
       <?php endforeach; ?>

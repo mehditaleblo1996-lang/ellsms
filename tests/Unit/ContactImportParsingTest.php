@@ -97,6 +97,67 @@ final class ContactImportParsingTest extends TestCase
         $this->assertSame(['', null, null, ''], [$odd['phone'], $odd['birth_date'], $odd['gender'], $odd['email']]);
     }
 
+    public function testAFileOverTheRowLimitIsRefusedBeforeItsLastBatch(): void
+    {
+        $rows = (function (): \Generator {
+            yield 1 => ['شماره موبایل'];
+            for ($i = 0; $i <= CONTACT_IMPORT_MAX_ROWS; $i++) {
+                yield $i + 2 => [(string)(9120000000 + $i)];
+            }
+        })();
+        $handed = 0;
+        try {
+            contacts_import_rows($rows, function (array $chunk) use (&$handed): void { $handed += count($chunk); });
+            $this->fail('a sheet one row over the limit must be refused');
+        } catch (RuntimeException $e) {
+            $this->assertStringContainsString('هیچ مخاطبی از این فایل ثبت نشد', $e->getMessage());
+        }
+        $this->assertSame(CONTACT_IMPORT_MAX_ROWS, $handed, 'everything handed over so far belongs to the transaction the caller rolls back');
+    }
+
+    public function testRowsAreHandedOverInBatchesWithTheirRealRowNumbers(): void
+    {
+        $chunks = [];
+        $report = contacts_import_rows(
+            [1 => self::TEMPLATE_HEADER, 2 => ['09120000001'], 5 => ['09120000002'], 6 => ['09120000003']],
+            function (array $chunk) use (&$chunks): void { $chunks[] = array_column($chunk, 'row'); },
+            2
+        );
+        $this->assertSame([[2, 5], [6]], $chunks);
+        $this->assertSame(3, $report['contacts']);
+    }
+
+    public function testOnlyTheFirstReportLinesAreKeptButTheCountIsExact(): void
+    {
+        $rows = [self::TEMPLATE_HEADER];
+        for ($i = 0; $i < CONTACT_IMPORT_REPORT_LINES + 5; $i++) {
+            $rows[] = ['bad'];
+        }
+        $parsed = contacts_parse_sheet($rows);
+        $this->assertCount(CONTACT_IMPORT_REPORT_LINES, $parsed['errors']);
+        $this->assertSame(CONTACT_IMPORT_REPORT_LINES + 5, $parsed['error_count']);
+    }
+
+    public function testTheSampleFileAndACsvAreStreamedRowByRow(): void
+    {
+        $xlsx = iterator_to_array(contacts_file_rows(dirname(__DIR__, 2) . '/public/assets/samples/contacts-sample.xlsx', 'xlsx'));
+        // Its first 1,000 rows are pre-formatted as text (so Excel keeps a typed leading 0); past the
+        // two examples they are empty, and contacts_import_rows() skips them.
+        $this->assertSame(range(1, 1000), array_keys($xlsx));
+        $this->assertSame([], array_filter(array_merge(...array_slice($xlsx, 3))));
+        $this->assertCount(2, contacts_parse_sheet(array_values($xlsx))['contacts']);
+        $this->assertSame(self::TEMPLATE_HEADER, $xlsx[1]);
+        $this->assertSame('09121234567', $xlsx[2][0]);
+
+        $csv = tempnam(sys_get_temp_dir(), 'contacts');
+        file_put_contents($csv, "\xEF\xBB\xBFشماره موبایل,نام\n09121234567, Ali \n");
+        try {
+            $this->assertSame([1 => ['شماره موبایل', 'نام'], 2 => ['09121234567', 'Ali']], iterator_to_array(contacts_file_rows($csv, 'csv')));
+        } finally {
+            unlink($csv);
+        }
+    }
+
     public function testDatesInEveryAcceptedForm(): void
     {
         $this->assertSame('1983-09-03', contact_parse_date('1362/06/12'));

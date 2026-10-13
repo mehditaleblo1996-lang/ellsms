@@ -45,10 +45,13 @@ function contact_is_duplicate_key(PDOException $e): bool {
 const CONTACT_GENDER_LABELS = [0 => 'آقا', 1 => 'خانم'];
 
 /** Data rows one uploaded contact file may hold; the whole file is stored in one request. */
-const CONTACT_IMPORT_MAX_ROWS = 20000;
+const CONTACT_IMPORT_MAX_ROWS = 100000;
 
-/** Upload size ceiling for a contact file (the reader also caps the decompressed xlsx). */
-const CONTACT_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
+/** Upload size ceiling for a contact file — upload_max_filesize in docker/Dockerfile is 20M too. */
+const CONTACT_IMPORT_MAX_BYTES = 20 * 1024 * 1024;
+
+/** How many invalid-row / warning lines an import report keeps as text (the counts stay exact). */
+const CONTACT_IMPORT_REPORT_LINES = 200;
 
 /** Column order of the Excel template, used when the first row is not a header. */
 const CONTACT_IMPORT_COLUMNS = ['mobile', 'name', 'last_name', 'phone', 'birth_date', 'occasion_date', 'gender', 'email', 'address'];
@@ -197,23 +200,72 @@ function contact_normalize_details(array $raw): array {
 }
 
 /**
- * Turn the rows of an uploaded sheet into contacts. Columns are found by their header titles (any
- * order, extra columns ignored); a sheet whose first row is already data is read in the template's
- * column order. A row without a valid mobile is reported and skipped; a repeated mobile keeps the
- * first row.
+ * The rows of an uploaded contact file, one at a time, keyed by their row number in the file
+ * (1-based) — so a 100,000-row sheet never has to sit in memory at once.
  *
- * @return array{contacts: list<array{row:int, mobile:string, details:array}>, errors: list<string>, warnings: list<string>, repeated: int}
- * @throws RuntimeException with a Persian message when the sheet cannot be used at all
+ * The xlsx worksheet is streamed straight out of the zip (zip:// + XMLReader) rather than
+ * decompressed into a string first, which is why it is not held to MAX_XLSX_MEMBER_UNCOMPRESSED_BYTES
+ * like the whole-file readers: a sheet written with inline strings is ~70MB for 100k rows, and a
+ * decompression bomb costs nothing here because contacts_import_rows() stops at the row limit.
+ *
+ * @return Generator<int, list<string>>
+ * @throws RuntimeException with a Persian message when the file cannot be opened
  */
-function contacts_parse_sheet(array $rows): array {
-    $isBlank = static fn(array $r): bool => implode('', array_map('trim', $r)) === '';
-    $rows = array_values(array_filter($rows, static fn($r) => is_array($r) && !$isBlank($r)));
-    if (!$rows) {
-        throw new RuntimeException('فایل خالی است.');
+function contacts_file_rows(string $path, string $ext): Generator {
+    if ($ext === 'csv') {
+        $fh = fopen($path, 'r');
+        if (!$fh) throw new RuntimeException('باز کردن فایل ممکن نشد.');
+        if (fread($fh, 3) !== "\xEF\xBB\xBF") rewind($fh);
+        $rowNo = 0;
+        try {
+            while (($row = fgetcsv($fh)) !== false) {
+                yield ++$rowNo => array_map(static fn($v): string => trim((string)$v), $row);
+            }
+        } finally {
+            fclose($fh);
+        }
+        return;
     }
 
+    $zip = new ZipArchive();
+    if ($zip->open($path) !== true) {
+        throw new RuntimeException('فایل xlsx معتبر نیست یا خراب است.');
+    }
+    $sheetName = xlsx_first_sheet_name($zip);
+    $shared = $sheetName !== null ? xlsx_load_shared_strings($zip) : [];
+    $zip->close();
+    if ($sheetName === null) {
+        throw new RuntimeException('صفحه‌ای در فایل xlsx پیدا نشد.');
+    }
+
+    $reader = new XMLReader();
+    if (!@$reader->open('zip://' . $path . '#' . $sheetName)) {
+        throw new RuntimeException('خواندن محتوای فایل xlsx ممکن نشد.');
+    }
+    $rowNo = 0;
+    try {
+        while (@$reader->read()) {
+            if ($reader->nodeType !== XMLReader::ELEMENT || $reader->name !== 'row') continue;
+            $r = (int)$reader->getAttribute('r');
+            $rowNo = $r > $rowNo ? $r : $rowNo + 1;
+            yield $rowNo => xlsx_read_row_cells($reader, $shared);
+        }
+    } finally {
+        $reader->close();
+    }
+}
+
+/**
+ * Which column holds which field, from the first non-empty row: columns are found by their header
+ * titles (any order, extra columns ignored); a first row that is already data (a mobile in column A)
+ * is read in the template's column order.
+ *
+ * @return array{0: array<string,int>, 1: bool} [field => column index, whether that row is a header]
+ * @throws RuntimeException when no mobile column can be found
+ */
+function contacts_sheet_columns(array $firstRow): array {
     $columns = [];
-    foreach ($rows[0] as $i => $title) {
+    foreach ($firstRow as $i => $title) {
         $key = contact_header_key((string)$title);
         foreach (CONTACT_IMPORT_HEADERS as $field => $aliases) {
             if (!isset($columns[$field]) && in_array($key, array_map('contact_header_key', $aliases), true)) {
@@ -222,31 +274,60 @@ function contacts_parse_sheet(array $rows): array {
             }
         }
     }
-    $firstRow = 2;
     if (isset($columns['mobile'])) {
-        array_shift($rows);
-    } elseif ($columns === [] && normalize_msisdn(from_persian_digits((string)($rows[0][0] ?? ''))) !== null) {
-        $columns = array_flip(CONTACT_IMPORT_COLUMNS);
-        $firstRow = 1;
-    } else {
-        throw new RuntimeException('ستون «شماره موبایل» در ردیف اول فایل پیدا نشد. از فایل نمونه استفاده کنید.');
+        return [$columns, true];
     }
-    if (count($rows) > CONTACT_IMPORT_MAX_ROWS) {
-        throw new RuntimeException('فایل بیش از ' . to_persian_digits(number_format(CONTACT_IMPORT_MAX_ROWS))
-            . ' ردیف دارد؛ آن را به چند فایل کوچک‌تر تقسیم کنید.');
+    if ($columns === [] && normalize_msisdn(from_persian_digits((string)($firstRow[0] ?? ''))) !== null) {
+        return [array_flip(CONTACT_IMPORT_COLUMNS), false];
     }
+    throw new RuntimeException('ستون «شماره موبایل» در ردیف اول فایل پیدا نشد. از فایل نمونه استفاده کنید.');
+}
 
-    $out = ['contacts' => [], 'errors' => [], 'warnings' => [], 'repeated' => 0];
+/**
+ * Read contacts out of a sheet's rows (row number => cells) and hand them to $onChunk in batches of
+ * $chunkSize. A row without a valid mobile is reported and skipped; a mobile repeated within the
+ * file keeps its first row; an unreadable optional cell is left empty and reported as a warning.
+ * Only the first CONTACT_IMPORT_REPORT_LINES errors and warnings are kept as text; the counts are exact.
+ *
+ * Throws once the sheet passes CONTACT_IMPORT_MAX_ROWS data rows — run it inside a transaction so
+ * the batches already handed over are rolled back and an oversized file stores nothing.
+ *
+ * @param iterable<int, array> $rows
+ * @param callable(list<array{row:int, mobile:string, details:array}>): void $onChunk
+ * @return array{rows:int, contacts:int, errors:list<string>, error_count:int, warnings:list<string>, warning_count:int, repeated:int}
+ * @throws RuntimeException with a Persian message when the sheet cannot be used at all
+ */
+function contacts_import_rows(iterable $rows, callable $onChunk, int $chunkSize = 1000): array {
+    $out = ['rows' => 0, 'contacts' => 0, 'errors' => [], 'error_count' => 0, 'warnings' => [], 'warning_count' => 0, 'repeated' => 0];
+    $columns = null;
     $seen = [];
-    foreach ($rows as $n => $row) {
-        $rowNo = to_persian_digits((string)($n + $firstRow));
+    $chunk = [];
+    $physical = 0;
+    foreach ($rows as $rowNo => $row) {
+        // Excel's own sheet height; bounds the work a file of nothing but empty rows can cause.
+        if (++$physical > 1048576) {
+            throw new RuntimeException('فایل بیش از حد بزرگ است.');
+        }
+        if (!is_array($row) || implode('', array_map('trim', $row)) === '') continue;
+        if ($columns === null) {
+            [$columns, $isHeader] = contacts_sheet_columns($row);
+            if ($isHeader) continue;
+        }
+        if (++$out['rows'] > CONTACT_IMPORT_MAX_ROWS) {
+            throw new RuntimeException('فایل بیش از ' . to_persian_digits(number_format(CONTACT_IMPORT_MAX_ROWS))
+                . ' ردیف دارد؛ آن را به چند فایل کوچک‌تر تقسیم کنید. هیچ مخاطبی از این فایل ثبت نشد.');
+        }
+
+        $rowLabel = 'ردیف ' . to_persian_digits((string)$rowNo) . ': ';
         $raw = [];
         foreach ($columns as $field => $i) {
             $raw[$field] = (string)($row[$i] ?? '');
         }
         $mobile = normalize_msisdn(from_persian_digits($raw['mobile']));
         if ($mobile === null) {
-            $out['errors'][] = 'ردیف ' . $rowNo . ': شماره موبایل «' . trim($raw['mobile']) . '» نامعتبر است.';
+            if (++$out['error_count'] <= CONTACT_IMPORT_REPORT_LINES) {
+                $out['errors'][] = $rowLabel . 'شماره موبایل «' . trim($raw['mobile']) . '» نامعتبر است.';
+            }
             continue;
         }
         if (isset($seen[$mobile])) {
@@ -256,11 +337,41 @@ function contacts_parse_sheet(array $rows): array {
         $seen[$mobile] = true;
         [$details, $problems] = contact_normalize_details($raw);
         foreach ($problems as $p) {
-            $out['warnings'][] = 'ردیف ' . $rowNo . ': ' . $p . '؛ این فیلد خالی ثبت شد.';
+            if (++$out['warning_count'] <= CONTACT_IMPORT_REPORT_LINES) {
+                $out['warnings'][] = $rowLabel . $p . '؛ این فیلد خالی ثبت شد.';
+            }
         }
-        $out['contacts'][] = ['row' => $n + $firstRow, 'mobile' => $mobile, 'details' => $details];
+        $chunk[] = ['row' => (int)$rowNo, 'mobile' => $mobile, 'details' => $details];
+        $out['contacts']++;
+        if (count($chunk) >= $chunkSize) {
+            $onChunk($chunk);
+            $chunk = [];
+        }
+    }
+    if ($columns === null) {
+        throw new RuntimeException('فایل خالی است.');
+    }
+    if ($chunk) {
+        $onChunk($chunk);
     }
     return $out;
+}
+
+/**
+ * contacts_import_rows() over an in-memory list of rows (index 0 = row 1), collecting the contacts.
+ *
+ * @return array{contacts: list<array{row:int, mobile:string, details:array}>, rows:int, errors: list<string>, error_count:int, warnings: list<string>, warning_count:int, repeated: int}
+ */
+function contacts_parse_sheet(array $rows): array {
+    $contacts = [];
+    $numbered = [];
+    foreach (array_values($rows) as $i => $row) {
+        $numbered[$i + 1] = $row;
+    }
+    $report = contacts_import_rows($numbered, static function (array $chunk) use (&$contacts): void {
+        array_push($contacts, ...$chunk);
+    });
+    return ['contacts' => $contacts] + $report;
 }
 
 /**
@@ -308,7 +419,17 @@ function contacts_store(int $userId, ?int $organizationId, array $contacts, arra
         $current = $limit === null ? 0 : entitlement_current_resource_count((int)$organizationId, Limits::CONTACTS, $db);
         $stats = ['added' => 0, 'updated' => 0, 'duplicate' => 0, 'over_limit' => 0, 'limit' => $limit];
 
-        $exists = $db->prepare('SELECT 1 FROM ellsms_contacts WHERE user_id = ? AND mobile = ? LIMIT 1');
+        // Which (mobile, group) rows this user already has, for the whole batch in one query.
+        $stored = [];
+        $mobiles = array_values(array_unique(array_column($contacts, 'mobile')));
+        foreach (array_chunk($mobiles, 1000) as $part) {
+            $st = $db->prepare('SELECT mobile, group_name FROM ellsms_contacts WHERE user_id = ? AND mobile IN (' . implode(',', array_fill(0, count($part), '?')) . ')');
+            $st->execute([$userId, ...$part]);
+            foreach ($st->fetchAll(PDO::FETCH_NUM) as [$m, $grp]) {
+                $stored[(string)$m][(string)$grp] = true;
+            }
+        }
+
         $insert = $db->prepare(
             'INSERT INTO ellsms_contacts (user_id, organization_id, mobile, group_name, ' . implode(', ', $fields) . ')
              VALUES (?, ?, ?, ?' . str_repeat(', ?', count($fields)) . ')
@@ -317,9 +438,7 @@ function contacts_store(int $userId, ?int $organizationId, array $contacts, arra
 
         foreach ($contacts as $c) {
             $details = $c['details'];
-            $exists->execute([$userId, $c['mobile']]);
-            $existed = $exists->fetchColumn() !== false;
-            $exists->closeCursor();
+            $existed = isset($stored[$c['mobile']]);
 
             $updated = false;
             if ($existed && $replace) {
@@ -342,6 +461,9 @@ function contacts_store(int $userId, ?int $organizationId, array $contacts, arra
             $added = false;
             $overLimit = false;
             foreach ($groups as $group) {
+                if (isset($stored[$c['mobile']][$group])) {
+                    continue;
+                }
                 if ($limit !== null && $current >= $limit) {
                     $overLimit = true;
                     continue;
