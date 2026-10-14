@@ -81,6 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ورود — ELLSMS</title>
 <link rel="icon" href="/assets/img/favicon.png">
+<?php /* Vazirmatn is preloaded so the first paint is already in it, never in a fallback face. */ ?>
+<link rel="preload" href="/assets/fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/Vazirmatn-Medium.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/Vazirmatn-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/login.css')) ?>">
 <script>document.documentElement.classList.add('js');</script>
@@ -95,76 +99,73 @@ $sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا 
 ?>
   <main class="auth-main">
     <section class="auth-side" aria-labelledby="authTitle">
-      <div class="auth-top">
+      <header class="auth-top">
         <a href="/landing.php" class="auth-brand" aria-label="ELLSMS — صفحه‌ی اصلی">
           <svg class="auth-mark" viewBox="0 0 40 34" aria-hidden="true">
             <path d="M10 2h22a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6H19l-7 7v-7h-2a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6Z" fill="#2e63f6"/>
             <circle cx="15" cy="13.5" r="2" fill="#fff"/><circle cx="21" cy="13.5" r="2" fill="#fff"/><circle cx="27" cy="13.5" r="2" fill="#fff"/>
           </svg>
-          <span class="auth-wordmark" dir="ltr">ELLSMS</span>
+          <span class="auth-brand-text"><b dir="ltr">ELLSMS</b><small>پنل هوشمند پیامک</small></span>
         </a>
-        <a href="/landing.php" class="auth-toplink">درباره‌ی ELLSMS</a>
-      </div>
+      </header>
 
       <div class="auth-body">
-        <h1 class="auth-title lines" id="authTitle">
-          <span class="line"><span data-line style="--i:0">ورود به پنل</span></span>
-          <span class="line"><span data-line style="--i:1">پیامک ELLSMS</span></span>
-        </h1>
-        <p class="auth-lede rise" style="--d:0">ارسال‌های زمان‌بندی‌شده، گزارش تحویل و اعتبار حسابتان همین‌جا منتظر شماست.</p>
+        <h1 class="auth-title lines" id="authTitle"><span class="line"><span data-line style="--i:0">ورود به حساب کاربری</span></span></h1>
+        <p class="auth-lede rise" style="--d:0">برای مدیریت ارسال‌ها، گزارش تحویل و اعتبار حساب وارد شوید.</p>
 
         <?php if ($error): ?><div class="auth-error rise" style="--d:1" role="alert"><?= e($error) ?></div><?php endif; ?>
 
         <form method="post" autocomplete="off" class="auth-form rise" style="--d:2">
           <?= csrf_field() ?>
-          <label class="auth-field">
-            <span>نام کاربری</span>
-            <input type="text" name="username" required autofocus autocapitalize="off" spellcheck="false" dir="auto" value="<?= e($_POST['username'] ?? '') ?>">
-          </label>
-          <label class="auth-field">
-            <span>رمز عبور</span>
-            <span class="auth-pass">
-              <input type="password" name="password" required id="authPassword">
+          <div class="auth-field">
+            <label for="authUsername">نام کاربری</label>
+            <input type="text" name="username" id="authUsername" required autofocus autocapitalize="off" spellcheck="false" dir="ltr" value="<?= e($_POST['username'] ?? '') ?>">
+          </div>
+          <div class="auth-field">
+            <label for="authPassword">رمز عبور</label>
+            <div class="auth-pass">
+              <input type="password" name="password" id="authPassword" required dir="ltr">
               <button type="button" class="auth-reveal" id="authReveal" aria-controls="authPassword" aria-pressed="false" hidden>نمایش</button>
-            </span>
-          </label>
-          <button type="submit" class="auth-submit">ورود به پنل</button>
+            </div>
+          </div>
+          <button type="submit" class="auth-submit">ورود</button>
         </form>
 
-        <div class="auth-foot rise" style="--d:3">
-          <?php if (setting('registration_mode', 'approval') !== 'closed'): ?>
-            <p>حساب ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
-          <?php endif; ?>
-          <p class="auth-version">نسخه‌ی <span class="ltr"><?= e(app_version()) ?></span><?php if (app_env() !== 'production'): ?> · <span class="ltr"><?= e(strtoupper(app_env())) ?></span><?php endif; ?></p>
-        </div>
+        <?php if (setting('registration_mode', 'approval') !== 'closed'): ?>
+          <p class="auth-register rise" style="--d:3">حساب کاربری ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
+        <?php endif; ?>
       </div>
+
+      <footer class="auth-bottom">
+        <a href="/landing.php">درباره‌ی ELLSMS</a>
+        <span>نسخه‌ی <span class="ltr"><?= e(app_version()) ?></span><?php if (app_env() !== 'production'): ?> · <span class="ltr"><?= e(strtoupper(app_env())) ?></span><?php endif; ?></span>
+      </footer>
     </section>
 
     <section class="auth-stage" aria-labelledby="stageTitle">
       <div class="auth-stage-inner">
         <h2 class="auth-stage-title rise" style="--d:2" id="stageTitle">هر ۷۰ نویسه‌ی فارسی، یک پیامک</h2>
+        <p class="auth-stage-note rise" style="--d:3">متن را تغییر دهید؛ شمارنده همان حسابی را می‌کند که پنل برای هزینه‌ی ارسال انجام می‌دهد. پیام فارسی تا ۷۰ نویسه یک پیامک است و پس از آن هر ۶۷ نویسه یک پیامک.</p>
 
-        <div class="sms-composer rise" style="--d:3" data-ui>
+        <div class="sms-composer rise" style="--d:4" data-ui>
           <div class="sms-composer-head">
             <label for="smsDemo">متن پیام</label>
             <span class="sms-composer-note">پیش‌نمایش؛ چیزی ارسال نمی‌شود</span>
           </div>
           <textarea id="smsDemo" rows="4" maxlength="670"><?= e($sampleSms) ?></textarea>
-          <div class="sms-meter" aria-hidden="true"><span class="sms-meter-fill" id="smsMeterFill"></span></div>
+          <div class="sms-meter" aria-hidden="true"><span id="smsMeterFill"></span></div>
           <dl class="sms-readout" aria-live="polite">
             <div><dt>نویسه</dt><dd id="smsChars">—</dd></div>
             <div><dt>پیامک</dt><dd id="smsParts">—</dd></div>
             <div><dt>زبان</dt><dd id="smsKind">—</dd></div>
-            <div><dt>جای خالی تا پیامک بعد</dt><dd id="smsLeft">—</dd></div>
+            <div><dt>تا پیامک بعد</dt><dd id="smsLeft">—</dd></div>
           </dl>
         </div>
 
-        <div class="sms-received rise" style="--d:4" data-ui aria-hidden="true">
+        <div class="sms-received rise" style="--d:5" data-ui aria-hidden="true">
           <div class="sms-received-from"><b dir="ltr">ELLSMS</b><time id="smsTime"></time></div>
-          <p class="sms-bubble" id="smsBubble"><?= nl2br(e($sampleSms)) ?></p>
+          <p class="sms-bubble" id="smsBubble"><?= e($sampleSms) ?></p>
         </div>
-
-        <p class="auth-stage-note rise" style="--d:5">متن را عوض کنید؛ شمارنده همان حسابی را می‌کند که پنل برای هزینه‌ی ارسال انجام می‌دهد: پیام فارسی تا ۷۰ نویسه یک پیامک است و بعد از آن هر ۶۷ نویسه یک پیامک.</p>
       </div>
     </section>
   </main>
