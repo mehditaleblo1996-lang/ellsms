@@ -36,3 +36,6 @@ storage/logs/*
 !storage/logs/.gitkeep
 storage/maintenance.flag
 storage/dr-drill-status.json
+
+# taste-skill working files (direction sheet, inspector screenshots)
+.taste-skill/
