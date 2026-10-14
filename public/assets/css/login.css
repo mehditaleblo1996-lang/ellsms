@@ -1,10 +1,11 @@
 /* ELLSMS — صفحه‌ی ورود
    Loaded by public/login.php only, after style.css (which brings Vazirmatn and the panel's base).
 
-   One frosted-glass card over a colour field. The field is a few large, soft pools of colour — brand
-   blue, sky, a cool cyan and one warm note so it never reads as the stock violet haze — drifting very
-   slowly, with a fine grain on top so the blur has texture to work on. The card blurs and lifts what
-   is behind it; inside it everything is plain: near-black ink, one blue for the action.
+   A white frosted-glass card over a night field. The field is near-black with a few large, soft pools
+   of light — brand blue, deep blue and two cool teals — drifting very slowly, with a fine grain on top
+   so the blur has texture to work on. The card is mostly white, so the glow only tints its edges;
+   inside it everything is plain: near-black ink, one blue for the action. The brand and the version
+   line sit on the night field itself and are set in light ink.
    Where backdrop-filter is missing, the glass falls back to a near-opaque white so text stays legible.
 
    Persian type: Vazirmatn throughout, no letter-spacing anywhere (tracking breaks the joins of
@@ -21,11 +22,26 @@
   --a-err:    #a3182b;
   --a-err-bg: rgba(255, 226, 230, .75);
 
-  --a-glass:        rgba(255, 255, 255, .40);
+  --a-glass:        rgba(255, 255, 255, .88);
   --a-glass-strong: rgba(255, 255, 255, .72);
-  --a-glass-edge:   rgba(255, 255, 255, .75);
+  --a-glass-edge:   rgba(255, 255, 255, .9);
   --a-field:        rgba(255, 255, 255, .78);
   --a-field-edge:   rgba(16, 19, 28, .12);
+  --a-field-hover:  rgba(255, 255, 255, .9);
+  --a-field-focus:  #fff;
+  --a-solid:        #fff;
+  --a-tint:         rgba(16, 19, 28, .07);
+  --a-pane:         rgba(255, 255, 255, .32);
+  --a-pane-edge:    rgba(16, 19, 28, .07);
+  --a-shadow:       0, 0, 0;
+  /* The night field behind the glass, and the light text that sits directly on it. */
+  --a-base:  #070b19;
+  --a-blob1: rgba(37, 99, 235, .75);
+  --a-blob2: rgba(8, 145, 178, .6);
+  --a-blob3: rgba(30, 64, 175, .65);
+  --a-blob4: rgba(13, 148, 136, .45);
+  --a-on-night:      #f2f5fb;
+  --a-on-night-soft: #b7c0d6;
 
   --a-font: 'Vazirmatn', Tahoma, sans-serif;
   --a-fs-xs:   13px;
@@ -39,7 +55,7 @@
 
   margin: 0;
   min-height: 100svh;
-  background: #ccd8f4;
+  background: var(--a-base);
   color: var(--a-ink);
   font-family: var(--a-font);
   font-size: var(--a-fs-md);
@@ -50,23 +66,23 @@
   overflow-x: hidden;
 }
 .auth *, .auth input, .auth button, .auth textarea { font-family: var(--a-font); letter-spacing: 0; }
-.auth a { color: var(--a-ink); text-decoration: underline; text-decoration-color: rgba(16,19,28,.3); text-underline-offset: 5px; text-decoration-thickness: 1px; transition: text-decoration-color .15s ease; }
+.auth a { color: var(--a-ink); text-decoration: underline; text-decoration-color: var(--a-soft); text-underline-offset: 5px; text-decoration-thickness: 1px; transition: text-decoration-color .15s ease; }
 .auth a:hover { text-decoration-color: var(--a-ink); }
 .auth :focus-visible { outline: 2px solid var(--a-brand); outline-offset: 3px; }
 
 /* ---------- The colour field ---------- */
 .auth-bg {
   position: fixed; inset: 0; z-index: 0; overflow: hidden;
-  background: #ccd8f4;
+  background: var(--a-base);
 }
 .auth-bg i {
   position: absolute; display: block; border-radius: 50%;
   will-change: transform;
 }
-.auth-bg .b1 { width: 64vmax; height: 64vmax; top: -20vmax; right: -14vmax; background: radial-gradient(closest-side, rgba(46, 99, 246, .95), rgba(46, 99, 246, 0)); }
-.auth-bg .b2 { width: 58vmax; height: 58vmax; bottom: -22vmax; left: -12vmax; background: radial-gradient(closest-side, rgba(20, 184, 214, .85), rgba(20, 184, 214, 0)); }
-.auth-bg .b3 { width: 46vmax; height: 46vmax; top: 6%; left: 18%; background: radial-gradient(closest-side, rgba(92, 140, 255, .8), rgba(92, 140, 255, 0)); }
-.auth-bg .b4 { width: 36vmax; height: 36vmax; bottom: -8vmax; right: 14%; background: radial-gradient(closest-side, rgba(255, 160, 132, .75), rgba(255, 160, 132, 0)); }
+.auth-bg .b1 { width: 64vmax; height: 64vmax; top: -20vmax; right: -14vmax; background: radial-gradient(closest-side, var(--a-blob1), transparent); }
+.auth-bg .b2 { width: 58vmax; height: 58vmax; bottom: -22vmax; left: -12vmax; background: radial-gradient(closest-side, var(--a-blob2), transparent); }
+.auth-bg .b3 { width: 46vmax; height: 46vmax; top: 6%; left: 18%; background: radial-gradient(closest-side, var(--a-blob3), transparent); }
+.auth-bg .b4 { width: 36vmax; height: 36vmax; bottom: -8vmax; right: 14%; background: radial-gradient(closest-side, var(--a-blob4), transparent); }
 /* Fine grain, so the frosted card has something to diffuse. */
 .auth-bg::after {
   content: ""; position: absolute; inset: 0; opacity: .22; mix-blend-mode: soft-light;
@@ -97,25 +113,29 @@
 .auth-brand-text b { font-size: var(--a-fs-md); font-weight: 700; color: var(--a-ink); text-align: right; }
 .auth-brand-text small { font-size: var(--a-fs-xs); color: var(--a-soft); }
 .auth-toplink { font-size: var(--a-fs-base); }
-.auth-bottom { text-align: center; font-size: var(--a-fs-xs); color: var(--a-soft); line-height: 1.6; }
+.auth-bottom { text-align: center; font-size: var(--a-fs-xs); color: var(--a-on-night-soft); line-height: 1.6; }
+.auth-top .auth-brand-text b, .auth-top a { color: var(--a-on-night); }
+.auth-top .auth-brand-text small { color: var(--a-on-night-soft); }
+.auth-top a.auth-toplink { text-decoration-color: var(--a-on-night-soft); }
+.auth-top a.auth-toplink:hover { text-decoration-color: var(--a-on-night); }
 
 /* ---------- The glass card ---------- */
 .auth-card {
   align-self: center;
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
   background: var(--a-glass);
-  -webkit-backdrop-filter: blur(28px) saturate(170%);
-  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%) brightness(1.15);
+  backdrop-filter: blur(32px) saturate(180%) brightness(1.15);
   border: 1px solid var(--a-glass-edge);
   border-radius: 28px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, .9) inset,
-    0 30px 80px -20px rgba(18, 32, 92, .35),
-    0 8px 24px -12px rgba(18, 32, 92, .18);
+    0 40px 100px -24px rgba(var(--a-shadow), .65),
+    0 10px 30px -12px rgba(var(--a-shadow), .4);
   overflow: hidden;
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .auth-card { background: rgba(255, 255, 255, .92); }
+  .auth-card { background: var(--a-solid); }
 }
 
 /* Start half: the form. */
@@ -130,7 +150,7 @@
 .auth-error {
   margin: 0 0 20px; padding: 12px 14px;
   background: var(--a-err-bg); color: var(--a-err);
-  border: 1px solid rgba(163, 24, 43, .15);
+  border: 1px solid var(--a-tint);
   border-radius: var(--a-radius);
   font-size: var(--a-fs-base); font-weight: 500; line-height: 1.9;
 }
@@ -148,11 +168,11 @@
   font-size: var(--a-fs-md); font-weight: 400; line-height: 1.4;
   transition: border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
 }
-.auth-field input:hover { background: rgba(255, 255, 255, .9); border-color: rgba(16, 19, 28, .2); }
-.auth-field input:focus { background: #fff; border-color: var(--a-brand); box-shadow: 0 0 0 4px rgba(46, 99, 246, .16); outline: none; }
+.auth-field input:hover { background: var(--a-field-hover); }
+.auth-field input:focus { background: var(--a-field-focus); border-color: var(--a-brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--a-brand) 18%, transparent); outline: none; }
 .auth-field input:-webkit-autofill {
   -webkit-text-fill-color: var(--a-ink);
-  -webkit-box-shadow: 0 0 0 40px #fff inset;
+  -webkit-box-shadow: 0 0 0 40px var(--a-solid) inset;
 }
 @media (pointer: coarse) {
   .auth-field input[type=text], .auth-field input[type=password] { font-size: 16px; }
@@ -164,11 +184,11 @@
 .auth-reveal {
   position: absolute; top: 7px; bottom: 7px; right: 7px;
   padding: 0 12px; border: 0; border-radius: 8px;
-  background: rgba(16, 19, 28, .06); color: var(--a-soft);
+  background: var(--a-tint); color: var(--a-soft);
   font-size: var(--a-fs-xs); font-weight: 500; line-height: 1; cursor: pointer;
   transition: background-color .15s ease, color .15s ease, transform .1s ease;
 }
-.auth-reveal:hover { background: rgba(16, 19, 28, .1); color: var(--a-ink); }
+.auth-reveal:hover { background: var(--a-field-edge); color: var(--a-ink); }
 .auth-reveal:active { transform: scale(.96); }
 
 .auth-submit {
@@ -176,10 +196,10 @@
   border: 0; border-radius: var(--a-radius);
   background: var(--a-brand); color: #fff;
   font-size: var(--a-fs-md); font-weight: 500; line-height: 1; cursor: pointer;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 10px 24px -10px rgba(46, 99, 246, .7);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 10px 24px -10px color-mix(in srgb, var(--a-brand) 70%, transparent);
   transition: background-color .15s ease, transform .12s var(--ease-out), box-shadow .15s ease;
 }
-.auth-submit:hover { background: var(--a-brand-hover); box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 14px 28px -10px rgba(46, 99, 246, .8); }
+.auth-submit:hover { background: var(--a-brand-hover); box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 14px 28px -10px color-mix(in srgb, var(--a-brand) 80%, transparent); }
 .auth-submit:active { transform: scale(.99); }
 
 .auth-register { margin: 22px 0 0; font-size: var(--a-fs-base); color: var(--a-soft); text-align: center; }
@@ -188,15 +208,15 @@
 .auth-stage {
   display: grid; align-content: center; gap: 14px;
   padding: clamp(28px, 4vw, 48px);
-  background: rgba(255, 255, 255, .28);
-  border-inline-start: 1px solid rgba(255, 255, 255, .6);
+  background: var(--a-pane);
+  border-inline-start: 1px solid var(--a-pane-edge);
 }
 .auth-stage-title { margin: 0; font-size: var(--a-fs-lg); font-weight: 700; line-height: 1.6; color: var(--a-ink); }
 .auth-stage-note { margin: 0 0 6px; font-size: var(--a-fs-base); line-height: 1.95; color: var(--a-soft); }
 
 .sms-composer {
   background: var(--a-glass-strong); color: var(--a-ink);
-  border: 1px solid rgba(255, 255, 255, .85); border-radius: 18px; padding: 16px;
+  border: 1px solid var(--a-glass-edge); border-radius: 18px; padding: 16px;
 }
 .sms-composer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .sms-composer-head label { margin: 0; font-size: var(--a-fs-base); font-weight: 500; color: var(--a-ink); }
@@ -204,14 +224,14 @@
 .sms-composer textarea {
   display: block; width: 100%; margin: 0; min-height: 112px; resize: none;
   padding: 12px 14px; border: 1px solid var(--a-field-edge); border-radius: var(--a-radius);
-  background: rgba(255, 255, 255, .85); color: var(--a-ink);
+  background: var(--a-field); color: var(--a-ink);
   font-size: var(--a-fs-base); line-height: 1.95;
 }
-.sms-composer textarea:focus { background: #fff; border-color: var(--a-brand); box-shadow: 0 0 0 4px rgba(46, 99, 246, .14); }
+.sms-composer textarea:focus { background: var(--a-field-focus); border-color: var(--a-brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--a-brand) 16%, transparent); }
 
 /* One cell per part already used; the filled share of the current part. */
 .sms-meter { display: flex; gap: 4px; height: 4px; margin: 14px 0; }
-.sms-meter span { flex: 1 1 0; background: rgba(16, 19, 28, .08); border-radius: 2px; overflow: hidden; position: relative; }
+.sms-meter span { flex: 1 1 0; background: var(--a-tint); border-radius: 2px; overflow: hidden; position: relative; }
 .sms-meter span i {
   position: absolute; inset: 0; background: var(--a-brand);
   transform-origin: right center; transform: scaleX(var(--f, 0));
@@ -233,7 +253,7 @@
   margin: 0; max-width: 92%;
   padding: 10px 14px; border-radius: 18px; border-end-start-radius: 6px;
   background: var(--a-glass-strong); color: var(--a-ink);
-  border: 1px solid rgba(255, 255, 255, .85);
+  border: 1px solid var(--a-glass-edge);
   font-size: var(--a-fs-base); line-height: 1.95;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
@@ -264,7 +284,7 @@
 /* ---------- Narrow screens: the card stacks, form first ---------- */
 @media (max-width: 860px) {
   .auth-card { grid-template-columns: 1fr; border-radius: 24px; }
-  .auth-stage { border-inline-start: 0; border-top: 1px solid rgba(255, 255, 255, .6); }
+  .auth-stage { border-inline-start: 0; border-top: 1px solid var(--a-pane-edge); }
 }
 @media (max-width: 480px) {
   .auth-shell { width: calc(100% - 24px); }
@@ -273,3 +293,4 @@
   .sms-composer { padding: 14px; }
   .sms-readout { grid-template-columns: repeat(2, 1fr); }
 }
+
