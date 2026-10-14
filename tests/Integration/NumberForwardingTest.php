@@ -302,6 +302,44 @@ final class NumberForwardingTest extends TestCase
         $this->assertSame([], $this->queueRows(), 'a test is not logged as a forwarded message');
     }
 
+    public function testASelfSignedCertificateIsAcceptedUnlessTheLineVerifies(): void
+    {
+        if (!is_executable('/usr/bin/openssl') && trim((string)shell_exec('command -v openssl')) === '') {
+            $this->markTestSkipped('openssl is not installed.');
+        }
+        $dir = sys_get_temp_dir() . '/ellsms_fwd_tls_' . bin2hex(random_bytes(4));
+        mkdir($dir);
+        exec('openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=not-this-host '
+            . '-keyout ' . escapeshellarg("$dir/key.pem") . ' -out ' . escapeshellarg("$dir/cert.pem") . ' 2>/dev/null', $_, $rc);
+        $this->assertSame(0, $rc, 'could not create a self-signed certificate');
+        $port = 21300 + random_int(0, 200);
+        $server = proc_open(['openssl', 's_server', '-quiet', '-accept', (string)$port, '-cert', "$dir/cert.pem", '-key', "$dir/key.pem", '-www'],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+        try {
+            for ($i = 0; $i < 30; $i++) {
+                usleep(150000);
+                $conn = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
+                if ($conn) { fclose($conn); break; }
+            }
+            $this->configure(['mo_enabled' => '1', 'mo_url' => "https://127.0.0.1:{$port}/mo?t=\${content}"]);
+            \number_forward_enqueue_mo($this->inbound(1000000000000841));
+            $this->runWorkerOnce();
+            $this->assertSame('delivered', $this->queueRows()[0]['status'], 'self-signed, wrong-host certificate: still delivered by default');
+
+            $this->configure(['mo_enabled' => '1', 'mo_url' => "https://127.0.0.1:{$port}/mo?t=\${content}", 'tls_verify' => '1']);
+            \number_forward_enqueue_mo($this->inbound(1000000000000842));
+            $this->runWorkerOnce();
+            $row = $this->queueRows()[1];
+            $this->assertSame('pending', $row['status']);
+            $this->assertSame('tls_error', $row['error_code'], 'with verification on, the bad certificate is refused');
+        } finally {
+            proc_terminate($server);
+            proc_close($server);
+            array_map('unlink', glob("$dir/*") ?: []);
+            @rmdir($dir);
+        }
+    }
+
     public function testPruneDeletesOnlyOldFinishedRows(): void
     {
         $this->configure(['mo_enabled' => '1', 'mo_url' => $this->url('/mo')]);

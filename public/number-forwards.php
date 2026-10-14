@@ -188,6 +188,9 @@ require __DIR__ . '/../app/views/header.php';
           <option value="json"<?= $v('post_format') === 'json' ? ' selected' : '' ?>>JSON</option>
         </select>
       </label>
+      <label title="خاموش (پیش‌فرض): مثل وصال، به آدرس https با گواهی خودامضا، منقضی یا نامعتبر هم ارسال می‌شود.">
+        <input type="checkbox" name="tls_verify" value="1"<?= $v('tls_verify') === '1' ? ' checked' : '' ?>> بررسی گواهی SSL مقصد (سخت‌گیرانه)
+      </label>
       <button class="btn btn-primary">ذخیره</button>
       <a class="btn" href="/number-forwards.php#lines">بستن</a>
     </div>
@@ -240,7 +243,7 @@ require __DIR__ . '/../app/views/header.php';
             <?php endif; ?>
           </td>
         <?php endforeach; ?>
-        <td><?= $c ? e($c['http_method'] . ($c['http_method'] === 'POST' ? ' / ' . $c['post_format'] : '')) : '<span class="muted">—</span>' ?></td>
+        <td><?= $c ? e($c['http_method'] . ($c['http_method'] === 'POST' ? ' / ' . $c['post_format'] : '')) . ((int)($c['tls_verify'] ?? 0) ? '<div class="muted">بررسی SSL</div>' : '') : '<span class="muted">—</span>' ?></td>
         <td>
           <?php if ($c && (int)$c['consecutive_failures'] >= NUMBER_FORWARD_WARN_FAILURES): ?>
             <span style="color:var(--danger,#b00)">⚠ <?= to_persian_digits((string)$c['consecutive_failures']) ?> خطای پشت سر هم</span>
@@ -362,6 +365,7 @@ require __DIR__ . '/../app/views/header.php';
     <li>با روش POST، آدرس به همان شکل ساخته می‌شود و همه‌ی مقادیر در بدنه (فرم یا JSON) هم فرستاده می‌شوند.</li>
     <li>هر درخواست سربرگ <span class="ltr">X-ELLSMS-Forward-Kind</span> (mo/dlr) و <span class="ltr">X-ELLSMS-Forward-Id</span> دارد؛ این شناسه در تلاش‌های دوباره ثابت است و برای حذف تکراری‌ها مناسب است.</li>
     <li>برای اطمینان از اینکه درخواست از طرف سامانه آمده، یک رمز (token) دلخواه در خود آدرس بگذارید و در سمت خود بررسی کنید.</li>
+    <li>گواهی SSL مقصد به‌طور پیش‌فرض بررسی نمی‌شود (مثل وصال): آدرس https با گواهی خودامضا، منقضی یا نامعتبر هم دریافت می‌کند و ارتباط همچنان رمزنگاری‌شده است. برای بررسی سخت‌گیرانه، «بررسی گواهی SSL» را برای خط روشن کنید.</li>
     <li>آدرس‌های شبکه‌ی داخلی/خصوصی (localhost، 10.x، 192.168.x و…) پذیرفته نمی‌شوند و تغییر مسیر (redirect) دنبال نمی‌شود.</li>
     <li>کد 2xx یعنی موفق؛ قطعی اتصال، پایان زمان، 5xx و 429 تا <?= to_persian_digits((string)number_forward_setting_int('number_forward_max_attempts')) ?> بار با فاصله‌ی فزاینده دوباره امتحان می‌شوند؛ بقیه‌ی کدهای 4xx ناموفق قطعی‌اند. اگر آدرس را اصلاح کنید، تلاش‌های بعدی با آدرس جدید انجام می‌شود.</li>
   </ul>

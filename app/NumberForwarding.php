@@ -43,6 +43,8 @@ const NUMBER_FORWARD_VESAL_STATUS = [
 
 const NUMBER_FORWARD_MAX_URL_LENGTH = 2048;
 const NUMBER_FORWARD_MAX_RESPONSE_BYTES = 4096;
+/** curl error numbers that mean the TLS handshake or the certificate check failed (shown as tls_error). */
+const NUMBER_FORWARD_TLS_ERRNOS = [35, 51, 53, 54, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91];
 /** Consecutive failures after which the page flags the line in red (forwarding is NOT switched off). */
 const NUMBER_FORWARD_WARN_FAILURES = 20;
 
@@ -240,17 +242,18 @@ function number_forward_save(string $number, array $input, int $actorUserId): ar
     }
     $method = strtoupper((string)($input['http_method'] ?? 'GET')) === 'POST' ? 'POST' : 'GET';
     $format = ($input['post_format'] ?? 'form') === 'json' ? 'json' : 'form';
+    $tlsVerify = !empty($input['tls_verify']) ? 1 : 0;
 
     db()->prepare(
-        'INSERT INTO ellsms_number_forwards (number, mo_enabled, mo_url, dlr_enabled, dlr_url, http_method, post_format, updated_by)
-         VALUES (?,?,?,?,?,?,?,?)
+        'INSERT INTO ellsms_number_forwards (number, mo_enabled, mo_url, dlr_enabled, dlr_url, http_method, post_format, tls_verify, updated_by)
+         VALUES (?,?,?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE mo_enabled = VALUES(mo_enabled), mo_url = VALUES(mo_url),
            dlr_enabled = VALUES(dlr_enabled), dlr_url = VALUES(dlr_url), http_method = VALUES(http_method),
-           post_format = VALUES(post_format), updated_by = VALUES(updated_by), consecutive_failures = 0'
-    )->execute([$line, $values['mo_enabled'], $values['mo_url'], $values['dlr_enabled'], $values['dlr_url'], $method, $format, $actorUserId ?: null]);
+           post_format = VALUES(post_format), tls_verify = VALUES(tls_verify), updated_by = VALUES(updated_by), consecutive_failures = 0'
+    )->execute([$line, $values['mo_enabled'], $values['mo_url'], $values['dlr_enabled'], $values['dlr_url'], $method, $format, $tlsVerify, $actorUserId ?: null]);
     number_forward_cache_reset();
     audit($actorUserId, 'number_forward.save', sprintf(
-        '%s mo=%d dlr=%d %s', $line, $values['mo_enabled'], $values['dlr_enabled'], $method
+        '%s mo=%d dlr=%d %s tls_verify=%d', $line, $values['mo_enabled'], $values['dlr_enabled'], $method, $tlsVerify
     ));
     return ['ok' => true];
 }
@@ -415,6 +418,7 @@ function number_forward_reason_text(string $reason): string {
         $code === 'dns_resolution_failed' => 'نام سرور این آدرس پیدا نشد (DNS).',
         $code === 'timeout'               => 'سرور مقصد در زمان مجاز پاسخ نداد.',
         $code === 'connection_failed'     => 'اتصال به سرور مقصد برقرار نشد.',
+        $code === 'tls_error'             => 'گواهی SSL سرور مقصد معتبر نیست (یا اتصال امن برقرار نشد). اگر عمداً گواهی خودامضا دارید، «بررسی گواهی SSL» را برای این خط خاموش کنید.',
         $code === 'forward_disabled'      => 'ارسال به آدرس برای این خط خاموش یا حذف شد.',
         str_starts_with($code, 'http_')   => 'سرور مقصد کد ' . substr($code, 5) . ' برگرداند.',
         default                           => $code,
@@ -534,7 +538,12 @@ function number_forward_build_request(array $config, string $kind, array $vars, 
             $headers[] = 'Content-Type: application/x-www-form-urlencoded; charset=utf-8';
         }
     }
-    return ['url' => number_forward_render_url($template, $vars, $method), 'method' => $method, 'body' => $body, 'headers' => $headers];
+    return [
+        'url' => number_forward_render_url($template, $vars, $method), 'method' => $method, 'body' => $body, 'headers' => $headers,
+        // Off unless the line asked for it: Vesal trusted every certificate, and a customer's
+        // self-signed / expired / wrong-host certificate must not stop the forward.
+        'tls_verify' => (int)($config['tls_verify'] ?? 0) === 1,
+    ];
 }
 
 /**
@@ -545,7 +554,11 @@ function number_forward_build_request(array $config, string $kind, array $vars, 
  * are never followed (a 3xx is just a non-success answer), and at most NUMBER_FORWARD_MAX_RESPONSE_BYTES
  * of the answer is read.
  *
- * @param array<string|int, array{url:string, method:string, body:?string, headers:list<string>}> $requests
+ * Certificates are verified only for a request with 'tls_verify' => true; otherwise an https target
+ * with a self-signed, expired or wrong-host certificate is still called (encrypted, unverified).
+ * The address check above does not depend on the certificate, so the SSRF guard holds either way.
+ *
+ * @param array<string|int, array{url:string, method:string, body:?string, headers:list<string>, tls_verify?:bool}> $requests
  */
 function number_forward_http_execute(array $requests, int $concurrency, int $timeoutSeconds): array {
     $results = [];
@@ -577,8 +590,8 @@ function number_forward_http_execute(array $requests, int $concurrency, int $tim
                 CURLOPT_TIMEOUT         => $timeoutSeconds,
                 CURLOPT_CONNECTTIMEOUT  => min(5, $timeoutSeconds),
                 CURLOPT_FOLLOWLOCATION  => false,
-                CURLOPT_SSL_VERIFYPEER  => true,
-                CURLOPT_SSL_VERIFYHOST  => 2,
+                CURLOPT_SSL_VERIFYPEER  => !empty($request['tls_verify']),
+                CURLOPT_SSL_VERIFYHOST  => !empty($request['tls_verify']) ? 2 : 0,
                 CURLOPT_NOSIGNAL        => true,
                 CURLOPT_RETURNTRANSFER  => false,
                 CURLOPT_WRITEFUNCTION   => function ($ch, string $chunk) use (&$buffers, $key): int {
@@ -620,6 +633,8 @@ function number_forward_http_execute(array $requests, int $concurrency, int $tim
             $excerpt = mb_strimwidth(mb_convert_encoding($buffers[$key], 'UTF-8', 'UTF-8'), 0, 1000, '…', 'UTF-8');
             if ($errno === CURLE_OPERATION_TIMEDOUT) {
                 $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'timeout', 'response_excerpt' => null, 'duration_ms' => $durationMs];
+            } elseif (in_array($errno, NUMBER_FORWARD_TLS_ERRNOS, true)) {
+                $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'tls_error', 'response_excerpt' => null, 'duration_ms' => $durationMs];
             } elseif ($errno !== 0) {
                 $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'connection_failed', 'response_excerpt' => null, 'duration_ms' => $durationMs];
             } elseif ($httpStatus >= 200 && $httpStatus < 300) {

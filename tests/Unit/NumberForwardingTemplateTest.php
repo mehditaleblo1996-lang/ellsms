@@ -132,6 +132,8 @@ final class NumberForwardingTemplateTest extends TestCase
         $this->assertSame($vars, json_decode((string)$json['body'], true));
         $this->assertContains('Content-Type: application/json; charset=utf-8', $json['headers']);
 
+        $this->assertFalse($get['tls_verify'], 'certificates are not verified unless the line asks');
+        $this->assertTrue(\number_forward_build_request(['tls_verify' => 1] + $config, 'mo', $vars)['tls_verify']);
         $this->assertNull(\number_forward_build_request(['mo_enabled' => 0] + $config, 'mo', $vars), 'switched off');
         $this->assertNull(\number_forward_build_request($config, 'dlr', $vars), 'no DLR URL');
     }
