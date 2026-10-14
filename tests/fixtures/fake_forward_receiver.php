@@ -10,6 +10,7 @@
  * how the test sees what arrived. The answer depends on the path:
  *   /status/{code}  -> that HTTP status
  *   /timeout        -> sleeps longer than the test's timeout
+ *   /sleep/{ms}     -> 200 after that many milliseconds (a slow customer)
  *   anything else   -> 200 "OK"
  */
 declare(strict_types=1);
@@ -36,6 +37,9 @@ if ($captureFile) {
 if ($path === '/timeout') {
     sleep(30);
     exit;
+}
+if (preg_match('#^/sleep/(\d+)$#', $path, $m)) {
+    usleep(min(10000, (int)$m[1]) * 1000);
 }
 if (preg_match('#^/status/(\d{3})$#', $path, $m)) {
     http_response_code((int)$m[1]);

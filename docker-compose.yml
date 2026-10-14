@@ -251,8 +251,9 @@ services:
 
   # Per-line forwarding of inbound SMS (MO) and delivery reports to each customer's own URL
   # (app/NumberForwarding.php, set on /number-forwards.php). Its OWN container for the same reason as
-  # webhook-worker: a slow or unreachable customer URL can only ever delay other forwards. Timeouts,
-  # retries and concurrency are admin settings on that page, not env vars.
+  # webhook-worker: a slow or unreachable customer URL can only ever delay other forwards. It is a
+  # supervisor that forks the number of worker processes set on that page; timeouts, retries,
+  # processes and per-process concurrency are admin settings there, not env vars.
   number-forward-worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.

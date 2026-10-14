@@ -30,8 +30,19 @@ These are stored in `ellsms_settings`. A running worker picks up a change within
 | `number_forward_user_edit` | on | Customers may set the URLs of their own lines. |
 | `number_forward_allow_http` | on | Plain `http://` is accepted (Vesal allowed it). When turned off, saved `http://` URLs are no longer called. Their rows are recorded as failed with `https_required`. |
 | `number_forward_timeout_seconds` | 10 | Time limit for one call (1–60). |
-| `number_forward_max_attempts` | 5 | Attempts for a retryable failure before the row is marked `dead` (1–20). |
-| `number_forward_concurrency` | 10 | Calls made in parallel per worker pass (1–50). |
+| `number_forward_max_attempts` | 5 | Attempts for a retryable failure before the row is marked `dead` (1–20). The default for every line; a line can set its own number (below). |
+| `number_forward_retry_base_seconds` | 30 | Wait before the second attempt (5–3600). The wait doubles after each further attempt. |
+| `number_forward_retry_max_seconds` | 1800 | The longest wait between two attempts (10–86400). |
+| `number_forward_workers` | 4 | Worker processes running in parallel (1–32). The supervisor adds or stops processes within seconds of a change. |
+| `number_forward_concurrency` | 20 | HTTP calls each worker process keeps in flight at once (1–100). |
+
+Total capacity is `workers × concurrency` simultaneous calls (80 with the defaults). The settings tab
+shows the resulting retry schedule, for example «تلاش ۲: پس از ۳۰ ثانیه، تلاش ۳: پس از ۱ دقیقه …».
+
+**Per-line settings** (the line's edit form): the MO and DLR URLs and their switches, GET/POST and
+the POST body format, strict certificate checking, and **«تعداد تلاش برای این خط»** — empty or 0
+uses the service default, 1–20 overrides it for that line only (`ellsms_number_forwards.max_attempts`,
+migration `2026_10_20_number_forward_line_attempts.sql`).
 | `number_forward_retention_days` | 30 | Finished rows older than this are deleted from the log. |
 
 ## Placeholders
@@ -107,7 +118,7 @@ final status write (gateway_status_record) ─┤→ ellsms_number_forward_queue
 | Response | Result |
 |---|---|
 | `2xx` | Success |
-| Timeout, connection failure, `5xx`, `408`, `425`, `429` | Retried with backoff (`job_retry_backoff_seconds`: 30 s, 1 m, 2 m …, capped by `JOB_RETRY_MAX_SECONDS`) up to the maximum number of attempts, then marked **dead** |
+| Timeout, connection failure, `5xx`, `408`, `425`, `429` | Retried with the admin's backoff (30 s, 1 m, 2 m … capped at the maximum wait, with the defaults) up to the line's attempt count, then marked **dead** |
 | Any other `4xx` | Permanent failure (**failed**) |
 
 - **URL changes.** The URL is rendered from the line's **current** template at delivery time, so
@@ -141,8 +152,16 @@ between the check and the call.
 
 - **Service.** `number-forward-worker` in `docker-compose.yml` runs `php cron/number-forward-worker.php`.
   It runs in its own container, so a slow customer URL can never delay sends, auto-replies or status
-  polls. It is safe to run several copies, because rows are claimed atomically and a dead worker's
-  lease expires.
+  polls.
+- **Parallelism.** The process is a supervisor. It keeps `number_forward_workers` child processes
+  running (`pcntl_fork`), restarts a child that dies, and adds or stops children within about 5 seconds
+  of a settings change. Each child keeps up to `number_forward_concurrency` calls in flight in a
+  **sliding window**: the moment one call finishes the next starts, so a slow URL holds one slot for at
+  most the timeout and never stalls the calls queued behind it. Rows are claimed atomically, so
+  children (and extra copies of the service) never send the same row twice; a dead child's lease
+  expires and its rows are picked up again. The supervisor closes its database connection before every
+  fork, so no connection is shared between processes. Without pcntl, or with `--once`, it runs as a
+  single worker.
 - **One pass.** `make number-forward-worker-once`, or `php cron/number-forward-worker.php --once`.
 - **Env.**
   - `NUMBER_FORWARD_POLL_INTERVAL_SECONDS` (3): how long an idle worker sleeps. A pass that comes
