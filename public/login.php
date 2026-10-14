@@ -91,31 +91,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="auth">
 <?php
-/* The login screen is two halves. The start half is the form. The end half is a working piece of
-   the panel itself — the message composer and its part counter, which counts exactly as sms_parts()
-   bills (70 / 67 characters for Persian, 160 / 153 for Latin) — so the page shows the product doing
-   its job instead of describing it. The sample text is only a demo; nothing in it is sent. */
+/* One frosted-glass card over a slowly drifting colour field. Its start half is the form; its end
+   half is a working piece of the panel itself — the message composer and its part counter, which
+   counts exactly as sms_parts() bills (70 / 67 characters for Persian, 160 / 153 for Latin). The
+   sample text is only a demo; nothing in it is sent. */
 $sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا تا ساعت ۱۲ به دستتان می‌رسد. کد پیگیری: ۴۸۲۱۷\nلغو۱۱";
 ?>
-  <main class="auth-main">
-    <section class="auth-side" aria-labelledby="authTitle">
-      <header class="auth-top">
-        <a href="/landing.php" class="auth-brand" aria-label="ELLSMS — صفحه‌ی اصلی">
-          <svg class="auth-mark" viewBox="0 0 40 34" aria-hidden="true">
-            <path d="M10 2h22a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6H19l-7 7v-7h-2a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6Z" fill="#2e63f6"/>
-            <circle cx="15" cy="13.5" r="2" fill="#fff"/><circle cx="21" cy="13.5" r="2" fill="#fff"/><circle cx="27" cy="13.5" r="2" fill="#fff"/>
-          </svg>
-          <span class="auth-brand-text"><b dir="ltr">ELLSMS</b><small>پنل هوشمند پیامک</small></span>
-        </a>
-      </header>
+  <div class="auth-bg" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
 
-      <div class="auth-body">
+  <div class="auth-shell">
+    <header class="auth-top rise" style="--d:0">
+      <a href="/landing.php" class="auth-brand" aria-label="ELLSMS — صفحه‌ی اصلی">
+        <svg class="auth-mark" viewBox="0 0 40 34" aria-hidden="true">
+          <path d="M10 2h22a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6H19l-7 7v-7h-2a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6Z" fill="#2e63f6"/>
+          <circle cx="15" cy="13.5" r="2" fill="#fff"/><circle cx="21" cy="13.5" r="2" fill="#fff"/><circle cx="27" cy="13.5" r="2" fill="#fff"/>
+        </svg>
+        <span class="auth-brand-text"><b dir="ltr">ELLSMS</b><small>پنل هوشمند پیامک</small></span>
+      </a>
+      <a href="/landing.php" class="auth-toplink">درباره‌ی ELLSMS</a>
+    </header>
+
+    <main class="auth-card rise" style="--d:1">
+      <section class="auth-form-side" aria-labelledby="authTitle">
         <h1 class="auth-title lines" id="authTitle"><span class="line"><span data-line style="--i:0">ورود به حساب کاربری</span></span></h1>
-        <p class="auth-lede rise" style="--d:0">برای مدیریت ارسال‌ها، گزارش تحویل و اعتبار حساب وارد شوید.</p>
+        <p class="auth-lede">برای مدیریت ارسال‌ها، گزارش تحویل و اعتبار حساب وارد شوید.</p>
 
-        <?php if ($error): ?><div class="auth-error rise" style="--d:1" role="alert"><?= e($error) ?></div><?php endif; ?>
+        <?php if ($error): ?><div class="auth-error" role="alert"><?= e($error) ?></div><?php endif; ?>
 
-        <form method="post" autocomplete="off" class="auth-form rise" style="--d:2">
+        <form method="post" autocomplete="off" class="auth-form">
           <?= csrf_field() ?>
           <div class="auth-field">
             <label for="authUsername">نام کاربری</label>
@@ -132,22 +135,15 @@ $sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا 
         </form>
 
         <?php if (setting('registration_mode', 'approval') !== 'closed'): ?>
-          <p class="auth-register rise" style="--d:3">حساب کاربری ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
+          <p class="auth-register">حساب کاربری ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
         <?php endif; ?>
-      </div>
+      </section>
 
-      <footer class="auth-bottom">
-        <a href="/landing.php">درباره‌ی ELLSMS</a>
-        <span>نسخه‌ی <span class="ltr"><?= e(app_version()) ?></span><?php if (app_env() !== 'production'): ?> · <span class="ltr"><?= e(strtoupper(app_env())) ?></span><?php endif; ?></span>
-      </footer>
-    </section>
+      <section class="auth-stage" aria-labelledby="stageTitle">
+        <h2 class="auth-stage-title" id="stageTitle">هر ۷۰ نویسه‌ی فارسی، یک پیامک</h2>
+        <p class="auth-stage-note">متن را تغییر دهید؛ شمارنده همان حسابی را می‌کند که پنل برای هزینه‌ی ارسال انجام می‌دهد.</p>
 
-    <section class="auth-stage" aria-labelledby="stageTitle">
-      <div class="auth-stage-inner">
-        <h2 class="auth-stage-title rise" style="--d:2" id="stageTitle">هر ۷۰ نویسه‌ی فارسی، یک پیامک</h2>
-        <p class="auth-stage-note rise" style="--d:3">متن را تغییر دهید؛ شمارنده همان حسابی را می‌کند که پنل برای هزینه‌ی ارسال انجام می‌دهد. پیام فارسی تا ۷۰ نویسه یک پیامک است و پس از آن هر ۶۷ نویسه یک پیامک.</p>
-
-        <div class="sms-composer rise" style="--d:4" data-ui>
+        <div class="sms-composer" data-ui>
           <div class="sms-composer-head">
             <label for="smsDemo">متن پیام</label>
             <span class="sms-composer-note">پیش‌نمایش؛ چیزی ارسال نمی‌شود</span>
@@ -162,13 +158,17 @@ $sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا 
           </dl>
         </div>
 
-        <div class="sms-received rise" style="--d:5" data-ui aria-hidden="true">
+        <div class="sms-received" data-ui aria-hidden="true">
           <div class="sms-received-from"><b dir="ltr">ELLSMS</b><time id="smsTime"></time></div>
           <p class="sms-bubble" id="smsBubble"><?= e($sampleSms) ?></p>
         </div>
-      </div>
-    </section>
-  </main>
+      </section>
+    </main>
+
+    <footer class="auth-bottom rise" style="--d:2">
+      نسخه‌ی <span class="ltr"><?= e(app_version()) ?></span><?php if (app_env() !== 'production'): ?> · <span class="ltr"><?= e(strtoupper(app_env())) ?></span><?php endif; ?>
+    </footer>
+  </div>
 <script src="<?= e(asset_url('/assets/js/login.js')) ?>"></script>
 </body>
 </html>
