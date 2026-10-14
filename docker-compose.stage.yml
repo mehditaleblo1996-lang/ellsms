@@ -1,0 +1,34 @@
+# Staging only (docs/staging.md): the staging server's own MySQL, holding the ellsms_stage copy of
+# production's database. Pulled in by COMPOSE_FILE in the staging .env, which
+# ops/staging/stage.sh env writes -- production never loads this file.
+services:
+  mysql:
+    image: mysql:8.0.40
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-mysql
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=${STAGE_DB_COLLATION:-utf8mb4_unicode_ci}
+      # The app image's client is MariaDB's, which cannot do caching_sha2 auth without TLS.
+      - --default-authentication-plugin=mysql_native_password
+      # Binary logging is on by default in 8.0; without this, importing production's triggers needs SUPER.
+      - --log-bin-trust-function-creators=1
+      - --max-allowed-packet=256M
+    environment:
+      MYSQL_ROOT_PASSWORD: ${STAGE_DB_ROOT_PASSWORD:?set STAGE_DB_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      MYSQL_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      MYSQL_PASSWORD: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+    volumes:
+      - ellsms_stage_mysql_data:/var/lib/mysql
+    networks:
+      - backend_net
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+volumes:
+  ellsms_stage_mysql_data:
