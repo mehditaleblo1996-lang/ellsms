@@ -57,6 +57,11 @@ if ($me['role'] !== 'admin') {
 if ($navOrg && membership_has_permission($navOrg, Permissions::WEBHOOKS_VIEW)) {
     $integrationNav['webhooks'] = ['/webhooks.php', 'وب‌هوک‌ها', '🔗'];
 }
+// Per-line MO / delivery-report forwarding to a URL (app/NumberForwarding.php): for admins, and for
+// any customer with a line of their own to forward.
+if (number_forward_available() && ($me['role'] === 'admin' || allowed_originators($me) !== [])) {
+    $integrationNav['number_forwards'] = ['/number-forwards.php', 'ارسال دریافتی و تحویل به URL', '📡'];
+}
 if ($navOrg && membership_has_permission($navOrg, Permissions::BILLING_VIEW)) {
     $integrationNav['billing'] = ['/billing.php', 'اشتراک و مصرف', '📦'];
 }

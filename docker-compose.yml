@@ -249,6 +249,39 @@ services:
       - backend_net
     stop_grace_period: 30s
 
+  # Per-line forwarding of inbound SMS (MO) and delivery reports to each customer's own URL
+  # (app/NumberForwarding.php, set on /number-forwards.php). Its OWN container for the same reason as
+  # webhook-worker: a slow or unreachable customer URL can only ever delay other forwards. Timeouts,
+  # retries and concurrency are admin settings on that page, not env vars.
+  number-forward-worker:
+    logging: *default-logging
+    # Same image as `app` (built once there) — never pulled from a registry.
+    image: ellsms-app:latest
+    pull_policy: never
+    container_name: ellsms-number-forward-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/number-forward-worker.php
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-0}
+      APP_VERSION: ${APP_VERSION:-}
+      NUMBER_FORWARD_POLL_INTERVAL_SECONDS: ${NUMBER_FORWARD_POLL_INTERVAL_SECONDS:-3}
+      NUMBER_FORWARD_BATCH_SIZE: ${NUMBER_FORWARD_BATCH_SIZE:-100}
+      JOB_RETRY_BASE_SECONDS: ${JOB_RETRY_BASE_SECONDS:-30}
+      JOB_RETRY_MAX_SECONDS: ${JOB_RETRY_MAX_SECONDS:-1800}
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      BACKEND_DB_SSL_VERIFY: ${BACKEND_DB_SSL_VERIFY:-0}
+      BACKEND_DB_SSL_CA: ${BACKEND_DB_SSL_CA:-}
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    stop_grace_period: 30s
+
   # Large-scale file import worker. Its OWN container so parsing/pricing 1M-row uploads never
   # competes with the send worker or web requests. Claims import chunks atomically; multiple
   # import-worker containers are safe but not required.

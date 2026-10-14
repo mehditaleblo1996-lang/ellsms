@@ -49,6 +49,7 @@ function menu_catalog(): array {
         'integrations'  => ['افزونه ووکامرس و SDK', '🧩', '/integrations.php',  ['integrations.php']],
         'remote_db'     => ['اتصال به دیتابیس',     '🗄', '/remote-db.php',     ['remote-db.php']],
         'webhooks'      => ['وب‌هوک‌ها',              '🔗', '/webhooks.php',      ['webhooks.php']],
+        'number_forwards' => ['ارسال دریافتی و تحویل به URL', '📡', '/number-forwards.php', ['number-forwards.php']],
         'billing'       => ['اشتراک و مصرف',        '📦', '/billing.php',       ['billing.php']],
     ];
 }
@@ -65,7 +66,7 @@ function menu_groups(): array {
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'inbox', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
         'finance'      => ['مالی',              ['buy_credit', 'invoices', 'billing']],
-        'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'integrations', 'remote_db', 'webhooks']],
+        'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
         'account'      => ['حساب و پشتیبانی',   ['subaccounts', 'tickets']],
     ];
 }

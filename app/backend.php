@@ -1060,6 +1060,8 @@ function run_autoreply_pass(): int {
                 line_optout_process_inbound($msg);
                 // #39 — message.received webhook for the line's organization; exactly once per message.
                 webhook_emit_inbound_received($msg);
+                // Per-line forwarding to the customer's own URL (app/NumberForwarding.php); exactly once.
+                number_forward_enqueue_mo($msg);
             } catch (Throwable $t) {
                 Logger::error('line_optout.process_failed', ['inbound_message_id' => $msg['id'] ?? null, 'exception' => $t]);
             }
