@@ -1,5 +1,11 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/Registration.php';
+// The "how it works" step and the FAQ describe how an account is actually obtained: with registration
+// closed an admin creates accounts; otherwise the visitor signs up, verifies the mobile, and an admin
+// approves. (The 'auto_after_otp' mode still lands in pending_admin_approval — see
+// registration_verify_otp() — so it is described as approval too.)
+$registrationOpen = registration_enabled();
 $pageTitle = 'پنل هوشمند پیامک';
 $metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
@@ -18,7 +24,7 @@ require __DIR__ . '/../app/views/public_header.php';
     </svg>
     <div class="lp-banner-track">
 
-      <article class="lp-banner-slide is-active" aria-roledescription="slide" aria-label="۱ از ۳">
+      <article class="lp-banner-slide is-active" id="lpSlide1" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۳">
         <div class="lp-banner-visual lp-banner-phone" aria-hidden="true">
           <picture>
             <source srcset="/assets/img/landing/banner-phone.webp" type="image/webp">
@@ -41,7 +47,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" aria-roledescription="slide" aria-label="۲ از ۳">
+      <article class="lp-banner-slide" id="lpSlide2" role="tabpanel" aria-roledescription="slide" aria-label="۲ از ۳">
         <div class="lp-banner-visual lp-banner-smart" aria-hidden="true">
           <div class="lp-smart-template">سلام <b>{نام}</b>، شما <b>{شانس}</b> شانس دارید</div>
           <div class="lp-smart-bubble" style="--i:0">سلام <b>علی</b>، شما <b>۲</b> شانس دارید <em>✓</em></div>
@@ -60,7 +66,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" aria-roledescription="slide" aria-label="۳ از ۳">
+      <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۳">
         <div class="lp-banner-visual lp-banner-report" aria-hidden="true">
           <div class="lp-report-card">
             <div class="lp-report-head"><span>ارسال امروز</span><b>۱۲٬۴۸۰</b></div>
@@ -83,33 +89,71 @@ require __DIR__ . '/../app/views/public_header.php';
       </article>
 
     </div>
-    <div class="lp-banner-dots" role="tablist" aria-label="اسلایدها">
-      <button type="button" class="is-active" aria-label="اسلاید ۱"></button>
-      <button type="button" aria-label="اسلاید ۲"></button>
-      <button type="button" aria-label="اسلاید ۳"></button>
+    <div class="lp-banner-controls">
+      <button type="button" class="lp-banner-toggle" data-lp-banner-toggle aria-pressed="false">
+        <span class="lp-banner-toggle-icon" aria-hidden="true"></span><span data-lp-banner-toggle-label>توقف اسلایدها</span>
+      </button>
+      <div class="lp-banner-dots" role="tablist" aria-label="اسلایدها">
+        <button type="button" role="tab" id="lpSlideTab1" aria-controls="lpSlide1" aria-selected="true" aria-label="اسلاید ۱" class="is-active"></button>
+        <button type="button" role="tab" id="lpSlideTab2" aria-controls="lpSlide2" aria-selected="false" aria-label="اسلاید ۲" tabindex="-1"></button>
+        <button type="button" role="tab" id="lpSlideTab3" aria-controls="lpSlide3" aria-selected="false" aria-label="اسلاید ۳" tabindex="-1"></button>
+      </div>
     </div>
   </section>
 <script>
 (function () {
+  // Banner carousel. Auto-advance pauses while hovered, while anything inside has keyboard focus,
+  // while off-screen, and for good once the visitor presses "توقف" (WCAG 2.2.2). The dots are an
+  // ARIA tablist: arrow keys / Home / End move between slides, only the current tab is in the tab order.
   var root = document.querySelector('[data-lp-banner]');
   if (!root) return;
   var slides = root.querySelectorAll('.lp-banner-slide');
-  var dots = root.querySelectorAll('.lp-banner-dots button');
-  var current = 0, timer = null, hovering = false, visible = true;
+  var dots = root.querySelectorAll('.lp-banner-dots [role="tab"]');
+  var toggle = root.querySelector('[data-lp-banner-toggle]');
+  var toggleLabel = root.querySelector('[data-lp-banner-toggle-label]');
+  var current = 0, timer = null, hovering = false, focused = false, visible = true;
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function show(i) {
+  var stopped = still;
+  function show(i, moveFocus) {
     current = (i + slides.length) % slides.length;
     slides.forEach(function (s, k) { s.classList.toggle('is-active', k === current); s.setAttribute('aria-hidden', k === current ? 'false' : 'true'); });
-    dots.forEach(function (d, k) { d.classList.toggle('is-active', k === current); d.setAttribute('aria-selected', k === current ? 'true' : 'false'); });
+    dots.forEach(function (d, k) {
+      var on = k === current;
+      d.classList.toggle('is-active', on);
+      d.setAttribute('aria-selected', on ? 'true' : 'false');
+      d.tabIndex = on ? 0 : -1;
+    });
+    if (moveFocus) dots[current].focus();
   }
   function schedule() {
     clearTimeout(timer);
-    if (still || hovering || !visible || document.hidden) return;
+    if (stopped || hovering || focused || !visible || document.hidden) return;
     timer = setTimeout(function () { show(current + 1); schedule(); }, 7000);
   }
-  dots.forEach(function (d, k) { d.addEventListener('click', function () { show(k); schedule(); }); });
+  function setStopped(on) {
+    stopped = on;
+    root.classList.toggle('is-stopped', on);
+    if (toggle) {
+      toggle.setAttribute('aria-pressed', on ? 'true' : 'false');
+      toggleLabel.textContent = on ? 'پخش اسلایدها' : 'توقف اسلایدها';
+    }
+    schedule();
+  }
+  dots.forEach(function (d, k) {
+    d.addEventListener('click', function () { show(k); schedule(); });
+    d.addEventListener('keydown', function (e) {
+      // RTL: the visually "next" dot is to the left.
+      var step = { ArrowLeft: 1, ArrowRight: -1 }[e.key];
+      if (step) { e.preventDefault(); show(current + step, true); }
+      else if (e.key === 'Home') { e.preventDefault(); show(0, true); }
+      else if (e.key === 'End') { e.preventDefault(); show(slides.length - 1, true); }
+    });
+  });
+  if (toggle) toggle.addEventListener('click', function () { setStopped(!stopped); });
   root.addEventListener('mouseenter', function () { hovering = true; schedule(); });
   root.addEventListener('mouseleave', function () { hovering = false; schedule(); });
+  root.addEventListener('focusin', function () { focused = true; schedule(); });
+  root.addEventListener('focusout', function (e) { if (!root.contains(e.relatedTarget)) { focused = false; schedule(); } });
   var x0 = null;
   root.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
   root.addEventListener('touchend', function (e) {
@@ -125,7 +169,7 @@ require __DIR__ . '/../app/views/public_header.php';
     }).observe(root);
   }
   document.addEventListener('visibilitychange', schedule);
-  show(0); schedule();
+  show(0); setStopped(stopped);
 })();
 </script>
 
@@ -421,18 +465,23 @@ require __DIR__ . '/../app/views/public_header.php';
   <section id="how" class="lp-section lp-how lp-reveal">
     <div class="lp-section-head">
       <h2>سه قدم تا اولین ارسال</h2>
-      <p>بدون فرایند ثبت‌نام پیچیده، بدون نصب چیزی روی دستگاه شما.</p>
+      <p>همه‌چیز در مرورگر انجام می‌شود؛ نیازی به نصب برنامه نیست.</p>
     </div>
     <ol class="lp-steps">
       <li>
         <span class="lp-step-no">۱</span>
+        <?php if (!$registrationOpen): ?>
         <h3>دریافت دسترسی</h3>
-        <p>مدیر مجموعه‌ی شما حساب کاربری‌تان را به پنل متصل می‌کند — بدون نیاز به ساخت حساب جداگانه.</p>
+        <p>ثبت‌نام عمومی فعلاً بسته است؛ حساب کاربری را مدیر سامانه می‌سازد. برای دریافت حساب با ما <a href="/contact">تماس بگیرید</a>.</p>
+        <?php else: ?>
+        <h3>ثبت‌نام</h3>
+        <p><a href="/register">ثبت‌نام کنید</a> و شماره موبایل خود را با کد پیامکی تأیید کنید؛ حساب پس از بررسی و تأیید مدیر فعال می‌شود.</p>
+        <?php endif; ?>
       </li>
       <li>
         <span class="lp-step-no">۲</span>
         <h3>شارژ اعتبار</h3>
-        <p>از طریق درگاه زرین‌پال، در چند ثانیه اعتبار بخرید؛ اعتبار همان لحظه در پنل قابل استفاده است.</p>
+        <p>از طریق درگاه زرین‌پال اعتبار بخرید؛ پس از تأیید پرداخت، اعتبار در پنل قابل استفاده است.</p>
       </li>
       <li>
         <span class="lp-step-no">۳</span>
@@ -522,11 +571,15 @@ require __DIR__ . '/../app/views/public_header.php';
     <div class="lp-guide-list">
       <details class="lp-guide-item">
         <summary>چطور به پنل دسترسی پیدا می‌کنم؟</summary>
-        <div class="lp-guide-body">حساب کاربری شما را مدیر مجموعه‌تان به پنل متصل می‌کند؛ نیازی به ثبت‌نام جداگانه نیست. برای اطلاعات بیشتر با ما <a href="/contact.php">تماس بگیرید</a>.</div>
+        <?php if (!$registrationOpen): ?>
+        <div class="lp-guide-body">ثبت‌نام عمومی در حال حاضر بسته است و حساب کاربری را مدیر سامانه می‌سازد. برای دریافت حساب با ما <a href="/contact">تماس بگیرید</a>.</div>
+        <?php else: ?>
+        <div class="lp-guide-body">از صفحه‌ی <a href="/register">ثبت‌نام</a> مشخصات خود را وارد کنید و شماره موبایل را با کد پیامکی تأیید کنید. درخواست شما سپس توسط مدیر بررسی می‌شود و پس از تأیید، حساب فعال می‌شود و می‌توانید وارد شوید.</div>
+        <?php endif; ?>
       </details>
       <details class="lp-guide-item">
         <summary>خرید اعتبار چقدر طول می‌کشد؟</summary>
-        <div class="lp-guide-body">پرداخت از طریق درگاه رسمی زرین‌پال انجام می‌شود و اعتبار بلافاصله پس از تأیید تراکنش در پنل شما فعال است.</div>
+        <div class="lp-guide-body">پرداخت از طریق درگاه زرین‌پال انجام می‌شود و اعتبار پس از تأیید تراکنش در پنل شما فعال است. شرایط انصراف و بازگشت وجه در <a href="/refund">این صفحه</a> آمده است.</div>
       </details>
       <details class="lp-guide-item">
         <summary>آیا می‌توانم زمان‌بندی ارسال را لغو یا تغییر دهم؟</summary>

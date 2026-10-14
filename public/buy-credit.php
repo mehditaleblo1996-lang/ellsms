@@ -23,6 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($credits < $minPurchase) {
         flash('error', 'حداقل مبلغ خرید ' . to_persian_digits(number_format($minPurchase)) . ' ریال است.');
+    } elseif (($_POST['accept_refund_terms'] ?? '') !== '1') {
+        flash('error', 'برای پرداخت، پذیرش قوانین و شرایط انصراف و بازگشت وجه لازم است.');
     } else {
         $baseAmountRial = $credits;
         $gateway = payment_gateway_name();
@@ -100,6 +102,10 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
         <div class="stat-label">مبلغ قابل پرداخت</div>
         <div class="stat-value" id="priceOut">۰ ریال</div>
       </div>
+      <label class="consent-check" style="margin-bottom:14px">
+        <input type="checkbox" name="accept_refund_terms" value="1" required>
+        <span><a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/refund" target="_blank" rel="noopener">شرایط انصراف و بازگشت وجه</a> را خوانده‌ام و می‌پذیرم.</span>
+      </label>
       <button type="submit" class="btn btn-primary btn-block">پرداخت با زرین‌پال</button>
     </form>
   </div>

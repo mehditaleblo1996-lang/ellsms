@@ -123,6 +123,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
 <link rel="stylesheet" href="/assets/css/panel-layout-fixes.css">
 </head>
 <body>
+<a class="skip-link" href="#main">پرش به محتوای اصلی</a>
 <div class="shell">
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
   <aside class="sidebar" id="sidebar">
@@ -186,7 +187,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
       </div>
     </header>
 
-    <main class="content content-<?= e($active ?? 'page') ?>">
+    <main id="main" tabindex="-1" class="content content-<?= e($active ?? 'page') ?>">
       <?php
       $impersonationBanner = is_impersonating() ? impersonation_banner_context() : null;
       ?>

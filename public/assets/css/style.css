@@ -15,7 +15,7 @@
   --indigo: #4a32e8;
   --blue:   #2e63f6;
   --ink:    #0b1023;
-  --muted:  #666f87;
+  --muted:  #5c657d; /* ≥4.5:1 on --card, --canvas, --tint and --line (was #666f87: 4.46 on --tint) */
   --line:   #e6e4f5;
   --canvas: #f7f7fb;
   --tint:   #eef1ff;
@@ -429,6 +429,7 @@ tr:hover td { background: #f9f9ff; }
 }
 .login-logo { width: 74%; display: block; margin: 0 auto 16px; }
 .login-foot { text-align: center; color: var(--muted); font-size: var(--fs-xs); margin: 16px 0 0; }
+.login-foot a, .login-sub a { text-decoration: underline; text-underline-offset: 3px; }
 .login-sub { text-align: center; color: var(--muted); margin: -8px 0 16px; font-size: var(--fs-sm); }
 
 /* ---------- Misc ---------- */
@@ -1001,13 +1002,33 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-report-row em.is-ok { color: #34d399; background: rgba(52, 211, 153, .14); }
 .lp-report-row em.is-wait { color: #fbbf24; background: rgba(251, 191, 36, .14); }
 
-.lp-banner-dots { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 2; }
-.lp-banner-dots button {
-  width: 9px; height: 9px; padding: 0; border: 0; border-radius: 999px; background: rgba(255, 255, 255, .3); cursor: pointer;
-  transition: width .3s ease, background .3s ease;
+.lp-banner-controls {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 2;
+  display: flex; align-items: center; gap: 10px;
 }
-.lp-banner-dots button.is-active { width: 28px; background: #60a5fa; }
-.lp-banner.is-paused * { animation-play-state: paused !important; }
+.lp-banner-dots { display: flex; gap: 0; }
+/* Each dot is a 24×24 target (WCAG 2.5.8); the visible dot is drawn by ::before. */
+.lp-banner-dots button {
+  position: relative; width: 24px; height: 24px; padding: 0; border: 0; background: none; cursor: pointer;
+  transition: width .3s ease;
+}
+.lp-banner-dots button::before {
+  content: ""; position: absolute; inset: 7.5px; border-radius: 999px; background: rgba(255, 255, 255, .45);
+  transition: background .3s ease;
+}
+.lp-banner-dots button.is-active { width: 40px; }
+.lp-banner-dots button.is-active::before { background: #60a5fa; }
+.lp-banner-toggle {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 3px 12px;
+  border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px; background: rgba(6, 8, 20, .55);
+  color: #f3f4fb; font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.lp-banner-toggle-icon { width: 10px; height: 10px; border-inline: 3px solid currentColor; box-sizing: border-box; }
+.lp-banner-toggle[aria-pressed="true"] .lp-banner-toggle-icon {
+  border: 0; width: 0; height: 0; border-block: 5px solid transparent; border-inline-end: 9px solid currentColor;
+}
+.lp-banner-dots button:focus-visible, .lp-banner-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 999px; }
+.lp-banner.is-paused *, .lp-banner.is-stopped * { animation-play-state: paused !important; }
 @media (max-width: 860px) {
   .lp-banner { min-height: 0; }
   .lp-banner-track { display: grid; }
@@ -1036,7 +1057,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
 }
 .lp-flow-card-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; margin-bottom: 12px; }
-.lp-flow-file { font-size: 10px; font-weight: 800; color: #fff; background: #1d8f4e; border-radius: 5px; padding: 2px 6px; letter-spacing: .5px; }
+.lp-flow-file { font-size: 10px; font-weight: 800; color: #fff; background: #187a43; border-radius: 5px; padding: 2px 6px; letter-spacing: .5px; }
 .lp-flow-row {
   display: grid; grid-template-columns: 1fr 1.5fr .6fr; gap: 8px; padding: 9px 10px; border-radius: 10px;
   font-size: 13px; color: var(--muted); transition: background .35s ease, color .35s ease, box-shadow .35s ease;
@@ -1387,3 +1408,54 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .price-matrix input:not(.is-default):not(:placeholder-shown) { font-weight: 600; }
 .price-matrix tr.pm-default-row th, .price-matrix tr.pm-default-row td { background: #f2f4ff; border-bottom: 2px solid #c9cff5; }
 .price-matrix tr.pm-default-row .pm-gateway { color: #3b3fc4; }
+
+/* ---------- Accessibility helpers ---------- */
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* "پرش به محتوا": off-screen until focused with the keyboard. */
+.skip-link {
+  position: absolute; inset-inline-start: 12px; top: -60px; z-index: 1000;
+  padding: 10px 18px; border-radius: 10px; background: #fff; color: #0b1023; font-weight: 700;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .25); text-decoration: none;
+}
+.skip-link:focus { top: 12px; outline: 3px solid #2e63f6; outline-offset: 2px; }
+main:focus { outline: none; }
+input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 2px rgba(192, 34, 58, .25); }
+
+/* Consent checkboxes (register, contact, buy credit). */
+.consent-check { display: flex; align-items: flex-start; gap: 10px; font-weight: 400; line-height: 1.9; cursor: pointer; }
+.consent-check input[type="checkbox"] { flex: 0 0 auto; width: 18px; height: 18px; margin: 5px 0 0; accent-color: var(--blue); }
+.consent-check a { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Links to the legal pages in both footers. */
+.legal-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; font-size: 13px; margin: 6px 0; }
+.legal-links a { color: inherit; text-decoration: underline; text-underline-offset: 3px; padding: 4px 0; }
+
+/* ---------- Legal pages (terms, privacy, refund) ---------- */
+.lp-legal { max-width: 860px; line-height: 2; }
+.lp-legal-head { text-align: center; margin-bottom: 28px; }
+.lp-legal-head h1 { font-size: 30px; font-weight: 800; margin: 0 0 8px; }
+.lp-legal-meta { color: var(--muted); font-size: 14px; margin: 0; }
+.lp-legal section { margin-top: 34px; scroll-margin-top: 90px; }
+.lp-legal h2 { font-size: 20px; font-weight: 800; margin: 0 0 10px; }
+.lp-legal p, .lp-legal li { font-size: 15.5px; }
+.lp-legal ul, .lp-legal ol { padding-inline-start: 22px; margin: 8px 0; }
+.lp-legal li { margin: 6px 0; }
+.lp-legal a { color: #a5b4fc; text-decoration: underline; text-underline-offset: 3px; }
+.lp-legal-toc { border: 1px solid var(--line); border-radius: 16px; background: var(--card); padding: 14px 22px; }
+.lp-legal-toc ol { columns: 2; column-gap: 32px; margin: 0; }
+.lp-legal-toc li { break-inside: avoid; font-size: 14.5px; margin: 2px 0; }
+.lp-legal-identity { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 12px 0 0;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 14px 20px; }
+.lp-legal-identity dt { color: var(--muted); font-size: 14px; }
+.lp-legal-identity dd { margin: 0; font-size: 15px; }
+.lp-legal-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+.lp-legal-table th, .lp-legal-table td { border: 1px solid var(--line); padding: 10px 12px; text-align: start; vertical-align: top; }
+.lp-legal-table th { background: var(--tint); font-weight: 700; }
+@media (max-width: 640px) {
+  .lp-legal-toc ol { columns: 1; }
+  .lp-legal-identity { grid-template-columns: 1fr; }
+  .lp-legal-identity dd { margin-bottom: 8px; }
+}

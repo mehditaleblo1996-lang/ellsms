@@ -16,6 +16,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="lp-body">
+<a class="skip-link" href="#main">پرش به محتوای اصلی</a>
 
 <header class="lp-nav">
   <div class="lp-nav-inner">
@@ -43,4 +44,4 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
   </div>
 </header>
 
-<main>
+<main id="main" tabindex="-1">

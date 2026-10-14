@@ -2,6 +2,7 @@
 /** Public registration/onboarding primitives. */
 declare(strict_types=1);
 require_once __DIR__ . '/NotificationCenter.php';
+require_once __DIR__ . '/Legal.php';
 
 const REGISTRATION_OTP_TTL_SECONDS = 300;
 const REGISTRATION_OTP_RESEND_SECONDS = 60;
@@ -42,16 +43,17 @@ function registration_request_create(array $input): array {
     $companyName = trim((string)($input['company_name'] ?? ''));
 
     if (!registration_enabled()) return ['ok' => false, 'error' => 'ثبت‌نام در حال حاضر غیرفعال است.'];
-    if ($firstName === '' || $lastName === '') return ['ok' => false, 'error' => 'نام و نام خانوادگی الزامی است.'];
-    if ($mobile === null) return ['ok' => false, 'error' => 'شماره موبایل معتبر وارد کنید.'];
-    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) return ['ok' => false, 'error' => 'ایمیل معتبر وارد کنید.'];
-    if (preg_match('/^[a-zA-Z0-9_.-]{3,120}$/', $username) !== 1) return ['ok' => false, 'error' => 'نام کاربری باید حداقل ۳ نویسه و شامل حروف لاتین، عدد، نقطه، خط تیره یا زیرخط باشد.'];
-    if (strlen($password) < 8) return ['ok' => false, 'error' => 'رمز عبور باید حداقل ۸ نویسه باشد.'];
-    if ($password !== $passwordRepeat) return ['ok' => false, 'error' => 'تکرار رمز عبور با رمز عبور یکسان نیست.'];
-    if ($accountType === 'legal' && $companyName === '') return ['ok' => false, 'error' => 'برای حساب حقوقی نام شرکت را وارد کنید.'];
+    if ($firstName === '' || $lastName === '') return ['ok' => false, 'error' => 'نام و نام خانوادگی الزامی است.', 'field' => $firstName === '' ? 'first_name' : 'last_name'];
+    if ($mobile === null) return ['ok' => false, 'error' => 'شماره موبایل معتبر وارد کنید.', 'field' => 'mobile'];
+    if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) return ['ok' => false, 'error' => 'ایمیل معتبر وارد کنید.', 'field' => 'email'];
+    if (preg_match('/^[a-zA-Z0-9_.-]{3,120}$/', $username) !== 1) return ['ok' => false, 'error' => 'نام کاربری باید حداقل ۳ نویسه و شامل حروف لاتین، عدد، نقطه، خط تیره یا زیرخط باشد.', 'field' => 'username'];
+    if (strlen($password) < 8) return ['ok' => false, 'error' => 'رمز عبور باید حداقل ۸ نویسه باشد.', 'field' => 'password'];
+    if ($password !== $passwordRepeat) return ['ok' => false, 'error' => 'تکرار رمز عبور با رمز عبور یکسان نیست.', 'field' => 'password_repeat'];
+    if ($accountType === 'legal' && $companyName === '') return ['ok' => false, 'error' => 'برای حساب حقوقی نام شرکت را وارد کنید.', 'field' => 'company_name'];
+    if (($input['accept_terms'] ?? '') !== '1') return ['ok' => false, 'error' => 'برای ثبت‌نام باید قوانین و مقررات و سیاست حریم خصوصی را بپذیرید.', 'field' => 'accept_terms'];
 
     if (function_exists('backend_find_user_for_login') && backend_find_user_for_login($username)) {
-        return ['ok' => false, 'error' => 'این نام کاربری قبلاً استفاده شده است.'];
+        return ['ok' => false, 'error' => 'این نام کاربری قبلاً استفاده شده است.', 'field' => 'username'];
     }
 
     $states = registration_pending_states();
@@ -67,10 +69,10 @@ function registration_request_create(array $input): array {
     $ua = mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500, 'UTF-8');
     $st = db()->prepare(
         "INSERT INTO ellsms_registration_requests
-          (first_name,last_name,mobile,email,username,password_verifier,account_type,company_name,state,signup_ip,signup_user_agent)
-         VALUES (?,?,?,?,?,?,?,?,'pending_mobile_verification',?,?)"
+          (first_name,last_name,mobile,email,username,password_verifier,account_type,company_name,state,signup_ip,signup_user_agent,terms_version,terms_accepted_at)
+         VALUES (?,?,?,?,?,?,?,?,'pending_mobile_verification',?,?,?,NOW())"
     );
-    $st->execute([$firstName, $lastName, $mobile, $email, $username, $verifier, $accountType, $companyName, $ip, $ua]);
+    $st->execute([$firstName, $lastName, $mobile, $email, $username, $verifier, $accountType, $companyName, $ip, $ua, LEGAL_TERMS_VERSION]);
     $id = (int)db()->lastInsertId();
 
     Logger::info('registration.started', ['registration_id' => $id, 'account_type' => $accountType, 'has_email' => $email !== '']);

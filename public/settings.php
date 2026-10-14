@@ -68,6 +68,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($do === 'contact') {
         set_setting('contact_address',     trim($_POST['contact_address'] ?? ''));
         set_setting('contact_phone',       trim($_POST['contact_phone'] ?? ''));
+        set_setting('contact_email',       trim($_POST['contact_email'] ?? ''));
+        set_setting('legal_company_name',  trim($_POST['legal_company_name'] ?? ''));
+        set_setting('legal_registration_no', trim(from_persian_digits((string)($_POST['legal_registration_no'] ?? ''))));
+        set_setting('legal_national_id',   trim(from_persian_digits((string)($_POST['legal_national_id'] ?? ''))));
+        set_setting('enamad_id',           trim(from_persian_digits((string)($_POST['enamad_id'] ?? ''))));
+        set_setting('enamad_code',         trim((string)($_POST['enamad_code'] ?? '')));
+        $refundDays = (int) from_persian_digits((string)($_POST['legal_refund_processing_days'] ?? ''));
+        set_setting('legal_refund_processing_days', $refundDays > 0 ? (string)$refundDays : '');
         set_setting('telegram_bot_token',  trim($_POST['telegram_bot_token'] ?? ''));
         set_setting('telegram_chat_id',    trim($_POST['telegram_chat_id'] ?? ''));
         audit((int)$me['id'], 'settings.contact_update');
@@ -267,10 +275,41 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <h2>تماس با ما</h2>
-  <p class="hint">آدرس و تلفن در صفحه‌ی عمومی <a href="/contact.php" target="_blank">تماس با ما</a> نمایش داده می‌شوند. Token و Chat ID نیز از اینجا قابل تنظیم هستند.</p>
+  <p class="hint">مشخصات زیر در صفحه‌های عمومی <a href="/contact" target="_blank">تماس با ما</a>، <a href="/terms" target="_blank">قوانین</a>، <a href="/privacy" target="_blank">حریم خصوصی</a> و <a href="/refund" target="_blank">بازگشت وجه</a> نمایش داده می‌شوند؛ فیلد خالی نمایش داده نمی‌شود. Token و Chat ID نیز از اینجا قابل تنظیم هستند.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="contact">
+    <div class="form-row">
+      <label>نام حقوقی ارائه‌دهنده (شخص یا شرکت)
+        <input type="text" name="legal_company_name" maxlength="190" value="<?= e(setting('legal_company_name', '')) ?>" placeholder="مثلاً: شرکت ... (سهامی خاص)">
+      </label>
+      <label>ایمیل رسمی
+        <input type="email" name="contact_email" maxlength="190" class="ltr" value="<?= e(setting('contact_email', '')) ?>">
+      </label>
+    </div>
+    <div class="form-row">
+      <label>شماره ثبت شرکت
+        <input type="text" name="legal_registration_no" maxlength="40" class="ltr" value="<?= e(setting('legal_registration_no', '')) ?>">
+      </label>
+      <label>شناسه ملی شرکت
+        <input type="text" name="legal_national_id" maxlength="20" class="ltr" inputmode="numeric" value="<?= e(setting('legal_national_id', '')) ?>">
+      </label>
+    </div>
+    <div class="form-row">
+      <label>شناسه (id) نماد اعتماد الکترونیکی
+        <input type="text" name="enamad_id" maxlength="40" class="ltr" value="<?= e(setting('enamad_id', '')) ?>">
+        <span class="hint">از کد نمادی که enamad.ir داده است (<span class="ltr">?id=…&amp;Code=…</span>). با پر کردن هر دو فیلد، نماد فوتر به صفحه‌ی استعلام رسمی لینک می‌شود.</span>
+      </label>
+      <label>کد (Code) نماد اعتماد الکترونیکی
+        <input type="text" name="enamad_code" maxlength="80" class="ltr" value="<?= e(setting('enamad_code', '')) ?>">
+      </label>
+    </div>
+    <div class="form-row">
+      <label>مهلت واریز بازگشت وجه (روز کاری)
+        <input type="number" name="legal_refund_processing_days" min="1" max="60" class="ltr" value="<?= e((string) setting('legal_refund_processing_days', '')) ?>" placeholder="10">
+        <span class="hint">در صفحه‌ی بازگشت وجه نمایش داده می‌شود؛ خالی = ۱۰ روز کاری.</span>
+      </label>
+    </div>
     <div class="form-row">
       <label>آدرس (هر خط یک آدرس)
         <textarea name="contact_address" rows="3"><?= e(setting('contact_address', '')) ?></textarea>

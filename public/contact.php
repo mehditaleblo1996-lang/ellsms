@@ -4,6 +4,7 @@ require_once __DIR__ . '/../app/telegram.php';
 
 $sent  = false;
 $error = null;
+$errorField = null; // the input the error is about, so it can point at it (aria-describedby)
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -14,6 +15,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($name === '' || $contact === '' || $message === '') {
         $error = 'نام، راه تماس و متن پیام را کامل وارد کنید.';
+        $errorField = $name === '' ? 'name' : ($contact === '' ? 'contact' : 'message');
+    } elseif (($_POST['accept_privacy'] ?? '') !== '1') {
+        $error = 'برای ارسال پیام، تأیید نحوه‌ی استفاده از اطلاعات لازم است.';
+        $errorField = 'accept_privacy';
     } else {
         $text = "🎫 تیکت جدید از فرم «تماس با ما»\n"
               . "نام: {$name}\n"
@@ -33,6 +38,9 @@ $pageTitle = 'تماس با ما';
 $metaDescription = 'راه‌های تماس با ELLSMS و فرم ارسال تیکت پشتیبانی.';
 $address = trim((string) setting('contact_address', ''));
 $phone   = trim((string) setting('contact_phone', ''));
+$email   = trim((string) setting('contact_email', ''));
+/** aria-invalid + aria-describedby for the input the current error is about; '' for every other input. */
+$errAttrs = static fn(string $field): string => $field === $errorField ? ' aria-invalid="true" aria-describedby="formError"' : '';
 require __DIR__ . '/../app/views/public_header.php';
 ?>
   <section class="lp-section lp-contact">
@@ -51,7 +59,11 @@ require __DIR__ . '/../app/views/public_header.php';
           <h3>تلفن</h3>
           <p class="ltr"><?= nl2br(e($phone)) ?></p>
         <?php endif; ?>
-        <?php if ($address === '' && $phone === ''): ?>
+        <?php if ($email !== ''): ?>
+          <h3>ایمیل</h3>
+          <p class="ltr"><a href="mailto:<?= e($email) ?>"><?= e($email) ?></a></p>
+        <?php endif; ?>
+        <?php if ($address === '' && $phone === '' && $email === ''): ?>
           <p class="hint">اطلاعات تماس هنوز از پنل تنظیمات وارد نشده است.</p>
         <?php endif; ?>
       </div>
@@ -60,24 +72,29 @@ require __DIR__ . '/../app/views/public_header.php';
         <?php if ($sent): ?>
           <div class="flash flash-success">پیام شما ارسال شد — به‌زودی با شما تماس می‌گیریم.</div>
         <?php else: ?>
-          <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
+          <?php if ($error): ?><div class="flash flash-error" id="formError" role="alert"><?= e($error) ?></div><?php endif; ?>
           <form method="post">
             <?= csrf_field() ?>
             <div class="form-row">
               <label>نام
-                <input type="text" name="name" required value="<?= e($_POST['name'] ?? '') ?>">
+                <input type="text" name="name" required autocomplete="name" maxlength="120" value="<?= e($_POST['name'] ?? '') ?>"<?= $errAttrs('name') ?>>
               </label>
               <label>شماره تماس یا ایمیل
-                <input type="text" name="contact" required class="ltr" value="<?= e($_POST['contact'] ?? '') ?>">
+                <input type="text" name="contact" required class="ltr" maxlength="190" value="<?= e($_POST['contact'] ?? '') ?>"<?= $errAttrs('contact') ?>>
               </label>
             </div>
             <label>موضوع
-              <input type="text" name="subject" value="<?= e($_POST['subject'] ?? '') ?>">
+              <input type="text" name="subject" maxlength="190" value="<?= e($_POST['subject'] ?? '') ?>">
             </label>
             <label>پیام
-              <textarea name="message" required><?= e($_POST['message'] ?? '') ?></textarea>
+              <textarea name="message" required<?= $errAttrs('message') ?>><?= e($_POST['message'] ?? '') ?></textarea>
             </label>
-            <button class="btn btn-primary btn-block">ارسال تیکت</button>
+            <p class="hint" id="contactPrivacyNote">نام، راه تماس و متن پیام شما فقط برای پاسخ به همین درخواست استفاده می‌شود و برای اطلاع تیم پشتیبانی، از طریق ربات تلگرام (با سرورهای خارج از ایران) برای ما فرستاده می‌شود. جزئیات در <a href="/privacy#p-share">حریم خصوصی</a>. <?php if ($phone !== '' || $email !== ''): ?>اگر این را نمی‌خواهید، از راه‌های تماس دیگری که در همین صفحه آمده استفاده کنید.<?php endif; ?></p>
+            <label class="consent-check">
+              <input type="checkbox" name="accept_privacy" value="1" required aria-describedby="contactPrivacyNote<?= $errorField === 'accept_privacy' ? ' formError' : '' ?>"<?= $errorField === 'accept_privacy' ? ' aria-invalid="true"' : '' ?><?= ($_POST['accept_privacy'] ?? '') === '1' ? ' checked' : '' ?>>
+              <span>متن بالا را خواندم و با ارسال پیامم به این روش موافقم.</span>
+            </label>
+            <button type="submit" class="btn btn-primary btn-block">ارسال پیام</button>
           </form>
         <?php endif; ?>
       </div>

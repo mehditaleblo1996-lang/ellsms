@@ -5,6 +5,7 @@ require_once __DIR__ . '/../app/Registration.php';
 if (current_user()) redirect('/index.php');
 
 $error = null;
+$errorField = null; // the input the error is about, so it can point at it (aria-describedby)
 $created = false;
 
 /**
@@ -65,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 registration_captcha_issue();
                 $error = 'پاسخ کپچا درست نیست. لطفاً دوباره تلاش کنید.';
+                $errorField = 'captcha_answer';
             } else {
                 Logger::info('registration.captcha_passed', ['ip' => client_ip()]);
                 if (function_exists('audit_mongo_event')) {
@@ -91,6 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         audit_mongo_event('registration.captcha_required', [], true);
                     }
                     $error = 'برای ادامه، لطفاً کپچای زیر را حل کنید.';
+                    $errorField = 'captcha_answer';
                 }
             }
 
@@ -100,8 +103,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $gender = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
                 if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
                     $error = 'ایمیل معتبر برای ساخت حساب الزامی است.';
+                    $errorField = 'email';
                 } elseif (strlen($nationalId) !== 10 || !ctype_digit($nationalId)) {
                     $error = 'کد ملی باید دقیقاً ۱۰ رقم باشد.';
+                    $errorField = 'national_id';
                 } else {
                     $result = registration_request_create($_POST);
                     if (!empty($result['ok'])) {
@@ -126,6 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         redirect('/register-verify.php');
                     }
                     $error = (string)($result['error'] ?? 'ثبت درخواست ممکن نشد.');
+                    $errorField = isset($result['field']) ? (string)$result['field'] : null;
                 }
             }
         }
@@ -134,6 +140,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $showCaptcha = registration_captcha_required();
 $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['question'] ?? '') : '';
+
+/** aria-invalid + aria-describedby for the input the current error is about; '' for every other input. */
+function reg_error_attrs(string $field, ?string $errorField): string {
+    return $field === $errorField ? ' aria-invalid="true" aria-describedby="formError"' : '';
+}
 
 ?><!doctype html>
 <html lang="fa" dir="rtl">
@@ -154,7 +165,7 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
       <div class="flash flash-error">ثبت‌نام در حال حاضر غیرفعال است.</div>
       <p class="login-foot"><a href="/login.php">بازگشت به ورود</a></p>
     <?php else: ?>
-      <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
+      <?php if ($error): ?><div class="flash flash-error" id="formError" role="alert"><?= e($error) ?></div><?php endif; ?>
       <form method="post" autocomplete="off">
         <?= csrf_field() ?>
         <div style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden" aria-hidden="true">
@@ -165,13 +176,14 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
           <h3 class="subsection-title">مشخصات فردی</h3>
           <div class="form-grid cols-2">
             <label>نام <span class="req">*</span>
-              <input type="text" name="first_name" maxlength="100" value="<?= e($_POST['first_name'] ?? '') ?>" required autofocus>
+              <input type="text" name="first_name" maxlength="100" value="<?= e($_POST['first_name'] ?? '') ?>" required<?= $error ? '' : ' autofocus' ?><?= reg_error_attrs('first_name', $errorField) ?>>
             </label>
             <label>نام خانوادگی <span class="req">*</span>
-              <input type="text" name="last_name" maxlength="100" value="<?= e($_POST['last_name'] ?? '') ?>" required>
+              <input type="text" name="last_name" maxlength="100" value="<?= e($_POST['last_name'] ?? '') ?>" required<?= reg_error_attrs('last_name', $errorField) ?>>
             </label>
             <label>کد ملی <span class="req">*</span>
-              <input type="text" name="national_id" class="ltr" inputmode="numeric" maxlength="10" placeholder="۱۰ رقم" value="<?= e($_POST['national_id'] ?? '') ?>" required>
+              <input type="text" name="national_id" class="ltr" inputmode="numeric" maxlength="10" placeholder="۱۰ رقم" value="<?= e($_POST['national_id'] ?? '') ?>" required aria-describedby="nationalIdHint<?= $errorField === 'national_id' ? ' formError' : '' ?>"<?= $errorField === 'national_id' ? ' aria-invalid="true"' : '' ?>>
+              <span class="hint" id="nationalIdHint">فقط برای احراز هویت صاحب حساب، که ارائه‌ی خدمات پیامکی آن را لازم دارد.</span>
             </label>
             <label>جنسیت
               <select name="gender">
@@ -186,10 +198,10 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
           <h3 class="subsection-title">اطلاعات تماس</h3>
           <div class="form-grid cols-2">
             <label>شماره موبایل <span class="req">*</span>
-              <input type="tel" name="mobile" class="ltr" maxlength="20" placeholder="0912..." value="<?= e($_POST['mobile'] ?? '') ?>" required>
+              <input type="tel" name="mobile" class="ltr" maxlength="20" placeholder="0912..." value="<?= e($_POST['mobile'] ?? '') ?>" required autocomplete="tel"<?= reg_error_attrs('mobile', $errorField) ?>>
             </label>
             <label>ایمیل <span class="req">*</span>
-              <input type="email" name="email" class="ltr" maxlength="190" value="<?= e($_POST['email'] ?? '') ?>" required>
+              <input type="email" name="email" class="ltr" maxlength="190" value="<?= e($_POST['email'] ?? '') ?>" required autocomplete="email"<?= reg_error_attrs('email', $errorField) ?>>
             </label>
           </div>
         </div>
@@ -198,13 +210,13 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
           <h3 class="subsection-title">اطلاعات ورود</h3>
           <div class="form-grid cols-2">
             <label class="span-full">نام کاربری <span class="req">*</span>
-              <input type="text" name="username" class="ltr" maxlength="120" autocomplete="username" value="<?= e($_POST['username'] ?? '') ?>" required>
+              <input type="text" name="username" class="ltr" maxlength="120" autocomplete="username" value="<?= e($_POST['username'] ?? '') ?>" required<?= reg_error_attrs('username', $errorField) ?>>
             </label>
             <label>رمز عبور <span class="req">*</span>
-              <input type="password" name="password" minlength="8" autocomplete="new-password" required>
+              <input type="password" name="password" minlength="8" autocomplete="new-password" required<?= reg_error_attrs('password', $errorField) ?>>
             </label>
             <label>تکرار رمز عبور <span class="req">*</span>
-              <input type="password" name="password_repeat" minlength="8" autocomplete="new-password" required>
+              <input type="password" name="password_repeat" minlength="8" autocomplete="new-password" required<?= reg_error_attrs('password_repeat', $errorField) ?>>
             </label>
           </div>
         </div>
@@ -219,7 +231,7 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
               </select>
             </label>
             <label id="companyNameWrap">نام شرکت
-              <input type="text" name="company_name" maxlength="190" value="<?= e($_POST['company_name'] ?? '') ?>">
+              <input type="text" name="company_name" maxlength="190" value="<?= e($_POST['company_name'] ?? '') ?>"<?= reg_error_attrs('company_name', $errorField) ?>>
             </label>
           </div>
         </div>
@@ -227,11 +239,19 @@ $captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['qu
         <?php if ($showCaptcha): ?>
           <div class="card" style="margin:16px 0;padding:16px;border:1px solid rgba(255,255,255,.12)">
             <strong>تأیید انسان بودن</strong>
-            <p class="hint" style="margin:6px 0 12px">برای ادامه حاصل عبارت زیر را وارد کنید:</p>
-            <div class="ltr" style="font-size:1.4rem;font-weight:700;letter-spacing:2px;margin-bottom:10px"><?= e($captchaQuestion) ?> = ?</div>
-            <input type="text" name="captcha_answer" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="پاسخ" required>
+            <label for="captchaAnswer" class="hint" style="display:block;margin:6px 0 12px">برای ادامه، حاصل این عبارت را وارد کنید:
+              <span class="ltr" style="display:block;font-size:1.4rem;font-weight:700;letter-spacing:2px;margin-top:10px;color:var(--ink)"><?= e($captchaQuestion) ?> = ?</span>
+            </label>
+            <input type="text" id="captchaAnswer" name="captcha_answer" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="پاسخ" required<?= reg_error_attrs('captcha_answer', $errorField) ?>>
           </div>
         <?php endif; ?>
+
+        <div class="form-section">
+          <label class="consent-check">
+            <input type="checkbox" name="accept_terms" value="1" required<?= ($_POST['accept_terms'] ?? '') === '1' ? ' checked' : '' ?><?= reg_error_attrs('accept_terms', $errorField) ?>>
+            <span><a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/privacy" target="_blank" rel="noopener">سیاست حریم خصوصی</a> را خوانده‌ام و می‌پذیرم. <span class="req">*</span></span>
+          </label>
+        </div>
 
         <div class="form-actions"><button type="submit" class="btn btn-primary btn-block">ثبت‌نام و ارسال کد تأیید</button></div>
       </form>
