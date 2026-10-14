@@ -102,11 +102,31 @@ $sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا 
   <div class="auth-shell">
     <header class="auth-top rise" style="--d:0">
       <a href="/landing.php" class="auth-brand" aria-label="ELLSMS — صفحه‌ی اصلی">
-        <svg class="auth-mark" viewBox="0 0 40 34" aria-hidden="true">
-          <path d="M10 2h22a6 6 0 0 1 6 6v11a6 6 0 0 1-6 6H19l-7 7v-7h-2a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6Z" fill="#2e63f6"/>
-          <circle cx="15" cy="13.5" r="2" fill="#fff"/><circle cx="21" cy="13.5" r="2" fill="#fff"/><circle cx="27" cy="13.5" r="2" fill="#fff"/>
+        <?php /* The brand mark redrawn from logo.png for a dark ground: the speech bubble with its motion
+                 streaks and the envelope behind it. The three dots pulse like someone typing. */ ?>
+        <svg class="auth-mark" viewBox="0 0 54 40" aria-hidden="true">
+          <defs>
+            <linearGradient id="authMarkFill" gradientUnits="userSpaceOnUse" x1="13" y1="2" x2="40" y2="36">
+              <stop offset="0" stop-color="#3f8cff"/><stop offset="1" stop-color="#4c48f0"/>
+            </linearGradient>
+          </defs>
+          <g class="auth-mark-streaks" stroke="#4f8fff" stroke-width="2.6" stroke-linecap="round">
+            <path d="M2 9.5h7"/><path d="M5 15.5h4"/><path d="M1 21.5h8"/>
+          </g>
+          <g transform="rotate(-11 42 24)">
+            <rect x="31" y="15" width="21" height="15" rx="3" fill="#eef2fb"/>
+            <path d="M32.2 16.4 41.5 23.6 50.8 16.4" fill="none" stroke="#b8c3dc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+          <rect x="13" y="2" width="29" height="26" rx="8" fill="url(#authMarkFill)"/>
+          <path d="M17 24v10.6c0 .8.9 1.2 1.5.7L29 25.6Z" fill="url(#authMarkFill)"/>
+          <g class="auth-mark-dots" fill="#fff">
+            <circle cx="21" cy="15" r="2.3"/><circle cx="27.5" cy="15" r="2.3"/><circle cx="34" cy="15" r="2.3"/>
+          </g>
         </svg>
-        <span class="auth-brand-text"><b dir="ltr">ELLSMS</b><small>پنل هوشمند پیامک</small></span>
+        <span class="auth-brand-text">
+          <b class="auth-wordmark" dir="ltr"><span>ELL</span>SMS</b>
+          <small>پنل هوشمند پیامک</small>
+        </span>
       </a>
       <a href="/landing.php" class="auth-toplink">درباره‌ی ELLSMS</a>
     </header>
