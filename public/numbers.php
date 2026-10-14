@@ -130,6 +130,14 @@ $panelUsers = backend_panel_access_users();
 $gateways = db()->query("SELECT id, code, name, send_enabled, is_mock, default_slot FROM ellsms_sms_gateways WHERE status = 'active' ORDER BY name")->fetchAll();
 $gatewaysById = array_column($gateways, null, 'id');
 
+// Per-line MO / delivery-report forwarding (/number-forwards.php), shown here as a status + link.
+$forwards = [];
+if (number_forward_available()) {
+    foreach (db()->query('SELECT number, mo_enabled, mo_url, dlr_enabled, dlr_url, consecutive_failures FROM ellsms_number_forwards') as $row) {
+        $forwards[(string)$row['number']] = $row;
+    }
+}
+
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
@@ -147,7 +155,7 @@ require __DIR__ . '/../app/views/header.php';
   <h2>همه‌ی شماره‌ها</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>شماره</th><th>برچسب</th><th>تخصیص به کاربر</th><th>کاربران اشتراکی (فقط ارسال)</th><th>درگاه ارسال</th><th></th></tr>
+    <tr><th>شماره</th><th>برچسب</th><th>تخصیص به کاربر</th><th>کاربران اشتراکی (فقط ارسال)</th><th>درگاه ارسال</th><th>ارسال به URL</th><th></th></tr>
     <?php foreach ($numbers as $n): ?>
       <tr>
         <td class="msisdn"><?= e($n['number']) ?></td>
@@ -217,6 +225,16 @@ require __DIR__ . '/../app/views/header.php';
           <?php endif; ?>
         </td>
         <td>
+          <?php $fw = $forwards[(string)$n['number']] ?? null; ?>
+          <?php if ($fw): ?>
+            <?php foreach (['mo' => 'دریافتی', 'dlr' => 'تحویل'] as $kind => $kindLabel): if ($fw[$kind . '_url'] === '') continue; ?>
+              <span class="badge <?= (int)$fw[$kind . '_enabled'] ? 'badge-ok' : 'badge-off' ?>"><?= $kindLabel ?></span>
+            <?php endforeach; ?>
+            <?php if ((int)$fw['consecutive_failures'] >= NUMBER_FORWARD_WARN_FAILURES): ?><span style="color:var(--danger,#b00)" title="خطاهای پشت سر هم">⚠</span><?php endif; ?>
+          <?php endif; ?>
+          <a class="btn btn-sm" href="/number-forwards.php?edit=<?= e(rawurlencode((string)$n['number'])) ?>#lines">تنظیم</a>
+        </td>
+        <td>
           <form method="post" onsubmit="return confirm('این شماره حذف شود؟')">
             <?= csrf_field() ?>
             <input type="hidden" name="do" value="delete">
@@ -226,7 +244,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$numbers): ?><tr><td colspan="6" class="empty">هنوز شماره‌ای ثبت نشده.</td></tr><?php endif; ?>
+    <?php if (!$numbers): ?><tr><td colspan="7" class="empty">هنوز شماره‌ای ثبت نشده.</td></tr><?php endif; ?>
   </table>
   </div>
   <p class="hint">وقتی کاربری حداقل یک شماره تخصیص‌یافته داشته باشد، در ارسال پیامک و منشی پیامک به‌جای نوشتن آزاد، از میان شماره‌های خودش انتخاب می‌کند.</p>
@@ -237,6 +255,11 @@ require __DIR__ . '/../app/views/header.php';
     اشتراک <b>فقط اجازه‌ی ارسال</b> می‌دهد: صندوق دریافت، منشی پیامک و فهرست لغو عضویتِ این خط همچنان فقط برای مالک
     (یا سازمان مالک) دیده می‌شود. برای اینکه کاربری پیام‌های ورودی یک خط را هم ببیند، باید خط به خودش یا به سازمانش
     تخصیص داده شود، نه اشتراکی.
+  </p>
+  <p class="hint">
+    <b>ارسال به URL:</b> پیامک‌های دریافتی روی هر خط و گزارش تحویل پیامک‌های ارسالی از آن را به آدرس http/https مشتری
+    می‌فرستد (مثل receiveUrl / deliveryUrl در وصال). تنظیمات، گزارش و خاموش/روشن کردن سرویس در
+    <a href="/number-forwards.php">ارسال دریافتی و تحویل به URL</a>.
   </p>
   <p class="hint">
     <b>درگاه ارسال:</b> هر پیامی که از این شماره ارسال شود فقط از درگاه انتخاب‌شده می‌رود (پیامک ورودی تغییری نمی‌کند).

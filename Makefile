@@ -34,7 +34,7 @@
         maintenance-on maintenance-off maintenance-status \
         release-preflight release-plan release-apply \
         api-keys-status webhooks-status webhook-retry-failed \
-        webhook-prune-dry-run webhook-prune webhook-worker-once idempotency-prune-dry-run idempotency-prune \
+        webhook-prune-dry-run webhook-prune webhook-worker-once number-forward-worker-once idempotency-prune-dry-run idempotency-prune \
         billing-backfill billing-backfill-dry-run billing-plans subscription-integrity-check \
         subscription-lifecycle subscription-lifecycle-dry-run usage-status usage-reconcile usage-reconcile-apply \
         sms-pricing-integrity-check sms-pricing-status sms-pricing-status-json sms-price-simulate \
@@ -151,6 +151,7 @@ help:
 	@echo "  make webhook-prune-dry-run  read-only: reports which delivery/event rows retention would delete"
 	@echo "  make webhook-prune        MUTATION: deletes them (dead_letter rows kept unless DEAD_LETTER=1)"
 	@echo "  make webhook-worker-once  run one webhook-delivery pass in a throwaway container"
+	@echo "  make number-forward-worker-once  run one MO/DLR URL-forwarding pass (docs/number-forwarding.md)"
 	@echo "  make idempotency-prune-dry-run  read-only: reports which COMPLETED idempotency records retention would delete"
 	@echo "  make idempotency-prune    MUTATION: deletes them -- see docs/public-api.md"
 	@echo ""
@@ -804,6 +805,11 @@ webhook-prune:
 # persistent webhook-worker service (same atomic-claim safety as worker-once/bulk items, Phase 4).
 webhook-worker-once:
 	docker compose run --rm worker php cron/webhook-worker.php --once
+
+# Runs one per-line MO/DLR forwarding pass in a throwaway container -- safe alongside the persistent
+# number-forward-worker service (rows are claimed atomically). See docs/number-forwarding.md.
+number-forward-worker-once:
+	docker compose run --rm worker php cron/number-forward-worker.php --once
 
 # Read-only. Reports how many COMPLETED Idempotency-Key records are older than API_IDEMPOTENCY_TTL_HOURS.
 idempotency-prune-dry-run:

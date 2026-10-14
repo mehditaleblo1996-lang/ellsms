@@ -97,6 +97,7 @@ if (PHP_SAPI !== 'cli') {
                 '/invoices.php' => '/billing/invoices',
                 '/api-keys.php' => '/developers/api-keys',
                 '/webhooks.php' => '/developers/webhooks',
+                '/number-forwards.php' => '/developers/line-forwarding',
                 '/tickets.php' => '/support/tickets',
                 '/users.php' => '/admin/users',
                 '/user-send-policies.php' => '/admin/users/send-policies',

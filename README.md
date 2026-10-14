@@ -203,6 +203,12 @@ the panel's web session and the internal backend-platform HMAC scheme above. **D
 `docs/public-api.md` and `docs/webhooks.md` for the full reference, and
 `docs/phase-12-final-report.md` for the acceptance-criteria record.
 
+**Per-line MO / delivery-report forwarding.** Separately from webhooks, every line can call the
+customer's own `http(s)` URL template — Vesal-compatible `${originator}`/`${content}`/`${status}`/
+`${dl_time}` placeholders — for each message received on it and each final delivery report of a
+message sent from it. Set by the line's owner or a platform admin on `/number-forwards.php`, delivered
+by its own `number-forward-worker` service with retries. See `docs/number-forwarding.md`.
+
 ## Plans, subscriptions & quotas
 
 Phase 13 adds a SaaS control plane — plans, subscriptions, per-organization entitlements and usage
