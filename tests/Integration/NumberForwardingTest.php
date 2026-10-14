@@ -262,6 +262,93 @@ final class NumberForwardingTest extends TestCase
         $this->assertSame(2, (int)$row['attempt_count']);
     }
 
+    public function testALinesOwnAttemptCountWins(): void
+    {
+        set_setting('number_forward_max_attempts', '5');
+        \number_forward_cache_reset();
+        $this->configure(['mo_enabled' => '1', 'mo_url' => $this->url('/status/502'), 'max_attempts' => '1']);
+        \number_forward_enqueue_mo($this->inbound(1000000000000851));
+        $this->runWorkerOnce();
+        $this->assertSame('dead', $this->queueRows()[0]['status'], 'one attempt for this line, not the default five');
+    }
+
+    public function testASlowUrlDoesNotHoldUpTheCallsBehindIt(): void
+    {
+        set_setting('number_forward_concurrency', '2');
+        \number_forward_cache_reset();
+        // Two slow (1.5 s) and four fast forwards through two slots. Sent in waves of two this takes
+        // ~3 s (each slow one stalls its wave); with the sliding window the fast ones flow through
+        // the free slot while the first slow one runs, and the whole pass takes ~1.6 s.
+        // Each slow URL gets its own receiver: PHP's built-in server can accept two simultaneous
+        // connections into one worker and serve them one after the other, which would measure the
+        // test server instead of the worker.
+        $slowServers = [];
+        $slowUrls = [];
+        foreach ([0, 1] as $n) {
+            $port = $this->receiverPort + 300 + $n;
+            $slowServers[] = proc_open([PHP_BINARY, '-S', "127.0.0.1:{$port}", dirname(__DIR__) . '/fixtures/fake_forward_receiver.php'],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            $slowUrls[] = "http://127.0.0.1:{$port}/sleep/1500";
+        }
+        $urls = [$slowUrls[0], $this->url('/fast'), $this->url('/fast'), $this->url('/fast'), $slowUrls[1], $this->url('/fast')];
+        try {
+            foreach ([0, 1] as $n) {
+                for ($i = 0; $i < 30; $i++) {
+                    usleep(100000);
+                    $conn = @fsockopen('127.0.0.1', $this->receiverPort + 300 + $n, $errno, $errstr, 0.2);
+                    if ($conn) { fclose($conn); break; }
+                }
+            }
+            foreach ($urls as $i => $url) {
+                db()->prepare('INSERT INTO ellsms_number_forwards (number, mo_enabled, mo_url) VALUES (?,1,?)
+                               ON DUPLICATE KEY UPDATE mo_url = VALUES(mo_url)')->execute([$this->line . $i, $url]);
+                \number_forward_cache_reset();
+                \number_forward_enqueue_mo(['id' => 1000000000000860 + $i, 'originator' => '98912', 'destination' => $this->line . $i, 'content' => 'x']);
+            }
+            $startedAt = microtime(true);
+            $this->runWorkerOnce();
+            $elapsed = microtime(true) - $startedAt;
+            $st = db()->prepare("SELECT COUNT(*) FROM ellsms_number_forward_queue WHERE number LIKE ? AND status = 'delivered'");
+            $st->execute([$this->line . '_']);
+            $this->assertSame(6, (int)$st->fetchColumn());
+            $this->assertLessThan(2.6, $elapsed, 'the slow calls overlapped instead of each stalling a wave');
+        } finally {
+            foreach ($slowServers as $proc) { proc_terminate($proc); proc_close($proc); }
+            db()->prepare('DELETE FROM ellsms_number_forward_queue WHERE number LIKE ?')->execute([$this->line . '_']);
+            db()->prepare('DELETE FROM ellsms_number_forwards WHERE number LIKE ?')->execute([$this->line . '_']);
+        }
+    }
+
+    public function testTheSupervisorRunsTheConfiguredNumberOfWorkers(): void
+    {
+        if (!function_exists('pcntl_fork') || !function_exists('posix_kill')) {
+            $this->markTestSkipped('pcntl/posix are not available.');
+        }
+        set_setting('number_forward_workers', '3');
+        $env = ['APP_ENV' => 'testing'];
+        foreach (['BACKEND_DB_HOST', 'BACKEND_DB_PORT', 'BACKEND_DB_NAME', 'BACKEND_DB_USER', 'BACKEND_DB_PASS'] as $k) {
+            $env[$k] = (string)getenv($k);
+        }
+        $proc = proc_open([PHP_BINARY, dirname(__DIR__, 2) . '/cron/number-forward-worker.php'], [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']], $pipes, null, $env);
+        $pid = proc_get_status($proc)['pid'];
+        $children = static fn(): int => count(array_filter(explode("\n", trim((string)shell_exec('pgrep -P ' . (int)$pid)))));
+        $waitFor = static function (callable $check): bool {
+            for ($i = 0; $i < 80; $i++) { if ($check()) return true; usleep(250000); }
+            return false;
+        };
+        try {
+            $this->assertTrue($waitFor(fn() => $children() === 3), 'three workers started');
+            set_setting('number_forward_workers', '1');
+            $this->assertTrue($waitFor(fn() => $children() === 1), 'lowered to one without a restart');
+            posix_kill($pid, SIGTERM);
+            $this->assertTrue($waitFor(fn() => !proc_get_status($proc)['running']), 'stops on SIGTERM');
+            $this->assertSame(0, $children());
+        } finally {
+            if (proc_get_status($proc)['running']) { proc_terminate($proc, 9); }
+            proc_close($proc);
+        }
+    }
+
     public function testNothingIsQueuedOrSentWhenSwitchedOff(): void
     {
         $this->configure(['mo_enabled' => '0', 'mo_url' => $this->url('/mo')]);

@@ -58,8 +58,11 @@ const NUMBER_FORWARD_SETTINGS = [
     'number_forward_user_edit'       => ['1', 0, 1],   // customers may set their own lines' URLs
     'number_forward_allow_http'      => ['1', 0, 1],   // plain http:// allowed (Vesal allowed it)
     'number_forward_timeout_seconds' => ['10', 1, 60],
-    'number_forward_max_attempts'    => ['5', 1, 20],
-    'number_forward_concurrency'     => ['10', 1, 50], // parallel HTTP calls per worker pass
+    'number_forward_max_attempts'    => ['5', 1, 20],     // default for a line without its own value
+    'number_forward_retry_base_seconds' => ['30', 5, 3600],  // wait before the 2nd attempt; doubles each time
+    'number_forward_retry_max_seconds'  => ['1800', 10, 86400], // the longest wait between attempts
+    'number_forward_workers'         => ['4', 1, 32],     // parallel worker processes (the supervisor forks them)
+    'number_forward_concurrency'     => ['20', 1, 100],   // simultaneous HTTP calls per worker process
     'number_forward_retention_days'  => ['30', 1, 365],
 ];
 
@@ -87,6 +90,22 @@ function number_forward_setting_int(string $key): int {
     return max($min, min($max, $int));
 }
 
+/**
+ * Wait before the next try after $attemptCount failed attempts: base, 2×base, 4×base … capped at the
+ * maximum (both admin settings). With the defaults: 30 s, 1 m, 2 m, 4 m, 8 m … 30 m.
+ */
+function number_forward_retry_delay_seconds(int $attemptCount): int {
+    $base = number_forward_setting_int('number_forward_retry_base_seconds');
+    $max = max($base, number_forward_setting_int('number_forward_retry_max_seconds'));
+    return (int)min($max, $base * (2 ** min(max(0, $attemptCount - 1), 20)));
+}
+
+/** A line's own attempt count when it has one (1..20), else the service-wide setting. */
+function number_forward_max_attempts_for(?array $config): int {
+    $own = (int)($config['max_attempts'] ?? 0);
+    return $own >= 1 ? min(20, $own) : number_forward_setting_int('number_forward_max_attempts');
+}
+
 function number_forward_enabled(): bool {
     return number_forward_setting('number_forward_enabled') === '1';
 }
@@ -102,7 +121,7 @@ function number_forward_http_allowed(): bool {
 /** Saves the admin's settings form. Unknown keys are ignored, numbers are clamped to their range. */
 function number_forward_settings_save(array $input): void {
     foreach (NUMBER_FORWARD_SETTINGS as $key => [$default, $min, $max]) {
-        if ($max === 1) {
+        if ($min === 0 && $max === 1) {
             set_setting($key, !empty($input[$key]) ? '1' : '0');
             continue;
         }
@@ -243,14 +262,16 @@ function number_forward_save(string $number, array $input, int $actorUserId): ar
     $method = strtoupper((string)($input['http_method'] ?? 'GET')) === 'POST' ? 'POST' : 'GET';
     $format = ($input['post_format'] ?? 'form') === 'json' ? 'json' : 'form';
     $tlsVerify = !empty($input['tls_verify']) ? 1 : 0;
+    $rawAttempts = trim((string)($input['max_attempts'] ?? ''));
+    $maxAttempts = ctype_digit($rawAttempts) ? max(0, min(20, (int)$rawAttempts)) : 0;
 
     db()->prepare(
-        'INSERT INTO ellsms_number_forwards (number, mo_enabled, mo_url, dlr_enabled, dlr_url, http_method, post_format, tls_verify, updated_by)
-         VALUES (?,?,?,?,?,?,?,?,?)
+        'INSERT INTO ellsms_number_forwards (number, mo_enabled, mo_url, dlr_enabled, dlr_url, http_method, post_format, tls_verify, max_attempts, updated_by)
+         VALUES (?,?,?,?,?,?,?,?,?,?)
          ON DUPLICATE KEY UPDATE mo_enabled = VALUES(mo_enabled), mo_url = VALUES(mo_url),
            dlr_enabled = VALUES(dlr_enabled), dlr_url = VALUES(dlr_url), http_method = VALUES(http_method),
-           post_format = VALUES(post_format), tls_verify = VALUES(tls_verify), updated_by = VALUES(updated_by), consecutive_failures = 0'
-    )->execute([$line, $values['mo_enabled'], $values['mo_url'], $values['dlr_enabled'], $values['dlr_url'], $method, $format, $tlsVerify, $actorUserId ?: null]);
+           post_format = VALUES(post_format), tls_verify = VALUES(tls_verify), max_attempts = VALUES(max_attempts), updated_by = VALUES(updated_by), consecutive_failures = 0'
+    )->execute([$line, $values['mo_enabled'], $values['mo_url'], $values['dlr_enabled'], $values['dlr_url'], $method, $format, $tlsVerify, $maxAttempts, $actorUserId ?: null]);
     number_forward_cache_reset();
     audit($actorUserId, 'number_forward.save', sprintf(
         '%s mo=%d dlr=%d %s tls_verify=%d', $line, $values['mo_enabled'], $values['dlr_enabled'], $method, $tlsVerify
@@ -547,7 +568,7 @@ function number_forward_build_request(array $config, string $kind, array $vars, 
 }
 
 /**
- * Runs requests in parallel (curl_multi, at most $concurrency at once) and returns one result per key:
+ * Runs requests in parallel (curl_multi sliding window, at most $concurrency at once) and returns one result per key:
  * ['outcome' => 'delivered'|'retry'|'permanent_failure', 'http_status', 'error_code', 'response_excerpt', 'duration_ms'].
  *
  * Every target is re-checked right here and the connection pinned to the checked address; redirects
@@ -562,7 +583,7 @@ function number_forward_build_request(array $config, string $kind, array $vars, 
  */
 function number_forward_http_execute(array $requests, int $concurrency, int $timeoutSeconds): array {
     $results = [];
-    $pending = [];
+    $queue = [];
     foreach ($requests as $key => $request) {
         // http:// switched off by the admin after the URL was saved: no longer called.
         if (strtolower((string)parse_url($request['url'], PHP_URL_SCHEME)) === 'http' && !number_forward_http_allowed()) {
@@ -574,84 +595,112 @@ function number_forward_http_execute(array $requests, int $concurrency, int $tim
             $results[$key] = ['outcome' => 'permanent_failure', 'http_status' => null, 'error_code' => 'ssrf_' . $target['reason'], 'response_excerpt' => null, 'duration_ms' => 0];
             continue;
         }
-        $pending[$key] = $request + ['target' => $target];
+        $queue[$key] = $request + ['target' => $target];
     }
+    if ($queue === []) return $results;
 
-    foreach (array_chunk($pending, max(1, $concurrency), true) as $chunk) {
-        $multi = curl_multi_init();
-        $handles = [];
-        $buffers = [];
-        foreach ($chunk as $key => $request) {
-            $buffers[$key] = '';
-            $ch = curl_init($request['url']);
-            $options = [
-                CURLOPT_CUSTOMREQUEST   => $request['method'],
-                CURLOPT_HTTPHEADER      => $request['headers'],
-                CURLOPT_TIMEOUT         => $timeoutSeconds,
-                CURLOPT_CONNECTTIMEOUT  => min(5, $timeoutSeconds),
-                CURLOPT_FOLLOWLOCATION  => false,
-                CURLOPT_SSL_VERIFYPEER  => !empty($request['tls_verify']),
-                CURLOPT_SSL_VERIFYHOST  => !empty($request['tls_verify']) ? 2 : 0,
-                CURLOPT_NOSIGNAL        => true,
-                CURLOPT_RETURNTRANSFER  => false,
-                CURLOPT_WRITEFUNCTION   => function ($ch, string $chunk) use (&$buffers, $key): int {
-                    $room = NUMBER_FORWARD_MAX_RESPONSE_BYTES - strlen($buffers[$key]);
-                    if ($room > 0) $buffers[$key] .= substr($chunk, 0, $room);
-                    return strlen($chunk);
-                },
-            ];
-            if ($request['body'] !== null) {
-                $options[CURLOPT_POSTFIELDS] = $request['body'];
-            }
-            $ip = $request['target']['ip'] ?? null;
-            if ($ip !== null) {
-                $pin = str_contains($ip, ':') ? '[' . $ip . ']' : $ip;
-                $options[CURLOPT_RESOLVE] = [$request['target']['host'] . ':' . $request['target']['port'] . ':' . $pin];
-            }
-            curl_setopt_array($ch, $options);
-            curl_multi_add_handle($multi, $ch);
-            $handles[$key] = $ch;
+    // A sliding window, not waves: the moment any call finishes the next one starts, so one slow
+    // customer URL holds one slot for at most the timeout and never stalls the calls behind it.
+    $concurrency = max(1, $concurrency);
+    $multi = curl_multi_init();
+    $active = [];   // spl_object_id(handle) => [key, handle]
+    $buffers = [];
+    $start = static function ($key, array $request) use ($multi, &$active, &$buffers, $timeoutSeconds): void {
+        $buffers[$key] = '';
+        $verify = !empty($request['tls_verify']);
+        $ch = curl_init($request['url']);
+        $options = [
+            CURLOPT_CUSTOMREQUEST   => $request['method'],
+            CURLOPT_HTTPHEADER      => $request['headers'],
+            CURLOPT_TIMEOUT         => $timeoutSeconds,
+            CURLOPT_CONNECTTIMEOUT  => min(5, $timeoutSeconds),
+            CURLOPT_FOLLOWLOCATION  => false,
+            CURLOPT_SSL_VERIFYPEER  => $verify,
+            CURLOPT_SSL_VERIFYHOST  => $verify ? 2 : 0,
+            CURLOPT_NOSIGNAL        => true,
+            CURLOPT_RETURNTRANSFER  => false,
+            CURLOPT_WRITEFUNCTION   => function ($ch, string $chunk) use (&$buffers, $key): int {
+                $room = NUMBER_FORWARD_MAX_RESPONSE_BYTES - strlen($buffers[$key]);
+                if ($room > 0) $buffers[$key] .= substr($chunk, 0, $room);
+                return strlen($chunk);
+            },
+        ];
+        if ($request['body'] !== null) {
+            $options[CURLOPT_POSTFIELDS] = $request['body'];
         }
+        $ip = $request['target']['ip'] ?? null;
+        if ($ip !== null) {
+            $pin = str_contains($ip, ':') ? '[' . $ip . ']' : $ip;
+            $options[CURLOPT_RESOLVE] = [$request['target']['host'] . ':' . $request['target']['port'] . ':' . $pin];
+        }
+        curl_setopt_array($ch, $options);
+        curl_multi_add_handle($multi, $ch);
+        $active[spl_object_id($ch)] = [$key, $ch];
+    };
 
-        $startedAt = microtime(true);
-        $finishedAt = [];
+    while ($queue !== [] || $active !== []) {
+        while (count($active) < $concurrency && $queue !== []) {
+            $key = array_key_first($queue);
+            $start($key, $queue[$key]);
+            unset($queue[$key]);
+        }
         do {
             $status = curl_multi_exec($multi, $running);
-            while ($info = curl_multi_info_read($multi)) {
-                $done = array_search($info['handle'], $handles, true);
-                if ($done !== false) $finishedAt[$done] = microtime(true);
-            }
-            if ($running > 0) curl_multi_select($multi, 0.5);
-        } while ($running > 0 && $status === CURLM_OK);
-
-        foreach ($handles as $key => $ch) {
-            $durationMs = (int)((($finishedAt[$key] ?? microtime(true)) - $startedAt) * 1000);
-            $errno = curl_errno($ch);
-            $httpStatus = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        } while ($status === CURLM_CALL_MULTI_PERFORM);
+        $finished = false;
+        while ($info = curl_multi_info_read($multi)) {
+            $ch = $info['handle'];
+            $id = spl_object_id($ch);
+            if (!isset($active[$id])) continue;
+            [$key] = $active[$id];
+            unset($active[$id]);
+            $results[$key] = number_forward_http_result((int)$info['result'], (int)curl_getinfo($ch, CURLINFO_HTTP_CODE),
+                (int)round((float)curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000), $buffers[$key]);
+            unset($buffers[$key]);
             curl_multi_remove_handle($multi, $ch);
             curl_close($ch);
-            $excerpt = mb_strimwidth(mb_convert_encoding($buffers[$key], 'UTF-8', 'UTF-8'), 0, 1000, '…', 'UTF-8');
-            if ($errno === CURLE_OPERATION_TIMEDOUT) {
-                $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'timeout', 'response_excerpt' => null, 'duration_ms' => $durationMs];
-            } elseif (in_array($errno, NUMBER_FORWARD_TLS_ERRNOS, true)) {
-                $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'tls_error', 'response_excerpt' => null, 'duration_ms' => $durationMs];
-            } elseif ($errno !== 0) {
-                $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'connection_failed', 'response_excerpt' => null, 'duration_ms' => $durationMs];
-            } elseif ($httpStatus >= 200 && $httpStatus < 300) {
-                $results[$key] = ['outcome' => 'delivered', 'http_status' => $httpStatus, 'error_code' => null, 'response_excerpt' => $excerpt, 'duration_ms' => $durationMs];
-            } else {
-                $results[$key] = [
-                    'outcome'          => webhook_http_status_is_retryable($httpStatus) ? 'retry' : 'permanent_failure',
-                    'http_status'      => $httpStatus ?: null,
-                    'error_code'       => 'http_' . $httpStatus,
-                    'response_excerpt' => $excerpt,
-                    'duration_ms'      => $durationMs,
-                ];
-            }
+            $finished = true;
         }
-        curl_multi_close($multi);
+        if ($status !== CURLM_OK) {
+            foreach ($active as [$key, $ch]) {
+                $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'connection_failed', 'response_excerpt' => null, 'duration_ms' => 0];
+                curl_multi_remove_handle($multi, $ch);
+                curl_close($ch);
+            }
+            $active = [];
+        } elseif (!$finished && $active !== []) {
+            curl_multi_select($multi, 0.2);
+        }
+    }
+    curl_multi_close($multi);
+    foreach ($queue as $key => $_) {
+        $results[$key] ??= ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'connection_failed', 'response_excerpt' => null, 'duration_ms' => 0];
     }
     return $results;
+}
+
+/** Pure: one finished call's curl error number, HTTP status, time and (capped) body as a result row. */
+function number_forward_http_result(int $errno, int $httpStatus, int $durationMs, string $body): array {
+    $excerpt = mb_strimwidth(mb_convert_encoding($body, 'UTF-8', 'UTF-8'), 0, 1000, '…', 'UTF-8');
+    if ($errno === CURLE_OPERATION_TIMEDOUT) {
+        return ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'timeout', 'response_excerpt' => null, 'duration_ms' => $durationMs];
+    }
+    if (in_array($errno, NUMBER_FORWARD_TLS_ERRNOS, true)) {
+        return ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'tls_error', 'response_excerpt' => null, 'duration_ms' => $durationMs];
+    }
+    if ($errno !== 0) {
+        return ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'connection_failed', 'response_excerpt' => null, 'duration_ms' => $durationMs];
+    }
+    if ($httpStatus >= 200 && $httpStatus < 300) {
+        return ['outcome' => 'delivered', 'http_status' => $httpStatus, 'error_code' => null, 'response_excerpt' => $excerpt, 'duration_ms' => $durationMs];
+    }
+    return [
+        'outcome'          => webhook_http_status_is_retryable($httpStatus) ? 'retry' : 'permanent_failure',
+        'http_status'      => $httpStatus ?: null,
+        'error_code'       => 'http_' . $httpStatus,
+        'response_excerpt' => $excerpt,
+        'duration_ms'      => $durationMs,
+    ];
 }
 
 /**
@@ -744,7 +793,8 @@ function number_forward_run_pass(int $batchSize): int {
     );
     foreach ($results as $key => $result) {
         try {
-            number_forward_finish($byKey[(string)$key], $result, $requests[$key]['url']);
+            $row = $byKey[(string)$key];
+            number_forward_finish($row, $result, $requests[$key]['url'], $configs[(string)$row['number']] ?? null);
         } catch (Throwable $t) {
             Logger::error('number_forward.finish_failed', ['queue_id' => $key, 'exception' => $t]);
         }
@@ -753,7 +803,7 @@ function number_forward_run_pass(int $batchSize): int {
 }
 
 /** Records one attempt's result on its row and on the line's health columns. */
-function number_forward_finish(array $row, array $result, ?string $url): void {
+function number_forward_finish(array $row, array $result, ?string $url, ?array $config = null): void {
     $outcome = $result['outcome'];
     $attempts = (int)$row['attempt_count'];
     $excerpt = $result['response_excerpt'] !== null ? mb_substr((string)$result['response_excerpt'], 0, 1000) : null;
@@ -764,13 +814,13 @@ function number_forward_finish(array $row, array $result, ?string $url): void {
         $status = 'delivered';
     } elseif ($outcome === 'cancelled') {
         $status = 'cancelled';
-    } elseif ($outcome === 'retry' && $attempts < number_forward_setting_int('number_forward_max_attempts')) {
+    } elseif ($outcome === 'retry' && $attempts < number_forward_max_attempts_for($config)) {
         $status = 'pending';
     } else {
         $status = $outcome === 'retry' ? 'dead' : 'failed';
     }
 
-    $delay = $status === 'pending' ? job_retry_backoff_seconds($attempts) : 0;
+    $delay = $status === 'pending' ? number_forward_retry_delay_seconds($attempts) : 0;
     db()->prepare(
         "UPDATE ellsms_number_forward_queue
          SET status = ?, http_status = ?, error_code = ?, response_excerpt = ?, duration_ms = ?, last_url = COALESCE(?, last_url),

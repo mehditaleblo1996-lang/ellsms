@@ -49,7 +49,7 @@ function menu_catalog(): array {
         'integrations'  => ['افزونه ووکامرس و SDK', '🧩', '/integrations.php',  ['integrations.php']],
         'remote_db'     => ['اتصال به دیتابیس',     '🗄', '/remote-db.php',     ['remote-db.php']],
         'webhooks'      => ['وب‌هوک‌ها',              '🔗', '/webhooks.php',      ['webhooks.php']],
-        'number_forwards' => ['ارسال دریافتی و تحویل به URL', '📡', '/number-forwards.php', ['number-forwards.php']],
+        'number_forwards' => ['فوروارد پیامک به URL', '📡', '/number-forwards.php', ['number-forwards.php']],
         'billing'       => ['اشتراک و مصرف',        '📦', '/billing.php',       ['billing.php']],
     ];
 }

@@ -1459,3 +1459,38 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
   .lp-legal-identity { grid-template-columns: 1fr; }
   .lp-legal-identity dd { margin-bottom: 8px; }
 }
+/* ---------- Line forwarding to URL (public/number-forwards.php) ---------- */
+.fwd-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--canvas); font-size: var(--fs-sm); }
+.fwd-status.is-on { background: var(--ok-bg); border-color: #bfe8d0; color: var(--ok); }
+.fwd-status.is-off { background: var(--err-bg); border-color: #f5c2cc; color: var(--err); }
+.fwd-status .fwd-meta { color: var(--muted); font-weight: 400; margin-inline-start: auto; }
+.fwd-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: #c4c9d6; flex: 0 0 auto; }
+.fwd-dot.is-on { background: #22a35a; box-shadow: 0 0 0 3px rgba(34,163,90,.15); }
+.fwd-dot.is-warn { background: #e0a106; box-shadow: 0 0 0 3px rgba(224,161,6,.15); }
+.fwd-dot.is-err { background: var(--err); box-shadow: 0 0 0 3px rgba(192,34,58,.14); }
+.fwd-lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.fwd-line { border: 1px solid var(--line); border-radius: 14px; background: var(--card); display: flex; flex-direction: column; transition: box-shadow .15s ease, border-color .15s ease; }
+.fwd-line:hover { box-shadow: 0 6px 18px rgba(11,16,35,.06); border-color: #d6d2f2; }
+.fwd-line.is-editing { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(74,50,232,.12); }
+.fwd-line-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px 10px; }
+.fwd-line-number { font-size: var(--fs-lg); font-weight: 800; }
+.fwd-line-label { color: var(--muted); font-size: var(--fs-xs); }
+.fwd-line-row { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-top: 1px dashed var(--line); font-size: var(--fs-sm); }
+.fwd-line-row .fwd-kind { font-weight: 700; min-width: 64px; }
+.fwd-line-row .fwd-url { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; font-size: var(--fs-xs); }
+.fwd-line-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; margin-top: auto; border-top: 1px solid var(--line); background: var(--canvas); border-radius: 0 0 14px 14px; font-size: var(--fs-xs); color: var(--muted); }
+.fwd-url-input { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.fwd-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; direction: ltr; }
+.fwd-chip { border: 1px solid var(--line); background: var(--tint); color: var(--indigo); border-radius: 999px; padding: 2px 10px; font: 600 var(--fs-2xs)/1.8 var(--font-mono); cursor: pointer; direction: ltr; }
+.fwd-chip:hover { background: #e2e7ff; }
+.fwd-schedule { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.fwd-schedule span { background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; font-size: var(--fs-2xs); }
+/* An on/off switch drawn over a real checkbox (still a checkbox for forms, keyboards and screen readers). */
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; margin: 0; font-weight: 700; }
+.switch input { appearance: none; -webkit-appearance: none; width: 40px; height: 22px; border-radius: 999px; background: #d3d7e3; position: relative; cursor: pointer; transition: background .15s ease; flex: 0 0 auto; margin: 0; }
+.switch input::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(11,16,35,.2); transition: inset-inline-start .15s ease; }
+.switch input:checked { background: var(--indigo); }
+.switch input:checked::after { inset-inline-start: 21px; }
+.switch input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.switch input:disabled { opacity: .5; cursor: default; }
+.switch .switch-sub { display: block; font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }

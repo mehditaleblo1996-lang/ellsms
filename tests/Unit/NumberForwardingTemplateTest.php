@@ -146,6 +146,30 @@ final class NumberForwardingTemplateTest extends TestCase
         $this->assertSame('https_required', $result['a']['error_code']);
     }
 
+    public function testRetryDelaysDoubleUpToTheMaximum(): void
+    {
+        $this->settings(['number_forward_retry_base_seconds' => '30', 'number_forward_retry_max_seconds' => '100']);
+        $this->assertSame([30, 60, 100, 100], array_map('\\number_forward_retry_delay_seconds', [1, 2, 3, 4]));
+    }
+
+    public function testALinesOwnAttemptCountOverridesTheDefault(): void
+    {
+        $this->settings(['number_forward_max_attempts' => '5']);
+        $this->assertSame(5, \number_forward_max_attempts_for(null));
+        $this->assertSame(5, \number_forward_max_attempts_for(['max_attempts' => 0]));
+        $this->assertSame(2, \number_forward_max_attempts_for(['max_attempts' => 2]));
+    }
+
+    public function testHttpResultClassification(): void
+    {
+        $this->assertSame('delivered', \number_forward_http_result(0, 204, 5, '')['outcome']);
+        $this->assertSame('retry', \number_forward_http_result(0, 503, 5, '')['outcome']);
+        $this->assertSame('permanent_failure', \number_forward_http_result(0, 404, 5, '')['outcome']);
+        $this->assertSame('timeout', \number_forward_http_result(CURLE_OPERATION_TIMEDOUT, 0, 5, '')['error_code']);
+        $this->assertSame('tls_error', \number_forward_http_result(60, 0, 5, '')['error_code']);
+        $this->assertSame('connection_failed', \number_forward_http_result(7, 0, 5, '')['error_code']);
+    }
+
     public function testReasonTextsArePersian(): void
     {
         $this->assertStringContainsString('500', \number_forward_reason_text('http_500'));

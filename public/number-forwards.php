@@ -128,145 +128,197 @@ $st->execute($params);
 $logRows = $st->fetchAll();
 $counts = number_forward_queue_counts($isAdmin ? null : $lineNumbers);
 
+$activeLines = 0;
+foreach ($configs as $c) {
+    if (((int)$c['mo_enabled'] && $c['mo_url'] !== '') || ((int)$c['dlr_enabled'] && $c['dlr_url'] !== '')) $activeLines++;
+}
+/** "۳۰ ثانیه" / "۲ دقیقه" / "۱ ساعت" for a number of seconds. */
+$humanSeconds = static function (int $s): string {
+    if ($s < 60) return to_persian_digits((string)$s) . ' ثانیه';
+    if ($s < 3600) return to_persian_digits(rtrim(rtrim(number_format($s / 60, 1, '.', ''), '0'), '.')) . ' دقیقه';
+    return to_persian_digits(rtrim(rtrim(number_format($s / 3600, 1, '.', ''), '0'), '.')) . ' ساعت';
+};
+/** The waits between attempts, for $attempts tries in total. */
+$retrySchedule = static function (int $attempts) use ($humanSeconds): array {
+    $out = [];
+    for ($i = 1; $i < $attempts; $i++) $out[] = $humanSeconds(number_forward_retry_delay_seconds($i));
+    return $out;
+};
+$workers = number_forward_setting_int('number_forward_workers');
+$concurrency = number_forward_setting_int('number_forward_concurrency');
+$defaultAttempts = number_forward_setting_int('number_forward_max_attempts');
+
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
-  <h2>ارسال پیامک‌های دریافتی و گزارش تحویل به آدرس شما</h2>
-  <p class="hint">
-    برای هر خط می‌توانید یک آدرس <b>http</b> یا <b>https</b> بدهید تا سامانه هر <b>پیامک دریافتی</b> روی آن خط (MO) و
-    <b>گزارش تحویل نهایی</b> هر پیامکی که از آن خط فرستاده شده (Delivery Report) را بلافاصله به آن آدرس بفرستد.
-    مقادیر را به شکل متغیر (مثل <span class="ltr">${content}</span>) در آدرس بگذارید (فهرست در زبانه‌ی «راهنما»)؛ قالب همان قالب سامانه‌ی وصال است و آدرس‌های قبلی بدون تغییر کار می‌کنند.
-    پاسخ <b>2xx</b> یعنی دریافت شد؛ در صورت قطعی، کد 5xx یا 429، ارسال چند بار با فاصله تکرار می‌شود.
-  </p>
-  <?php if (!number_forward_enabled()): ?>
-    <p class="hint" style="color:var(--danger,#b00)"><b>این سرویس اکنون توسط مدیر سامانه خاموش است؛ چیزی ارسال نمی‌شود و پیام‌ها در صف می‌مانند.</b></p>
+  <div class="card-head">
+    <div>
+      <h2>📡 ارسال پیامک‌های دریافتی و گزارش تحویل به آدرس شما</h2>
+      <p class="hint">
+        هر <b>پیامک دریافتی</b> روی خط (MO) و <b>گزارش تحویل نهایی</b> هر پیامک ارسالی از آن (DLR) بلافاصله به آدرس
+        <b>http</b> یا <b>https</b> شما فرستاده می‌شود؛ قالب آدرس همان قالب سامانه‌ی وصال است و آدرس‌های قبلی بدون تغییر کار می‌کنند.
+      </p>
+    </div>
+  </div>
+  <?php if (number_forward_enabled()): ?>
+    <div class="fwd-status is-on"><span class="fwd-dot is-on"></span><b>سرویس فعال است</b>
+      <?php if ($isAdmin): ?><span class="fwd-meta"><?= to_persian_digits((string)$workers) ?> پردازش موازی × <?= to_persian_digits((string)$concurrency) ?> ارسال هم‌زمان · حداکثر <?= to_persian_digits((string)$defaultAttempts) ?> تلاش</span><?php endif; ?>
+    </div>
+  <?php else: ?>
+    <div class="fwd-status is-off"><span class="fwd-dot is-err"></span><b>سرویس توسط مدیر سامانه خاموش است</b><span class="fwd-meta">چیزی ارسال نمی‌شود و پیام‌ها در صف می‌مانند.</span></div>
   <?php endif; ?>
   <?php if (!$isAdmin && !number_forward_users_can_edit()): ?>
     <p class="hint">تنظیم آدرس‌ها فعلاً فقط توسط مدیر سامانه انجام می‌شود؛ برای تغییر با پشتیبانی تماس بگیرید.</p>
   <?php endif; ?>
-  <div class="toolbar">
-    <?php foreach ($statusLabels as $key => [$label, $badge]): ?>
-      <a class="badge <?= $badge ?>" href="/number-forwards.php?status=<?= e($key) ?>#log"><?= e($label) ?>: <?= to_persian_digits((string)$counts[$key]) ?></a>
-    <?php endforeach; ?>
+  <div class="grid grid-4" style="margin-top:16px">
+    <a class="stat stat-accent" href="/number-forwards.php?status=pending#log" style="text-decoration:none"><div class="stat-label">در صف / در حال ارسال</div><div class="stat-value"><?= to_persian_digits(number_format($counts['pending'] + $counts['processing'])) ?></div></a>
+    <a class="stat" href="/number-forwards.php?status=delivered#log" style="text-decoration:none;color:inherit"><div class="stat-label">✅ تحویل شد</div><div class="stat-value"><?= to_persian_digits(number_format($counts['delivered'])) ?></div></a>
+    <a class="stat" href="/number-forwards.php?status=dead#log" style="text-decoration:none;color:inherit"><div class="stat-label">⚠️ ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format($counts['failed'] + $counts['dead'])) ?></div></a>
+    <div class="stat"><div class="stat-label">🔗 خطوط فعال</div><div class="stat-value"><?= to_persian_digits((string)$activeLines) ?> <span class="hint">/ <?= to_persian_digits((string)count($lines)) ?></span></div></div>
   </div>
 </div>
 
 <div class="tabs" data-tabs="number-forwards">
 <nav class="tabs-nav" role="tablist" aria-label="ارسال به URL">
-  <button type="button" role="tab" data-tab="lines">خطوط<span class="tab-count">(<?= to_persian_digits((string)count($lines)) ?>)</span></button>
-  <button type="button" role="tab" data-tab="log">گزارش ارسال‌ها<span class="tab-count">(<?= to_persian_digits((string)$total) ?>)</span></button>
-  <button type="button" role="tab" data-tab="help">راهنما</button>
-  <?php if ($isAdmin): ?><button type="button" role="tab" data-tab="settings">تنظیمات سرویس</button><?php endif; ?>
+  <button type="button" role="tab" data-tab="lines">🔗 خطوط<span class="tab-count">(<?= to_persian_digits((string)count($lines)) ?>)</span></button>
+  <button type="button" role="tab" data-tab="log">📋 گزارش ارسال‌ها<span class="tab-count">(<?= to_persian_digits((string)$total) ?>)</span></button>
+  <button type="button" role="tab" data-tab="help">📘 راهنما</button>
+  <?php if ($isAdmin): ?><button type="button" role="tab" data-tab="settings">⚙ تنظیمات سرویس</button><?php endif; ?>
 </nav>
 
 <section class="tab-panel" data-panel="lines" role="tabpanel">
 <?php if ($edit !== ''): ?>
 <?php $v = static fn(string $k, string $d = '') => (string)($editRow[$k] ?? $d); ?>
-<div class="card">
-  <h2>تنظیم خط <span class="msisdn"><?= e($edit) ?></span><?= isset($lines[$edit]) && $lines[$edit] !== '' ? ' — ' . e($lines[$edit]) : '' ?></h2>
+<div class="card" id="edit">
+  <div class="card-head">
+    <div>
+      <h2>تنظیم خط <span class="msisdn"><?= e($edit) ?></span></h2>
+      <?php if (isset($lines[$edit]) && $lines[$edit] !== ''): ?><p class="hint"><?= e($lines[$edit]) ?></p><?php endif; ?>
+    </div>
+    <a class="btn btn-sm" href="/number-forwards.php#lines">✕ بستن</a>
+  </div>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="save">
     <input type="hidden" name="number" value="<?= e($edit) ?>">
     <fieldset<?= $canEdit ? '' : ' disabled' ?> style="border:0;padding:0;margin:0">
-    <label style="display:block;margin-bottom:6px"><input type="checkbox" name="mo_enabled" value="1"<?= $v('mo_enabled') === '1' ? ' checked' : '' ?>> <b>ارسال پیامک‌های دریافتی (MO)</b></label>
-    <input type="text" name="mo_url" class="ltr" style="width:100%" maxlength="<?= NUMBER_FORWARD_MAX_URL_LENGTH ?>" value="<?= e($v('mo_url')) ?>"
-           placeholder="https://example.com/sms/receive?from=${originator}&amp;to=${destination}&amp;text=${content}">
-    <label style="display:block;margin:14px 0 6px"><input type="checkbox" name="dlr_enabled" value="1"<?= $v('dlr_enabled') === '1' ? ' checked' : '' ?>> <b>ارسال گزارش تحویل (Delivery Report)</b></label>
-    <input type="text" name="dlr_url" class="ltr" style="width:100%" maxlength="<?= NUMBER_FORWARD_MAX_URL_LENGTH ?>" value="<?= e($v('dlr_url')) ?>"
-           placeholder="https://example.com/sms/delivery?id=${id}&amp;status=${status}&amp;dl_time=${dl_time}">
-    <div class="toolbar" style="margin-top:14px">
-      <label>روش
-        <select name="http_method">
-          <option value="GET"<?= $v('http_method', 'GET') === 'GET' ? ' selected' : '' ?>>GET (مقادیر فقط در آدرس)</option>
-          <option value="POST"<?= $v('http_method') === 'POST' ? ' selected' : '' ?>>POST (مقادیر در بدنه هم فرستاده می‌شوند)</option>
-        </select>
-      </label>
-      <label>قالب بدنه‌ی POST
-        <select name="post_format">
-          <option value="form"<?= $v('post_format', 'form') === 'form' ? ' selected' : '' ?>>فرم (x-www-form-urlencoded)</option>
-          <option value="json"<?= $v('post_format') === 'json' ? ' selected' : '' ?>>JSON</option>
-        </select>
-      </label>
-      <label title="خاموش (پیش‌فرض): مثل وصال، به آدرس https با گواهی خودامضا، منقضی یا نامعتبر هم ارسال می‌شود.">
-        <input type="checkbox" name="tls_verify" value="1"<?= $v('tls_verify') === '1' ? ' checked' : '' ?>> بررسی گواهی SSL مقصد (سخت‌گیرانه)
-      </label>
-      <button class="btn btn-primary">ذخیره</button>
-      <a class="btn" href="/number-forwards.php#lines">بستن</a>
+    <?php foreach (['mo' => ['📥 پیامک‌های دریافتی (MO)', 'https://example.com/sms/receive?from=${originator}&to=${destination}&text=${content}'],
+                    'dlr' => ['📬 گزارش تحویل (Delivery Report)', 'https://example.com/sms/delivery?id=${id}&status=${status}&dl_time=${dl_time}']] as $kind => [$title, $placeholder]): ?>
+    <div class="form-section">
+      <label class="switch"><input type="checkbox" name="<?= $kind ?>_enabled" value="1"<?= $v($kind . '_enabled') === '1' ? ' checked' : '' ?>><span><?= e($title) ?></span></label>
+      <input type="text" name="<?= $kind ?>_url" id="url-<?= $kind ?>" class="ltr fwd-url-input" style="width:100%;margin-top:12px" dir="ltr"
+             maxlength="<?= NUMBER_FORWARD_MAX_URL_LENGTH ?>" value="<?= e($v($kind . '_url')) ?>" placeholder="<?= e($placeholder) ?>">
+      <div class="fwd-chips" aria-label="افزودن متغیر">
+        <?php foreach (NUMBER_FORWARD_VARS[$kind] as $var): ?>
+          <button type="button" class="fwd-chip" data-insert="url-<?= $kind ?>" data-var="<?= e($var) ?>">${<?= e($var) ?>}</button>
+        <?php endforeach; ?>
+      </div>
     </div>
+    <?php endforeach; ?>
+    <div class="form-section">
+      <div class="subsection-title">نحوه‌ی ارسال</div>
+      <div class="form-grid">
+        <label>روش
+          <select name="http_method">
+            <option value="GET"<?= $v('http_method', 'GET') === 'GET' ? ' selected' : '' ?>>GET — مقادیر فقط در آدرس</option>
+            <option value="POST"<?= $v('http_method') === 'POST' ? ' selected' : '' ?>>POST — مقادیر در بدنه هم فرستاده می‌شوند</option>
+          </select>
+        </label>
+        <label>قالب بدنه‌ی POST
+          <select name="post_format">
+            <option value="form"<?= $v('post_format', 'form') === 'form' ? ' selected' : '' ?>>فرم (x-www-form-urlencoded)</option>
+            <option value="json"<?= $v('post_format') === 'json' ? ' selected' : '' ?>>JSON</option>
+          </select>
+        </label>
+        <label>تعداد تلاش برای این خط
+          <input type="number" name="max_attempts" min="0" max="20" value="<?= (int)$v('max_attempts', '0') ?: '' ?>" placeholder="پیش‌فرض سرویس (<?= to_persian_digits((string)$defaultAttempts) ?>)">
+        </label>
+      </div>
+      <label class="switch" style="margin-top:14px"><input type="checkbox" name="tls_verify" value="1"<?= $v('tls_verify') === '1' ? ' checked' : '' ?>>
+        <span>بررسی سخت‌گیرانه‌ی گواهی SSL مقصد<span class="switch-sub">خاموش (پیش‌فرض): مثل وصال، به https با گواهی خودامضا یا منقضی هم ارسال می‌شود.</span></span>
+      </label>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">💾 ذخیره</button></div>
     </fieldset>
   </form>
   <?php if ($editRow && $canEdit): ?>
-  <div class="toolbar" style="margin-top:10px">
-    <?php foreach (['mo' => 'آزمایش آدرس دریافت', 'dlr' => 'آزمایش آدرس گزارش تحویل'] as $kind => $label): if ($v($kind . '_url') === '') continue; ?>
-      <form method="post" style="margin:0">
-        <?= csrf_field() ?><input type="hidden" name="do" value="test_<?= $kind ?>"><input type="hidden" name="number" value="<?= e($edit) ?>">
-        <button class="btn btn-sm"><?= e($label) ?></button>
-      </form>
-    <?php endforeach; ?>
-    <form method="post" style="margin:0" onsubmit="return confirm('ارسال به آدرس برای این خط حذف شود؟')">
-      <?= csrf_field() ?><input type="hidden" name="do" value="delete"><input type="hidden" name="number" value="<?= e($edit) ?>">
-      <button class="btn btn-sm btn-danger">حذف تنظیمات این خط</button>
-    </form>
+  <div class="toolbar" style="margin-top:12px">
+        <?php foreach (['mo' => '🧪 آزمایش آدرس دریافت', 'dlr' => '🧪 آزمایش آدرس تحویل'] as $kind => $label): if ($v($kind . '_url') === '') continue; ?>
+          <form method="post" style="margin:0">
+            <?= csrf_field() ?><input type="hidden" name="do" value="test_<?= $kind ?>"><input type="hidden" name="number" value="<?= e($edit) ?>">
+            <button class="btn"><?= e($label) ?></button>
+          </form>
+        <?php endforeach; ?>
+        <form method="post" style="margin:0;margin-inline-start:auto" onsubmit="return confirm('ارسال به آدرس برای این خط حذف شود؟')">
+          <?= csrf_field() ?><input type="hidden" name="do" value="delete"><input type="hidden" name="number" value="<?= e($edit) ?>">
+          <button class="btn btn-danger">🗑 حذف تنظیمات</button>
+        </form>
   </div>
-  <p class="muted">«آزمایش» یک پیام نمونه (با شناسه‌ی ۰) را همین حالا به آدرس ذخیره‌شده می‌فرستد، حتی اگر تیک آن روشن نباشد.</p>
   <?php endif; ?>
+  <?php if ($editRow && $canEdit): ?><p class="hint">«آزمایش» یک پیام نمونه (با شناسه‌ی ۰) را همین حالا به آدرس ذخیره‌شده می‌فرستد، حتی اگر کلید آن خاموش باشد.</p><?php endif; ?>
   <?php if ($editRow && (int)$editRow['consecutive_failures'] > 0): ?>
-    <p class="muted">آخرین خطا: <?= e(number_forward_reason_text((string)$editRow['last_error'])) ?> — <?= jdate((string)$editRow['last_failure_at']) ?>
-      (<?= to_persian_digits((string)$editRow['consecutive_failures']) ?> خطای پشت سر هم)</p>
+    <div class="fwd-status is-off" style="margin-top:12px"><span class="fwd-dot is-err"></span>
+      آخرین خطا: <?= e(number_forward_reason_text((string)$editRow['last_error'])) ?>
+      <span class="fwd-meta"><?= jdate((string)$editRow['last_failure_at']) ?> · <?= to_persian_digits((string)$editRow['consecutive_failures']) ?> خطای پشت سر هم</span></div>
   <?php endif; ?>
 </div>
 <?php endif; ?>
 
 <div class="card">
-  <h2>خطوط</h2>
-  <?php if ($isAdmin): ?>
-  <form method="get" class="toolbar">
-    <label>تنظیم یک خط دیگر <input type="text" name="edit" class="ltr" placeholder="5000123" required></label>
-    <button class="btn">باز کردن</button>
-  </form>
+  <div class="card-head">
+    <h2>خطوط</h2>
+    <?php if ($isAdmin): ?>
+    <form method="get" style="margin:0;display:flex;gap:8px;align-items:center">
+      <input type="text" name="edit" class="ltr" style="width:220px" placeholder="خط دیگر، مثلاً 5000123" required aria-label="شماره‌ی خط">
+      <button class="btn btn-sm">باز کردن</button>
+    </form>
+    <?php endif; ?>
+  </div>
+  <?php if (!$lines): ?>
+    <p class="empty"><?= $isAdmin ? 'هنوز شماره‌ای در «شماره‌ها» ثبت نشده.' : 'هنوز خطی به حساب شما تخصیص داده نشده است.' ?></p>
   <?php endif; ?>
-  <div class="table-wrap">
-  <table>
-    <tr><th>خط</th><th>برچسب</th><th>پیامک دریافتی</th><th>گزارش تحویل</th><th>روش</th><th>وضعیت</th><th></th></tr>
-    <?php foreach ($lines as $number => $label): $number = (string)$number; $c = $configs[$number] ?? null; ?>
-      <tr>
-        <td class="msisdn"><?= e($number) ?></td>
-        <td><?= e($label) ?></td>
-        <?php foreach (NUMBER_FORWARD_KINDS as $kind): ?>
-          <td>
-            <?php if ($c && $c[$kind . '_url'] !== ''): ?>
-              <span class="badge <?= (int)$c[$kind . '_enabled'] ? 'badge-ok' : 'badge-off' ?>"><?= (int)$c[$kind . '_enabled'] ? 'روشن' : 'خاموش' ?></span>
-              <div class="ltr muted" style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="<?= e($c[$kind . '_url']) ?>"><?= e($c[$kind . '_url']) ?></div>
-            <?php else: ?>
-              <span class="muted">—</span>
-            <?php endif; ?>
-          </td>
+  <div class="fwd-lines">
+    <?php foreach ($lines as $number => $label): $number = (string)$number; $c = $configs[$number] ?? null;
+      $failures = $c ? (int)$c['consecutive_failures'] : 0; ?>
+      <div class="fwd-line<?= $number === $edit ? ' is-editing' : '' ?>">
+        <div class="fwd-line-head">
+          <div>
+            <div class="fwd-line-number msisdn"><?= e($number) ?></div>
+            <?php if ($label !== ''): ?><div class="fwd-line-label"><?= e($label) ?></div><?php endif; ?>
+          </div>
+          <?php if ($c): ?><span class="badge badge-unknown"><?= e($c['http_method'] . ($c['http_method'] === 'POST' ? ' · ' . strtoupper($c['post_format']) : '')) ?></span><?php endif; ?>
+        </div>
+        <?php foreach (['mo' => 'دریافتی', 'dlr' => 'تحویل'] as $kind => $kindLabel):
+          $url = $c ? (string)$c[$kind . '_url'] : ''; $on = $c && (int)$c[$kind . '_enabled'] && $url !== ''; ?>
+          <div class="fwd-line-row">
+            <span class="fwd-dot<?= $on ? ($failures >= NUMBER_FORWARD_WARN_FAILURES ? ' is-warn' : ' is-on') : '' ?>"></span>
+            <span class="fwd-kind"><?= $kindLabel ?></span>
+            <span class="fwd-url ltr" title="<?= e($url) ?>"><?= $url !== '' ? e($url) : '—' ?></span>
+          </div>
         <?php endforeach; ?>
-        <td><?= $c ? e($c['http_method'] . ($c['http_method'] === 'POST' ? ' / ' . $c['post_format'] : '')) . ((int)($c['tls_verify'] ?? 0) ? '<div class="muted">بررسی SSL</div>' : '') : '<span class="muted">—</span>' ?></td>
-        <td>
-          <?php if ($c && (int)$c['consecutive_failures'] >= NUMBER_FORWARD_WARN_FAILURES): ?>
-            <span style="color:var(--danger,#b00)">⚠ <?= to_persian_digits((string)$c['consecutive_failures']) ?> خطای پشت سر هم</span>
-          <?php elseif ($c && $c['last_success_at']): ?>
-            <span class="muted">آخرین موفق: <?= jdate((string)$c['last_success_at']) ?></span>
-          <?php elseif ($c && $c['last_failure_at']): ?>
-            <span class="muted">آخرین خطا: <?= jdate((string)$c['last_failure_at']) ?></span>
-          <?php else: ?>
-            <span class="muted">—</span>
-          <?php endif; ?>
-        </td>
-        <td><a class="btn btn-sm" href="/number-forwards.php?edit=<?= e(rawurlencode($number)) ?>#lines"><?= $canEdit ? 'تنظیم' : 'مشاهده' ?></a></td>
-      </tr>
+        <div class="fwd-line-foot">
+          <span>
+            <?php if ($failures >= NUMBER_FORWARD_WARN_FAILURES): ?>
+              <span style="color:var(--err)">⚠ <?= to_persian_digits((string)$failures) ?> خطای پشت سر هم</span>
+            <?php elseif ($c && $c['last_success_at']): ?>
+              آخرین موفق: <?= jdate((string)$c['last_success_at']) ?>
+            <?php elseif ($c && $c['last_failure_at']): ?>
+              آخرین خطا: <?= jdate((string)$c['last_failure_at']) ?>
+            <?php else: ?>
+              <?= $c ? 'هنوز ارسالی نداشته' : 'تنظیم نشده' ?>
+            <?php endif; ?>
+          </span>
+          <a class="btn btn-sm<?= $c ? '' : ' btn-primary' ?>" href="/number-forwards.php?edit=<?= e(rawurlencode($number)) ?>#lines"><?= $canEdit ? ($c ? '✎ ویرایش' : '+ تنظیم') : 'مشاهده' ?></a>
+        </div>
+      </div>
     <?php endforeach; ?>
-    <?php if (!$lines): ?><tr><td colspan="7" class="empty"><?= $isAdmin ? 'هنوز شماره‌ای در «شماره‌ها» ثبت نشده.' : 'هنوز خطی به حساب شما تخصیص داده نشده است.' ?></td></tr><?php endif; ?>
-  </table>
   </div>
 </div>
 </section>
 
 <section class="tab-panel" data-panel="log" role="tabpanel">
 <div class="card">
-  <h2>گزارش ارسال‌ها</h2>
+  <div class="card-head"><h2>گزارش ارسال‌ها</h2></div>
   <form method="get" class="toolbar">
     <label>خط <input type="text" name="line" class="ltr" value="<?= e($filterLine) ?>"></label>
     <label>نوع
@@ -280,11 +332,12 @@ require __DIR__ . '/../app/views/header.php';
       </select>
     </label>
     <button class="btn btn-primary">جست‌وجو</button>
+    <?php if ($filterLine !== '' || $filterKind !== '' || $filterStatus !== ''): ?><a class="btn" href="/number-forwards.php#log">پاک کردن فیلتر</a><?php endif; ?>
   </form>
   <?php if ($filterLine !== '' && ($isAdmin || in_array($filterLine, $lineNumbers, true))): ?>
     <form method="post" class="toolbar" onsubmit="return confirm('همه‌ی موارد ناموفق این خط دوباره ارسال شوند؟')">
       <?= csrf_field() ?><input type="hidden" name="do" value="requeue"><input type="hidden" name="number" value="<?= e($filterLine) ?>">
-      <button class="btn btn-sm">ارسال دوباره‌ی همه‌ی موارد ناموفق این خط</button>
+      <button class="btn btn-sm">↻ ارسال دوباره‌ی همه‌ی موارد ناموفق این خط</button>
     </form>
   <?php endif; ?>
   <div class="table-wrap">
@@ -293,7 +346,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php foreach ($logRows as $r): [$statusLabel, $badge] = $statusLabels[$r['status']] ?? [$r['status'], 'badge-unknown']; ?>
       <tr>
         <td class="num"><?= jdate((string)$r['created_at']) ?></td>
-        <td><?= $r['kind'] === 'mo' ? 'MO' : 'DLR' ?></td>
+        <td><span class="badge badge-unknown"><?= $r['kind'] === 'mo' ? 'MO' : 'DLR' ?></span></td>
         <td class="msisdn"><?= e((string)$r['number']) ?></td>
         <td class="ltr muted"><?= e((string)$r['source_key']) ?></td>
         <td>
@@ -312,7 +365,7 @@ require __DIR__ . '/../app/views/header.php';
           <?php if (in_array($r['status'], ['failed', 'dead', 'cancelled'], true)): ?>
             <form method="post" style="margin:0">
               <?= csrf_field() ?><input type="hidden" name="do" value="requeue"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
-              <button class="btn btn-sm">ارسال دوباره</button>
+              <button class="btn btn-sm">↻ دوباره</button>
             </form>
           <?php endif; ?>
         </td>
@@ -322,13 +375,14 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   </div>
   <?= pager_links($page, pager_pages($total, $per), array_filter(['line' => $filterLine, 'kind' => $filterKind, 'status' => $filterStatus], 'strlen'), 'page', $total, 'log') ?>
-  <p class="muted">موارد تمام‌شده پس از <?= to_persian_digits((string)number_forward_setting_int('number_forward_retention_days')) ?> روز از این گزارش پاک می‌شوند.</p>
+  <p class="hint">موارد تمام‌شده پس از <?= to_persian_digits((string)number_forward_setting_int('number_forward_retention_days')) ?> روز از این گزارش پاک می‌شوند.</p>
 </div>
 </section>
 
 <section class="tab-panel" data-panel="help" role="tabpanel">
+<div class="grid grid-2">
 <div class="card">
-  <h2>متغیرهای پیامک دریافتی (MO)</h2>
+  <h2>📥 متغیرهای پیامک دریافتی (MO)</h2>
   <div class="table-wrap"><table>
     <tr><th>متغیر</th><th>مقدار</th></tr>
     <tr><td class="ltr">${originator}</td><td>شماره‌ی فرستنده (مشتری شما)</td></tr>
@@ -342,7 +396,7 @@ require __DIR__ . '/../app/views/header.php';
   <p class="ltr muted">https://example.com/sms/receive?from=${originator}&amp;to=${destination}&amp;text=${content}</p>
 </div>
 <div class="card">
-  <h2>متغیرهای گزارش تحویل (DLR)</h2>
+  <h2>📬 متغیرهای گزارش تحویل (DLR)</h2>
   <div class="table-wrap"><table>
     <tr><th>متغیر</th><th>مقدار</th></tr>
     <tr><td class="ltr">${id}</td><td>شناسه‌ی عددی پیام ارسالی</td></tr>
@@ -358,6 +412,7 @@ require __DIR__ . '/../app/views/header.php';
   </table></div>
   <p class="ltr muted">https://example.com/sms/delivery?id=${id}&amp;status=${status}&amp;dl_time=${dl_time}</p>
 </div>
+</div>
 <div class="card">
   <h2>نکته‌ها</h2>
   <ul class="hint">
@@ -365,9 +420,9 @@ require __DIR__ . '/../app/views/header.php';
     <li>با روش POST، آدرس به همان شکل ساخته می‌شود و همه‌ی مقادیر در بدنه (فرم یا JSON) هم فرستاده می‌شوند.</li>
     <li>هر درخواست سربرگ <span class="ltr">X-ELLSMS-Forward-Kind</span> (mo/dlr) و <span class="ltr">X-ELLSMS-Forward-Id</span> دارد؛ این شناسه در تلاش‌های دوباره ثابت است و برای حذف تکراری‌ها مناسب است.</li>
     <li>برای اطمینان از اینکه درخواست از طرف سامانه آمده، یک رمز (token) دلخواه در خود آدرس بگذارید و در سمت خود بررسی کنید.</li>
-    <li>گواهی SSL مقصد به‌طور پیش‌فرض بررسی نمی‌شود (مثل وصال): آدرس https با گواهی خودامضا، منقضی یا نامعتبر هم دریافت می‌کند و ارتباط همچنان رمزنگاری‌شده است. برای بررسی سخت‌گیرانه، «بررسی گواهی SSL» را برای خط روشن کنید.</li>
+    <li>گواهی SSL مقصد به‌طور پیش‌فرض بررسی نمی‌شود (مثل وصال): آدرس https با گواهی خودامضا، منقضی یا نامعتبر هم دریافت می‌کند و ارتباط همچنان رمزنگاری‌شده است. برای بررسی سخت‌گیرانه، کلید آن را برای خط روشن کنید.</li>
     <li>آدرس‌های شبکه‌ی داخلی/خصوصی (localhost، 10.x، 192.168.x و…) پذیرفته نمی‌شوند و تغییر مسیر (redirect) دنبال نمی‌شود.</li>
-    <li>کد 2xx یعنی موفق؛ قطعی اتصال، پایان زمان، 5xx و 429 تا <?= to_persian_digits((string)number_forward_setting_int('number_forward_max_attempts')) ?> بار با فاصله‌ی فزاینده دوباره امتحان می‌شوند؛ بقیه‌ی کدهای 4xx ناموفق قطعی‌اند. اگر آدرس را اصلاح کنید، تلاش‌های بعدی با آدرس جدید انجام می‌شود.</li>
+    <li>کد 2xx یعنی موفق؛ قطعی اتصال، پایان زمان، 5xx و 429 دوباره امتحان می‌شوند (فاصله‌ها: <?= e(implode('، ', $retrySchedule($defaultAttempts)) ?: '—') ?>)؛ بقیه‌ی کدهای 4xx ناموفق قطعی‌اند. اگر آدرس را اصلاح کنید، تلاش‌های بعدی با آدرس جدید انجام می‌شود.</li>
   </ul>
 </div>
 </section>
@@ -375,30 +430,83 @@ require __DIR__ . '/../app/views/header.php';
 <?php if ($isAdmin): ?>
 <section class="tab-panel" data-panel="settings" role="tabpanel">
 <div class="card">
-  <h2>تنظیمات سرویس</h2>
   <form method="post">
     <?= csrf_field() ?><input type="hidden" name="do" value="settings">
-    <div class="toolbar">
-      <label><input type="checkbox" name="number_forward_enabled" value="1"<?= number_forward_enabled() ? ' checked' : '' ?>> سرویس فعال است</label>
-      <label><input type="checkbox" name="number_forward_user_edit" value="1"<?= number_forward_users_can_edit() ? ' checked' : '' ?>> کاربران آدرس خطوط خود را تنظیم کنند</label>
-      <label><input type="checkbox" name="number_forward_allow_http" value="1"<?= number_forward_http_allowed() ? ' checked' : '' ?>> آدرس http (بدون SSL) مجاز است</label>
+    <div class="form-section">
+      <div class="subsection-title">وضعیت سرویس</div>
+      <div class="form-grid">
+        <label class="switch"><input type="checkbox" name="number_forward_enabled" value="1"<?= number_forward_enabled() ? ' checked' : '' ?>>
+          <span>سرویس فعال است<span class="switch-sub">خاموش: پیام جدیدی در صف نمی‌رود و صف فعلی منتظر می‌ماند.</span></span></label>
+        <label class="switch"><input type="checkbox" name="number_forward_user_edit" value="1"<?= number_forward_users_can_edit() ? ' checked' : '' ?>>
+          <span>کاربران آدرس خطوط خود را تنظیم کنند<span class="switch-sub">خاموش: فقط مدیر سامانه آدرس‌ها را تنظیم می‌کند.</span></span></label>
+        <label class="switch"><input type="checkbox" name="number_forward_allow_http" value="1"<?= number_forward_http_allowed() ? ' checked' : '' ?>>
+          <span>آدرس http (بدون SSL) مجاز است<span class="switch-sub">خاموش: آدرس‌های http دیگر فراخوانی نمی‌شوند.</span></span></label>
+      </div>
     </div>
-    <div class="toolbar">
-      <label>مهلت پاسخ (ثانیه) <input type="number" name="number_forward_timeout_seconds" min="1" max="60" value="<?= number_forward_setting_int('number_forward_timeout_seconds') ?>"></label>
-      <label>حداکثر تلاش <input type="number" name="number_forward_max_attempts" min="1" max="20" value="<?= number_forward_setting_int('number_forward_max_attempts') ?>"></label>
-      <label>درخواست هم‌زمان <input type="number" name="number_forward_concurrency" min="1" max="50" value="<?= number_forward_setting_int('number_forward_concurrency') ?>"></label>
-      <label>نگه‌داری گزارش (روز) <input type="number" name="number_forward_retention_days" min="1" max="365" value="<?= number_forward_setting_int('number_forward_retention_days') ?>"></label>
+    <div class="form-section">
+      <div class="subsection-title">سرعت و ارسال موازی</div>
+      <div class="form-grid">
+        <label>تعداد پردازش (ترد) موازی
+          <input type="number" name="number_forward_workers" min="1" max="32" value="<?= $workers ?>">
+          <span class="hint">هر پردازش جدا از بقیه از صف برمی‌دارد و می‌فرستد (۱ تا ۳۲).</span></label>
+        <label>ارسال هم‌زمان در هر پردازش
+          <input type="number" name="number_forward_concurrency" min="1" max="100" value="<?= $concurrency ?>">
+          <span class="hint">تا این تعداد درخواست هم‌زمان باز است؛ هر درخواستی تمام شود، بعدی فوراً شروع می‌شود.</span></label>
+        <label>مهلت پاسخ (ثانیه)
+          <input type="number" name="number_forward_timeout_seconds" min="1" max="60" value="<?= number_forward_setting_int('number_forward_timeout_seconds') ?>">
+          <span class="hint">آدرس کند حداکثر همین مدت یک جای ارسال را می‌گیرد.</span></label>
+      </div>
+      <p class="hint">ظرفیت کل: حداکثر <b><?= to_persian_digits((string)($workers * $concurrency)) ?></b> درخواست هم‌زمان. تغییر این اعداد ظرف چند ثانیه بدون راه‌اندازی دوباره اعمال می‌شود.</p>
     </div>
-    <button class="btn btn-primary">ذخیره</button>
+    <div class="form-section">
+      <div class="subsection-title">تلاش دوباره</div>
+      <div class="form-grid">
+        <label>حداکثر تعداد تلاش (پیش‌فرض خطوط)
+          <input type="number" name="number_forward_max_attempts" min="1" max="20" value="<?= $defaultAttempts ?>">
+          <span class="hint">هر خط می‌تواند عدد خودش را داشته باشد.</span></label>
+        <label>فاصله‌ی اولین تلاش دوباره (ثانیه)
+          <input type="number" name="number_forward_retry_base_seconds" min="5" max="3600" value="<?= number_forward_setting_int('number_forward_retry_base_seconds') ?>">
+          <span class="hint">هر بار دو برابر می‌شود.</span></label>
+        <label>بیشترین فاصله بین تلاش‌ها (ثانیه)
+          <input type="number" name="number_forward_retry_max_seconds" min="10" max="86400" value="<?= number_forward_setting_int('number_forward_retry_max_seconds') ?>"></label>
+      </div>
+      <div class="fwd-schedule"><span class="hint" style="border:0;background:none;padding:0">فاصله‌ها با تنظیم فعلی:</span>
+        <?php foreach ($retrySchedule($defaultAttempts) as $i => $wait): ?><span>تلاش <?= to_persian_digits((string)($i + 2)) ?>: پس از <?= e($wait) ?></span><?php endforeach; ?>
+        <?php if ($defaultAttempts <= 1): ?><span>بدون تلاش دوباره</span><?php endif; ?>
+      </div>
+    </div>
+    <div class="form-section">
+      <div class="subsection-title">نگه‌داری گزارش</div>
+      <div class="form-grid">
+        <label>نگه‌داری گزارش (روز)
+          <input type="number" name="number_forward_retention_days" min="1" max="365" value="<?= number_forward_setting_int('number_forward_retention_days') ?>"></label>
+      </div>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">💾 ذخیره‌ی تنظیمات</button></div>
   </form>
-  <p class="hint">
-    خاموش کردن سرویس چیزی را پاک نمی‌کند: پیام‌های جدید دیگر در صف قرار نمی‌گیرند و صف فعلی تا روشن شدن دوباره منتظر می‌ماند.
-    ارسال‌ها را سرویس جداگانه‌ی <span class="ltr">number-forward-worker</span> انجام می‌دهد (<span class="ltr">php cron/number-forward-worker.php</span>)،
-    پس آدرس کند یا قطع یک مشتری هرگز ارسال پیامک، منشی یا گزارش‌گیری را کند نمی‌کند. تغییر تنظیمات ظرف چند ثانیه روی آن اعمال می‌شود.
-    <br>اگر آدرس http بسته شود، آدرس‌های http ذخیره‌شده دیگر فراخوانی نمی‌شوند (ناموفق ثبت می‌شوند) تا به https تغییر کنند.
-  </p>
 </div>
 </section>
 <?php endif; ?>
 </div>
+<script>
+// Placeholder chips: insert ${name} at the cursor of the URL field they belong to.
+var lastFocused = null;
+document.addEventListener('focusin', function (event) {
+  if (event.target.classList && event.target.classList.contains('fwd-url-input')) lastFocused = event.target;
+});
+document.addEventListener('click', function (event) {
+  var chip = event.target.closest('[data-insert]');
+  if (!chip) return;
+  var input = document.getElementById(chip.getAttribute('data-insert'));
+  if (!input || input.disabled) return;
+  var text = '${' + chip.getAttribute('data-var') + '}';
+  // At the cursor when the field was being edited (the chip took focus from it), else at the end.
+  var wasEditing = lastFocused === input && input.selectionStart != null;
+  var start = wasEditing ? input.selectionStart : input.value.length;
+  var end = wasEditing ? input.selectionEnd : input.value.length;
+  input.value = input.value.slice(0, start) + text + input.value.slice(end);
+  input.focus();
+  input.setSelectionRange(start + text.length, start + text.length);
+});
+</script>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
