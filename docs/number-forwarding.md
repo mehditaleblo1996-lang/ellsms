@@ -117,6 +117,15 @@ final status write (gateway_status_record) ─┤→ ellsms_number_forward_queue
 - **Re-sending.** Failed, dead and cancelled rows can be re-sent from the log, one row at a time or
   all rows of a line.
 
+### Certificates
+
+By default the destination's https certificate is **not** verified, as in Vesal (which trusted every
+certificate). A self-signed, expired or wrong-host certificate does not stop the forward; the
+connection is still encrypted. A line can turn on strict verification with **«بررسی گواهی SSL مقصد»**
+(`ellsms_number_forwards.tls_verify`, migration `2026_10_19_number_forward_tls_verify.sql`). With it
+on, a bad certificate is recorded as `tls_error` and retried like a connection failure. The address
+check below does not depend on the certificate, so it applies either way.
+
 ### Security
 
 The rules are the same as for webhooks (`docs/webhooks.md`), with one difference: the address that
