@@ -67,9 +67,11 @@ if ($me['role'] !== 'admin') {
         $nav['subaccounts'] = ['/subaccounts.php', customer_type_label($navAccount) === 'سازمانی' ? 'زیرسازمان‌ها' : 'زیرمجموعه‌ها', '👥'];
     }
     // Menus closed for this user (app/MenuAccess.php) are left out; their pages answer 403 too.
-    $nav = array_filter($nav, static fn(string $key): bool => menu_access_allows($me, $key), ARRAY_FILTER_USE_KEY);
-    $integrationNav = array_filter($integrationNav, static fn(string $key): bool => menu_access_allows($me, $key), ARRAY_FILTER_USE_KEY);
+    $nav = array_filter($nav + $integrationNav, static fn(string $key): bool => menu_access_allows($me, $key), ARRAY_FILTER_USE_KEY);
+} else {
+    $nav += $integrationNav;
 }
+$navGroups = menu_group_items($nav, menu_groups());
 $adminNav = [
     'users'                 => ['/users.php',                 'کاربران',            '👤'],
     'menu_roles'            => ['/menu-roles.php',            'نقش‌های دسترسی منو', '🧭'],
@@ -98,6 +100,17 @@ $adminNav = [
     'financial_admin'       => ['/financial-admin.php',       'گزارش مالی',          '🧾'],
     'settings'              => ['/settings.php',              'تنظیمات',             '⚙'],
 ];
+// Admin-only groups, shown under the customer groups (menu_groups()).
+$adminNavGroups = menu_group_items($adminNav, [
+    'admin_users'    => ['کاربران و نمایندگان', ['users', 'registration_requests', 'menu_roles', 'reseller_profits', 'user_send_policies']],
+    'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
+    'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'remote_db']],
+    'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin']],
+    'admin_sending'  => ['کنترل ارسال',          ['prohibited_words', 'queue_cancellation', 'bulk_archive']],
+    'admin_monitor'  => ['نظارت و گزارش',        ['analytics', 'logs', 'alerts']],
+    'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
+]);
+$sidebarGroups = $me['role'] === 'admin' ? $navGroups + $adminNavGroups : $navGroups;
 $notificationUnread = notification_unread_count((int)$me['id']);
 ?><!doctype html>
 <html lang="fa" dir="rtl">
@@ -117,30 +130,34 @@ $notificationUnread = notification_unread_count((int)$me['id']);
       <img src="/assets/img/logo.png" alt="ELLSMS">
     </a>
     <nav>
-      <div class="nav-label">پیام‌رسانی</div>
-      <?php foreach ($nav as $key => [$href, $label, $icon]): ?>
-        <a href="<?= $href ?>" class="nav-item<?= ($active ?? '') === $key ? ' is-active' : '' ?>">
-          <span class="nav-icon"><?= $icon ?></span><?= $label ?>
-          <?php if ($key === 'notifications' && $notificationUnread > 0): ?><span class="badge badge-pending" style="margin-inline-start:auto"><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></span><?php endif; ?>
-        </a>
+      <?php foreach ($sidebarGroups as $groupId => [$groupLabel, $groupItems]): ?>
+        <?php $groupActive = array_key_exists($active ?? '', $groupItems); ?>
+        <details class="nav-group<?= $groupActive ? ' has-active' : '' ?>" data-group="<?= e($groupId) ?>"<?= $groupActive ? ' open' : '' ?>>
+          <summary class="nav-label"><?= e($groupLabel) ?><span class="nav-chevron" aria-hidden="true"></span></summary>
+          <?php foreach ($groupItems as $key => [$href, $label, $icon]): ?>
+            <a href="<?= $href ?>" class="nav-item<?= ($active ?? '') === $key ? ' is-active' : '' ?>"<?= ($active ?? '') === $key ? ' aria-current="page"' : '' ?>>
+              <span class="nav-icon"><?= $icon ?></span><?= $label ?>
+              <?php if ($key === 'notifications' && $notificationUnread > 0): ?><span class="badge badge-pending" style="margin-inline-start:auto"><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></span><?php endif; ?>
+            </a>
+          <?php endforeach; ?>
+        </details>
       <?php endforeach; ?>
-      <?php if ($integrationNav): ?>
-        <div class="nav-label">یکپارچه‌سازی</div>
-        <?php foreach ($integrationNav as $key => [$href, $label, $icon]): ?>
-          <a href="<?= $href ?>" class="nav-item<?= ($active ?? '') === $key ? ' is-active' : '' ?>">
-            <span class="nav-icon"><?= $icon ?></span><?= $label ?>
-          </a>
-        <?php endforeach; ?>
-      <?php endif; ?>
-      <?php if ($me['role'] === 'admin'): ?>
-        <div class="nav-label">مدیریت</div>
-        <?php foreach ($adminNav as $key => [$href, $label, $icon]): ?>
-          <a href="<?= $href ?>" class="nav-item<?= ($active ?? '') === $key ? ' is-active' : '' ?>">
-            <span class="nav-icon"><?= $icon ?></span><?= $label ?>
-          </a>
-        <?php endforeach; ?>
-      <?php endif; ?>
     </nav>
+    <script>
+    // Sidebar groups remember being opened or closed (per browser); the current page's group stays open.
+    (function () {
+      var key = 'ellsms.navGroups', state = {};
+      try { state = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) {}
+      document.querySelectorAll('#sidebar .nav-group').forEach(function (g) {
+        var id = g.getAttribute('data-group');
+        if (!g.classList.contains('has-active') && typeof state[id] === 'boolean') g.open = state[id];
+        g.addEventListener('toggle', function () {
+          state[id] = g.open;
+          try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
+        });
+      });
+    })();
+    </script>
     <div class="sidebar-foot">ELLSMS v<?= e(app_version()) ?><?php if (app_env() !== 'production'): ?> · <?= e(strtoupper(app_env())) ?><?php endif; ?></div>
   </aside>
 

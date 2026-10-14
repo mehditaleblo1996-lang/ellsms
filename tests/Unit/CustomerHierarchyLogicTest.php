@@ -164,6 +164,23 @@ final class CustomerHierarchyLogicTest extends TestCase
         self::assertSame([], menu_keys_for_script('profile.php'));
     }
 
+    public function testEveryCatalogMenuBelongsToExactlyOneSidebarGroup(): void
+    {
+        $grouped = array_merge(...array_map(static fn(array $g): array => $g[1], array_values(menu_groups())));
+        self::assertSame(count($grouped), count(array_unique($grouped)));
+        self::assertSame([], array_diff(menu_keys(), $grouped));
+    }
+
+    public function testMenuGroupItemsKeepsOrderDropsEmptyGroupsAndCollectsStrays(): void
+    {
+        $groups = ['a' => ['A', ['x', 'y']], 'b' => ['B', ['z']], 'c' => ['C', ['w']]];
+        $out = menu_group_items(['y' => 1, 'stray' => 2, 'x' => 3, 'w' => 4], $groups);
+        self::assertSame(['a', 'c', 'other'], array_keys($out));
+        self::assertSame(['x' => 3, 'y' => 1], $out['a'][1]);
+        self::assertSame(['سایر', ['stray' => 2]], $out['other']);
+        self::assertSame([], menu_group_items([], $groups));
+    }
+
     public function testApiRoutesMapToMenus(): void
     {
         self::assertSame('send', menu_key_for_api_path('/api/v1/messages'));

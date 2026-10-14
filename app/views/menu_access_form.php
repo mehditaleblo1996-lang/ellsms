@@ -38,7 +38,9 @@ $overrides = $menuForm['access']['overrides'];
     <table>
       <thead><tr><th>منو</th><th>طبق نقش</th><th>همیشه باز</th><th>همیشه بسته</th><th>وضعیت فعلی</th></tr></thead>
       <tbody>
-      <?php foreach ($catalog as $key => [$label, $icon]): ?>
+      <?php foreach (menu_group_items($catalog, menu_groups()) as [$groupLabel, $groupItems]): ?>
+        <tr><th colspan="5" scope="colgroup"><?= e($groupLabel) ?></th></tr>
+      <?php foreach ($groupItems as $key => [$label, $icon]): ?>
         <?php
         $mode = $overrides[$key] ?? 'inherit';
         $canAllow = $grantable === null || in_array($key, $grantable, true);
@@ -51,6 +53,7 @@ $overrides = $menuForm['access']['overrides'];
           <td><input type="radio" name="menu_override[<?= e($key) ?>]" value="deny"<?= $mode === 'deny' ? ' checked' : '' ?> aria-label="همیشه بسته"></td>
           <td><span class="badge badge-<?= $isOpen ? 'ok' : 'off' ?>"><?= $isOpen ? 'باز' : 'بسته' ?></span></td>
         </tr>
+      <?php endforeach; ?>
       <?php endforeach; ?>
       </tbody>
     </table>

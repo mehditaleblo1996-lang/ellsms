@@ -203,6 +203,25 @@ input.mono, textarea.mono, input.provider-ref, textarea.api-key {
   content: ""; position: absolute; right: 20px; bottom: 3px;
   width: 24px; height: 2px; background: var(--grad); border-radius: 2px;
 }
+/* Collapsible sidebar groups (app/views/header.php): the label is the <summary>. */
+.nav-group > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 8px;
+  transition: color .15s ease;
+}
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary:hover,
+.nav-group.has-active > summary { color: #cfd4ea; }
+.nav-group > summary:focus-visible { outline: 2px solid rgba(255,255,255,.45); outline-offset: -2px; }
+.nav-chevron {
+  margin-inline-start: auto; width: 7px; height: 7px;
+  border-inline-start: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(135deg); transition: transform .15s ease; opacity: .8;
+}
+.nav-group[open] > summary .nav-chevron { transform: rotate(45deg); }
+.nav-group > .nav-item:last-child { margin-bottom: 4px; }
+@media (prefers-reduced-motion: reduce) { .nav-chevron, .nav-group > summary { transition: none; } }
+
 .nav-item {
   display: flex; align-items: center; gap: 11px;
   padding: 10px 20px; color: #cfd4ea; font-weight: 500;

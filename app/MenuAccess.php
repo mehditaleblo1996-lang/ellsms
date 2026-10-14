@@ -53,6 +53,46 @@ function menu_catalog(): array {
     ];
 }
 
+/**
+ * The customer side of the sidebar, in display order: group id => [label, keys]. Covers every
+ * menu_catalog() key plus the always-available pages; the menu-access forms group their rows the same
+ * way. The admin-only groups live in app/views/header.php.
+ */
+function menu_groups(): array {
+    return [
+        'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
+        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'regional_bulk', 'schedules', 'autoreply']],
+        'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'inbox', 'bale']],
+        'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
+        'finance'      => ['مالی',              ['buy_credit', 'invoices', 'billing']],
+        'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'integrations', 'remote_db', 'webhooks']],
+        'account'      => ['حساب و پشتیبانی',   ['subaccounts', 'tickets']],
+    ];
+}
+
+/**
+ * Pure: splits $items (key => anything, already filtered for access) into $groups (id => [label, keys]),
+ * keeping the group order and each group's key order. Empty groups are dropped; keys no group names
+ * end up in a trailing «سایر» group so nothing silently disappears.
+ *
+ * @return array<string, array{0:string, 1:array}> group id => [label, key => item]
+ */
+function menu_group_items(array $items, array $groups): array {
+    $out = [];
+    foreach ($groups as $id => [$label, $keys]) {
+        $members = [];
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $items)) {
+                $members[$key] = $items[$key];
+                unset($items[$key]);
+            }
+        }
+        if ($members !== []) $out[$id] = [$label, $members];
+    }
+    if ($items !== []) $out['other'] = ['سایر', $items];
+    return $out;
+}
+
 /** @return list<string> */
 function menu_keys(): array {
     return array_keys(menu_catalog());

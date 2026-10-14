@@ -52,12 +52,15 @@ $grantable = $rolesForm['grantable'];
   <input type="hidden" name="do" value="role_save">
   <?php if ($editRole): ?><input type="hidden" name="role_id" value="<?= (int)$editRole['id'] ?>"><?php endif; ?>
   <label>نام نقش <input type="text" name="role_name" maxlength="120" required value="<?= e($editRole['name'] ?? '') ?>" placeholder="مثلاً: فقط ارسال و گزارش"></label>
-  <div class="form-grid" style="margin-top:var(--sp-3)">
-    <?php foreach ($catalog as $key => [$label, $icon]): ?>
-      <?php if ($grantable !== null && !in_array($key, $grantable, true)) continue; ?>
-      <label class="check"><input type="checkbox" name="role_keys[]" value="<?= e($key) ?>"<?= in_array($key, $editRole['keys'] ?? [], true) ? ' checked' : '' ?>> <?= $icon ?> <?= e($label) ?></label>
-    <?php endforeach; ?>
-  </div>
+  <?php $offered = $grantable === null ? $catalog : array_intersect_key($catalog, array_flip($grantable)); ?>
+  <?php foreach (menu_group_items($offered, menu_groups()) as [$groupLabel, $groupItems]): ?>
+    <h4 style="margin:var(--sp-3) 0 var(--sp-2)"><?= e($groupLabel) ?></h4>
+    <div class="form-grid">
+      <?php foreach ($groupItems as $key => [$label, $icon]): ?>
+        <label class="check"><input type="checkbox" name="role_keys[]" value="<?= e($key) ?>"<?= in_array($key, $editRole['keys'] ?? [], true) ? ' checked' : '' ?>> <?= $icon ?> <?= e($label) ?></label>
+      <?php endforeach; ?>
+    </div>
+  <?php endforeach; ?>
   <div class="form-actions">
     <button class="btn btn-primary btn-sm"><?= $editRole ? 'ذخیره‌ی تغییرات' : 'ساخت نقش' ?></button>
     <?php if ($editRole): ?><a class="btn btn-sm btn-ghost" href="?<?= e(http_build_query(array_diff_key($_GET, ['role' => 1]))) ?>#roles">انصراف</a><?php endif; ?>
