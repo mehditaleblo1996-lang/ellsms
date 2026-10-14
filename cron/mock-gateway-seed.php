@@ -25,6 +25,10 @@ if (!gateway_mock_enabled()) {
 
 $db = db();
 
+// Where the connectors point. Production-named container by default; the staging stack runs on its
+// own network and passes MOCK_SMS_GATEWAY_URL=http://mock-sms-gateway:8080 (docs/staging.md).
+$mockBaseUrl = rtrim((string)(env('MOCK_SMS_GATEWAY_URL', '') ?: 'http://ellsms-mock-sms-gateway:8080'), '/');
+
 // Provider.
 $db->prepare("INSERT INTO ellsms_sms_providers (code, name, status) VALUES ('mock','Mock Sandbox','active') ON DUPLICATE KEY UPDATE status=VALUES(status), name=VALUES(name)")->execute([]);
 $providerId = (int)$db->query("SELECT id FROM ellsms_sms_providers WHERE code='mock' LIMIT 1")->fetchColumn();
@@ -76,9 +80,9 @@ $batchMapping = json_encode(['correlation_mode' => 'position', 'provider_ids_pat
 $db->prepare(
     "INSERT INTO ellsms_sms_gateway_send_connectors
        (gateway_id, endpoint_url, http_method, content_type, success_rule_json, response_mapping_json, batch_mapping_json)
-     VALUES (?,'http://ellsms-mock-sms-gateway:8080/send','POST','application/json',?,?,?)
+     VALUES (?,?,'POST','application/json',?,?,?)
      ON DUPLICATE KEY UPDATE endpoint_url=VALUES(endpoint_url), success_rule_json=VALUES(success_rule_json), response_mapping_json=VALUES(response_mapping_json), batch_mapping_json=VALUES(batch_mapping_json)"
-)->execute([$gatewayId, $sendSuccess, $sendResponse, $batchMapping]);
+)->execute([$gatewayId, $mockBaseUrl . '/send', $sendSuccess, $sendResponse, $batchMapping]);
 
 // Send parameters: originators, destinations, contents arrays.
 $sendParams = [
@@ -109,9 +113,9 @@ $statusMapping = json_encode(['1' => 'accepted', '2' => 'sent', '3' => 'delivere
 $db->prepare(
     "INSERT INTO ellsms_sms_gateway_status_connectors
        (gateway_id, endpoint_url, http_method, content_type, success_rule_json, response_mapping_json, status_mapping_json, poll_initial_delay_seconds, poll_max_attempts, poll_max_age_seconds)
-     VALUES (?,'http://ellsms-mock-sms-gateway:8080/status','POST','application/json',?,?,?,?,5,86400)
+     VALUES (?,?,'POST','application/json',?,?,?,?,5,86400)
      ON DUPLICATE KEY UPDATE endpoint_url=VALUES(endpoint_url), success_rule_json=VALUES(success_rule_json), response_mapping_json=VALUES(response_mapping_json), status_mapping_json=VALUES(status_mapping_json)"
-)->execute([$gatewayId, $statusSuccess, $statusResponse, $statusMapping]);
+)->execute([$gatewayId, $mockBaseUrl . '/status', $statusSuccess, $statusResponse, $statusMapping, 5]);
 
 // Status parameter: reference_ids array from provider_message_ids.
 $db->prepare(

@@ -116,6 +116,8 @@ cd /opt/ellsms && ./deploy.sh
 ```
 `deploy.sh` pulls, rebuilds, restarts the containers, and re-applies `db/ellsms_extra.sql` (harmless if nothing changed — every statement is `CREATE TABLE IF NOT EXISTS` / `ON DUPLICATE KEY UPDATE`). It runs the `mysql` CLI from inside the already-running `app` container and connects to `BACKEND_DB_HOST` over the network, so this works the same whether that's a local container on the same Docker network or a separate/managed/remote database host — no special-casing needed either way.
 
+**Staging:** a full second copy on the same server — own database (`ellsms_stage`), containers, ports and secrets, auto-deployed from the `staging` branch — is set up with `ops/staging/stage.sh setup`. See [`docs/staging.md`](docs/staging.md).
+
 If `BACKEND_DB_HOST` presents a self-signed or internal-CA TLS certificate (common for an internal-network database), `deploy.sh` and the snippets above already pass `--ssl-verify-server-cert=0` by default — the connection is still encrypted whenever the server offers TLS, just not certificate-chain-validated. Set `BACKEND_DB_SSL_VERIFY=1` in `.env` (and `BACKEND_DB_SSL_CA=<path-inside-the-container>` if the CA isn't in the system trust store) to require a properly verified certificate instead; `app/bootstrap.php`'s own database connection honors the same two variables.
 
 ## Language & calendar

@@ -53,7 +53,7 @@ services:
   mongo:
     logging: *default-logging
     image: mongo:6.0.27-jammy
-    container_name: ellsms-mongo
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-mongo
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${AUDIT_MONGO_USERNAME:-ellsms_audit}

@@ -26,8 +26,11 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    image: ellsms-app:latest
-    container_name: ellsms-app
+    # ELLSMS_APP_IMAGE / ELLSMS_CONTAINER_PREFIX let a second copy (the staging stack, see
+    # docs/staging.md) run on the same Docker host without retagging production's image or
+    # colliding on container names. Production leaves both unset.
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-app
     restart: unless-stopped
     ports:
       - "${APP_PORT:-8080}:80"
@@ -112,9 +115,9 @@ services:
   worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-worker
     restart: unless-stopped
     command: php /var/www/html/cron/worker.php
     environment: &worker_environment
@@ -198,7 +201,7 @@ services:
   # and run `docker compose up -d`. Mind the provider's own rate limit before raising it.
   bulk-worker:
     logging: *default-logging
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
     restart: unless-stopped
     command: php /var/www/html/cron/worker.php --bulk-only
@@ -219,9 +222,9 @@ services:
   webhook-worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-webhook-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-webhook-worker
     restart: unless-stopped
     command: php /var/www/html/cron/webhook-worker.php
     environment:
@@ -255,9 +258,9 @@ services:
   import-worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-import-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-import-worker
     restart: unless-stopped
     command: php /var/www/html/cron/import-worker.php
     environment:
@@ -298,9 +301,9 @@ services:
   status-worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-status-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-status-worker
     restart: unless-stopped
     command: php /var/www/html/cron/sms-status-worker.php
     environment:
@@ -364,9 +367,9 @@ services:
   report-summary-worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-report-summary-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-report-summary-worker
     restart: unless-stopped
     command: php /var/www/html/cron/report-summary-worker.php
     environment:
@@ -414,9 +417,9 @@ services:
   provider-health-checker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-provider-health-checker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-provider-health-checker
     restart: unless-stopped
     command: php /var/www/html/cron/provider-health-check.php --loop
     environment:
@@ -465,7 +468,7 @@ services:
     build:
       context: .
       dockerfile: mock/Dockerfile
-    container_name: ellsms-mock-sms-gateway
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-mock-sms-gateway
     restart: unless-stopped
     ports:
       - "${MOCK_SMS_PORT:-18080}:8080"
@@ -486,9 +489,9 @@ services:
   export-worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-export-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-export-worker
     restart: unless-stopped
     command: php /var/www/html/cron/export-worker.php
     environment:
@@ -536,9 +539,9 @@ services:
   # connection on /admin/remote-db. Connections are leased, so scaling it is safe.
   remote-db-worker:
     logging: *default-logging
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-remote-db-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-remote-db-worker
     restart: unless-stopped
     command: php /var/www/html/cron/remote-db-worker.php
     environment:
@@ -564,9 +567,9 @@ services:
   # scheduler runs jobs at a time (MySQL named lock), so it is never scaled.
   scheduler:
     logging: *default-logging
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-scheduler
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-scheduler
     restart: unless-stopped
     command: php /var/www/html/cron/scheduler.php
     env_file:
@@ -597,8 +600,8 @@ services:
     logging: *default-logging
     build:
       context: ./smpp-bridge
-    image: ellsms-smpp-bridge:latest
-    container_name: ellsms-smpp-bridge
+    image: ${ELLSMS_SMPP_IMAGE:-ellsms-smpp-bridge:latest}
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-smpp-bridge
     restart: unless-stopped
     environment:
       BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
@@ -627,7 +630,7 @@ services:
   prometheus:
     logging: *default-logging
     image: prom/prometheus:v2.55.1
-    container_name: ellsms-prometheus
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-prometheus
     restart: unless-stopped
     profiles: ["observability"]
     volumes:
@@ -648,7 +651,7 @@ services:
   node-exporter:
     logging: *default-logging
     image: prom/node-exporter:v1.8.2
-    container_name: ellsms-node-exporter
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-node-exporter
     restart: unless-stopped
     profiles: ["observability"]
     volumes:
@@ -669,7 +672,7 @@ services:
   cadvisor:
     logging: *default-logging
     image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: ellsms-cadvisor
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-cadvisor
     restart: unless-stopped
     profiles: ["observability"]
     volumes:
@@ -682,7 +685,7 @@ services:
   grafana:
     logging: *default-logging
     image: grafana/grafana:11.3.1
-    container_name: ellsms-grafana
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-grafana
     restart: unless-stopped
     profiles: ["observability"]
     environment:
