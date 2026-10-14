@@ -35,13 +35,13 @@ require __DIR__ . '/../app/views/public_header.php';
           </svg>
         </div>
         <div class="lp-banner-copy">
-          <h2>پیامک انبوه، <span class="is-blue">سریع</span> و <span class="is-green">مطمئن</span></h2>
-          <p>با ELLSMS در چند ثانیه پیام خود را به هزاران مخاطب برسانید.</p>
+          <h2>پیامک انبوه، <span class="is-blue">ساده</span> و <span class="is-green">قابل پیگیری</span></h2>
+          <p>با ELLSMS پیام خود را از یک پنل به فهرست مخاطبانتان بفرستید و وضعیت تحویل هر پیامک را ببینید.</p>
           <div class="lp-banner-feats">
-            <div><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M2 20h20"/></svg><b>ارسال سریع</b><span>ارسال پیامک در چند ثانیه</span></div>
-            <div><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg><b>قابلیت اطمینان بالا</b><span>زیرساخت پایدار و قابل اعتماد</span></div>
-            <div><svg viewBox="0 0 24 24"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><b>مخاطبین نامحدود</b><span>مدیریت آسان مخاطبین</span></div>
-            <div><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg><b>گزارش‌های دقیق</b><span>گزارش‌گیری لحظه‌ای و پیشرفته</span></div>
+            <div><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M2 20h20"/></svg><b>ارسال مستقیم</b><span>ارسال فوری یا زمان‌بندی‌شده</span></div>
+            <div><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg><b>پیگیری هر پیام</b><span>وضعیت تحویل هر پیامک</span></div>
+            <div><svg viewBox="0 0 24 24"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><b>مدیریت مخاطبین</b><span>گروه‌بندی و ورود از اکسل</span></div>
+            <div><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg><b>گزارش ارسال</b><span>وضعیت تحویل و خروجی گزارش</span></div>
           </div>
           <a href="<?= e($primaryHref ?? '/login.php') ?>" class="btn btn-primary">شروع ارسال</a>
         </div>
@@ -60,7 +60,7 @@ require __DIR__ . '/../app/views/public_header.php';
           <ul class="lp-banner-points">
             <li>فایل اکسل یا CSV با هر تعداد ستون</li>
             <li>پیش‌نمایش پیام هر ردیف پیش از ارسال</li>
-            <li>ارسال صدها هزار پیام شخصی در یک کمپین</li>
+            <li>پیام شخصی برای هر ردیف فایل در یک کمپین</li>
           </ul>
           <a href="<?= e($primaryHref ?? '/login.php') ?>" class="btn btn-primary">امتحان پیامک هوشمند</a>
         </div>
@@ -69,7 +69,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۳">
         <div class="lp-banner-visual lp-banner-report" aria-hidden="true">
           <div class="lp-report-card">
-            <div class="lp-report-head"><span>ارسال امروز</span><b>۱۲٬۴۸۰</b></div>
+            <div class="lp-report-head"><span>نمونه — ارسال امروز</span><b>۱۲٬۴۸۰</b></div>
             <div class="lp-report-bars"><i style="--h:45%"></i><i style="--h:70%"></i><i style="--h:52%"></i><i style="--h:88%"></i><i style="--h:64%"></i><i style="--h:96%"></i><i style="--h:78%"></i></div>
             <div class="lp-report-row" style="--i:0"><span class="ltr">0912•••4471</span><em class="is-ok">تحویل شد</em></div>
             <div class="lp-report-row" style="--i:1"><span class="ltr">0935•••1187</span><em class="is-ok">تحویل شد</em></div>
@@ -190,9 +190,9 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
         <ul class="lp-hero-stats">
           <li><strong>۵</strong><span>حالت ارسال</span></li>
-          <li><strong>نامحدود</strong><span>قالب پویا</span></li>
-          <li><strong>۲۴/۷</strong><span>پردازش پس‌زمینه</span></li>
-          <li><strong>زرین‌پال</strong><span>پرداخت امن</span></li>
+          <li><strong>قالب پویا</strong><span>با ستون‌های فایل شما</span></li>
+          <li><strong>زمان‌بندی</strong><span>با تقویم شمسی</span></li>
+          <li><strong>زرین‌پال</strong><span>پرداخت آنلاین</span></li>
         </ul>
       </div>
       <div class="lp-hero-visual" aria-hidden="true">
@@ -231,11 +231,11 @@ require __DIR__ . '/../app/views/public_header.php';
         <div class="lp-scene-cards">
           <div class="lp-scene-card" style="--d:0s">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M2 20h20"/></svg>
-            <span>ارسال سریع</span>
+            <span>ارسال زمان‌بندی‌شده</span>
           </div>
           <div class="lp-scene-card" style="--d:2s">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg>
-            <span>امن و قابل اطمینان</span>
+            <span>ورود دومرحله‌ای</span>
           </div>
           <div class="lp-scene-card" style="--d:4s">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>
@@ -328,7 +328,7 @@ require __DIR__ . '/../app/views/public_header.php';
   <section id="features" class="lp-section lp-reveal">
     <div class="lp-section-head">
       <h2>هر روش ارسالی که نیاز دارید</h2>
-      <p>پنج حالت ارسال، یک موتور واحد — بدون افزونه‌ی جداگانه و بدون هزینه‌ی اضافه.</p>
+      <p>پنج حالت ارسال در یک پنل. دسترسی به برخی امکانات ممکن است به پلن حساب بستگی داشته باشد.</p>
     </div>
     <div class="lp-bento">
       <article class="lp-card lp-bento-flag lp-reveal" style="--i:0">
@@ -376,7 +376,7 @@ require __DIR__ . '/../app/views/public_header.php';
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
         </span>
         <h3>ارسال تدریجی</h3>
-        <p>ارسال را به‌صورت پلکانی و با فاصله‌ی زمانی کنترل‌شده انجام دهید تا نرخ تحویل بالاتر بماند.</p>
+        <p>ارسال را به‌صورت پلکانی و با فاصله‌ی زمانی کنترل‌شده انجام دهید، به‌جای ارسال همه در یک لحظه.</p>
       </article>
       <article class="lp-card lp-bento-c5 lp-reveal" style="--i:6">
         <span class="lp-icon lp-icon-tint-e">
@@ -419,7 +419,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <div class="lp-compare-row">
         <div>پاسخ به پیام‌های دریافتی</div>
         <div class="lp-compare-no">دستی و با تأخیر</div>
-        <div class="lp-compare-yes">منشی پیامک، پاسخ خودکار و آنی</div>
+        <div class="lp-compare-yes">منشی پیامک، پاسخ خودکار طبق قوانین شما</div>
       </div>
       <div class="lp-compare-row">
         <div>گزارش وضعیت تحویل</div>
@@ -598,7 +598,7 @@ require __DIR__ . '/../app/views/public_header.php';
 
   <section class="lp-cta lp-reveal">
     <h2>آماده‌اید شروع کنید؟</h2>
-    <p>به پنل وارد شوید و اولین ارسال خود را در کمتر از یک دقیقه انجام دهید.</p>
+    <p>به پنل وارد شوید و اولین ارسال خود را انجام دهید.</p>
     <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
   </section>
 <?php require __DIR__ . '/../app/views/public_footer.php'; ?>
