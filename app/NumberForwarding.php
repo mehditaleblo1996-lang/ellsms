@@ -500,7 +500,7 @@ function number_forward_enqueue_dlr(string $source, int $rowId, string $state, ?
             $st = db()->prepare('SELECT originator, destination, provider_message_id, delivered_at, reference_id FROM ellsms_message_attempts WHERE id = ?');
             $sourceKey = 'attempt:' . $rowId;
         } else {
-            $st = db()->prepare('SELECT j.originator, bi.mobile AS destination, bi.provider_message_id, bi.delivered_at, bi.job_id AS reference_id
+            $st = db()->prepare('SELECT j.originator, bi.mobile AS destination, bi.provider_message_id, bi.delivered_at, bi.job_id AS reference_id, ' . bulk_job_masked_sql('j') . ' AS recipients_masked
                                  FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs j ON j.id = bi.job_id WHERE bi.id = ?');
             $sourceKey = 'bulk_item:' . $rowId;
         }
@@ -522,7 +522,8 @@ function number_forward_enqueue_dlr(string $source, int $rowId, string $state, ?
             'message_id'          => $sourceKey,
             'reference_id'        => (string)($row['reference_id'] ?? ''),
             'originator'          => $line,
-            'destination'         => (string)($row['destination'] ?? ''),
+            // An aimed-bulk number belongs to the platform's bank: the customer's URL gets the mask.
+            'destination'         => bulk_recipient_display((string)($row['destination'] ?? ''), !empty($row['recipients_masked']), false),
             'delivered_at'        => date('Y-m-d H:i:s', $ts),
             'provider_message_id' => (string)($row['provider_message_id'] ?? ''),
         ]);
