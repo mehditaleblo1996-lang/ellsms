@@ -1,0 +1,393 @@
+/* ELLSMS sign-in: the feature slider in the end half of the card (app/views/partials/login_slider.php).
+   Every scene is drawn in HTML/CSS and loops like a short silent video. The base styles below are each
+   scene's finished frame, so with reduced motion the slides are still and complete; the motion is only
+   added under prefers-reduced-motion: no-preference. A slide keeps its scene running while it fades
+   out (.is-leaving), so it never snaps back to the first frame mid-transition. */
+
+.ls {
+  --ls-loop: 7s;               /* one slide = one loop of its scene = one fill of its progress tick */
+  --ls-bg1: #120c3a;
+  --ls-bg2: #2b1d9c;
+  --ls-ink: #fff;
+  --ls-soft: rgba(232, 234, 255, .74);
+  --ls-faint: rgba(232, 234, 255, .52);
+  --ls-violet: #9d8cff;
+  --ls-blue: #5b9bff;
+  --ls-mint: #4fe3b8;
+  --ls-glass: rgba(255, 255, 255, .07);
+  --ls-glass-edge: rgba(255, 255, 255, .14);
+
+  position: relative; isolation: isolate;
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 560px; margin: 12px; padding: 0;
+  border: 0; border-radius: 20px; overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(91, 155, 255, .28), transparent 60%),
+    linear-gradient(165deg, var(--ls-bg1) 0%, #1c1468 55%, var(--ls-bg2) 100%);
+  color: var(--ls-ink);
+  box-shadow: 0 20px 50px -24px rgba(18, 12, 58, .55);
+}
+.auth .ls a { color: var(--ls-ink); text-decoration-color: var(--ls-faint); }
+.auth .ls a:hover { text-decoration-color: var(--ls-ink); }
+.auth .ls :focus-visible { outline-color: #fff; }
+
+/* ---------- Ambient light: slow drifting glows and a faint grid, the "footage" behind every slide ---------- */
+.ls-ambient { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+.ls-ambient::before {
+  content: ""; position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(255, 255, 255, .045) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .045) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-mask-image: radial-gradient(80% 60% at 50% 35%, #000, transparent 75%);
+          mask-image: radial-gradient(80% 60% at 50% 35%, #000, transparent 75%);
+}
+.ls-ambient::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, rgba(10, 7, 34, .85) 0%, rgba(10, 7, 34, 0) 45%); }
+.ls-ambient i { position: absolute; display: block; border-radius: 50%; filter: blur(40px); opacity: .55; }
+.ls-ambient i:nth-child(1) { width: 260px; height: 260px; top: -60px; left: -40px; background: #6a4cff; }
+.ls-ambient i:nth-child(2) { width: 220px; height: 220px; top: 30%; right: -70px; background: #2f7bff; opacity: .4; }
+.ls-ambient i:nth-child(3) { width: 180px; height: 180px; bottom: 18%; left: 30%; background: #18b49a; opacity: .22; }
+
+/* ---------- Progress: one tick per slide, story-style ---------- */
+.ls-progress { display: flex; gap: 6px; padding: 16px 22px 0; position: relative; z-index: 2; }
+.ls-tick {
+  flex: 1 1 0; display: flex; align-items: center;
+  height: 24px; padding: 0; margin: 0; border: 0; background: none; cursor: pointer;
+}
+.ls-tick i { position: relative; display: block; width: 100%; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+.ls-tick i::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; background: #fff;
+  transform-origin: right center; transform: scaleX(0);
+}
+.ls-tick.is-done i::after, .ls-tick.is-active i::after { transform: none; }
+.ls-tick:hover i { background: rgba(255, 255, 255, .32); }
+
+/* ---------- Slides ---------- */
+.ls-track { position: relative; min-height: 0; }
+.ls-slide {
+  position: absolute; inset: 0;
+  display: grid; grid-template-rows: minmax(0, 1fr) auto;
+  opacity: 0; visibility: hidden;
+  transform: scale(1.03);
+  transition: opacity .7s var(--ease-out), transform .9s var(--ease-out), visibility 0s linear .7s;
+}
+.ls-slide.is-active { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; z-index: 1; }
+
+.ls-scene { position: relative; display: grid; place-items: center; padding: 10px 26px 0; min-height: 0; }
+
+.ls-caption { padding: 0 28px 76px; position: relative; }
+.ls-tag {
+  display: inline-block; margin-bottom: 8px; padding: 2px 10px;
+  border-radius: 999px; background: rgba(79, 227, 184, .14); color: var(--ls-mint);
+  font-size: 12px; font-weight: 500; line-height: 1.9;
+}
+.ls-title { margin: 0 0 4px; font-size: 22px; font-weight: 700; line-height: 1.6; color: var(--ls-ink); }
+.ls-body { margin: 0; max-width: 40ch; font-size: 14px; line-height: 1.95; color: var(--ls-soft); }
+.ls-cta { display: inline-flex; align-items: center; min-height: 44px; margin-top: 2px; font-size: 14px; font-weight: 500; }
+
+/* ---------- Controls ---------- */
+.ls-controls {
+  position: absolute; inset-inline: 0; bottom: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 22px 18px 18px;
+}
+.ls-count { font-size: 13px; color: var(--ls-faint); font-variant-numeric: tabular-nums; }
+.ls-count b { color: var(--ls-ink); font-weight: 700; }
+.ls-buttons { display: flex; gap: 6px; }
+.ls-btn {
+  display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 1px solid var(--ls-glass-edge); border-radius: 50%;
+  background: var(--ls-glass); color: var(--ls-ink); cursor: pointer;
+  transition: background-color .15s ease, transform .12s var(--ease-out);
+}
+.ls-btn[hidden] { display: none; }
+.ls-btn:hover { background: rgba(255, 255, 255, .16); }
+.ls-btn:active { transform: scale(.94); }
+.ls-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ls-btn .ls-ico-play { fill: currentColor; stroke-width: 1.5; display: none; }
+.ls.is-paused .ls-btn .ls-ico-play { display: block; }
+.ls.is-paused .ls-btn .ls-ico-pause { display: none; }
+
+/* ============================================================
+   Scenes — finished frames
+   ============================================================ */
+.sc-label { display: block; font-size: 11px; color: var(--ls-faint); line-height: 1.8; }
+.ls-scene b { font-weight: 700; }
+
+/* 1 · Smart template */
+.ls-scene-1 { grid-template-columns: 1fr; align-content: center; gap: 12px; justify-items: stretch; }
+.sc-template {
+  padding: 10px 14px; border-radius: 14px;
+  background: var(--ls-glass); border: 1px dashed rgba(157, 140, 255, .55);
+}
+.sc-template p { margin: 0; font-size: 14px; line-height: 1.9; }
+.sc-template b { color: var(--ls-violet); }
+.sc-rows { display: flex; gap: 8px; justify-content: flex-start; }
+.sc-rows span {
+  display: inline-flex; gap: 8px; align-items: baseline;
+  padding: 3px 10px; border-radius: 8px; background: rgba(91, 155, 255, .16);
+  font-size: 12px; line-height: 1.9;
+}
+.sc-rows em { font-style: normal; color: var(--ls-soft); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+.sc-out { display: grid; gap: 8px; justify-items: start; }
+.sc-bubble {
+  margin: 0; padding: 7px 13px; max-width: 88%;
+  border-radius: 16px; border-end-start-radius: 5px;
+  background: #fff; color: #10131c;
+  font-size: 13px; line-height: 1.85;
+  box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .5);
+}
+.sc-bubble b { color: #4a32e8; }
+
+/* 2 · Bulk send network */
+.ls-scene-2 { grid-template-rows: minmax(0, 1fr) auto; gap: 4px; }
+.sc-net { width: 100%; max-width: 330px; max-height: 240px; overflow: visible; }
+.sc-links line { stroke: rgba(157, 140, 255, .35); stroke-width: 1.2; stroke-dasharray: 3 4; }
+.sc-pulses circle { fill: var(--ls-mint); opacity: 0; }
+.sc-phones rect { fill: rgba(79, 227, 184, .22); stroke: var(--ls-mint); stroke-width: 1.4; }
+.sc-hub rect { fill: #4c63f5; }
+.sc-hub path { fill: #4c63f5; }
+.sc-hub .sc-dot { fill: #fff; }
+.sc-hub-ring { fill: rgba(91, 155, 255, .12); stroke: rgba(91, 155, 255, .5); stroke-width: 1; transform-box: fill-box; transform-origin: center; }
+.sc-counter { display: grid; justify-items: center; line-height: 1.4; }
+@property --sc-n { syntax: '<integer>'; initial-value: 12480; inherits: false; }
+.sc-counter-num { --sc-n: 12480; counter-reset: scn var(--sc-n); font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sc-counter-num::after { content: counter(scn, persian); }
+.sc-counter small { font-size: 12px; color: var(--ls-faint); }
+
+/* 3 · Live delivery report */
+.ls-scene-3 { grid-template-columns: 1fr; align-content: center; gap: 12px; justify-items: stretch; }
+.sc-dash { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+.sc-chart, .sc-ring, .sc-status {
+  background: var(--ls-glass); border: 1px solid var(--ls-glass-edge); border-radius: 14px;
+}
+.sc-chart { padding: 10px 14px 12px; }
+.sc-bars { display: flex; align-items: flex-end; gap: 8px; height: 92px; margin-top: 6px; }
+.sc-bars i {
+  flex: 1 1 0; height: var(--h); border-radius: 5px 5px 2px 2px;
+  background: linear-gradient(to top, #4a32e8, var(--ls-blue));
+  transform-origin: bottom;
+}
+.sc-bars i:nth-child(6) { background: linear-gradient(to top, #1aa889, var(--ls-mint)); }
+.sc-ring { position: relative; display: grid; place-items: center; align-content: center; width: 124px; padding: 8px; }
+.sc-ring svg { width: 84px; height: 84px; transform: rotate(-90deg); }
+.sc-ring-bg { fill: none; stroke: rgba(255, 255, 255, .12); stroke-width: 7; }
+.sc-ring-fill { fill: none; stroke: var(--ls-mint); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 2; }
+.sc-ring-dial { position: relative; display: grid; place-items: center; }
+.sc-ring-dial b { position: absolute; inset: 0; display: grid; place-items: center; font-size: 18px; line-height: 1; }
+.sc-ring small { font-size: 11px; color: var(--ls-faint); line-height: 1.6; }
+.sc-status { list-style: none; margin: 0; padding: 4px 14px; }
+.sc-status li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 12px; line-height: 1.8; }
+.sc-status li + li { border-top: 1px solid rgba(255, 255, 255, .08); }
+.sc-status span { color: var(--ls-soft); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+.sc-status em { position: relative; display: grid; font-style: normal; }
+.sc-status em > * { grid-area: 1 / 1; padding: 0 10px; border-radius: 999px; font-size: 11px; text-decoration: none; text-align: center; }
+.sc-status s { background: rgba(255, 209, 102, .16); color: #ffd166; opacity: 0; }
+.sc-status em b { background: rgba(79, 227, 184, .16); color: var(--ls-mint); font-weight: 500; }
+
+/* 4 · Auto-reply */
+.sc-phone {
+  position: relative; display: grid; gap: 10px; align-content: start;
+  width: min(280px, 100%); padding: 14px 14px 18px;
+  border-radius: 26px; background: rgba(8, 6, 28, .55);
+  border: 1px solid var(--ls-glass-edge);
+  box-shadow: 0 24px 48px -20px rgba(0, 0, 0, .6);
+}
+.sc-phone-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--ls-faint); line-height: 1.6; }
+.sc-moon { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset -4px -2px 0 0 #ffd166; transform: rotate(-20deg); }
+.sc-msg { margin: 0; padding: 8px 13px; max-width: 86%; font-size: 13px; line-height: 1.85; border-radius: 16px; }
+.sc-in { justify-self: start; background: rgba(255, 255, 255, .12); border-end-start-radius: 5px; }
+.sc-auto { background: #4a32e8; border-end-end-radius: 5px; }
+.sc-replyslot { display: grid; }
+.sc-replyslot > * { grid-area: 1 / 1; justify-self: end; align-self: start; }
+.sc-typing {
+  margin: 0;
+  display: flex; gap: 4px; padding: 11px 13px; border-radius: 16px; border-end-end-radius: 5px;
+  background: #4a32e8; opacity: 0;
+}
+.sc-typing i { width: 6px; height: 6px; border-radius: 50%; background: #fff; opacity: .7; }
+.sc-rule {
+  justify-self: center; margin-top: 4px; padding: 2px 10px; border-radius: 999px;
+  background: rgba(79, 227, 184, .14); color: var(--ls-mint); font-size: 11px; line-height: 1.9;
+}
+
+/* 5 · Getting started */
+.ls-scene-5 { grid-template-rows: auto auto auto; align-content: center; gap: 0; }
+.sc-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; position: relative; z-index: 1; }
+.sc-steps li { display: grid; justify-items: center; gap: 10px; font-size: 13px; line-height: 1.6; }
+.sc-step-ico {
+  display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px;
+  background: #4a32e8; border: 1px solid rgba(157, 140, 255, .7);
+  box-shadow: 0 0 0 6px rgba(74, 50, 232, .18);
+}
+.sc-step-ico svg { width: 26px; height: 26px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sc-rail { position: relative; justify-self: stretch; height: 3px; margin: -61px 16.6% 58px; border-radius: 3px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.sc-rail i { position: absolute; inset: 0; background: linear-gradient(to left, var(--ls-violet), var(--ls-mint)); transform-origin: right; }
+.sc-cursor { position: absolute; width: 22px; height: 22px; top: calc(50% - 14px); left: 18%; opacity: 0; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .5)); }
+.sc-cursor path { fill: #fff; stroke: #10131c; stroke-width: 1.2; stroke-linejoin: round; }
+.sc-done {
+  justify-self: center; margin: 22px 0 0; padding: 6px 14px; border-radius: 999px;
+  background: rgba(79, 227, 184, .14); color: var(--ls-mint); font-size: 13px; line-height: 1.8;
+}
+
+/* ============================================================
+   Motion — only when the viewer has not asked for less
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .ls-ambient i { will-change: transform; animation: ls-drift 18s ease-in-out infinite alternate; }
+  .ls-ambient i:nth-child(2) { animation-duration: 22s; animation-delay: -6s; }
+  .ls-ambient i:nth-child(3) { animation-duration: 26s; animation-delay: -12s; }
+
+  /* The active tick fills over one loop; its animationend is what advances the slider (login.js). */
+  .ls.is-auto .ls-tick.is-active i::after { animation: ls-fill var(--ls-loop) linear forwards; }
+  .ls.is-hold .ls-tick.is-active i::after { animation-play-state: paused; }
+  /* The pause button freezes everything, like pausing a video. */
+  .ls.is-paused *, .ls.is-paused *::before, .ls.is-paused *::after { animation-play-state: paused !important; }
+
+  .ls-slide .ls-caption > * { opacity: 0; transform: translateY(12px); transition: opacity .5s var(--ease-out), transform .6s var(--ease-out); }
+  .ls-slide.is-active .ls-caption > * { opacity: 1; transform: none; }
+  .ls-slide.is-active .ls-caption > :nth-child(2) { transition-delay: .08s; }
+  .ls-slide.is-active .ls-caption > :nth-child(3) { transition-delay: .16s; }
+  .ls-slide.is-active .ls-caption > :nth-child(4) { transition-delay: .24s; }
+
+  :is(.is-active, .is-leaving) .ls-scene * { --a: var(--ls-loop) var(--ease-out) infinite both; }
+
+  /* 1 */
+  :is(.is-active, .is-leaving) .sc-template { animation: sc-pop var(--a); }
+  :is(.is-active, .is-leaving) .sc-rows span { animation: sc-chip var(--a); }
+  :is(.is-active, .is-leaving) .sc-rows span:nth-child(2) { animation-delay: .5s; }
+  :is(.is-active, .is-leaving) .sc-rows span:nth-child(3) { animation-delay: 1s; }
+  :is(.is-active, .is-leaving) .sc-bubble { animation: sc-pop var(--a); animation-delay: .7s; }
+  :is(.is-active, .is-leaving) .sc-bubble:nth-child(2) { animation-delay: 1.2s; }
+  :is(.is-active, .is-leaving) .sc-bubble:nth-child(3) { animation-delay: 1.7s; }
+
+  /* 2 */
+  :is(.is-active, .is-leaving) .sc-links line { animation: sc-dash 1.2s linear infinite; }
+  :is(.is-active, .is-leaving) .sc-pulses circle { animation: sc-pulse var(--a); animation-timing-function: ease-in; }
+  :is(.is-active, .is-leaving) .sc-phones rect { animation: sc-phone var(--a); }
+  :is(.is-active, .is-leaving) .ls-scene-2 .w2 { animation-delay: .9s; }
+  :is(.is-active, .is-leaving) .ls-scene-2 .w3 { animation-delay: 1.8s; }
+  :is(.is-active, .is-leaving) .sc-links .w2, :is(.is-active, .is-leaving) .sc-links .w3 { animation-delay: 0s; }
+  :is(.is-active, .is-leaving) .sc-hub-ring { animation: sc-ring 1.6s ease-out infinite; }
+  :is(.is-active, .is-leaving) .sc-hub .sc-dot { animation: mark-typing 1.2s ease-in-out infinite; }
+  :is(.is-active, .is-leaving) .sc-hub .sc-dot:nth-of-type(3) { animation-delay: .2s; }
+  :is(.is-active, .is-leaving) .sc-hub .sc-dot:nth-of-type(4) { animation-delay: .4s; }
+  :is(.is-active, .is-leaving) .sc-counter-num { animation: sc-count var(--ls-loop) cubic-bezier(.3, .7, .2, 1) infinite both; }
+
+  /* 3 */
+  :is(.is-active, .is-leaving) .sc-bars i { animation: sc-bar var(--a); animation-delay: calc(var(--k) * .12s); }
+  :is(.is-active, .is-leaving) .sc-ring-fill { animation: sc-ringfill var(--a); }
+  :is(.is-active, .is-leaving) .sc-status li { animation: sc-pop var(--a); animation-delay: calc(.4s + var(--k) * .25s); }
+  :is(.is-active, .is-leaving) .sc-status s { animation: sc-queued var(--a); animation-delay: calc(var(--k) * .6s); }
+  :is(.is-active, .is-leaving) .sc-status em b { animation: sc-delivered var(--a); animation-delay: calc(var(--k) * .6s); }
+
+  /* 4 */
+  :is(.is-active, .is-leaving) .sc-in { animation: sc-pop var(--a); animation-delay: .3s; }
+  :is(.is-active, .is-leaving) .sc-typing { animation: sc-typing var(--a); }
+  :is(.is-active, .is-leaving) .sc-typing i { animation: mark-typing 1s ease-in-out infinite; }
+  :is(.is-active, .is-leaving) .sc-typing i:nth-child(2) { animation-delay: .15s; }
+  :is(.is-active, .is-leaving) .sc-typing i:nth-child(3) { animation-delay: .3s; }
+  :is(.is-active, .is-leaving) .sc-auto { animation: sc-reply var(--a); }
+  :is(.is-active, .is-leaving) .sc-rule { animation: sc-reply var(--a); animation-delay: .5s; }
+  :is(.is-active, .is-leaving) .sc-moon { animation: sc-moon 3.5s ease-in-out infinite alternate; }
+
+  /* 5 */
+  :is(.is-active, .is-leaving) .sc-step-ico { animation: sc-step var(--a); animation-delay: calc(.6s + var(--k) * 1.3s); }
+  :is(.is-active, .is-leaving) .sc-steps b { animation: sc-steplabel var(--a); animation-delay: calc(.6s + var(--k) * 1.3s); }
+  :is(.is-active, .is-leaving) .sc-rail i { animation: sc-rail var(--a); }
+  :is(.is-active, .is-leaving) .sc-cursor { animation: sc-cursor var(--ls-loop) cubic-bezier(.45, 0, .2, 1) infinite both; }
+  :is(.is-active, .is-leaving) .sc-done { animation: sc-done var(--a); }
+}
+
+@keyframes ls-drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(40px, 30px) scale(1.15); } }
+@keyframes ls-fill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+/* Every scene keyframe ends on its finished frame and fades out over the loop's last few percent,
+   so a loop that runs on (while the pointer rests on the slider) restarts cleanly. */
+@keyframes sc-pop {
+  0%, 2% { opacity: 0; transform: translateY(10px) scale(.97); }
+  10%, 84% { opacity: 1; transform: none; }
+  92%, 100% { opacity: 0; transform: translateY(-4px); }
+}
+@keyframes sc-chip {
+  0% { opacity: 0; transform: translateX(-16px); }
+  8%, 84% { opacity: 1; transform: none; box-shadow: 0 0 0 0 rgba(157, 140, 255, 0); }
+  14% { box-shadow: 0 0 0 4px rgba(157, 140, 255, .35); }
+  92%, 100% { opacity: 0; }
+}
+@keyframes sc-dash { to { stroke-dashoffset: -14; } }
+@keyframes sc-pulse {
+  0% { opacity: 0; transform: translate(0, 0); }
+  3% { opacity: 1; }
+  14% { opacity: 1; transform: translate(var(--x), var(--y)); }
+  17%, 100% { opacity: 0; transform: translate(var(--x), var(--y)); }
+}
+@keyframes sc-phone {
+  0%, 13% { fill: rgba(255, 255, 255, .04); stroke: rgba(255, 255, 255, .28); }
+  17% { fill: rgba(79, 227, 184, .6); stroke: var(--ls-mint); }
+  26%, 92% { fill: rgba(79, 227, 184, .22); stroke: var(--ls-mint); }
+  100% { fill: rgba(255, 255, 255, .04); stroke: rgba(255, 255, 255, .28); }
+}
+@keyframes sc-ring { from { transform: scale(.85); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+@keyframes sc-count { 0% { --sc-n: 0; } 55%, 100% { --sc-n: 12480; } }
+@keyframes sc-bar {
+  0% { transform: scaleY(0); }
+  14%, 88% { transform: scaleY(1); }
+  98%, 100% { transform: scaleY(0); }
+}
+@keyframes sc-ringfill { 0%, 6% { stroke-dashoffset: 100; } 40%, 90% { stroke-dashoffset: 2; } 100% { stroke-dashoffset: 100; } }
+@keyframes sc-queued { 0%, 10% { opacity: 1; } 34%, 100% { opacity: 0; } }
+@keyframes sc-delivered {
+  0%, 30% { opacity: 0; transform: scale(.8); }
+  36%, 90% { opacity: 1; transform: none; }
+  100% { opacity: 0; }
+}
+@keyframes sc-typing { 0%, 16% { opacity: 0; transform: translateY(6px); } 20%, 38% { opacity: 1; transform: none; } 42%, 100% { opacity: 0; } }
+@keyframes sc-reply {
+  0%, 41% { opacity: 0; transform: translateY(10px) scale(.96); }
+  48%, 88% { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; }
+}
+@keyframes sc-moon { from { transform: rotate(-20deg); } to { transform: rotate(10deg) translateY(-1px); } }
+@keyframes sc-step {
+  0% { background: #251c72; border-color: rgba(255, 255, 255, .18); box-shadow: 0 0 0 0 rgba(74, 50, 232, 0); transform: none; }
+  4% { transform: scale(.9); }
+  9%, 70% { background: #4a32e8; border-color: rgba(157, 140, 255, .7); box-shadow: 0 0 0 6px rgba(74, 50, 232, .18); transform: none; }
+  78%, 100% { background: #251c72; border-color: rgba(255, 255, 255, .18); box-shadow: 0 0 0 0 rgba(74, 50, 232, 0); }
+}
+@keyframes sc-steplabel { 0% { color: var(--ls-faint); } 9%, 70% { color: var(--ls-ink); } 78%, 100% { color: var(--ls-faint); } }
+@keyframes sc-rail {
+  0%, 12% { transform: scaleX(0); }
+  28% { transform: scaleX(.5); }
+  46%, 88% { transform: scaleX(1); }
+  96%, 100% { transform: scaleX(0); }
+}
+@keyframes sc-cursor {
+  0% { opacity: 0; left: 50%; top: 92%; }
+  5% { opacity: 1; }
+  9%, 12% { left: 80%; top: calc(50% - 30px); }
+  13% { transform: scale(.82); }
+  15% { transform: none; }
+  25%, 30% { left: 47%; top: calc(50% - 30px); transform: none; }
+  31% { transform: scale(.82); }
+  33% { transform: none; }
+  43%, 49% { left: 14%; top: calc(50% - 30px); transform: none; }
+  50% { transform: scale(.82); }
+  52% { transform: none; }
+  62% { opacity: 1; left: 20%; top: 80%; }
+  70%, 100% { opacity: 0; left: 22%; top: 84%; }
+}
+@keyframes sc-done {
+  0%, 52% { opacity: 0; transform: translateY(8px); }
+  58%, 88% { opacity: 1; transform: none; }
+  96%, 100% { opacity: 0; }
+}
+
+/* The base state of the cursor and the typing bubble is hidden; everything else's base is its finished frame. */
+
+/* ---------- Hidden on narrow screens: the form stands alone there ---------- */
+@media (max-width: 860px) {
+  .auth-stage.ls { display: none; }
+}
+@media (min-width: 861px) and (max-width: 1000px) {
+  .ls-caption { padding-inline: 22px; }
+  .ls-title { font-size: 20px; }
+}

@@ -87,16 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="preload" href="/assets/fonts/Vazirmatn-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/login.css')) ?>">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/css/login-slider.css')) ?>">
 <script>document.documentElement.classList.add('js');</script>
 </head>
 <body class="auth">
-<?php
-/* A light sign-in card using the panel brand. Its start half is the form; its end
-   half is a working piece of the panel itself — the message composer and its part counter, which
-   counts exactly as sms_parts() bills (70 / 67 characters for Persian, 160 / 153 for Latin). The
-   sample text is only a demo; nothing in it is sent. */
-$sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا تا ساعت ۱۲ به دستتان می‌رسد. کد پیگیری: ۴۸۲۱۷\nلغو۱۱";
-?>
+<?php /* A light sign-in card using the panel brand: the form in its start half, a slider of the
+         panel's features and a getting-started guide in its end half (hidden on narrow screens). */ ?>
   <div class="auth-bg" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
 
   <div class="auth-shell">
@@ -159,30 +155,7 @@ $sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا 
         <?php endif; ?>
       </section>
 
-      <section class="auth-stage" aria-labelledby="stageTitle">
-        <h2 class="auth-stage-title" id="stageTitle">هر ۷۰ نویسه‌ی فارسی، یک پیامک</h2>
-        <p class="auth-stage-note">متن را تغییر دهید؛ شمارنده همان حسابی را می‌کند که پنل برای هزینه‌ی ارسال انجام می‌دهد.</p>
-
-        <div class="sms-composer" data-ui>
-          <div class="sms-composer-head">
-            <label for="smsDemo">متن پیام</label>
-            <span class="sms-composer-note">پیش‌نمایش؛ چیزی ارسال نمی‌شود</span>
-          </div>
-          <textarea id="smsDemo" rows="4" maxlength="670"><?= e($sampleSms) ?></textarea>
-          <div class="sms-meter" aria-hidden="true"><span id="smsMeterFill"></span></div>
-          <dl class="sms-readout" aria-live="polite">
-            <div><dt>نویسه</dt><dd id="smsChars">—</dd></div>
-            <div><dt>پیامک</dt><dd id="smsParts">—</dd></div>
-            <div><dt>زبان</dt><dd id="smsKind">—</dd></div>
-            <div><dt>تا پیامک بعد</dt><dd id="smsLeft">—</dd></div>
-          </dl>
-        </div>
-
-        <div class="sms-received" data-ui aria-hidden="true">
-          <div class="sms-received-from"><b dir="ltr">ELLSMS</b><time id="smsTime"></time></div>
-          <p class="sms-bubble" id="smsBubble"><?= e($sampleSms) ?></p>
-        </div>
-      </section>
+      <?php require __DIR__ . '/../app/views/partials/login_slider.php'; ?>
     </main>
 
     <footer class="auth-bottom rise" style="--d:2">

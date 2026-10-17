@@ -1,5 +1,5 @@
 /* ELLSMS sign-in: a light, quiet surface using the panel brand and local Vazirmatn.
-   Authentication and the local SMS demo retain their existing behavior. */
+   The feature slider in the card's end half has its own stylesheet, login-slider.css. */
 
 .auth {
   --a-ink:    #10131c;
@@ -19,8 +19,6 @@
   --a-field-focus:  #fff;
   --a-solid:        #fff;
   --a-tint:         rgba(16, 19, 28, .07);
-  --a-pane:         rgba(255, 255, 255, .32);
-  --a-pane-edge:    rgba(16, 19, 28, .07);
   --a-shadow:       24, 35, 69;
   /* Quiet brand tints keep text readable and avoid continuous large repaints. */
   --a-base:  #f5f7fb;
@@ -53,7 +51,7 @@
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
-.auth *, .auth input, .auth button, .auth textarea { font-family: var(--a-font); letter-spacing: 0; }
+.auth *, .auth input, .auth button { font-family: var(--a-font); letter-spacing: 0; }
 .auth a { color: var(--a-ink); text-decoration: underline; text-decoration-color: var(--a-soft); text-underline-offset: 5px; text-decoration-thickness: 1px; transition: text-decoration-color .15s ease; }
 .auth a:hover { text-decoration-color: var(--a-ink); }
 .auth :focus-visible { outline: 2px solid var(--a-brand); outline-offset: 3px; }
@@ -198,60 +196,6 @@
 
 .auth-register { margin: 22px 0 0; font-size: var(--a-fs-base); color: var(--a-soft); text-align: center; }
 
-/* End half: a lighter pane of the same glass, holding the working fragment. */
-.auth-stage {
-  display: grid; align-content: center; gap: 14px;
-  padding: clamp(28px, 4vw, 48px);
-  background: var(--a-pane);
-  border-inline-start: 1px solid var(--a-pane-edge);
-}
-.auth-stage-title { margin: 0; font-size: var(--a-fs-lg); font-weight: 700; line-height: 1.6; color: var(--a-ink); }
-.auth-stage-note { margin: 0 0 6px; font-size: var(--a-fs-base); line-height: 1.95; color: var(--a-soft); }
-
-.sms-composer {
-  background: var(--a-glass-strong); color: var(--a-ink);
-  border: 1px solid var(--a-glass-edge); border-radius: 18px; padding: 16px;
-}
-.sms-composer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.sms-composer-head label { margin: 0; font-size: var(--a-fs-base); font-weight: 500; color: var(--a-ink); }
-.sms-composer-note { font-size: var(--a-fs-xs); color: var(--a-faint); }
-.sms-composer textarea {
-  display: block; width: 100%; margin: 0; min-height: 112px; resize: none;
-  padding: 12px 14px; border: 1px solid var(--a-field-edge); border-radius: var(--a-radius);
-  background: var(--a-field); color: var(--a-ink);
-  font-size: var(--a-fs-base); line-height: 1.95;
-}
-.sms-composer textarea:focus { background: var(--a-field-focus); border-color: var(--a-brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--a-brand) 16%, transparent); }
-
-/* One cell per part already used; the filled share of the current part. */
-.sms-meter { display: flex; gap: 4px; height: 4px; margin: 14px 0; }
-.sms-meter span { flex: 1 1 0; background: var(--a-tint); border-radius: 2px; overflow: hidden; position: relative; }
-.sms-meter span i {
-  position: absolute; inset: 0; background: var(--a-brand);
-  transform-origin: right center; transform: scaleX(var(--f, 0));
-  transition: transform .35s var(--ease-out);
-}
-
-.sms-readout { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; gap: 8px 16px; margin: 0; }
-.sms-readout div { display: grid; }
-.sms-readout dt { font-size: var(--a-fs-xs); color: var(--a-faint); font-weight: 400; line-height: 1.8; }
-.sms-readout dd { margin: 0; font-size: var(--a-fs-md); font-weight: 700; line-height: 1.6; color: var(--a-ink); font-variant-numeric: tabular-nums; }
-.sms-readout dd.is-bump { animation: sms-bump .4s var(--ease-out); }
-@keyframes sms-bump { 0% { transform: translateY(4px); opacity: .3; } 100% { transform: none; opacity: 1; } }
-
-/* The same message as it lands on a phone. */
-.sms-received { display: grid; gap: 6px; justify-items: start; margin-top: 4px; }
-.sms-received-from { display: flex; gap: 10px; align-items: baseline; font-size: var(--a-fs-xs); color: var(--a-faint); }
-.sms-received-from b { color: var(--a-soft); font-weight: 500; }
-.sms-bubble {
-  margin: 0; max-width: 92%;
-  padding: 10px 14px; border-radius: 18px; border-end-start-radius: 6px;
-  background: var(--a-glass-strong); color: var(--a-ink);
-  border: 1px solid var(--a-glass-edge);
-  font-size: var(--a-fs-base); line-height: 1.95;
-  white-space: pre-wrap; overflow-wrap: anywhere;
-}
-
 /* ---------- Motion ---------- */
 .lines .line { display: block; overflow: hidden; padding-bottom: .15em; margin-bottom: -.15em; }
 .lines [data-line] { display: block; }
@@ -275,17 +219,14 @@
   .auth *, .auth *::before, .auth *::after { transition-duration: 1ms !important; animation-duration: 1ms !important; }
 }
 
-/* ---------- Narrow screens: the card stacks, form first ---------- */
+/* ---------- Narrow screens: the slider is hidden (login-slider.css) and the form stands alone ---------- */
 @media (max-width: 860px) {
-  .auth-card { grid-template-columns: 1fr; border-radius: 24px; }
-  .auth-stage { border-inline-start: 0; border-top: 1px solid var(--a-pane-edge); }
+  .auth-card { grid-template-columns: 1fr; border-radius: 24px; width: min(480px, 100%); justify-self: center; }
 }
 @media (max-width: 480px) {
   .auth-shell { width: calc(100% - 24px); }
   .auth-card { border-radius: 22px; }
-  .auth-form-side, .auth-stage { padding: 24px 20px; }
-  .sms-composer { padding: 14px; }
-  .sms-readout { grid-template-columns: repeat(2, 1fr); }
+  .auth-form-side { padding: 24px 20px; }
 }
 
 
