@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="auth">
 <?php
-/* One frosted-glass card over a slowly drifting colour field. Its start half is the form; its end
+/* A light sign-in card using the panel brand. Its start half is the form; its end
    half is a working piece of the panel itself — the message composer and its part counter, which
    counts exactly as sms_parts() bills (70 / 67 characters for Persian, 160 / 153 for Latin). The
    sample text is only a demo; nothing in it is sent. */
@@ -138,16 +138,16 @@ $sampleSms = "مشتری گرامی، سفارش شما ثبت شد و فردا 
 
         <?php if ($error): ?><div class="auth-error" role="alert"><?= e($error) ?></div><?php endif; ?>
 
-        <form method="post" autocomplete="off" class="auth-form">
+        <form method="post" class="auth-form">
           <?= csrf_field() ?>
           <div class="auth-field">
             <label for="authUsername">نام کاربری</label>
-            <input type="text" name="username" id="authUsername" required autofocus autocapitalize="off" spellcheck="false" dir="ltr" value="<?= e($_POST['username'] ?? '') ?>">
+            <input type="text" name="username" id="authUsername" autocomplete="username" required autofocus autocapitalize="off" spellcheck="false" dir="ltr" value="<?= e($_POST['username'] ?? '') ?>">
           </div>
           <div class="auth-field">
             <label for="authPassword">رمز عبور</label>
             <div class="auth-pass">
-              <input type="password" name="password" id="authPassword" required dir="ltr">
+              <input type="password" name="password" id="authPassword" autocomplete="current-password" required dir="ltr">
               <button type="button" class="auth-reveal" id="authReveal" aria-controls="authPassword" aria-pressed="false" hidden>نمایش</button>
             </div>
           </div>

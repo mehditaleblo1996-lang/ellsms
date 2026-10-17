@@ -1,6 +1,7 @@
 <?php
 /** expects: $pageTitle (string), $active (string nav key), $me (user array) */
 $me = $me ?? require_login();
+require_once __DIR__ . '/panel-icons.php';
 require_once __DIR__ . '/../NotificationCenter.php';
 $nav = [
     'dashboard'     => ['/index.php',         'داشبورد',         '▦'],
@@ -125,69 +126,69 @@ $notificationUnread = notification_unread_count((int)$me['id']);
 <title><?= e($pageTitle ?? 'ELLSMS') ?> — ELLSMS</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
-<link rel="stylesheet" href="/assets/css/panel-layout-fixes.css">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/css/panel-layout-fixes.css')) ?>">
+<link rel="stylesheet" href="<?= e(asset_url('/assets/css/panel.css')) ?>">
+<script src="<?= e(asset_url('/assets/js/panel.js')) ?>" defer></script>
 </head>
-<body>
+<body class="panel">
 <a class="skip-link" href="#main">پرش به محتوای اصلی</a>
 <div class="shell">
   <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="منوی پنل">
+    <div class="sidebar-head">
     <a class="brand" href="/index.php">
       <img src="/assets/img/logo.png" alt="ELLSMS">
     </a>
-    <nav>
+    <button type="button" class="sidebar-close icon-button" id="sidebarClose" aria-label="بستن منو"><?= panel_icon('close') ?></button>
+    </div>
+    <div class="sidebar-workspace"><?= $me['role'] === 'admin' ? 'فضای مدیریت' : 'فضای کار شما' ?></div>
+    <div class="nav-search" hidden>
+      <?= panel_icon('search') ?>
+      <label class="sr-only" for="navSearch">جست‌وجو در منوها</label>
+      <input id="navSearch" type="search" placeholder="جست‌وجو در منوها…" autocomplete="off" aria-controls="panelNav">
+    </div>
+    <nav id="panelNav" aria-label="بخش‌های پنل">
       <?php foreach ($sidebarGroups as $groupId => [$groupLabel, $groupItems]): ?>
         <?php $groupActive = array_key_exists($active ?? '', $groupItems); ?>
         <details class="nav-group<?= $groupActive ? ' has-active' : '' ?>" data-group="<?= e($groupId) ?>"<?= $groupActive ? ' open' : '' ?>>
-          <summary class="nav-label"><?= e($groupLabel) ?><span class="nav-chevron" aria-hidden="true"></span></summary>
+          <summary class="nav-label"><span><?= e($groupLabel) ?></span><span class="nav-group-count" aria-hidden="true"><?= to_persian_digits((string)count($groupItems)) ?></span><span class="nav-chevron" aria-hidden="true"></span></summary>
+          <div class="nav-group-items">
           <?php foreach ($groupItems as $key => [$href, $label, $icon]): ?>
             <a href="<?= $href ?>" class="nav-item<?= ($active ?? '') === $key ? ' is-active' : '' ?>"<?= ($active ?? '') === $key ? ' aria-current="page"' : '' ?>>
-              <span class="nav-icon"><?= $icon ?></span><?= $label ?>
+              <span class="nav-icon"><?= panel_icon($key) ?></span><span class="nav-text"><?= e($label) ?></span>
               <?php if ($key === 'notifications' && $notificationUnread > 0): ?><span class="badge badge-pending" style="margin-inline-start:auto"><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></span><?php endif; ?>
             </a>
           <?php endforeach; ?>
+          </div>
         </details>
       <?php endforeach; ?>
     </nav>
-    <script>
-    // Sidebar groups remember being opened or closed (per browser); the current page's group stays open.
-    (function () {
-      var key = 'ellsms.navGroups', state = {};
-      try { state = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) {}
-      document.querySelectorAll('#sidebar .nav-group').forEach(function (g) {
-        var id = g.getAttribute('data-group');
-        if (!g.classList.contains('has-active') && typeof state[id] === 'boolean') g.open = state[id];
-        g.addEventListener('toggle', function () {
-          state[id] = g.open;
-          try { localStorage.setItem(key, JSON.stringify(state)); } catch (e) {}
-        });
-      });
-    })();
-    </script>
+    <p class="nav-search-empty" id="navSearchEmpty" hidden role="status">منویی پیدا نشد؛ عبارت دیگری بنویسید.</p>
     <div class="sidebar-foot">ELLSMS v<?= e(app_version()) ?><?php if (app_env() !== 'production'): ?> · <?= e(strtoupper(app_env())) ?><?php endif; ?></div>
   </aside>
 
   <div class="main">
     <header class="topbar">
-      <button class="menu-toggle" id="menuToggle" aria-label="باز کردن منو" aria-expanded="false">
+      <button class="menu-toggle" type="button" id="menuToggle" aria-label="باز کردن منو" aria-controls="sidebar" aria-expanded="false">
         <span></span><span></span><span></span>
       </button>
-      <h1 class="page-title"><?= e($pageTitle ?? '') ?></h1>
+      <div class="topbar-heading"><span class="topbar-eyebrow">پنل هوشمند پیامک</span><h1 class="page-title"><?= e($pageTitle ?? '') ?></h1></div>
       <div class="topbar-right">
         <?php if ($me['role'] !== 'admin'): ?>
           <span class="credit-pill" title="اعتبار باقی‌مانده">
             اعتبار: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> ریال
           </span>
         <?php endif; ?>
-        <a class="btn btn-ghost" href="/notifications.php" title="اعلان‌ها" style="position:relative">
-          🔔<?php if ($notificationUnread > 0): ?> <strong><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></strong><?php endif; ?>
+        <a class="icon-button notification-button" href="/notifications.php" title="اعلان‌ها" aria-label="اعلان‌ها<?= $notificationUnread > 0 ? '، ' . to_persian_digits((string)$notificationUnread) . ' خوانده‌نشده' : '' ?>">
+          <?= panel_icon('bell') ?><?php if ($notificationUnread > 0): ?> <strong><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></strong><?php endif; ?>
         </a>
+        <a class="icon-button" id="accountSecurityShortcut" href="/account/security/" title="امنیت حساب و MFA" aria-label="امنیت حساب و MFA"><?= panel_icon('shield') ?></a>
         <a class="user-chip" href="/profile.php" title="حساب کاربری و رمز عبور">
-          <?= e($me['full_name'] ?: $me['username']) ?><?= $me['role'] === 'admin' ? ' · مدیر' : '' ?>
+          <span class="user-avatar" aria-hidden="true"><?= e(mb_substr($me['full_name'] ?: $me['username'], 0, 1)) ?></span><span class="user-name"><?= e($me['full_name'] ?: $me['username']) ?></span>
         </a>
         <form method="post" action="/logout.php" style="display:inline">
           <?= csrf_field() ?>
-          <button type="submit" class="btn btn-ghost">خروج</button>
+          <button type="submit" class="icon-button logout-button" title="خروج از حساب" aria-label="خروج از حساب"><?= panel_icon('logout') ?></button>
         </form>
       </div>
     </header>
