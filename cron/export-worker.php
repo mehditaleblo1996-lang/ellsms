@@ -137,6 +137,10 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
                 $delivery  = $kind === 'outbound' ? export_delivery_for_page($db, $rows) : [];
 
                 foreach ($rows as $r) {
+                    // Aimed-bulk rows: the customer's file carries the masked number, as the panel does.
+                    if ($kind === 'bulk' && !empty($r['recipients_masked']) && empty($filters['is_admin'])) {
+                        $r['destination'] = msisdn_mask((string)$r['destination']);
+                    }
                     fputcsv($out, array_merge([$source['label']], export_csv_row($kind, $r, $usernames, $delivery)));
                     $cursor = (int)$r['id'];
                     $written++;

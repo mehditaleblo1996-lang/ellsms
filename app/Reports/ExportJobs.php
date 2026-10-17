@@ -219,6 +219,11 @@ function report_export_bulk_filter_sql(array $filters): array {
         $where[] = $statusSql;
     }
     report_export_text_clauses($filters, 'bi.mobile', 'bj.originator', 'bi.content', $where, $params);
+    // Same rule as the bulk report page: a customer's number search never reaches masked
+    // (aimed-bulk) jobs, or it would tell whether that number is in the platform's subscriber bank.
+    if (!$isAdmin && (preg_replace('/\D/', '', (string)($filters['dest'] ?? '')) ?? '') !== '') {
+        $where[] = bulk_job_masked_sql('bj') . ' = 0';
+    }
     return [implode(' AND ', $where) . hidden_messages_exclude_sql('bulk_job', 'bj.id', !$isAdmin), $params];
 }
 
@@ -261,7 +266,7 @@ function report_export_bulk_page(string $whereSql, array $params, int $limit, in
         $params[] = $afterId;
     }
     $st = db()->prepare(
-        "SELECT bi.id, bi.job_id, bj.user_id, bj.originator, bi.mobile AS destination, bi.content, bi.status, bi.error,
+        "SELECT bi.id, bi.job_id, bj.user_id, bj.originator, bi.mobile AS destination, " . bulk_job_masked_sql('bj') . " AS recipients_masked, bi.content, bi.status, bi.error,
                 bi.provider_message_id, bi.provider_status, bi.delivery_status, bi.delivery_attempts,
                 bi.delivery_checked_at, bi.delivered_at, COALESCE(bi.claimed_at, bi.created_at) AS sent_at
          FROM ellsms_bulk_items bi
