@@ -66,6 +66,9 @@ if ($status !== '' && in_array($status, ['pending','sent','delivered','failed'],
 if ($dest !== '') {
     $where[] = 'bi.mobile LIKE ?';
     $params[] = '%' . preg_replace('/\D/', '', $dest) . '%';
+    // A number search never reaches into masked (aimed-bulk) jobs for a customer: it would tell
+    // whether that number is in the platform's subscriber bank.
+    if (!is_admin()) $where[] = bulk_job_masked_sql('bj') . ' = 0';
 }
 if ($text !== '') {
     $where[] = 'bi.content LIKE ?';
@@ -165,7 +168,7 @@ if (lazy_part_begin('rows')) {
         bi.id, bi.job_id, bi.mobile AS destination, bi.content, bi.status AS queue_status,
         bi.gateway_id, bi.provider_message_id, bi.delivery_status, bi.delivery_attempts,
         bi.delivery_checked_at, bi.created_at, bi.route_id, bi.operator_id,
-        bj.user_id, bj.organization_id, bj.originator, bj.source_import_job_id,
+        bj.user_id, bj.organization_id, bj.originator, bj.source_import_job_id, " . bulk_job_masked_sql('bj') . " AS recipients_masked,
         {$canonicalStatusSql} AS canonical_status
     FROM ellsms_bulk_items bi
     JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
@@ -186,7 +189,7 @@ if (lazy_part_begin('rows')) {
         <td class="num">#<?= to_persian_digits((string)$r['job_id']) ?></td>
         <?php if (is_admin()): ?><td><?= e($userNames[(int)$r['user_id']] ?? ('#'.$r['user_id'])) ?></td><?php endif; ?>
         <td class="msisdn"><?= e((string)$r['originator']) ?></td>
-        <td class="msisdn"><?= e((string)$r['destination']) ?></td>
+        <td class="msisdn"><?= e(bulk_recipient_display((string)$r['destination'], !empty($r['recipients_masked']))) ?></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,60,'…')) ?></td>
         <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
         <td class="num ltr"><?= $r['provider_message_id'] !== null && $r['provider_message_id'] !== '' ? e((string)$r['provider_message_id']) : '—' ?></td>

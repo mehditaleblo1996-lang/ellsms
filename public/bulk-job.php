@@ -59,6 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'cancel') 
     redirect('/messages/bulk-jobs?id=' . $jobId);
 }
 $canCancelJob = in_array((string)$job['status'], ['pending', 'processing'], true);
+// Aimed bulk (app/AimedBulk.php): numbers from the platform's own bank are shown masked to the
+// customer, and cannot be searched for either — a search would tell whether a number is in the bank.
+$recipientsMasked = !empty($job['recipients_masked']) && !is_admin();
 
 $status = trim((string)($_GET['status'] ?? ''));
 $dest = trim((string)($_GET['dest'] ?? ''));
@@ -87,6 +90,9 @@ $params = [$jobId];
 if ($status !== '' && in_array($status, ['pending','sent','delivered','failed'], true)) {
     $where[] = "{$canonicalStatusSql}=?";
     $params[] = $status;
+}
+if ($recipientsMasked) {
+    $dest = '';
 }
 if ($dest !== '') {
     $digits = preg_replace('/\D/', '', $dest);
@@ -194,7 +200,7 @@ require __DIR__ . '/../app/views/header.php';
         <?php endforeach; ?>
       </select>
     </label>
-    <label>شماره گیرنده <input class="ltr" type="text" name="dest" value="<?= e($dest) ?>"></label>
+    <?php if (!$recipientsMasked): ?><label>شماره گیرنده <input class="ltr" type="text" name="dest" value="<?= e($dest) ?>"></label><?php endif; ?>
     <label>تعداد در صفحه
       <select name="per_page"><?php foreach ([50,100,200] as $n): ?><option value="<?= $n ?>" <?= $per === $n ? 'selected' : '' ?>><?= to_persian_digits((string)$n) ?></option><?php endforeach; ?></select>
     </label>
@@ -206,7 +212,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
-        <td class="msisdn"><?= e((string)$r['mobile']) ?></td>
+        <td class="msisdn"><?= e(bulk_recipient_display((string)$r['mobile'], !empty($job['recipients_masked']))) ?></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,80,'…')) ?></td>
         <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
         <td class="ltr num"><?= !empty($r['provider_message_id']) ? e((string)$r['provider_message_id']) : '—' ?></td>

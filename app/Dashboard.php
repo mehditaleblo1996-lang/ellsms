@@ -170,7 +170,7 @@ function dashboard_recent_messages(?array $userIds, int $limit = 10): array {
 
     [$scope, $scopeParams] = dashboard_bulk_scope($userIds);
     $st = db()->prepare(
-        "SELECT i.job_id, i.mobile, i.content, i.status, i.delivery_status, i.claimed_at, j.user_id, j.title
+        "SELECT i.job_id, i.mobile, i.content, i.status, i.delivery_status, i.claimed_at, j.user_id, j.title, " . bulk_job_masked_sql('j') . " AS recipients_masked
          FROM ellsms_bulk_items i JOIN ellsms_bulk_jobs j ON j.id = i.job_id
          WHERE i.claimed_at IS NOT NULL AND i.status IN ('sent', 'failed'){$scope}
          ORDER BY i.claimed_at DESC
@@ -179,7 +179,7 @@ function dashboard_recent_messages(?array $userIds, int $limit = 10): array {
     $st->execute($scopeParams);
     foreach ($st->fetchAll() as $r) {
         $rows[] = [
-            'source' => 'bulk', 'user_id' => (int)$r['user_id'], 'destination' => (string)$r['mobile'],
+            'source' => 'bulk', 'user_id' => (int)$r['user_id'], 'destination' => bulk_recipient_display((string)$r['mobile'], !empty($r['recipients_masked'])),
             'content' => (string)$r['content'], 'status' => report_canonical_status($r['delivery_status'], (string)$r['status']),
             'at' => (string)$r['claimed_at'], 'job_id' => (int)$r['job_id'], 'job_title' => (string)$r['title'],
             'reference_type' => 'bulk_job',
