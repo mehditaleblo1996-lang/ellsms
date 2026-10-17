@@ -159,6 +159,8 @@ function dashboard_recent_jobs(?array $userIds, int $limit = 5): array {
 
 /**
  * The latest sent/failed messages from bulk jobs and direct gateway sends, newest first.
+ * Bulk items are ordered by claimed_at alone: idx_bulk_items_claimed serves that order directly and
+ * stops after $limit rows, where a tiebreak on id (not next in that index) sorted every claimed row.
  * Each row: source ('bulk'|'direct'), user_id, destination, content, status (canonical array),
  * at (UTC), job_id, job_title, reference_type.
  */
@@ -171,7 +173,7 @@ function dashboard_recent_messages(?array $userIds, int $limit = 10): array {
         "SELECT i.job_id, i.mobile, i.content, i.status, i.delivery_status, i.claimed_at, j.user_id, j.title
          FROM ellsms_bulk_items i JOIN ellsms_bulk_jobs j ON j.id = i.job_id
          WHERE i.claimed_at IS NOT NULL AND i.status IN ('sent', 'failed'){$scope}
-         ORDER BY i.claimed_at DESC, i.id DESC
+         ORDER BY i.claimed_at DESC
          LIMIT {$limit}"
     );
     $st->execute($scopeParams);

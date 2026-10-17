@@ -123,8 +123,19 @@ function backend_outbound_sent_counts_for_users(array $userIds): array {
     return $out;
 }
 
-function backend_outbound_scan(string $whereSql, array $params, int $rowCap): array {
-    $st = db()->prepare("SELECT originator, sender_user_id, destination, content, status FROM outbound_message WHERE {$whereSql} LIMIT " . ($rowCap + 1));
+/**
+ * Message counts and SMS parts grouped by sender line, user, destination prefix (its first
+ * $prefixLen characters, plus whether the whole number is a 98 9xx xxx xxxx mobile) and raw status
+ * -- the detailed-statistics breakdowns, aggregated here instead of streamed row by row.
+ * Returns originator, sender_user_id, prefix, full_mobile, msg_status, n, units.
+ */
+function backend_outbound_analytics_groups(string $whereSql, array $params, int $prefixLen): array {
+    $st = db()->prepare(
+        "SELECT originator, sender_user_id, LEFT(destination, {$prefixLen}) prefix,
+                (destination REGEXP '^989[0-9]{9}$') full_mobile, status msg_status, COUNT(*) n, SUM(" . sms_parts_sql('content') . ") units
+         FROM outbound_message WHERE {$whereSql}
+         GROUP BY originator, sender_user_id, prefix, full_mobile, status"
+    );
     $st->execute($params);
     return $st->fetchAll();
 }

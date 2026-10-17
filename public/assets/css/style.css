@@ -1494,3 +1494,11 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .switch input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .switch input:disabled { opacity: .5; cursor: default; }
 .switch .switch-sub { display: block; font-weight: 400; color: var(--muted); font-size: var(--fs-xs); }
+
+/* Lazily loaded page parts (app/LazyParts.php, assets/js/lazy-parts.js). */
+.lazy-part { display: flex; align-items: center; justify-content: center; margin: 18px 0; border: 1px dashed var(--line); border-radius: 18px; background: var(--card); }
+.lazy-part-status { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; padding: 18px; }
+.lazy-part-error { color: var(--err); }
+.lazy-spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--indigo); animation: lazy-spin .8s linear infinite; }
+@keyframes lazy-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lazy-spinner { animation-duration: 2.4s; } }

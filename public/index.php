@@ -14,39 +14,15 @@ $onboarding = ($me['role'] !== 'admin' && onboarding_enabled()) ? onboarding_sta
 require_once __DIR__ . '/../app/Dashboard.php';
 
 // Everything below reads ELLSMS's own send records (bulk items + gateway send attempts); see
-// app/Dashboard.php. The legacy backend's outbound_message is not used any more.
+// app/Dashboard.php. The legacy backend's outbound_message is not used any more. Each section is a
+// lazily loaded part (app/LazyParts.php): the page itself answers at once and the sections fill in.
 $scopeUserIds = dashboard_scope_user_ids($me);
-$today      = dashboard_today_counts($scopeUserIds);
-$queued     = dashboard_queued_count($scopeUserIds);
-$pendingSch = (int)db()->query("SELECT COUNT(*) FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']))->fetchColumn();
 
-$days = dashboard_daily_sent($scopeUserIds, 7);
-$max = max(1, max($days));
-$weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','سه‌شنبه'=>'س','چهارشنبه'=>'چ','پنج‌شنبه'=>'پ','جمعه'=>'ج'];
-
-$jobs = dashboard_recent_jobs($scopeUserIds, 5);
-$recent = dashboard_recent_messages($scopeUserIds, 10);
-$usernames = is_admin() ? backend_usernames_by_ids(array_merge(array_column($recent, 'user_id'), array_column($jobs, 'user_id'))) : [];
-$hasRunning = (bool)array_filter($jobs, static fn(array $j): bool => $j['status'] === 'processing');
-
-require __DIR__ . '/../app/views/header.php';
-?>
-<?php if ($onboarding && !$onboarding['complete']): ?>
-<div class="card" style="border:1px solid #dfe3ff;background:linear-gradient(135deg,#fff,#f7f8ff)">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
-    <div style="flex:1;min-width:250px">
-      <div class="hint">شروع کار با ELLSMS</div>
-      <h2 style="margin:5px 0 8px">تکمیل حساب: <?= to_persian_digits((string)$onboarding['progress']) ?>٪</h2>
-      <div style="height:8px;background:#eceefa;border-radius:999px;overflow:hidden;max-width:520px">
-        <div style="height:100%;width:<?= (int)$onboarding['progress'] ?>%;background:linear-gradient(90deg,#5b36f2,#315cff)"></div>
-      </div>
-      <p class="hint" style="margin:10px 0 0">مشخصات، احراز هویت، اعتبار و اولین ارسال را مرحله‌به‌مرحله کامل کنید.</p>
-    </div>
-    <a class="btn btn-primary" href="/onboarding.php">ادامه راه‌اندازی حساب</a>
-  </div>
-</div>
-<?php endif; ?>
-
+if (lazy_part_begin('today')) {
+    $today      = dashboard_today_counts($scopeUserIds);
+    $queued     = dashboard_queued_count($scopeUserIds);
+    $pendingSch = (int)db()->query("SELECT COUNT(*) FROM ellsms_schedule WHERE status='active'" . ($me['role'] === 'admin' ? '' : ' AND user_id = ' . (int)$me['id']))->fetchColumn();
+    ?>
 <div class="grid grid-4">
   <div class="stat stat-accent"><div class="stat-label">ارسال امروز</div><div class="stat-value"><?= to_persian_digits(number_format($today['sent'])) ?></div></div>
   <div class="stat"><div class="stat-label">تحویل‌شده امروز</div><div class="stat-value"><?= to_persian_digits(number_format($today['delivered'])) ?></div></div>
@@ -54,6 +30,15 @@ require __DIR__ . '/../app/views/header.php';
   <div class="stat"><div class="stat-label">در صف ارسال<?php if ($pendingSch > 0): ?> <span class="hint">· <?= to_persian_digits((string)$pendingSch) ?> زمان‌بندی فعال</span><?php endif; ?></div><div class="stat-value"><?= to_persian_digits(number_format($queued)) ?></div></div>
 </div>
 
+<?php
+    exit;
+}
+
+if (lazy_part_begin('chart')) {
+    $days = dashboard_daily_sent($scopeUserIds, 7);
+    $max = max(1, max($days));
+    $weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','سه‌شنبه'=>'س','چهارشنبه'=>'چ','پنج‌شنبه'=>'پ','جمعه'=>'ج'];
+    ?>
 <div class="card" style="margin-top:22px">
   <h2>پیامک‌های ۷ روز اخیر</h2>
   <div class="bars">
@@ -72,19 +57,14 @@ require __DIR__ . '/../app/views/header.php';
 </div>
 
 <?php
-/*
- * The two lists share one place below the chart (same tabs as the reports page, assets/js/forms.js);
- * today's numbers and the chart stay visible. The open tab is remembered for the browser session, so
- * the 30-second refresh while a bulk job is sending keeps it.
- */
-?>
-<div class="tabs" data-tabs="dashboard" style="margin-top:22px">
-<nav class="tabs-nav" role="tablist" aria-label="فعالیت‌های اخیر">
-  <button type="button" role="tab" data-tab="recent">آخرین پیامک‌ها<span class="tab-count">(<?= to_persian_digits((string)count($recent)) ?>)</span></button>
-  <button type="button" role="tab" data-tab="bulk">ارسال‌های حجیم اخیر<span class="tab-count">(<?= to_persian_digits((string)count($jobs)) ?>)</span></button>
-</nav>
+    exit;
+}
 
-<section class="tab-panel" data-panel="recent" role="tabpanel">
+if (lazy_part_begin('recent')) {
+    $recent = dashboard_recent_messages($scopeUserIds, 10);
+    $usernames = is_admin() ? backend_usernames_by_ids(array_column($recent, 'user_id')) : [];
+    ?>
+<?= lazy_part_tab_count('recent', '(' . to_persian_digits((string)count($recent)) . ')') ?>
 <div class="card">
   <h2>آخرین پیامک‌ها <a class="btn btn-sm btn-ghost" style="float:left" href="/reports.php">مشاهده‌ی گزارش کامل ←</a></h2>
   <div class="table-wrap">
@@ -104,9 +84,18 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   </div>
 </div>
-</section>
+<?php
+    exit;
+}
 
-<section class="tab-panel" data-panel="bulk" role="tabpanel">
+if (lazy_part_begin('jobs')) {
+    $jobs = dashboard_recent_jobs($scopeUserIds, 5);
+    $usernames = is_admin() ? backend_usernames_by_ids(array_column($jobs, 'user_id')) : [];
+    // A bulk job is sending: the page refreshes its numbers every 30 seconds while the tab is visible.
+    $hasRunning = (bool)array_filter($jobs, static fn(array $j): bool => $j['status'] === 'processing');
+    ?>
+<?= lazy_part_tab_count('bulk', '(' . to_persian_digits((string)count($jobs)) . ')') ?>
+<?= $hasRunning ? lazy_part_refresh_marker(30) : '' ?>
 <div class="card">
   <h2>ارسال‌های حجیم اخیر <a class="btn btn-sm btn-ghost" style="float:left" href="/reports-bulk.php">همه‌ی ارسال‌های حجیم ←</a></h2>
   <?php if (!$jobs): ?><p class="empty">هنوز ارسال حجیمی ثبت نشده است.</p><?php endif; ?>
@@ -135,12 +124,50 @@ require __DIR__ . '/../app/views/header.php';
     <?php endforeach; ?>
   </div>
 </div>
+<?php
+    exit;
+}
+
+require __DIR__ . '/../app/views/header.php';
+?>
+<?php if ($onboarding && !$onboarding['complete']): ?>
+<div class="card" style="border:1px solid #dfe3ff;background:linear-gradient(135deg,#fff,#f7f8ff)">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
+    <div style="flex:1;min-width:250px">
+      <div class="hint">شروع کار با ELLSMS</div>
+      <h2 style="margin:5px 0 8px">تکمیل حساب: <?= to_persian_digits((string)$onboarding['progress']) ?>٪</h2>
+      <div style="height:8px;background:#eceefa;border-radius:999px;overflow:hidden;max-width:520px">
+        <div style="height:100%;width:<?= (int)$onboarding['progress'] ?>%;background:linear-gradient(90deg,#5b36f2,#315cff)"></div>
+      </div>
+      <p class="hint" style="margin:10px 0 0">مشخصات، احراز هویت، اعتبار و اولین ارسال را مرحله‌به‌مرحله کامل کنید.</p>
+    </div>
+    <a class="btn btn-primary" href="/onboarding.php">ادامه راه‌اندازی حساب</a>
+  </div>
+</div>
+<?php endif; ?>
+
+<?= lazy_part_placeholder('today', 110) ?>
+<?= lazy_part_placeholder('chart', 200) ?>
+
+<?php
+/*
+ * The two lists share one place below the chart (same tabs as the reports page, assets/js/forms.js);
+ * today's numbers and the chart stay visible. The open tab is remembered for the browser session, so
+ * the 30-second refresh while a bulk job is sending keeps it.
+ */
+?>
+<div class="tabs" data-tabs="dashboard" style="margin-top:22px">
+<nav class="tabs-nav" role="tablist" aria-label="فعالیت‌های اخیر">
+  <button type="button" role="tab" data-tab="recent">آخرین پیامک‌ها<span class="tab-count"></span></button>
+  <button type="button" role="tab" data-tab="bulk">ارسال‌های حجیم اخیر<span class="tab-count"></span></button>
+</nav>
+
+<section class="tab-panel" data-panel="recent" role="tabpanel">
+<?= lazy_part_placeholder('recent', 260) ?>
+</section>
+
+<section class="tab-panel" data-panel="bulk" role="tabpanel">
+<?= lazy_part_placeholder('jobs', 260) ?>
 </section>
 </div>
-<?php if ($hasRunning): ?>
-<script>
-// A bulk job is sending: refresh the numbers every 30 seconds while the tab is visible.
-setInterval(function () { if (document.visibilityState === 'visible') location.reload(); }, 30000);
-</script>
-<?php endif; ?>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

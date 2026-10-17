@@ -37,6 +37,7 @@ require_once __DIR__ . '/Slo.php';
 require_once __DIR__ . '/tenant.php';
 require_once __DIR__ . '/Contacts.php';
 require_once __DIR__ . '/Pagination.php';
+require_once __DIR__ . '/LazyParts.php';
 require_once __DIR__ . '/LineOptouts.php';
 require_once __DIR__ . '/ContentPolicy.php';
 require_once __DIR__ . '/BaleChannel.php';
@@ -787,6 +788,21 @@ function sms_parts(string $content): int {
     if ($len === 0) return 0;
     if ($isUnicode) return $len <= 70  ? 1 : (int)ceil($len / 67);
     return              $len <= 160 ? 1 : (int)ceil($len / 153);
+}
+
+/**
+ * The SQL twin of sms_parts(): the same part count as an expression over a utf8mb4 text column, for
+ * counting parts inside an aggregate instead of fetching every message into PHP. Unicode = any non-ASCII byte (OCTET_LENGTH differs) or
+ * an ASCII character outside 0x20-0x7E other than CR/LF (the REGEXP class holds real CR and LF bytes,
+ * so no backslash escaping is involved). NULL counts as empty: 0 parts.
+ */
+function sms_parts_sql(string $column): string {
+    $c = "COALESCE({$column}, '')";
+    $len = "CHAR_LENGTH({$c})";
+    $unicode = "(OCTET_LENGTH({$c}) <> {$len} OR {$c} REGEXP '[^ -~\r\n]')";
+    return "(CASE WHEN {$len} = 0 THEN 0"
+         . " WHEN {$unicode} THEN IF({$len} <= 70, 1, CEIL({$len} / 67))"
+         . " ELSE IF({$len} <= 160, 1, CEIL({$len} / 153)) END)";
 }
 
 /* ---------- Audit log ---------- */

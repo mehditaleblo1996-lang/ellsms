@@ -74,74 +74,29 @@ if ($text !== '') {
 // A bulk send an admin removed from the customer's panel (app/HiddenMessages.php) is left out for the customer.
 $W = implode(' AND ', $where) . hidden_messages_exclude_sql('bulk_job', 'bj.id', hidden_messages_apply_to_viewer());
 
-$summarySql = "SELECT
-    COUNT(*) AS total,
-    SUM(({$canonicalStatusSql}) IN ('sent','delivered')) AS ok_count,
-    SUM(({$canonicalStatusSql}) = 'delivered') AS delivered_count,
-    SUM(({$canonicalStatusSql}) = 'failed') AS failed_count,
-    SUM(({$canonicalStatusSql}) = 'pending') AS pending_count
-FROM ellsms_bulk_items bi
-JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
-WHERE {$W}";
-$summarySt = db()->prepare($summarySql);
-$summarySt->execute($params);
-$S = $summarySt->fetch() ?: ['total'=>0,'ok_count'=>0,'delivered_count'=>0,'failed_count'=>0,'pending_count'=>0];
-$cnt = (int)$S['total'];
-
-// Tenant/type/provider/sender/operator breakdown from the daily dimensioned aggregate (issue #12) --
-// never a live scan. Only shown when no free-text/destination/user drill-down filter is active,
-// since (like the undimensioned daily cache before it) the aggregate deliberately does not carry
-// those as dimensions -- precomputing arbitrary text search would recreate the scan problem it exists
-// to avoid.
-$dimensionBreakdown = [];
-if ($dest === '' && $text === '' && $userId === 0) {
-    $dimFilters = [];
-    if (!is_admin()) {
-        $orgId = (int)($me['organization_id'] ?? 0);
-        $dimFilters['organization_id'] = $orgId > 0 ? $orgId : 0;
-    }
-    if ($status !== '' && in_array($status, ['sent','failed'], true)) {
-        $dimFilters['status'] = $status;
-    }
-    $dimensionBreakdown = report_dimension_summary_query($from, $to, $dimFilters);
-    if ($dimensionBreakdown !== []) {
-        $names = report_resolve_names([], array_column($dimensionBreakdown, 'route_id'), array_column($dimensionBreakdown, 'operator_id'));
-    }
-}
-
-[$page, $offset] = pager_offset($cnt, $per);
-$rowWhere = $where;
-$rowParams = $params;
-$rowW = implode(' AND ', $rowWhere);
-$rowSql = "SELECT
-    bi.id, bi.job_id, bi.mobile AS destination, bi.content, bi.status AS queue_status,
-    bi.gateway_id, bi.provider_message_id, bi.delivery_status, bi.delivery_attempts,
-    bi.delivery_checked_at, bi.created_at, bi.route_id, bi.operator_id,
-    bj.user_id, bj.organization_id, bj.originator, bj.source_import_job_id,
-    {$canonicalStatusSql} AS canonical_status
-FROM ellsms_bulk_items bi
-JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
-WHERE {$rowW}
-ORDER BY bi.id DESC
-LIMIT {$per} OFFSET {$offset}";
-$rowSt = db()->prepare($rowSql);
-$rowSt->execute($rowParams);
-$rows = $rowSt->fetchAll();
-
-$users = is_admin() ? backend_list_users_summary() : [];
-$userNames = [];
-foreach ($users as $u) $userNames[(int)$u['id']] = (string)$u['username'];
+/*
+ * The summary cards, the breakdown and the message list are lazily loaded parts (app/LazyParts.php):
+ * the page answers with the filters at once and the three load in parallel from ?_part=.
+ */
 $statusFa = ['sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','failed'=>'ناموفق','pending'=>'در انتظار'];
 $statusClass = ['sent'=>'success','delivered'=>'success','failed'=>'error','pending'=>'pending'];
-$qs = fn(array $extra = []) => http_build_query(array_filter(array_merge($_GET, $extra), static fn($v) => $v !== null && $v !== ''));
 
-require __DIR__ . '/../app/views/header.php';
-?>
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
-  <a class="btn btn-ghost" href="/reports.php">گزارش عادی / API</a>
-  <span class="btn btn-primary">گزارش ارسال حجیم</span>
-</div>
+if (lazy_part_begin('summary')) {
+    $summarySql = "SELECT
+        COUNT(*) AS total,
+        SUM(({$canonicalStatusSql}) IN ('sent','delivered')) AS ok_count,
+        SUM(({$canonicalStatusSql}) = 'delivered') AS delivered_count,
+        SUM(({$canonicalStatusSql}) = 'failed') AS failed_count,
+        SUM(({$canonicalStatusSql}) = 'pending') AS pending_count
+    FROM ellsms_bulk_items bi
+    JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
+    WHERE {$W}";
+    $summarySt = db()->prepare($summarySql);
+    $summarySt->execute($params);
+    $S = $summarySt->fetch() ?: ['total'=>0,'ok_count'=>0,'delivered_count'=>0,'failed_count'=>0,'pending_count'=>0];
+    $cnt = (int)$S['total'];
 
+    ?>
 <div class="grid grid-4">
   <div class="stat"><div class="stat-label">تعداد پیام‌های حجیم</div><div class="stat-value"><?= to_persian_digits(number_format($cnt)) ?></div></div>
   <div class="stat"><div class="stat-label">ارسال‌شده / تحویل‌شده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['ok_count'])) ?></div></div>
@@ -149,6 +104,33 @@ require __DIR__ . '/../app/views/header.php';
   <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['delivered_count'])) ?></div></div>
 </div>
 
+<?php
+    exit;
+}
+
+if (lazy_part_begin('breakdown')) {
+    // Tenant/type/provider/sender/operator breakdown from the daily dimensioned aggregate (issue #12) --
+    // never a live scan. Only shown when no free-text/destination/user drill-down filter is active,
+    // since (like the undimensioned daily cache before it) the aggregate deliberately does not carry
+    // those as dimensions -- precomputing arbitrary text search would recreate the scan problem it exists
+    // to avoid.
+    $dimensionBreakdown = [];
+    if ($dest === '' && $text === '' && $userId === 0) {
+        $dimFilters = [];
+        if (!is_admin()) {
+            $orgId = (int)($me['organization_id'] ?? 0);
+            $dimFilters['organization_id'] = $orgId > 0 ? $orgId : 0;
+        }
+        if ($status !== '' && in_array($status, ['sent','failed'], true)) {
+            $dimFilters['status'] = $status;
+        }
+        $dimensionBreakdown = report_dimension_summary_query($from, $to, $dimFilters);
+        if ($dimensionBreakdown !== []) {
+            $names = report_resolve_names([], array_column($dimensionBreakdown, 'route_id'), array_column($dimensionBreakdown, 'operator_id'));
+        }
+    }
+
+    ?>
 <?php if ($dimensionBreakdown !== []): ?>
 <div class="card" style="margin-top:14px">
   <h2>تفکیک بر اساس نوع پیام، ارائه‌دهنده و اپراتور</h2>
@@ -168,6 +150,71 @@ require __DIR__ . '/../app/views/header.php';
   </table></div>
 </div>
 <?php endif; ?>
+
+<?php
+    exit;
+}
+
+if (lazy_part_begin('rows')) {
+    $countSt = db()->prepare("SELECT COUNT(*) FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id WHERE {$W}");
+    $countSt->execute($params);
+    $cnt = (int)$countSt->fetchColumn();
+
+    [$page, $offset] = pager_offset($cnt, $per);
+    $rowSql = "SELECT
+        bi.id, bi.job_id, bi.mobile AS destination, bi.content, bi.status AS queue_status,
+        bi.gateway_id, bi.provider_message_id, bi.delivery_status, bi.delivery_attempts,
+        bi.delivery_checked_at, bi.created_at, bi.route_id, bi.operator_id,
+        bj.user_id, bj.organization_id, bj.originator, bj.source_import_job_id,
+        {$canonicalStatusSql} AS canonical_status
+    FROM ellsms_bulk_items bi
+    JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
+    WHERE {$W}
+    ORDER BY bi.id DESC
+    LIMIT {$per} OFFSET {$offset}";
+    $rowSt = db()->prepare($rowSql);
+    $rowSt->execute($params);
+    $rows = $rowSt->fetchAll();
+    $userNames = is_admin() ? backend_usernames_by_ids(array_column($rows, 'user_id')) : [];
+
+    ?>
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>مرجع اپراتور</th><th>استعلام</th><th>زمان ثبت</th><th>آخرین استعلام</th></tr>
+    <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
+      <tr>
+        <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
+        <td class="num">#<?= to_persian_digits((string)$r['job_id']) ?></td>
+        <?php if (is_admin()): ?><td><?= e($userNames[(int)$r['user_id']] ?? ('#'.$r['user_id'])) ?></td><?php endif; ?>
+        <td class="msisdn"><?= e((string)$r['originator']) ?></td>
+        <td class="msisdn"><?= e((string)$r['destination']) ?></td>
+        <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,60,'…')) ?></td>
+        <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
+        <td class="num ltr"><?= $r['provider_message_id'] !== null && $r['provider_message_id'] !== '' ? e((string)$r['provider_message_id']) : '—' ?></td>
+        <td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td>
+        <td class="num"><?= bulk_report_jdate((string)$r['created_at']) ?></td>
+        <td class="num"><?= !empty($r['delivery_checked_at']) ? bulk_report_jdate((string)$r['delivery_checked_at']) : '—' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= is_admin()?11:10 ?>" class="empty">هیچ پیام حجیمی با این فیلترها یافت نشد.</td></tr><?php endif; ?>
+  </table></div>
+
+  <?= pager_links($page, pager_pages($cnt, $per), array_filter(array_diff_key($_GET, ['before_bulk_id' => 1, 'after_bulk_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $cnt) ?>
+<?php
+    exit;
+}
+
+$users = is_admin() ? backend_list_users_summary() : [];
+$qs = fn(array $extra = []) => http_build_query(array_filter(array_merge($_GET, $extra), static fn($v) => $v !== null && $v !== ''));
+
+require __DIR__ . '/../app/views/header.php';
+?>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+  <a class="btn btn-ghost" href="/reports.php">گزارش عادی / API</a>
+  <span class="btn btn-primary">گزارش ارسال حجیم</span>
+</div>
+
+<?= lazy_part_placeholder('summary', 110) ?>
+<?php if ($dest === '' && $text === '' && $userId === 0): ?><?= lazy_part_placeholder('breakdown', 60, 'در حال بارگذاری تفکیک…') ?><?php endif; ?>
 
 <div class="card" style="margin-top:22px">
   <form method="get" class="toolbar">
@@ -196,26 +243,6 @@ require __DIR__ . '/../app/views/header.php';
     <button class="btn btn-primary">اعمال فیلتر</button>
   </form>
 
-  <div class="table-wrap"><table>
-    <tr><th>#</th><th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>مرجع اپراتور</th><th>استعلام</th><th>زمان ثبت</th><th>آخرین استعلام</th></tr>
-    <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
-      <tr>
-        <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
-        <td class="num">#<?= to_persian_digits((string)$r['job_id']) ?></td>
-        <?php if (is_admin()): ?><td><?= e($userNames[(int)$r['user_id']] ?? ('#'.$r['user_id'])) ?></td><?php endif; ?>
-        <td class="msisdn"><?= e((string)$r['originator']) ?></td>
-        <td class="msisdn"><?= e((string)$r['destination']) ?></td>
-        <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,60,'…')) ?></td>
-        <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
-        <td class="num ltr"><?= $r['provider_message_id'] !== null && $r['provider_message_id'] !== '' ? e((string)$r['provider_message_id']) : '—' ?></td>
-        <td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td>
-        <td class="num"><?= bulk_report_jdate((string)$r['created_at']) ?></td>
-        <td class="num"><?= !empty($r['delivery_checked_at']) ? bulk_report_jdate((string)$r['delivery_checked_at']) : '—' ?></td>
-      </tr>
-    <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= is_admin()?11:10 ?>" class="empty">هیچ پیام حجیمی با این فیلترها یافت نشد.</td></tr><?php endif; ?>
-  </table></div>
-
-  <?= pager_links($page, pager_pages($cnt, $per), array_filter(array_diff_key($_GET, ['before_bulk_id' => 1, 'after_bulk_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $cnt) ?>
+  <?= lazy_part_placeholder('rows', 360) ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

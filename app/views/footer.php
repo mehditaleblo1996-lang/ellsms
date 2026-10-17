@@ -35,5 +35,6 @@
 })();
 </script>
 <script src="<?= e(asset_url('/assets/js/forms.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/js/lazy-parts.js')) ?>"></script>
 </body>
 </html>

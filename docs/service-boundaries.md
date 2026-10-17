@@ -93,8 +93,8 @@ responsibility (see §6), not something the repository enforces on its own.
 
 **Outbound**: `backend_outbound_count()`, `backend_outbound_daily_counts()`,
 `backend_outbound_summary()`, `backend_outbound_rows()`, `backend_outbound_export_rows()`,
-`backend_outbound_sent_count_for_user()` / `_for_users()` (batch), `backend_outbound_scan()`
-(analytics.php's row-capped full scan).
+`backend_outbound_sent_count_for_user()` / `_for_users()` (batch), `backend_outbound_analytics_groups()`
+(analytics.php's grouped counts by line, user, destination prefix and status).
 
 **Inbound**: `backend_inbound_count()`, `backend_inbound_today_count()`, `backend_inbound_rows()`,
 `backend_inbound_export_rows()`.

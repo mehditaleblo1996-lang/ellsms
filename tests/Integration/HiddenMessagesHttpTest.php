@@ -16,6 +16,9 @@ use PHPUnit\Framework\TestCase;
  */
 final class HiddenMessagesHttpTest extends TestCase
 {
+    /** The report's message list: its lazily loaded "direct" part (app/LazyParts.php). */
+    private const DIRECT_PART = '/reports.php?_part=direct';
+
     private $serverProc = null;
     private int $port;
     private string $sessionDir;
@@ -94,7 +97,7 @@ final class HiddenMessagesHttpTest extends TestCase
         $customer = $this->sessionFor($this->customerId, $this->organizationId);
         $admin = $this->sessionFor($this->adminId);
 
-        $this->assertStringContainsString('HIDDEN-MESSAGE-TEXT', $this->request('GET', '/reports.php', $customer)['body']);
+        $this->assertStringContainsString('HIDDEN-MESSAGE-TEXT', $this->request('GET', self::DIRECT_PART, $customer)['body']);
 
         $adminPage = $this->request('GET', '/reports.php', $admin)['body'];
         $csrf = preg_match('/name="_csrf" value="([^"]+)"/', $adminPage, $m) === 1 ? $m[1] : '';
@@ -104,8 +107,8 @@ final class HiddenMessagesHttpTest extends TestCase
         $this->assertSame(302, $hide['code']);
         $this->assertMatchesRegularExpression('#^Location: /reports\.php\?status=\s*$#mi', $hide['headers'], 'back to the same page');
 
-        $this->assertStringNotContainsString('HIDDEN-MESSAGE-TEXT', $this->request('GET', '/reports.php', $customer)['body']);
-        $adminPage = $this->request('GET', '/reports.php', $admin)['body'];
+        $this->assertStringNotContainsString('HIDDEN-MESSAGE-TEXT', $this->request('GET', self::DIRECT_PART, $customer)['body']);
+        $adminPage = $this->request('GET', self::DIRECT_PART, $admin)['body'];
         $this->assertStringContainsString('HIDDEN-MESSAGE-TEXT', $adminPage, 'an admin still sees it');
         $this->assertStringContainsString('حذف‌شده برای کاربر', $adminPage);
         $this->assertStringContainsString('بازگردانی', $adminPage);
@@ -113,7 +116,7 @@ final class HiddenMessagesHttpTest extends TestCase
         $this->request('POST', '/reports.php', $admin, [
             '_csrf' => $csrf, 'hidden_message_do' => 'restore', 'source' => 'outbound', 'id' => (string)$this->messageId,
         ]);
-        $this->assertStringContainsString('HIDDEN-MESSAGE-TEXT', $this->request('GET', '/reports.php', $customer)['body']);
+        $this->assertStringContainsString('HIDDEN-MESSAGE-TEXT', $this->request('GET', self::DIRECT_PART, $customer)['body']);
     }
 
     public function testACustomerCannotRemoveMessages(): void
@@ -127,7 +130,7 @@ final class HiddenMessagesHttpTest extends TestCase
         ]);
 
         $this->assertFalse(hidden_messages_is_hidden('outbound', $this->messageId));
-        $this->assertStringNotContainsString('hidden_message_do', $page, 'no remove button is rendered for a customer');
+        $this->assertStringNotContainsString('hidden_message_do', $this->request('GET', self::DIRECT_PART, $customer)['body'], 'no remove button is rendered for a customer');
     }
 
     private function makeCommittedUser(bool $isAdmin): int
