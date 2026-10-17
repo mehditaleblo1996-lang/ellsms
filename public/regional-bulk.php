@@ -87,7 +87,7 @@ $rows = $st->fetchAll();
 
 $statusLabels = ['draft' => 'پیش‌نویس', 'priced' => 'منتظر تأیید', 'confirmed' => 'تأیید شده', 'sending' => 'در حال ارسال', 'done' => 'پایان یافته', 'failed' => 'ناموفق', 'cancelled' => 'لغو شده'];
 $kindLabels = ['province' => 'استان', 'city' => 'شهر', 'postal' => 'کد پستی', 'prefix' => 'پیش‌شماره'];
-$f = static fn(string $k, string $d = ''): string => (string)($form[$k] ?? $d);
+$fv = static fn(string $k, string $d = ''): string => (string)($form[$k] ?? $d);
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -124,41 +124,41 @@ require __DIR__ . '/../app/views/header.php';
     <div class="toolbar">
       <label>هدف
         <select name="kind" id="rb-kind">
-          <?php foreach ($kindLabels as $k => $label): ?><option value="<?= $k ?>"<?= $f('kind', 'province') === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
+          <?php foreach ($kindLabels as $k => $label): ?><option value="<?= $k ?>"<?= $fv('kind', 'province') === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
         </select>
       </label>
       <label data-kind="province city">استان
         <select name="province_code" id="rb-province">
           <option value="">—</option>
-          <?php foreach ($provinces as $p): ?><option value="<?= (int)$p['code'] ?>"<?= (int)$f('province_code') === (int)$p['code'] ? ' selected' : '' ?>><?= e($p['name']) ?></option><?php endforeach; ?>
+          <?php foreach ($provinces as $p): ?><option value="<?= (int)$p['code'] ?>"<?= (int)$fv('province_code') === (int)$p['code'] ? ' selected' : '' ?>><?= e($p['name']) ?></option><?php endforeach; ?>
         </select>
       </label>
-      <label data-kind="city">شهر <select name="city_code" id="rb-city" data-selected="<?= (int)$f('city_code') ?>"><option value="">—</option></select></label>
-      <label data-kind="postal">کد پستی (یا ابتدای آن) <input type="text" name="postal_code" class="ltr" value="<?= e($f('postal_code')) ?>"></label>
-      <label>پیش‌شماره <input type="text" name="prefix" class="ltr" placeholder="0912" value="<?= e($f('prefix')) ?>"></label>
+      <label data-kind="city">شهر <select name="city_code" id="rb-city" data-selected="<?= (int)$fv('city_code') ?>"><option value="">—</option></select></label>
+      <label data-kind="postal">کد پستی (یا ابتدای آن) <input type="text" name="postal_code" class="ltr" value="<?= e($fv('postal_code')) ?>"></label>
+      <label>پیش‌شماره <input type="text" name="prefix" class="ltr" placeholder="0912" value="<?= e($fv('prefix')) ?>"></label>
       <label>نوع سیم‌کارت
         <select name="sim">
-          <?php foreach (['all' => 'همه', 'prepaid' => 'اعتباری', 'postpaid' => 'دائمی'] as $k => $label): ?><option value="<?= $k ?>"<?= $f('sim', 'all') === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
+          <?php foreach (['all' => 'همه', 'prepaid' => 'اعتباری', 'postpaid' => 'دائمی'] as $k => $label): ?><option value="<?= $k ?>"<?= $fv('sim', 'all') === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
         </select>
       </label>
       <label>اپراتور
         <select name="operator">
-          <?php foreach (['MCI' => 'همراه اول', 'MTN' => 'ایرانسل'] as $k => $label): ?><option value="<?= $k ?>"<?= $f('operator', 'MCI') === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
+          <?php foreach (['MCI' => 'همراه اول', 'MTN' => 'ایرانسل'] as $k => $label): ?><option value="<?= $k ?>"<?= $fv('operator', 'MCI') === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
         </select>
       </label>
     </div>
     <div class="toolbar">
       <label>خط ارسال
         <?php if ($originators === ['*']): ?>
-          <input type="text" name="originator" class="ltr" value="<?= e($f('originator')) ?>">
+          <input type="text" name="originator" class="ltr" value="<?= e($fv('originator')) ?>">
         <?php else: ?>
-          <select name="originator"><?php foreach ($originators as $o): ?><option value="<?= e($o) ?>"<?= $f('originator') === $o ? ' selected' : '' ?>><?= e($o) ?></option><?php endforeach; ?></select>
+          <select name="originator"><?php foreach ($originators as $o): ?><option value="<?= e($o) ?>"<?= $fv('originator') === $o ? ' selected' : '' ?>><?= e($o) ?></option><?php endforeach; ?></select>
         <?php endif; ?>
       </label>
-      <label>تعداد (خالی = همه) <input type="number" min="0" name="count" class="ltr" value="<?= e($f('count')) ?>"></label>
-      <label>زمان ارسال (خالی = فوری) <input type="datetime-local" name="scheduled_at" class="ltr" value="<?= e($f('scheduled_at')) ?>"></label>
+      <label>تعداد (خالی = همه) <input type="number" min="0" name="count" class="ltr" value="<?= e($fv('count')) ?>"></label>
+      <label>زمان ارسال (خالی = فوری) <input type="datetime-local" name="scheduled_at" class="ltr" value="<?= e($fv('scheduled_at')) ?>"></label>
     </div>
-    <label style="display:block">متن پیام <textarea name="content" rows="4" style="width:100%"><?= e($f('content')) ?></textarea></label>
+    <label style="display:block">متن پیام <textarea name="content" rows="4" style="width:100%"><?= e($fv('content')) ?></textarea></label>
     <button class="btn" name="action" value="count">شمارش مشترکان</button>
     <button class="btn btn-primary" name="action" value="create">ساخت درخواست و قیمت‌گذاری</button>
   </form>
