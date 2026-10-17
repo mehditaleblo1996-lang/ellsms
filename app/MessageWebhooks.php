@@ -17,6 +17,10 @@
 
 declare(strict_types=1);
 
+// Aimed bulk (ارسال با کد پستی): its mask helpers (bulk_job_masked_sql(), bulk_recipient_display())
+// are used below and by the report pages; loading the module here brings it in with this file.
+require_once __DIR__ . '/AimedBulk.php';
+
 /** Whether $organizationId has an ENABLED endpoint subscribed to $eventType. Cached ~30 s per process. */
 function webhook_org_subscribes(int $organizationId, string $eventType): bool {
     if ($organizationId <= 0) return false;
@@ -55,7 +59,7 @@ function webhook_emit_delivery_state(string $source, int $rowId, string $state, 
                 'originator' => (string)($row['originator'] ?? ''), 'destination' => (string)($row['destination'] ?? ''),
             ];
         } else {
-            $st = db()->prepare('SELECT bi.id, bi.job_id, bi.mobile, bi.provider_message_id, j.organization_id, j.originator
+            $st = db()->prepare('SELECT bi.id, bi.job_id, bi.mobile, bi.provider_message_id, j.organization_id, j.originator, ' . bulk_job_masked_sql('j') . ' AS recipients_masked
                                  FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs j ON j.id = bi.job_id WHERE bi.id = ?');
             $st->execute([$rowId]);
             $row = $st->fetch();
@@ -64,7 +68,9 @@ function webhook_emit_delivery_state(string $source, int $rowId, string $state, 
             $resourceType = 'bulk_item';
             $data = [
                 'message_id' => 'bulk_item:' . $row['id'], 'bulk_job_id' => (string)$row['job_id'],
-                'originator' => (string)$row['originator'], 'destination' => (string)$row['mobile'],
+                // An aimed-bulk number belongs to the platform's bank: the customer's endpoint gets the mask.
+                'originator' => (string)$row['originator'],
+                'destination' => bulk_recipient_display((string)$row['mobile'], !empty($row['recipients_masked']), false),
             ];
         }
         if (!webhook_org_subscribes($organizationId, $eventType)) return;
