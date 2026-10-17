@@ -23,18 +23,66 @@ function analytics_bump(array &$buckets, string $key, string $status, int $parts
     else $b['pending']++;
 }
 
-$rows = backend_outbound_scan('sent_at >= ? AND sent_at < DATE_ADD(?, INTERVAL 1 DAY)', [$from, $to], ANALYTICS_ROW_CAP);
-$truncated = count($rows) > ANALYTICS_ROW_CAP;
-if ($truncated) $rows = array_slice($rows, 0, ANALYTICS_ROW_CAP);
+// The picked days are Tehran days; every send timestamp below is UTC.
+[$fromUtc, $toUtc] = local_day_range_to_utc($from, $to);
+
+/*
+ * Sends live in three stores, and this page must read all of them (the same sources as app/Dashboard.php
+ * and the send report): bulk recipients (ellsms_bulk_items, by claimed_at), gateway direct/scheduled/
+ * auto-reply sends (ellsms_message_attempts) and the legacy backend's outbound_message. With
+ * SMS_GATEWAY_TRANSPORT=1 nothing reaches outbound_message any more, so reading it alone left every
+ * breakdown empty while the cost table (price snapshots) still showed the sends.
+ * Every query yields originator, sender_user_id, destination, content and a status analytics_bump()
+ * understands: sent / delivered / failed / anything else = pending.
+ */
+$undelivered = "'failed','rejected','expired'";
+$attemptColumns = backend_message_attempts_have_report_columns() ? 'a.originator, a.content' : "'' originator, '' content";
+$sources = [
+    ["SELECT j.originator, j.user_id sender_user_id, i.mobile destination, i.content,
+             CASE WHEN i.status = 'failed' THEN 'failed'
+                  WHEN i.status <> 'sent' THEN 'pending'
+                  WHEN i.delivery_status = 'delivered' THEN 'delivered'
+                  WHEN i.delivery_status IN ({$undelivered}) THEN 'failed'
+                  ELSE 'sent' END status
+      FROM ellsms_bulk_items i JOIN ellsms_bulk_jobs j ON j.id = i.job_id
+      WHERE i.claimed_at >= ? AND i.claimed_at < ? AND i.status <> 'cancelled'", [$fromUtc, $toUtc]],
+    ["SELECT {$attemptColumns}, a.user_id sender_user_id, a.destination,
+             CASE WHEN a.status = 'failed' THEN 'failed'
+                  WHEN a.delivery_status = 'delivered' THEN 'delivered'
+                  WHEN a.delivery_status IN ({$undelivered}) THEN 'failed'
+                  ELSE 'sent' END status
+      FROM ellsms_message_attempts a
+      WHERE a.status IN ('accepted', 'failed') AND a.attempted_at >= ? AND a.attempted_at < ?
+        AND a.reference_type IN ('direct_send', 'schedule', 'autoreply')", [$fromUtc, $toUtc]],
+];
 
 $byNumber = $byUser = $byOperator = $overallBucket = [];
+$scanned = 0;
+$truncated = false;
 
-foreach ($rows as $r) {
-    $parts = sms_parts($r['content']);
+/** Fold one send into every breakdown; false once ANALYTICS_ROW_CAP rows have been counted. */
+$take = function (array $r) use (&$byNumber, &$byUser, &$byOperator, &$overallBucket, &$scanned, &$truncated): bool {
+    if ($scanned >= ANALYTICS_ROW_CAP) { $truncated = true; return false; }
+    $scanned++;
+    $parts = sms_parts((string)$r['content']);
     analytics_bump($byNumber, $r['originator'] ?: '—', $r['status'], $parts);
     analytics_bump($byUser, (string)$r['sender_user_id'], $r['status'], $parts);
     analytics_bump($byOperator, detect_operator((string)$r['destination']), $r['status'], $parts);
     analytics_bump($overallBucket, '_', $r['status'], $parts);
+    return true;
+};
+
+foreach ($sources as [$sql, $params]) {
+    if ($truncated) break;
+    $st = db()->prepare($sql . ' LIMIT ' . (ANALYTICS_ROW_CAP - $scanned + 1));
+    $st->execute($params);
+    while (($r = $st->fetch()) && $take($r));
+}
+// outbound_message is backend-owned and read only through its adapter (cron/backend-boundary-check.php).
+if (!$truncated) {
+    foreach (backend_outbound_scan('sent_at >= ? AND sent_at < ?', [$fromUtc, $toUtc], ANALYTICS_ROW_CAP - $scanned) as $r) {
+        if (!$take($r)) break;
+    }
 }
 $overall = $overallBucket['_'] ?? ['total' => 0, 'sent' => 0, 'delivered' => 0, 'failed' => 0, 'pending' => 0, 'units' => 0];
 
@@ -60,11 +108,11 @@ try {
                 SUM(total_cost_credits) AS accepted, SUM(committed_cost_credits) AS committed,
                 MIN(unit_price_millicredits) AS unit_min, MAX(unit_price_millicredits) AS unit_max
          FROM ellsms_sms_price_snapshots
-         WHERE priced_at >= ? AND priced_at < DATE_ADD(?, INTERVAL 1 DAY)
+         WHERE priced_at >= ? AND priced_at < ?
          GROUP BY provider_code, route_code, operator_code, message_type
          ORDER BY committed DESC"
     );
-    $costSt->execute([$from, $to]);
+    $costSt->execute([$fromUtc, $toUtc]);
     $costByProvider = $costSt->fetchAll();
     foreach ($costByProvider as $row) {
         $costTotals['accepted']  += (int)$row['accepted'];
