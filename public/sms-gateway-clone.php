@@ -67,7 +67,7 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <form method="get" class="toolbar">
-    <label style="min-width:320px">درگاه مبدا
+    <label style="min-width:min(320px, 100%)">درگاه مبدا
       <select name="source" required>
         <option value="">انتخاب کنید</option>
         <?php foreach ($gateways as $gateway): ?>

@@ -1,30 +1,18 @@
-/* ELLSMS — صفحه‌ی ورود
-   Loaded by public/login.php only, after style.css (which brings Vazirmatn and the panel's base).
-
-   A white frosted-glass card over a night field. The field is near-black with a few large, soft pools
-   of light — brand blue, deep blue and two cool teals — drifting very slowly, with a fine grain on top
-   so the blur has texture to work on. The card is mostly white, so the glow only tints its edges;
-   inside it everything is plain: near-black ink, one blue for the action. The brand and the version
-   line sit on the night field itself and are set in light ink.
-   Where backdrop-filter is missing, the glass falls back to a near-opaque white so text stays legible.
-
-   Persian type: Vazirmatn throughout, no letter-spacing anywhere (tracking breaks the joins of
-   Persian letters), Persian line-heights (1.6 headings, ~1.9 text), weights 400 / 500 / 700.
-   Elements marked [data-ui] are fragments of the product and keep the panel's own borders and radii. */
-/* taste-skill-ignore-file: the glass look (blur, translucent panels, soft shadow) was asked for by the owner. */
+/* ELLSMS sign-in: a light, quiet surface using the panel brand and local Vazirmatn.
+   Authentication and the local SMS demo retain their existing behavior. */
 
 .auth {
   --a-ink:    #10131c;
   --a-soft:   #454b5a;
   --a-faint:  #4d5363;
-  --a-brand:  #2e63f6;
-  --a-brand-hover: #1f52e0;
+  --a-brand:  #4a32e8;
+  --a-brand-hover: #3e28d0;
   --a-err:    #a3182b;
   --a-err-bg: rgba(255, 226, 230, .75);
 
-  --a-glass:        rgba(255, 255, 255, .88);
+  --a-glass:        #fff;
   --a-glass-strong: rgba(255, 255, 255, .72);
-  --a-glass-edge:   rgba(255, 255, 255, .9);
+  --a-glass-edge:   #e5e9f2;
   --a-field:        rgba(255, 255, 255, .78);
   --a-field-edge:   rgba(16, 19, 28, .12);
   --a-field-hover:  rgba(255, 255, 255, .9);
@@ -33,20 +21,20 @@
   --a-tint:         rgba(16, 19, 28, .07);
   --a-pane:         rgba(255, 255, 255, .32);
   --a-pane-edge:    rgba(16, 19, 28, .07);
-  --a-shadow:       0, 0, 0;
-  /* The night field behind the glass, and the light text that sits directly on it. */
-  --a-base:  #070b19;
-  --a-blob1: rgba(37, 99, 235, .75);
-  --a-blob2: rgba(8, 145, 178, .6);
-  --a-blob3: rgba(30, 64, 175, .65);
-  --a-blob4: rgba(13, 148, 136, .45);
-  --a-on-night:      #f2f5fb;
-  --a-on-night-soft: #b7c0d6;
+  --a-shadow:       24, 35, 69;
+  /* Quiet brand tints keep text readable and avoid continuous large repaints. */
+  --a-base:  #f5f7fb;
+  --a-blob1: rgba(74, 50, 232, .09);
+  --a-blob2: rgba(46, 99, 246, .07);
+  --a-blob3: transparent;
+  --a-blob4: transparent;
+  --a-on-night:      #0b1023;
+  --a-on-night-soft: #59647c;
 
   --a-font: 'Vazirmatn', Tahoma, sans-serif;
   --a-fs-xs:   13px;
   --a-fs-base: 14px;
-  --a-fs-md:   15px;
+  --a-fs-md:   16px;
   --a-fs-lg:   19px;
   --a-fs-xl:   clamp(24px, 2.1vw, 30px);
 
@@ -77,27 +65,12 @@
 }
 .auth-bg i {
   position: absolute; display: block; border-radius: 50%;
-  will-change: transform;
+
 }
 .auth-bg .b1 { width: 64vmax; height: 64vmax; top: -20vmax; right: -14vmax; background: radial-gradient(closest-side, var(--a-blob1), transparent); }
 .auth-bg .b2 { width: 58vmax; height: 58vmax; bottom: -22vmax; left: -12vmax; background: radial-gradient(closest-side, var(--a-blob2), transparent); }
 .auth-bg .b3 { width: 46vmax; height: 46vmax; top: 6%; left: 18%; background: radial-gradient(closest-side, var(--a-blob3), transparent); }
 .auth-bg .b4 { width: 36vmax; height: 36vmax; bottom: -8vmax; right: 14%; background: radial-gradient(closest-side, var(--a-blob4), transparent); }
-/* Fine grain, so the frosted card has something to diffuse. */
-.auth-bg::after {
-  content: ""; position: absolute; inset: 0; opacity: .22; mix-blend-mode: soft-light;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-@media (prefers-reduced-motion: no-preference) {
-  .auth-bg .b1 { animation: drift-a 26s ease-in-out infinite alternate; }
-  .auth-bg .b2 { animation: drift-b 32s ease-in-out infinite alternate; }
-  .auth-bg .b3 { animation: drift-c 22s ease-in-out infinite alternate; }
-  .auth-bg .b4 { animation: drift-b 28s ease-in-out infinite alternate-reverse; }
-}
-@keyframes drift-a { to { transform: translate(-8vmax, 6vmax) scale(1.08); } }
-@keyframes drift-b { to { transform: translate(7vmax, -5vmax) scale(1.12); } }
-@keyframes drift-c { to { transform: translate(-6vmax, -4vmax) scale(.92); } }
-
 /* ---------- Shell ---------- */
 .auth-shell {
   position: relative; z-index: 1;
@@ -110,7 +83,7 @@
 .auth-brand { display: inline-flex; align-items: center; gap: 14px; text-decoration: none !important; }
 .auth-mark {
   width: 54px; height: 40px; display: block; overflow: visible;
-  filter: drop-shadow(0 6px 18px rgba(63, 140, 255, .45));
+
   transition: transform .4s var(--ease-out);
 }
 .auth-brand:hover .auth-mark { transform: translateX(3px) rotate(-2deg); }
@@ -122,13 +95,13 @@
   letter-spacing: .12em !important;
   color: var(--a-ink); text-align: right;
 }
-.auth-wordmark span { color: #5b95ff; }
+.auth-wordmark span { color: var(--a-brand); }
 .auth-brand-text small { font-size: var(--a-fs-xs); color: var(--a-soft); line-height: 1.6; }
 @media (prefers-reduced-motion: no-preference) {
-  .auth-mark-dots circle { animation: mark-typing 1.6s ease-in-out infinite; }
+  .auth-brand:hover .auth-mark-dots circle { animation: mark-typing 1.6s ease-in-out infinite; }
   .auth-mark-dots circle:nth-child(2) { animation-delay: .2s; }
   .auth-mark-dots circle:nth-child(3) { animation-delay: .4s; }
-  .auth-mark-streaks path { animation: mark-streak 2.4s var(--ease-out) infinite; }
+  .auth-brand:hover .auth-mark-streaks path { animation: mark-streak 2.4s var(--ease-out) infinite; }
   .auth-mark-streaks path:nth-child(2) { animation-delay: .25s; }
   .auth-mark-streaks path:nth-child(3) { animation-delay: .5s; }
 }
@@ -146,14 +119,13 @@
   align-self: center;
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
   background: var(--a-glass);
-  -webkit-backdrop-filter: blur(32px) saturate(180%) brightness(1.15);
-  backdrop-filter: blur(32px) saturate(180%) brightness(1.15);
+
   border: 1px solid var(--a-glass-edge);
   border-radius: 28px;
   box-shadow:
     0 1px 0 rgba(255, 255, 255, .9) inset,
-    0 40px 100px -24px rgba(var(--a-shadow), .65),
-    0 10px 30px -12px rgba(var(--a-shadow), .4);
+    0 16px 60px -16px rgba(var(--a-shadow), .12),
+    0 4px 18px rgba(var(--a-shadow), .03);
   overflow: hidden;
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -183,7 +155,7 @@
 /* Usernames and passwords are Latin, so the fields run left to right; their labels stay Persian and right-aligned. */
 .auth-field input[type=text],
 .auth-field input[type=password] {
-  margin: 0; height: 50px; padding: 0 16px;
+  margin: 0; height: 52px; padding: 0 16px;
   direction: ltr; text-align: left;
   background: var(--a-field); color: var(--a-ink);
   border: 1px solid var(--a-field-edge); border-radius: var(--a-radius);
@@ -204,7 +176,7 @@
 .auth-pass { position: relative; }
 .auth-pass input { padding-right: 78px !important; }
 .auth-reveal {
-  position: absolute; top: 7px; bottom: 7px; right: 7px;
+  position: absolute; top: 4px; bottom: 4px; right: 7px;
   padding: 0 12px; border: 0; border-radius: 8px;
   background: var(--a-tint); color: var(--a-soft);
   font-size: var(--a-fs-xs); font-weight: 500; line-height: 1; cursor: pointer;
@@ -214,7 +186,7 @@
 .auth-reveal:active { transform: scale(.96); }
 
 .auth-submit {
-  margin-top: 6px; height: 50px; width: 100%;
+  margin-top: 6px; height: 52px; width: 100%;
   border: 0; border-radius: var(--a-radius);
   background: var(--a-brand); color: #fff;
   font-size: var(--a-fs-md); font-weight: 500; line-height: 1; cursor: pointer;
@@ -287,13 +259,13 @@
 @media (prefers-reduced-motion: no-preference) {
   .js .lines [data-line] {
     transform: translateY(110%);
-    animation: auth-line-up 800ms var(--ease-out) forwards;
-    animation-delay: 380ms;
+    animation: auth-line-up 220ms var(--ease-out) forwards;
+    animation-delay: 40ms;
   }
   .js .rise {
-    opacity: 0; transform: translateY(18px);
-    animation: auth-rise 750ms var(--ease-out) forwards;
-    animation-delay: calc(var(--d, 0) * 90ms + 80ms);
+    opacity: 0; transform: translateY(6px);
+    animation: auth-rise 220ms var(--ease-out) forwards;
+    animation-delay: calc(var(--d, 0) * 30ms);
   }
 }
 @keyframes auth-line-up { to { transform: none; } }
@@ -316,3 +288,15 @@
   .sms-readout { grid-template-columns: repeat(2, 1fr); }
 }
 
+
+.auth-toplink { display: inline-flex; align-items: center; min-height: 44px; }
+.auth-reveal { min-width: 52px; min-height: 44px; }
+.auth-register a { display: inline-flex; align-items: center; min-height: 44px; }
+@media (max-width: 480px) {
+  .auth-form-side { padding: 28px 20px; }
+  .auth-top { gap: 8px; }
+  .auth-toplink { font-size: 13px; }
+  .auth-brand { gap: 8px; }
+  .auth-wordmark, .auth-wordmark span { font-size: 20px; }
+  .auth-mark { width: 44px; }
+}
