@@ -36,6 +36,10 @@ if ($me['role'] === 'admin' || bale_configured()) {
 if ($me['role'] === 'admin' || regional_bulk_configured()) {
     $nav['regional_bulk'] = ['/regional-bulk.php', 'ارسال منطقه‌ای', '🗺️'];
 }
+// Aimed bulk from ELLSMS's own subscriber bank, shown once enabled (admins always, to set it up).
+if ($me['role'] === 'admin' || aimed_bulk_enabled()) {
+    $nav['aimed_bulk'] = ['/aimed-bulk.php', 'ارسال با کد پستی', '📮'];
+}
 $integrationNav = [];
 $navOrg = current_organization();
 if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
