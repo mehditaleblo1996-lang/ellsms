@@ -133,6 +133,7 @@ if (PHP_SAPI !== 'cli') {
                 '/price-quote.php' => '/admin/price-quote',
                 '/bale-messages.php' => '/messages/bale',
                 '/regional-bulk.php' => '/messages/regional',
+                '/aimed-bulk.php' => '/messages/aimed',
                 '/reports-bulk.php' => '/messages/reports/bulk',
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
