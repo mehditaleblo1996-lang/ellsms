@@ -48,6 +48,9 @@ services:
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
       SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
+      # Guard for the provider push callbacks /mo and /delivery (app/Sms/GatewayCallbacks.php).
+      SMS_CALLBACK_TOKEN: ${SMS_CALLBACK_TOKEN:-}
+      SMS_CALLBACK_ALLOWED_IPS: ${SMS_CALLBACK_ALLOWED_IPS:-}
       ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
       # #46 — SMPP gateways send through the smpp-bridge container (panel: monitoring, test, reconnect).
       SMPP_BRIDGE_URL: ${SMPP_BRIDGE_URL:-http://smpp-bridge:8090}

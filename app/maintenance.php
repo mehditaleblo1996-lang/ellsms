@@ -19,6 +19,8 @@
  *     charge by the time the browser lands here; blocking it would strand a real payment in
  *     'pending' for no benefit, creating exactly the kind of manual reconciliation work
  *     cron/payments-reconcile.php exists to avoid. See docs/production-runbook.md.
+ *   - mo.php / delivery.php (SMS provider push callbacks): NEVER blocked — most providers do not
+ *     retry an MO, so a 503 here would lose the customer's received message for good.
  *   - workers: NOT killed or exited -- cron/worker.php keeps polling/leasing but skips its three
  *     dispatch passes while maintenance is active (own check, see cron/worker.php), so in-flight
  *     leases don't get abandoned mid-send merely because maintenance mode flipped on.
@@ -45,7 +47,7 @@ function maintenance_mode_message(): string {
 /** Script filenames that must stay reachable during maintenance -- see this file's own docblock
  * for why each one is on this list. Matched against basename(SCRIPT_FILENAME), not the URL, so it
  * can't be bypassed/broken by rewrite rules or query strings. */
-const MAINTENANCE_MODE_EXEMPT_SCRIPTS = ['health.php', 'health-ready.php', 'zarinpal-callback.php'];
+const MAINTENANCE_MODE_EXEMPT_SCRIPTS = ['health.php', 'health-ready.php', 'zarinpal-callback.php', 'mo.php', 'delivery.php'];
 
 function maintenance_mode_current_script_exempt(): bool {
     $script = basename((string)($_SERVER['SCRIPT_FILENAME'] ?? ''));

@@ -54,6 +54,10 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 **Switching on safely:** configure the gateway and assign it to the routes your sender lines use, run `make sms-gateway-simulate TO=... COMPARE=1` until it reports `IDENTICAL`, then set `SMS_GATEWAY_TRANSPORT=1` (plus `SMS_GATEWAY_MASTER_KEY`) and restart the containers. **Rollback** is setting it back to `0` and restarting — no configuration has to be undone. Full design: [`docs/sms-gateway-connectors.md`](docs/sms-gateway-connectors.md); status polling: `docs/sms-gateway-status-batch-closure-report.md`; useful commands: `make sms-gateway-status`, `make sms-gateway-integrity-check`, `make sms-status-worker-status`.
 
+## Receiving MO and delivery reports from the provider
+
+ELLSMS has its own push receivers, with the same URLs the backend platform used: `https://<host>/mo?from=…&to=…&content=…` for inbound SMS (Persian and emoji supported) and `https://<host>/delivery?id=…&status=…` for delivery reports. Guard them with `SMS_CALLBACK_TOKEN` and/or `SMS_CALLBACK_ALLOWED_IPS`. See [`docs/sms-callbacks.md`](docs/sms-callbacks.md).
+
 ## Login model
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.
