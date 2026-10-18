@@ -263,9 +263,9 @@ services:
   number-forward-worker:
     logging: *default-logging
     # Same image as `app` (built once there) — never pulled from a registry.
-    image: ellsms-app:latest
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
     pull_policy: never
-    container_name: ellsms-number-forward-worker
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-number-forward-worker
     restart: unless-stopped
     command: php /var/www/html/cron/number-forward-worker.php
     environment:
