@@ -521,6 +521,30 @@ function aimed_bulk_cancel(array $user, int $id): bool {
    Loading the bank from Vesal's exports (cron/aimed-mobiles-import.php)
    ========================================================================== */
 
+/**
+ * The bank's size as last counted by the importer: ['total', 'sendable', 'provinces', 'cities',
+ * 'counted_at'], or null before the first count. Counting tens of millions of rows takes seconds to
+ * minutes, so the admin page shows this stored figure instead of counting on every view.
+ */
+function aimed_bulk_bank_stats(): ?array {
+    $stats = json_decode((string)setting_fresh('aimed_bulk_bank_stats', ''), true);
+    return is_array($stats) && isset($stats['total']) ? $stats : null;
+}
+
+/** Counts the bank and stores the result for aimed_bulk_bank_stats(). CLI only: it is slow. */
+function aimed_bulk_bank_stats_refresh(): array {
+    $db = db();
+    $stats = [
+        'total'      => (int)$db->query('SELECT COUNT(*) FROM ellsms_aimed_mobiles')->fetchColumn(),
+        'sendable'   => (int)$db->query('SELECT COUNT(*) FROM ellsms_aimed_mobiles WHERE blocklisted = 0')->fetchColumn(),
+        'provinces'  => (int)$db->query('SELECT COUNT(*) FROM ellsms_aimed_provinces')->fetchColumn(),
+        'cities'     => (int)$db->query('SELECT COUNT(*) FROM ellsms_aimed_cities')->fetchColumn(),
+        'counted_at' => date('Y-m-d H:i:s'),
+    ];
+    set_setting('aimed_bulk_bank_stats', (string)json_encode($stats));
+    return $stats;
+}
+
 /** Header aliases, normalized to upper case without spaces: Vesal's own column names first. */
 const AIMED_IMPORT_COLUMNS = [
     'mobiles' => [
