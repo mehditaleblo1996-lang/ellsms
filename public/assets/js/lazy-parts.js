@@ -5,6 +5,9 @@
  * parallel, and is replaced by the answer. A redirected response without the X-Lazy-Part header is
  * the login page (the session expired), so the whole page reloads and the normal redirect takes
  * over. A failed or timed-out part shows a retry button in its own box only.
+ *
+ * A live box (data-lazy-poll="N", lazy_part_live_placeholder()) is kept and refilled in place every
+ * N seconds while the tab is visible, one request at a time; a failed refresh keeps the last content.
  */
 (function () {
   'use strict';
@@ -52,10 +55,31 @@
     }
   }
 
+  // Next refresh of a live box. Each load() bumps the box's generation, so a timer or an answer from
+  // an older load (superseded by a `lazy-part:refresh`) is dropped instead of running a second chain.
+  function schedule(box, name, gen) {
+    var seconds = parseInt(box.getAttribute('data-lazy-poll'), 10) || 3;
+    setTimeout(function () {
+      if (box.__lazyGen !== gen) return;
+      if (document.visibilityState === 'visible') { load(box, name); return; }
+      var resume = function () {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', resume);
+        if (box.__lazyGen === gen) load(box, name);
+      };
+      document.addEventListener('visibilitychange', resume);
+    }, seconds * 1000);
+  }
+
   function load(box, name) {
-    box.setAttribute('aria-busy', 'true');
-    box.innerHTML = '<div class="lazy-part-status"><span class="lazy-spinner" aria-hidden="true"></span>در حال بارگذاری…</div>';
-    fetch(partUrl(name), { credentials: 'same-origin', headers: { 'X-Requested-With': 'lazy-part' } })
+    var live = box.hasAttribute('data-lazy-poll');
+    var hasContent = live && box.classList.contains('lazy-part-ready');
+    var gen = box.__lazyGen = (box.__lazyGen || 0) + 1;
+    if (!hasContent) {
+      box.setAttribute('aria-busy', 'true');
+      box.innerHTML = '<div class="lazy-part-status"><span class="lazy-spinner" aria-hidden="true"></span>در حال بارگذاری…</div>';
+    }
+    fetch(partUrl(name), { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'lazy-part' } })
       .then(function (response) {
         if (response.ok && response.headers.get('X-Lazy-Part') !== name) {
           // Redirected (to the login page): the page itself redirects there too. Anything else that
@@ -67,18 +91,39 @@
         return response.text();
       })
       .then(function (html) {
-        if (html === null) return;
+        if (html === null || box.__lazyGen !== gen) return;
         var holder = document.createElement('div');
         holder.innerHTML = html;
         applyMarkers(holder);
+        if (live) {
+          box.innerHTML = '';
+          while (holder.firstChild) box.appendChild(holder.firstChild);
+          box.style.minHeight = '';
+          box.setAttribute('aria-busy', 'false');
+          box.classList.add('lazy-part-ready');
+          box.classList.remove('lazy-part-stale');
+          box.dispatchEvent(new CustomEvent('lazy-part:loaded', { bubbles: true }));
+          schedule(box, name, gen);
+          return;
+        }
         var parent = box.parentNode;
         while (holder.firstChild) parent.insertBefore(holder.firstChild, box);
         parent.removeChild(box);
       })
-      .catch(function () { showError(box, name); });
+      .catch(function () {
+        if (box.__lazyGen !== gen) return;
+        if (!live) { showError(box, name); return; }
+        if (hasContent) box.classList.add('lazy-part-stale');
+        else showError(box, name);
+        schedule(box, name, gen);
+      });
   }
 
   document.querySelectorAll('[data-lazy-part]').forEach(function (box) {
-    load(box, box.getAttribute('data-lazy-part'));
+    var name = box.getAttribute('data-lazy-part');
+    if (box.hasAttribute('data-lazy-poll')) {
+      box.addEventListener('lazy-part:refresh', function () { load(box, name); });
+    }
+    load(box, name);
   });
 })();

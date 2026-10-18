@@ -102,6 +102,7 @@ $adminNav = [
     'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
     'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
+    'queue_monitor'         => ['/admin/queue/monitor',       'مانیتورینگ صف‌ها',    '📈'],
     'alerts'                => ['/admin/alerts',               'هشدارها',             '🔔'],
     'bulk_archive'          => ['/admin/bulk-archive',        'آرشیو شش‌ماهه پیام‌ها', '🗄'],
     'sms_gateway_clone'     => ['/sms-gateway-clone.php',     'کپی کامل درگاه',      '⧉'],
@@ -117,7 +118,7 @@ $adminNavGroups = menu_group_items($adminNav, [
     'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'remote_db']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin']],
     'admin_sending'  => ['کنترل ارسال',          ['prohibited_words', 'queue_cancellation', 'bulk_archive']],
-    'admin_monitor'  => ['نظارت و گزارش',        ['analytics', 'logs', 'alerts']],
+    'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
 ]);
 $sidebarGroups = $me['role'] === 'admin' ? $navGroups + $adminNavGroups : $navGroups;
