@@ -79,6 +79,54 @@ final class SmsCallbacksTest extends IntegrationTestCase
         $this->assertCount(1, $found);
     }
 
+    public function testALinePushedInAnotherFormatIsStoredAsTheAssignedNumber(): void
+    {
+        $this->makeGateway();
+        db()->prepare('DELETE FROM ellsms_numbers WHERE number = ?')->execute([$this->line]);
+        db()->prepare('INSERT INTO ellsms_numbers (number, label) VALUES (?, ?)')->execute([$this->line, 't']);
+
+        foreach (['98' . $this->line, '0098' . $this->line, '+98' . $this->line] as $i => $to) {
+            $result = sms_callback_receive_mo(['from' => '09121234567', 'to' => $to, 'content' => 'format ' . $i]);
+            $st = db()->prepare('SELECT destination FROM ellsms_inbound_messages WHERE id = ?');
+            $st->execute([$result['body']['id']]);
+            $this->assertSame($this->line, $st->fetchColumn(), $to);
+        }
+    }
+
+    public function testAPushedMoReachesTheAssignedUsersInboxAndTheLinesForwardUrl(): void
+    {
+        $this->makeGateway();
+        $userId = $this->makeUser();
+        db()->prepare('DELETE FROM ellsms_numbers WHERE number = ?')->execute([$this->line]);
+        db()->prepare('INSERT INTO ellsms_numbers (number, label, assigned_user_id) VALUES (?, ?, ?)')->execute([$this->line, 't', $userId]);
+        db()->prepare('DELETE FROM ellsms_number_forward_queue WHERE number = ?')->execute([$this->line]);
+        db()->prepare('DELETE FROM ellsms_number_forwards WHERE number = ?')->execute([$this->line]);
+        putenv('WEBHOOK_ALLOW_PRIVATE_TARGETS=1');
+        set_setting('number_forward_enabled', '1');
+        \number_forward_cache_reset();
+        $saved = \number_forward_save($this->line, ['mo_enabled' => '1', 'mo_url' => 'http://127.0.0.1:9/mo?text=${content}', 'http_method' => 'GET'], 0);
+        $this->assertTrue($saved['ok'], $saved['error'] ?? '');
+
+        $text = 'پیام برای خط 🌹';
+        $id = sms_callback_receive_mo(['from' => '09121234567', 'to' => '98' . $this->line, 'content' => $text])['body']['id'];
+
+        // Inbox: the user's allowed lines are exactly what inbox.php filters destination on.
+        $user = ['id' => $userId, 'role' => 'user', 'organization_id' => 0];
+        $this->assertContains($this->line, allowed_originators($user));
+        $this->assertTrue(can_view_inbound_message($user, $this->line));
+
+        // Forward: the worker's inbound pass queues it for the line's URL, text intact.
+        run_autoreply_pass();
+        $st = db()->prepare('SELECT vars_json FROM ellsms_number_forward_queue WHERE kind = ? AND source_key = ?');
+        $st->execute(['mo', 'inbound:' . $id]);
+        $vars = json_decode((string)$st->fetchColumn(), true);
+        $this->assertSame($text, $vars['content'] ?? null);
+
+        set_setting('number_forward_enabled', '0');
+        putenv('WEBHOOK_ALLOW_PRIVATE_TARGETS');
+        \number_forward_cache_reset();
+    }
+
     public function testAnMoWithoutFromOrToIsRefused(): void
     {
         $this->assertSame(400, sms_callback_receive_mo(['content' => 'x'])['http']);

@@ -165,6 +165,37 @@ function sms_callback_resolve_gateway(?string $gateway, string $line): int {
 }
 
 /**
+ * The line as it is registered in ellsms_numbers. Providers do not agree on the format of the
+ * receiving line (5000435800, 985000435800, 00985000435800), and the inbox, per-line forwarding and
+ * auto-reply all match the stored destination EXACTLY against the assigned number, so a line pushed
+ * in another format would reach none of them. Unregistered = returned unchanged.
+ */
+function sms_callback_canonical_line(string $line): string {
+    $candidates = [$line];
+    foreach (['0098', '98', '0'] as $prefix) {
+        if (str_starts_with($line, $prefix) && strlen($line) - strlen($prefix) >= 3) {
+            $candidates[] = substr($line, strlen($prefix));
+        }
+    }
+    $candidates[] = '98' . $line;
+    $candidates[] = '0' . $line;
+    try {
+        $placeholders = implode(',', array_fill(0, count($candidates), '?'));
+        $st = db()->prepare("SELECT number FROM ellsms_numbers WHERE number IN ({$placeholders})");
+        $st->execute($candidates);
+        $found = array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
+    } catch (PDOException) {
+        return $line;
+    }
+    foreach ($candidates as $candidate) {
+        if (in_array($candidate, $found, true)) {
+            return $candidate;
+        }
+    }
+    return $line;
+}
+
+/**
  * Stores one pushed MO.
  *
  * @return array{http:int, body:array}
@@ -177,6 +208,7 @@ function sms_callback_receive_mo(array $params, ?int $now = null): array {
     if ($from === '' || $to === '' || strlen($from) > 20 || strlen($to) > 20) {
         return ['http' => 400, 'body' => ['ok' => false, 'error' => 'from_and_to_required']];
     }
+    $to = sms_callback_canonical_line($to);
     $content = sms_callback_decode_text(
         (string)(sms_callback_param($params, SMS_CALLBACK_CONTENT_KEYS) ?? ''),
         sms_callback_param($params, SMS_CALLBACK_CODING_KEYS)
