@@ -46,6 +46,8 @@ final class CleanUrlRoutingTest extends TestCase
             'RewriteRule ^admin/registrations/?$ registration-requests.php [QSA,L]',
             'RewriteRule ^admin/settings/?$ settings.php [QSA,L]',
             'RewriteRule ^payments/zarinpal/callback/?$ zarinpal-callback.php [QSA,L]',
+            'RewriteRule ^mo/?$ mo.php [QSA,L]',
+            'RewriteRule ^(?:delivery|dlr)/?$ delivery.php [QSA,L]',
         ];
 
         foreach ($routes as $route) {
@@ -99,6 +101,8 @@ final class CleanUrlRoutingTest extends TestCase
         $exempt = [
             'health.php', 'health-ready.php', 'zarinpal-callback.php', 'send-queue.php', 'import-cancel.php',
             'reports-v2.php', 'telegram-webhook.php',
+            // SMS provider push callbacks (/mo, /delivery): called by the provider, never linked.
+            'mo.php', 'delivery.php',
             // The Prometheus scrape endpoint: scraped at /metrics, never linked as metrics.php.
             'metrics.php',
         ];

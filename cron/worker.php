@@ -180,6 +180,17 @@ do {
             }
         }
 
+        // Aimed bulk (app/AimedBulk.php): stage and price requests from the subscriber bank, a few
+        // batches per loop so a large request never holds up the rest of this loop.
+        try {
+            $ab = Metrics::time('worker.pass.aimed_bulk', fn() => aimed_bulk_stage_pass());
+            if ($ab['priced'] > 0) Logger::info('worker.aimed_bulk.priced', ['count' => $ab['priced']]);
+            $workProcessed += $ab['batches'];
+        } catch (Throwable $t) {
+            Logger::error('worker.aimed_bulk.failed', ['exception' => $t]);
+            Metrics::increment('worker.pass.failed', 1, ['pass' => 'aimed_bulk']);
+        }
+
         // Regional bulk (#43): poll Vesal for confirmed requests and settle finished ones. Each request
         // is polled at most once a minute (claimed by last_polled_at), so this pass is cheap when idle.
         static $regionalBulkLastRunAt = 0.0;

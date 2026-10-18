@@ -246,7 +246,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php foreach ($items as $i => $item): ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)($i + 1)) ?></td>
-        <td class="msisdn"><?= e((string)$item['mobile']) ?></td>
+        <td class="msisdn"><?= e(bulk_recipient_display((string)$item['mobile'], !empty($bulkJob['recipients_masked']))) ?></td>
         <td><?= isset($names['operators'][(int)($item['operator_id'] ?? 0)]) ? operator_label($names['operators'][(int)$item['operator_id']], $names['operators'][(int)$item['operator_id']]) : e($dash) ?></td>
         <td class="provider-ref"><?= e((string)($item['provider_message_id'] ?? $dash)) ?></td>
         <?php $itemStatus = report_canonical_status($item['delivery_status']); ?>

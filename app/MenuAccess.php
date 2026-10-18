@@ -44,6 +44,7 @@ function menu_catalog(): array {
         'invoices'      => ['فاکتورها',             '🧾', '/invoices.php',      ['invoices.php']],
         'bale'          => ['پیام‌رسان بله',         '💬', '/bale-messages.php', ['bale-messages.php']],
         'regional_bulk' => ['ارسال منطقه‌ای',        '🗺️', '/regional-bulk.php', ['regional-bulk.php']],
+        'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
         'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php']],
         'api_keys'      => ['کلیدهای API',          '🔑', '/api-keys.php',      ['api-keys.php']],
         'integrations'  => ['افزونه ووکامرس و SDK', '🧩', '/integrations.php',  ['integrations.php']],
@@ -62,7 +63,7 @@ function menu_catalog(): array {
 function menu_groups(): array {
     return [
         'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
-        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'regional_bulk', 'schedules', 'autoreply']],
+        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'regional_bulk', 'aimed_bulk', 'schedules', 'autoreply']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'inbox', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
         'finance'      => ['مالی',              ['buy_credit', 'invoices', 'billing']],
