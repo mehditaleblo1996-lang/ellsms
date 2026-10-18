@@ -69,9 +69,9 @@ $anyStaging = (bool)array_filter($rows, static fn(array $r): bool => $r['status'
 $bank = null;
 if (is_admin()) {
     try {
-        $bank = db()->query('SELECT COUNT(*) total, SUM(blocklisted = 0) sendable, MAX(imported_at) last_import,
-                                    (SELECT COUNT(*) FROM ellsms_aimed_provinces) provinces, (SELECT COUNT(*) FROM ellsms_aimed_cities) cities
-                             FROM ellsms_aimed_mobiles')->fetch();
+        db()->query('SELECT 1 FROM ellsms_aimed_mobiles LIMIT 0');
+        // Stored by the importer: counting tens of millions of rows on every view would stall the page.
+        $bank = aimed_bulk_bank_stats();
     } catch (PDOException) {
         $bank = false; // migration not applied
     }
@@ -92,13 +92,17 @@ require __DIR__ . '/../app/views/header.php';
   </p>
   <?php if ($bank === false): ?>
     <p class="alert alert-error">جدول‌های این قابلیت هنوز ساخته نشده‌اند: <span class="ltr">make db-migrations-apply</span> را اجرا کنید.</p>
-  <?php elseif ($bank): ?>
+  <?php else: ?>
+    <?php if ($bank): ?>
     <p>
       بانک شماره: <b><?= to_persian_digits(number_format((int)$bank['total'])) ?></b> شماره
       (<?= to_persian_digits(number_format((int)$bank['sendable'])) ?> قابل ارسال)،
       <?= to_persian_digits(number_format((int)$bank['provinces'])) ?> استان، <?= to_persian_digits(number_format((int)$bank['cities'])) ?> شهر
-      <?php if (!empty($bank['last_import'])): ?> — آخرین به‌روزرسانی: <?= jdate((string)$bank['last_import']) ?><?php endif; ?>
+      — شمارش: <?= jdate((string)$bank['counted_at']) ?>
     </p>
+    <?php else: ?>
+    <p class="hint">آمار بانک هنوز شمرده نشده است: <span class="ltr">php cron/aimed-mobiles-import.php --stats</span></p>
+    <?php endif; ?>
     <p class="hint">بارگذاری یا به‌روزرسانی بانک از خروجی CSV جدول‌های وصال:
       <span class="ltr">php cron/aimed-mobiles-import.php --provinces=… --cities=… --mobiles=…</span></p>
   <?php endif; ?>

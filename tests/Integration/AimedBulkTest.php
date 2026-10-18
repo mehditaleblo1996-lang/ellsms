@@ -145,6 +145,15 @@ final class AimedBulkTest extends IntegrationTestCase
         self::assertSame(12, (int)db()->query('SELECT COUNT(*) FROM ellsms_aimed_mobiles')->fetchColumn());
     }
 
+    public function testBankStatsAreStoredForTheAdminPage(): void
+    {
+        set_setting('aimed_bulk_bank_stats', '');
+        self::assertNull(aimed_bulk_bank_stats());
+        $stats = aimed_bulk_bank_stats_refresh();
+        self::assertSame([12, 11, 2, 3], [$stats['total'], $stats['sendable'], $stats['provinces'], $stats['cities']]);
+        self::assertSame($stats, aimed_bulk_bank_stats());
+    }
+
     public function testImportRefusesAFileWithoutANumberColumn(): void
     {
         $this->expectException(\RuntimeException::class);
@@ -400,6 +409,7 @@ final class AimedBulkTest extends IntegrationTestCase
 
     public function testDashboardRecentMessagesAreMaskedForCustomers(): void
     {
+        require_once dirname(__DIR__, 2) . '/app/Dashboard.php'; // only the dashboard page loads it
         $this->maskedAndPlainItems();
         $byContent = array_column(dashboard_recent_messages([$this->userId], 10), 'destination', 'content');
         self::assertSame('0912***0001', $byContent['mask-1']);

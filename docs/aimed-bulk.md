@@ -66,6 +66,8 @@ Persian province and city names survive.
 
    `--batch=N` sets the rows per INSERT for the mobiles file (default 1000).
 
+   - **Bank statistics:** after a real load the importer counts the bank and stores the figures, and `/messages/aimed` shows those instead of counting tens of millions of rows on every view. `--stats` alone recounts without loading anything.
+
    - **Upsert:** every load is an upsert keyed by the number (or the province or city code). Running it again with a newer export refreshes the bank in place, including a number that became blocklisted.
    - **Missing numbers:** a number missing from a newer export is **not** removed.
    - **Cleanup:** delete the CSV files afterwards, since they are the whole subscriber list.
