@@ -74,6 +74,22 @@ final class SmsCallbacksTest extends TestCase
         $this->assertSame('failed', sms_callback_status_canonical($connector, 'DELIVRD'));
     }
 
+    public function testAPartiallyTypedSenderIsRefused(): void {
+        foreach (['98', '98912', '9891230006', '98912300065', ''] as $raw) {
+            $this->assertNull(sms_callback_sender($raw), $raw);
+        }
+        $this->assertSame('989123000657', sms_callback_sender('989123000657'));
+        $this->assertSame('989123000657', sms_callback_sender('09123000657'));
+        $this->assertSame('447700900123', sms_callback_sender('+447700900123'));
+    }
+
+    public function testBrowserPrefetchAndPrerenderAreRecognised(): void {
+        $this->assertTrue(sms_callback_is_speculative(['HTTP_SEC_PURPOSE' => 'prefetch;prerender']));
+        $this->assertTrue(sms_callback_is_speculative(['HTTP_SEC_PURPOSE' => 'prefetch']));
+        $this->assertTrue(sms_callback_is_speculative(['HTTP_PURPOSE' => 'prefetch']));
+        $this->assertFalse(sms_callback_is_speculative([]));
+    }
+
     public function testDeliveredAtIsUtcFromTehranWallClock(): void {
         $this->assertSame('2026-10-18 08:30:00', sms_callback_delivered_at('2026-10-18 12:00:00', time()));
     }

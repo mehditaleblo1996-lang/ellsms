@@ -196,17 +196,70 @@ function sms_callback_canonical_line(string $line): string {
 }
 
 /**
+ * The sender of an MO as a full mobile number, or null. An MO always comes from a subscriber, so a
+ * fragment such as "98" or "98912" is refused rather than stored: that is what a browser's address-bar
+ * prefetch sends while a test URL is still being typed. An Iranian mobile (989…) must be complete.
+ */
+function sms_callback_sender(string $raw): ?string {
+    // "9891230006" is a fragment of 98912…, but normalize_msisdn() would read ten digits starting with
+    // 9 as a local number and turn it into 989891230006 — a wrong number that looks valid.
+    $digits = ltrim((string)preg_replace('/\D/', '', $raw), '0');
+    if (str_starts_with($digits, '98') && strlen($digits) < 12) {
+        return null;
+    }
+    $msisdn = normalize_msisdn($raw);
+    if ($msisdn === null || (str_starts_with($msisdn, '989') && strlen($msisdn) !== 12)) {
+        return null;
+    }
+    return $msisdn;
+}
+
+/** Seconds within which the same text from the same sender to the same line counts as one message. */
+const SMS_CALLBACK_DUPLICATE_WINDOW_SECONDS = 10;
+
+/**
+ * Whether this MO (no provider id) was already stored moments ago. The fingerprint dedupe in
+ * gateway_receive_store() only catches a repeat within the same second, because the receive time is
+ * "now" when the provider sends none; a provider retry or a browser prefetch followed by the real
+ * request arrives a second or more later and would be stored again.
+ */
+function sms_callback_recent_duplicate(int $gatewayId, array $message): bool {
+    $st = db()->prepare(
+        'SELECT 1 FROM ellsms_inbound_messages
+         WHERE destination = ? AND originator = ? AND gateway_id = ? AND content = ?
+           AND created_at >= NOW() - INTERVAL ? SECOND
+         LIMIT 1'
+    );
+    $st->execute([$message['destination'], $message['originator'], $gatewayId, $message['content'], SMS_CALLBACK_DUPLICATE_WINDOW_SECONDS]);
+    return $st->fetchColumn() !== false;
+}
+
+/**
+ * Whether the request is a browser speculative load (address-bar prefetch / prerender), which must
+ * never be treated as a provider call. Chrome marks them with Sec-Purpose, older browsers with Purpose
+ * or X-Moz; the real navigation that follows is a normal request.
+ */
+function sms_callback_is_speculative(array $server): bool {
+    foreach (['HTTP_SEC_PURPOSE', 'HTTP_PURPOSE', 'HTTP_X_PURPOSE', 'HTTP_X_MOZ'] as $header) {
+        $value = strtolower((string)($server[$header] ?? ''));
+        if (str_contains($value, 'prefetch') || str_contains($value, 'prerender') || str_contains($value, 'preview')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
  * Stores one pushed MO.
  *
  * @return array{http:int, body:array}
  */
 function sms_callback_receive_mo(array $params, ?int $now = null): array {
     $now ??= time();
-    $rawFrom = trim((string)sms_callback_param($params, SMS_CALLBACK_FROM_KEYS));
-    $from = normalize_msisdn($rawFrom) ?? (normalize_originator($rawFrom) ?? '');
+    $from = sms_callback_sender((string)sms_callback_param($params, SMS_CALLBACK_FROM_KEYS));
     $to = normalize_originator((string)sms_callback_param($params, SMS_CALLBACK_TO_KEYS)) ?? '';
-    if ($from === '' || $to === '' || strlen($from) > 20 || strlen($to) > 20) {
-        return ['http' => 400, 'body' => ['ok' => false, 'error' => 'from_and_to_required']];
+    if ($from === null || $to === '' || strlen($to) > 20) {
+        return ['http' => 400, 'body' => ['ok' => false, 'error' => 'valid_from_and_to_required']];
     }
     $to = sms_callback_canonical_line($to);
     $content = sms_callback_decode_text(
@@ -227,7 +280,9 @@ function sms_callback_receive_mo(array $params, ?int $now = null): array {
         'received_at'         => gateway_receive_time($time, $now),
         'provider_message_id' => gateway_provider_message_id_normalize(sms_callback_param($params, SMS_CALLBACK_MO_ID_KEYS)),
     ];
-    $id = gateway_receive_store(db(), $gatewayId, $message);
+    $id = $message['provider_message_id'] === null && sms_callback_recent_duplicate($gatewayId, $message)
+        ? null
+        : gateway_receive_store(db(), $gatewayId, $message);
     if ($id !== null) {
         Metrics::increment('gateway.inbound.stored', 1, ['gateway' => 'callback']);
     }
@@ -312,6 +367,14 @@ function sms_callback_receive_dlr(array $params, ?int $now = null): array {
 /** Shared entrypoint body for public/mo.php and public/delivery.php. */
 function sms_callback_handle(string $kind): never {
     header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    if (sms_callback_is_speculative($_SERVER)) {
+        // Not 2xx, so the browser drops the prerender and the real request reaches us when the user
+        // actually opens the URL.
+        http_response_code(503);
+        echo json_encode(['ok' => false, 'error' => 'speculative_request_ignored']);
+        exit;
+    }
     $params = sms_callback_params();
     $refused = sms_callback_authorize($params, client_ip(), $_SERVER['HTTP_X_CALLBACK_TOKEN'] ?? null);
     if ($refused !== null) {

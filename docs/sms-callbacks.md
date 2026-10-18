@@ -17,6 +17,8 @@ GET|POST https://<host>/mo?from=989197684063&to=5000435800&content=test
 
 Parameters can arrive as a query string, a form body or a JSON body. The message is stored in `ellsms_inbound_messages`, so the inbox, auto-reply, webhooks and number forwarding handle it exactly like a polled one. Gateway: `?gateway=` if given, else the gateway of the line's route, else the default gateway.
 
+**Duplicates and test calls:** a sender must be a complete mobile number (a fragment like `98912` gets `400`). The same text from the same sender to the same line within 10 seconds is stored once (`"duplicate":true`) when the provider sends no message id. Browser address-bar prefetch/prerender requests (`Sec-Purpose: prefetch`) are ignored, so typing a test URL in Chrome no longer stores half-typed versions.
+
 **Persian and emoji:** the table and the connection are utf8mb4. Text arrives as normal percent-encoded UTF-8 (`%D8%B3...`, emoji `%F0%9F%98%80`); `%uXXXX` escapes, UCS-2 hex (with `coding=8`) and Windows-1256 are converted too.
 
 ## Delivery reports (DLR)

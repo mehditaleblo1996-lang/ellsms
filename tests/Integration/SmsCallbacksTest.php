@@ -70,9 +70,13 @@ final class SmsCallbacksTest extends IntegrationTestCase
         $this->assertSame($this->line, $row['destination']);
         $this->assertSame($text, $row['content']);
 
-        // The same message pushed again within the same second (a provider retry) is not stored twice.
-        $again = sms_callback_receive_mo($params, strtotime((string)$row['received_at'] . ' Asia/Tehran'));
+        // Pushed again seconds later (a provider retry, or a browser prefetch then the real request):
+        // still one message.
+        $again = sms_callback_receive_mo($params, time() + 3);
         $this->assertTrue($again['body']['duplicate']);
+        $st = db()->prepare('SELECT COUNT(*) FROM ellsms_inbound_messages WHERE gateway_id = ? AND originator = ?');
+        $st->execute([$gatewayId, '989197684063']);
+        $this->assertSame(1, (int)$st->fetchColumn());
 
         // And the inbox reads it like any other inbound message.
         $found = array_filter(inbound_ellsms_scan_new((int)$first['body']['id'] - 1, 10), static fn($m) => (int)$m['id'] === (int)$first['body']['id']);
