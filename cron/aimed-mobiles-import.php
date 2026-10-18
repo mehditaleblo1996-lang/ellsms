@@ -12,6 +12,7 @@
  *
  *   --dry-run      read and validate only; write nothing
  *   --batch=N      rows per INSERT for the mobiles file (default 1000)
+ *   --stats        only recount the bank for the admin page (also done after every real load)
  */
 require_once __DIR__ . '/../app/backend.php';
 
@@ -27,8 +28,8 @@ $files = array_filter([
     'cities'    => is_string($opts['cities'] ?? null) ? $opts['cities'] : null,
     'mobiles'   => is_string($opts['mobiles'] ?? null) ? $opts['mobiles'] : null,
 ]);
-if ($files === []) {
-    fwrite(STDERR, "usage: php cron/aimed-mobiles-import.php [--provinces=FILE] [--cities=FILE] [--mobiles=FILE] [--dry-run] [--batch=N]\n");
+if ($files === [] && empty($opts['stats'])) {
+    fwrite(STDERR, "usage: php cron/aimed-mobiles-import.php [--provinces=FILE] [--cities=FILE] [--mobiles=FILE] [--dry-run] [--batch=N] [--stats]\n");
     exit(2);
 }
 foreach ($files as $kind => $path) {
@@ -61,7 +62,8 @@ foreach ($files as $kind => $path) {
     Logger::info('aimed_bulk.import', ['kind' => $kind, 'dry_run' => $dryRun] + $stats);
 }
 if (!$dryRun) {
-    $total = (int)db()->query('SELECT COUNT(*) FROM ellsms_aimed_mobiles')->fetchColumn();
-    echo 'bank now holds ' . number_format($total) . " numbers\n";
+    $bank = aimed_bulk_bank_stats_refresh();
+    printf("bank now holds %s numbers (%s sendable), %s provinces, %s cities\n",
+        number_format($bank['total']), number_format($bank['sendable']), number_format($bank['provinces']), number_format($bank['cities']));
 }
 exit($exit);
