@@ -43,7 +43,7 @@ function panel_icon(string $name): string {
         'kyc_review'=>'shield', 'kyc_gates'=>'key', 'analytics'=>'chart', 'logs'=>'receipt',
         'numbers'=>'phone', 'number_categories'=>'folder', 'landing_videos'=>'folder', 'pricing'=>'wallet',
         'price_quote'=>'receipt', 'sms_pricing'=>'wallet', 'sms_gateways'=>'link', 'prohibited_words'=>'ban',
-        'queue_cancellation'=>'ban', 'alerts'=>'bell', 'bulk_archive'=>'folder', 'sms_gateway_clone'=>'copy',
+        'queue_cancellation'=>'ban', 'queue_monitor'=>'chart', 'alerts'=>'bell', 'bulk_archive'=>'folder', 'sms_gateway_clone'=>'copy',
         'guide_admin'=>'book', 'billing_admin'=>'wallet', 'financial_admin'=>'receipt',
     ];
     $path = $paths[$names[$name] ?? $name] ?? $paths['grid'];

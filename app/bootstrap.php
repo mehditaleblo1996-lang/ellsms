@@ -88,6 +88,7 @@ require_once __DIR__ . '/BulkCancellation.php';
 require_once __DIR__ . '/BulkArchive.php';
 require_once __DIR__ . '/Reports/SendDimensionLog.php';
 require_once __DIR__ . '/Observability/QueueSnapshot.php';
+require_once __DIR__ . '/QueueMonitor.php';
 require_once __DIR__ . '/Observability/ApiRequestMetrics.php';
 require_once __DIR__ . '/Observability/PrometheusExporter.php';
 require_once __DIR__ . '/telegram.php';

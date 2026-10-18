@@ -125,6 +125,7 @@ if (PHP_SAPI !== 'cli') {
                 '/menu-roles.php' => '/admin/users/menu-roles',
                 '/reseller-profits.php' => '/admin/users/reseller-profits',
                 '/queue-cancellation.php' => '/admin/queue/cancellation',
+                '/queue-monitor.php' => '/admin/queue/monitor',
                 '/bulk-archive.php' => '/admin/bulk-archive',
                 '/alerts.php' => '/admin/alerts',
                 '/prohibited-words.php' => '/admin/prohibited-words',
