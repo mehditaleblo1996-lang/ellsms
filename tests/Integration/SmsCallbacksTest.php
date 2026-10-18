@@ -127,6 +127,27 @@ final class SmsCallbacksTest extends IntegrationTestCase
         \number_forward_cache_reset();
     }
 
+    public function testAPushedPersianElevenOptsTheSenderOutOfThatLine(): void
+    {
+        $this->makeGateway();
+        set_setting('line_optout_enabled', '1');
+        set_setting('line_optout_confirm', '0');
+        \line_optout_settings_reset();
+        $mobile = '98912' . random_int(1000000, 9999999);
+        db()->prepare('DELETE FROM ellsms_line_optouts WHERE originator = ?')->execute([$this->line]);
+
+        sms_callback_receive_mo(['from' => $mobile, 'to' => $this->line, 'content' => ' ۱۱ ']);
+        run_autoreply_pass();
+        $this->assertSame([$mobile => true], line_optout_filter($this->line, [$mobile, '989120000000']));
+
+        sms_callback_receive_mo(['from' => $mobile, 'to' => $this->line, 'content' => '12']);
+        run_autoreply_pass();
+        $this->assertSame([], line_optout_filter($this->line, [$mobile]));
+
+        set_setting('line_optout_confirm', '1');
+        \line_optout_settings_reset();
+    }
+
     public function testAnMoWithoutFromOrToIsRefused(): void
     {
         $this->assertSame(400, sms_callback_receive_mo(['content' => 'x'])['http']);
