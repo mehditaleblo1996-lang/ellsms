@@ -88,6 +88,7 @@ require_once __DIR__ . '/BulkCancellation.php';
 require_once __DIR__ . '/BulkArchive.php';
 require_once __DIR__ . '/Reports/SendDimensionLog.php';
 require_once __DIR__ . '/Observability/QueueSnapshot.php';
+require_once __DIR__ . '/QueueMonitor.php';
 require_once __DIR__ . '/Observability/ApiRequestMetrics.php';
 require_once __DIR__ . '/Observability/PrometheusExporter.php';
 require_once __DIR__ . '/telegram.php';
@@ -107,6 +108,7 @@ require_once __DIR__ . '/Sms/GatewayCache.php';
 require_once __DIR__ . '/Sms/GatewayTransport.php';
 require_once __DIR__ . '/Sms/GatewayStatus.php';
 require_once __DIR__ . '/Sms/GatewayReceive.php';
+require_once __DIR__ . '/Sms/GatewayCallbacks.php';
 // #46 — SMPP gateways (compile/send through the smpp-bridge container, receipts and MOs from its events).
 require_once __DIR__ . '/Sms/Smpp.php';
 // #45 — customer database connector (config/validation, SQL dialects + password vault, sync engine).
