@@ -113,7 +113,8 @@ function import_job_analyze_pass(array $job): void {
     $db = db();
     $jobId = (int)$job['id'];
     $userId = (int)$job['user_id'];
-    $applyBlacklist = true;
+    // A service line skips the do-not-contact list (docs/service-lines.md); opt-outs still apply at send.
+    $applyBlacklist = !originator_bypasses_blacklist((string)($job['originator'] ?? ''));
     $template = !empty($job['template']) ? (string)$job['template'] : null;
     $variableHeaders = !empty($job['variable_headers']) ? json_decode((string)$job['variable_headers'], true) : null;
     if (!is_array($variableHeaders)) {

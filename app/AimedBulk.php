@@ -370,7 +370,7 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
         $batches++;
         $lastId = (int)end($batch)['id'];
         $mobiles = array_map(static fn(array $r): string => (string)$r['mobile'], $batch);
-        [$kept, $blocked] = filter_blacklist((int)$req['user_id'], $mobiles);
+        [$kept, $blocked] = filter_blacklist((int)$req['user_id'], $mobiles, (string)$req['originator']);
 
         $rows = [];
         $unpriced = 0;

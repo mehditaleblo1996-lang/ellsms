@@ -12,7 +12,8 @@
  *
  * and the shell prints lazy_part_placeholder('summary') where that fragment goes. A fragment can fill
  * a tab's count in the shell with lazy_part_tab_count(), and a placeholder can ask to reload the page
- * every N seconds once its fragment says so (lazy_part_refresh_marker()).
+ * every N seconds once its fragment says so (lazy_part_refresh_marker()). A live section instead
+ * re-fetches only itself in place (lazy_part_live_placeholder()), for a monitoring view.
  */
 
 declare(strict_types=1);
@@ -49,6 +50,19 @@ function lazy_part_requested(): bool {
 /** The empty box the shell prints where part $name goes; $minHeight keeps the layout from jumping. */
 function lazy_part_placeholder(string $name, int $minHeight = 120, string $label = 'در حال بارگذاری…'): string {
     return '<div class="lazy-part" data-lazy-part="' . e($name) . '" aria-busy="true" style="min-height:' . $minHeight . 'px">'
+        . '<div class="lazy-part-status"><span class="lazy-spinner" aria-hidden="true"></span>' . e($label) . '</div>'
+        . '</div>';
+}
+
+/**
+ * Like lazy_part_placeholder(), but the box stays and re-fetches its part every $seconds while the
+ * page is visible: the next request starts only after the previous one answered, a failed refresh
+ * keeps the last content (marked stale) and tries again on the next tick, and nothing is fetched
+ * while the tab is hidden. The page can ask for an immediate refresh by dispatching
+ * `lazy-part:refresh` on the box; every new content fires `lazy-part:loaded` on it.
+ */
+function lazy_part_live_placeholder(string $name, int $seconds, int $minHeight = 120, string $label = 'در حال بارگذاری…'): string {
+    return '<div class="lazy-part" data-lazy-part="' . e($name) . '" data-lazy-poll="' . max(1, $seconds) . '" aria-busy="true" aria-live="off" style="min-height:' . $minHeight . 'px">'
         . '<div class="lazy-part-status"><span class="lazy-spinner" aria-hidden="true"></span>' . e($label) . '</div>'
         . '</div>';
 }

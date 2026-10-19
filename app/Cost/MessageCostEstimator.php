@@ -215,9 +215,10 @@ function cost_pricing_failure(array $priced, array $recipients): array {
  * contacts or suppression data during preview").
  *
  * $rawDestinations may be a raw textarea string (parsed exactly as the send form parses it) or an
- * already-split array (the API shape).
+ * already-split array (the API shape). $originator is the sending line: a service line skips the
+ * blacklist here exactly as it does at send time (filter_blacklist()).
  */
-function cost_analyze_recipients(int $userId, string|array $rawDestinations, bool $applyBlacklist = true): array {
+function cost_analyze_recipients(int $userId, string|array $rawDestinations, bool $applyBlacklist = true, ?string $originator = null): array {
     if (is_string($rawDestinations)) {
         $rawTokens = preg_split('/[\s,;،]+/u', $rawDestinations, -1, PREG_SPLIT_NO_EMPTY) ?: [];
     } else {
@@ -244,7 +245,7 @@ function cost_analyze_recipients(int $userId, string|array $rawDestinations, boo
     $blacklisted = 0;
     $eligible = $unique;
     if ($applyBlacklist && $unique !== []) {
-        [$eligible, $blacklisted] = filter_blacklist($userId, $unique);
+        [$eligible, $blacklisted] = filter_blacklist($userId, $unique, $originator);
     }
 
     return [
@@ -367,7 +368,7 @@ function estimate_message_cost(array $user, string $originator, string|array $de
         return ['ok' => false, 'reason' => 'content_empty'];
     }
 
-    $recipients = cost_analyze_recipients($userId, $destinations, $applyBlacklist);
+    $recipients = cost_analyze_recipients($userId, $destinations, $applyBlacklist, $originator);
     if ($recipients['eligible_count'] === 0) {
         return ['ok' => false, 'reason' => 'no_eligible_recipients', 'recipients' => $recipients];
     }
@@ -466,7 +467,7 @@ function estimate_bulk_cost(array $user, string $originator, array $items, bool 
 
     $blacklisted = 0;
     if ($applyBlacklist && $candidates !== []) {
-        [$keptMobiles, $blacklisted] = filter_blacklist($userId, array_column($candidates, 'mobile'));
+        [$keptMobiles, $blacklisted] = filter_blacklist($userId, array_column($candidates, 'mobile'), $originator);
         if ($blacklisted > 0) {
             $keep = array_flip($keptMobiles);
             $candidates = array_values(array_filter($candidates, static fn($c) => isset($keep[$c['mobile']])));

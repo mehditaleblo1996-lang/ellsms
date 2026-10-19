@@ -254,6 +254,22 @@ final class LargeImportPipelineTest extends IntegrationTestCase
         self::assertNotSame($blocked, (string)$items[0]['mobile']);
     }
 
+    public function testAServiceLineImportKeepsBlacklistedMobiles(): void
+    {
+        // docs/service-lines.md — the sender skips the do-not-contact list, like Vesal's byPassBlackList.
+        $blocked = '98912009998';
+        db()->prepare('INSERT INTO ellsms_blacklist (user_id, mobile) VALUES (?,?)')->execute([$this->userId, $blocked]);
+        db()->prepare('INSERT INTO ellsms_numbers (number, assigned_user_id, bypass_blacklist) VALUES (?,?,1)')->execute([$this->sender, $this->userId]);
+
+        $csv = "mobile,content\n{$blocked},پیام خدماتی\n98912000003,پیام خدماتی دیگر\n";
+        $result = $this->runFullPipeline($csv);
+        $job = $this->job($result['job_id']);
+
+        self::assertSame(0, (int)$job['blacklisted_rows']);
+        self::assertSame(2, (int)$job['valid_rows']);
+        self::assertContains($blocked, array_map('strval', array_column($this->bulkItemsForImportJob($result['job_id']), 'mobile')));
+    }
+
     // ------------------------------------------------------------------ 5. empty rows
 
     public function testEmptyRowsAreSkippedNotQueued(): void
