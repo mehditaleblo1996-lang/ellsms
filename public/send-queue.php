@@ -70,7 +70,7 @@ $dests = array_values(array_unique($dests));
 
 $blockedCount = 0;
 if (!empty($_POST['use_blacklist'])) {
-    [$dests, $blockedCount] = filter_blacklist((int)$me['id'], $dests);
+    [$dests, $blockedCount] = filter_blacklist((int)$me['id'], $dests, $originator);
 }
 
 if ($dests === []) {

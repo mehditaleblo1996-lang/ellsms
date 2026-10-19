@@ -12,6 +12,8 @@ $active = 'new_send';
 $rbacOrg = is_admin() ? null : require_permission(Permissions::MESSAGES_SEND);
 
 $myNumbers = user_sendable_numbers($me); // own + organization + shared (app/authorization.php)
+// Service lines skip the blacklist (docs/service-lines.md) — shown next to the line and the blacklist toggle.
+$serviceLines = blacklist_bypass_lines(array_column($myNumbers, 'number'));
 
 // Phase 6 closure: same organization-or-legacy-fallback ownership shape as public/contacts.php.
 $myOrgId = $me['organization_id'] ?? null;
@@ -69,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $blockedCount = 0;
     if (!empty($_POST['use_blacklist'])) {
-        [$dests, $blockedCount] = filter_blacklist((int)$me['id'], $dests);
+        [$dests, $blockedCount] = filter_blacklist((int)$me['id'], $dests, $originator);
     }
 
     // Cost preview (read-only) — evaluated before ANY of the branches below, so no campaign is
@@ -257,9 +259,9 @@ if (isset($costPreview) && $costPreview) {
 
       <label>ارسال‌کننده *
         <?php if ($myNumbers): ?>
-          <select name="originator">
-            <?php foreach ($myNumbers as $n): ?>
-              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?></option>
+          <select name="originator" id="originatorSelect">
+            <?php foreach ($myNumbers as $n): $isService = isset($serviceLines[(string)$n['number']]); ?>
+              <option value="<?= e($n['number']) ?>" data-service="<?= $isService ? '1' : '0' ?>"><?= e($n['number']) ?><?= $isService ? ' — خدماتی' : '' ?></option>
             <?php endforeach; ?>
           </select>
         <?php elseif (($me['role'] ?? null) === 'admin'): ?>
@@ -302,6 +304,11 @@ if (isset($costPreview) && $costPreview) {
         فقط ارسال به لیست سفید (رد کردن شماره‌های لیست سیاه)
         <a href="/blacklist.php" class="hint" style="margin-inline-start:auto">مدیریت لیست سیاه</a>
       </label>
+      <?php if ($serviceLines): ?>
+        <div class="hint" id="serviceLineHint" style="display:none;margin-top:-6px">
+          این خط خدماتی است: ارسال از آن با لیست سیاه بررسی نمی‌شود (لغو عضویت «۱۱» همچنان رعایت می‌شود).
+        </div>
+      <?php endif; ?>
 
       <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
         <input type="checkbox" name="save_campaign" value="1" id="saveCampaignChk" onchange="document.getElementById('campaignNameField').style.display=this.checked?'block':'none'" style="width:auto;margin:0">
@@ -547,12 +554,23 @@ function quickSend() {
   document.getElementById('newSendForm').submit();
 }
 
+<?php if ($serviceLines): ?>
+(function () {
+  const sel = document.getElementById('originatorSelect');
+  const hint = document.getElementById('serviceLineHint');
+  if (!sel || !hint) return;
+  const sync = () => { hint.style.display = sel.selectedOptions[0]?.dataset.service === '1' ? 'block' : 'none'; };
+  sel.addEventListener('change', sync);
+  sync();
+})();
+<?php endif; ?>
+
 <?php if ($campaigns): ?>
 document.getElementById('campaignSelect').addEventListener('change', function () {
   const opt = this.selectedOptions[0];
   if (!opt || !opt.value) return;
   const originatorField = document.querySelector('[name=originator]');
-  if (originatorField) originatorField.value = opt.dataset.originator;
+  if (originatorField) { originatorField.value = opt.dataset.originator; originatorField.dispatchEvent(new Event('change')); }
   document.getElementById('contentField').value = opt.dataset.content;
   onContentInput();
 });

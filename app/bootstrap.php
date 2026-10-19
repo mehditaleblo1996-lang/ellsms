@@ -1204,11 +1204,49 @@ function detect_operator(string $normalizedMobile): string {
 }
 
 /**
+ * The subset of $originators that are service lines (ellsms_numbers.bypass_blacklist = 1), as a
+ * set keyed by the normalized number. Read fresh on every call — no cache — so a toggle on
+ * /numbers.php reaches long-running workers on their next chunk. Before the migration
+ * (2026_10_22_number_bypass_blacklist.sql) the column does not exist and no line is a service line.
+ *
+ * @param list<string> $originators
+ * @return array<string,true>
+ */
+function blacklist_bypass_lines(array $originators): array {
+    $numbers = array_values(array_unique(array_filter(array_map(
+        static fn($o) => normalize_originator((string)$o), $originators
+    ))));
+    if ($numbers === []) return [];
+    try {
+        $st = db()->prepare('SELECT number FROM ellsms_numbers WHERE bypass_blacklist = 1 AND number IN ('
+            . implode(',', array_fill(0, count($numbers), '?')) . ')');
+        $st->execute($numbers);
+    } catch (PDOException $e) {
+        // Migration not applied yet: no line is a service line, exactly as before.
+        if (!str_contains($e->getMessage(), 'Unknown column')) throw $e;
+        return [];
+    }
+    return array_fill_keys(array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN)), true);
+}
+
+/** Whether a send from $originator skips the do-not-contact list (a service line). */
+function originator_bypasses_blacklist(?string $originator): bool {
+    $normalized = normalize_originator((string)$originator);
+    return $normalized !== null && isset(blacklist_bypass_lines([$normalized])[$normalized]);
+}
+
+/**
  * Remove any destination on $userId's do-not-contact list.
  * Returns [filteredDestinations, blockedCount].
+ *
+ * When $originator is a service line (originator_bypasses_blacklist()), nothing is removed — like
+ * Vesal, where a bypassBlackList line never reaches checkBlackList(). Every send path passes its
+ * line here, so previews, imports and aimed bulk agree with the send itself. Line opt-outs ("11")
+ * are a separate check (line_optout_filter()) and still apply to service lines.
  */
-function filter_blacklist(int $userId, array $destinations): array {
+function filter_blacklist(int $userId, array $destinations, ?string $originator = null): array {
     if (!$destinations) return [$destinations, 0];
+    if ($originator !== null && originator_bypasses_blacklist($originator)) return [$destinations, 0];
     $st = db()->prepare('SELECT mobile FROM ellsms_blacklist WHERE user_id = ?');
     $st->execute([$userId]);
     $blocked = array_flip(array_column($st->fetchAll(), 'mobile'));

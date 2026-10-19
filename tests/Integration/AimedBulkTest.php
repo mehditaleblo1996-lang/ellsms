@@ -213,6 +213,17 @@ final class AimedBulkTest extends IntegrationTestCase
         self::assertSame(['989120000001', '989120000003'], array_column($this->items((int)$req['bulk_job_id']), 'mobile'));
     }
 
+    public function testAServiceLineSkipsTheCustomerBlacklist(): void
+    {
+        db()->prepare('INSERT INTO ellsms_blacklist (user_id, mobile) VALUES (?, ?)')->execute([$this->userId, '989120000002']);
+        db()->prepare('INSERT INTO ellsms_numbers (number, assigned_user_id, bypass_blacklist) VALUES (?,?,1)
+                       ON DUPLICATE KEY UPDATE bypass_blacklist = 1')->execute([$this->line, $this->userId]);
+        $req = $this->createAndStage($this->criteria(['postal_code' => '131']), 3);
+
+        self::assertSame(0, (int)$req['blacklisted_rows']);
+        self::assertSame(['989120000001', '989120000002', '989120000003'], array_column($this->items((int)$req['bulk_job_id']), 'mobile'));
+    }
+
     public function testLargeRequestsStageAcrossPassesWithoutDuplicates(): void
     {
         $lines = ['NUMBER_,SIMTYPE,POSTALCODE,BLOCKLISTED,CITYCODE,PROVINCECODE'];

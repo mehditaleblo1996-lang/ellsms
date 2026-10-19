@@ -54,6 +54,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Service line (docs/service-lines.md): sends from it skip the do-not-contact list, like Vesal's
+    // byPassBlackList. Set explicitly to the posted value rather than flipped, so a double-submitted
+    // form cannot undo itself. Line opt-outs ("11") still apply.
+    if ($do === 'bypass_blacklist') {
+        $id = (int)($_POST['id'] ?? 0);
+        $on = ($_POST['value'] ?? '') === '1';
+        $st = db()->prepare('SELECT number FROM ellsms_numbers WHERE id = ?');
+        $st->execute([$id]);
+        $number = $st->fetchColumn();
+        if ($number === false) {
+            flash('error', 'شماره‌ی معتبری انتخاب نشده است.');
+        } else {
+            db()->prepare('UPDATE ellsms_numbers SET bypass_blacklist = ? WHERE id = ?')->execute([$on ? 1 : 0, $id]);
+            audit((int)$me['id'], $on ? 'number.bypass_blacklist_on' : 'number.bypass_blacklist_off', (string)$number);
+            flash('success', $on
+                ? "شماره {$number} خدماتی شد: ارسال از آن دیگر با لیست سیاه بررسی نمی‌شود."
+                : "شماره {$number} از حالت خدماتی خارج شد: ارسال از آن دوباره با لیست سیاه بررسی می‌شود.");
+        }
+    }
+
     // Shared lines (docs/shared-numbers.md). A share is additive and send-only: it never moves the
     // number's own assignment, and never widens the inbox/auto-reply/opt-out scope, which stay with
     // assigned_user_id / organization_id. Granting the same line twice is a no-op (PRIMARY KEY).
@@ -98,12 +118,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('info', 'شماره حذف شد.');
     }
 
-    redirect('/numbers.php');
+    // Keep the list filter the admin was looking at.
+    $back = in_array($_POST['bypass_filter'] ?? '', ['1', '0'], true) ? '?bypass=' . $_POST['bypass_filter'] : '';
+    redirect('/numbers.php' . $back);
 }
 
+// Service-line filter: '' = all, '1' = only service lines, '0' = only lines checked against the blacklist.
+$bypassFilter = in_array($_GET['bypass'] ?? '', ['1', '0'], true) ? (string)$_GET['bypass'] : '';
 $numbers = db()->query(
     "SELECT n.* FROM ellsms_numbers n ORDER BY (n.assigned_user_id IS NULL) DESC, n.number"
 )->fetchAll();
+$serviceLineCount = count(array_filter($numbers, static fn(array $n): bool => (int)($n['bypass_blacklist'] ?? 0) === 1));
+$totalNumberCount = count($numbers);
+if ($bypassFilter !== '') {
+    $numbers = array_values(array_filter($numbers, static fn(array $n): bool => (string)(int)($n['bypass_blacklist'] ?? 0) === $bypassFilter));
+}
 $numberUsernames = backend_usernames_by_ids(array_column($numbers, 'assigned_user_id'));
 foreach ($numbers as &$n) {
     $n['username'] = $n['assigned_user_id'] !== null ? ($numberUsernames[(int)$n['assigned_user_id']] ?? null) : null;
@@ -153,13 +182,38 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <h2>همه‌ی شماره‌ها</h2>
+  <form method="get" class="toolbar">
+    <label>نوع خط
+      <select name="bypass" onchange="this.form.submit()">
+        <option value="" <?= $bypassFilter === '' ? 'selected' : '' ?>>همه (<?= to_persian_digits((string)$totalNumberCount) ?>)</option>
+        <option value="1" <?= $bypassFilter === '1' ? 'selected' : '' ?>>فقط خدماتی — بدون بررسی لیست سیاه (<?= to_persian_digits((string)$serviceLineCount) ?>)</option>
+        <option value="0" <?= $bypassFilter === '0' ? 'selected' : '' ?>>فقط عادی — با بررسی لیست سیاه (<?= to_persian_digits((string)($totalNumberCount - $serviceLineCount)) ?>)</option>
+      </select>
+    </label>
+    <noscript><button class="btn btn-sm">اعمال</button></noscript>
+  </form>
   <div class="table-wrap">
   <table>
-    <tr><th>شماره</th><th>برچسب</th><th>تخصیص به کاربر</th><th>کاربران اشتراکی (فقط ارسال)</th><th>درگاه ارسال</th><th>ارسال به URL</th><th></th></tr>
+    <tr><th>شماره</th><th>برچسب</th><th>خدماتی (عبور از لیست سیاه)</th><th>تخصیص به کاربر</th><th>کاربران اشتراکی (فقط ارسال)</th><th>درگاه ارسال</th><th>ارسال به URL</th><th></th></tr>
     <?php foreach ($numbers as $n): ?>
       <tr>
         <td class="msisdn"><?= e($n['number']) ?></td>
         <td><?= e($n['label']) ?></td>
+        <td>
+          <?php $bypass = (int)($n['bypass_blacklist'] ?? 0) === 1; ?>
+          <form method="post" class="toolbar" style="margin:0"
+                onsubmit="return confirm(<?= e(json_encode($bypass
+                    ? 'ارسال از این شماره دوباره با لیست سیاه بررسی شود؟'
+                    : 'این شماره خدماتی شود؟ ارسال از آن دیگر با لیست سیاه مشتری بررسی نمی‌شود (لغو عضویت «۱۱» همچنان اعمال می‌شود).', JSON_UNESCAPED_UNICODE)) ?>)">
+            <?= csrf_field() ?>
+            <input type="hidden" name="do" value="bypass_blacklist">
+            <input type="hidden" name="id" value="<?= $n['id'] ?>">
+            <input type="hidden" name="value" value="<?= $bypass ? '0' : '1' ?>">
+            <input type="hidden" name="bypass_filter" value="<?= e($bypassFilter) ?>">
+            <span class="badge <?= $bypass ? 'badge-ok' : 'badge-unknown' ?>"><?= $bypass ? 'فعال' : 'غیرفعال' ?></span>
+            <button class="btn btn-sm"><?= $bypass ? 'غیرفعال کن' : 'فعال کن' ?></button>
+          </form>
+        </td>
         <td>
           <form method="post" class="toolbar" style="margin:0">
             <?= csrf_field() ?>
@@ -244,7 +298,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$numbers): ?><tr><td colspan="7" class="empty">هنوز شماره‌ای ثبت نشده.</td></tr><?php endif; ?>
+    <?php if (!$numbers): ?><tr><td colspan="8" class="empty"><?= $bypassFilter !== '' && $totalNumberCount > 0 ? 'شماره‌ای با این فیلتر نیست.' : 'هنوز شماره‌ای ثبت نشده.' ?></td></tr><?php endif; ?>
   </table>
   </div>
   <p class="hint">وقتی کاربری حداقل یک شماره تخصیص‌یافته داشته باشد، در ارسال پیامک و منشی پیامک به‌جای نوشتن آزاد، از میان شماره‌های خودش انتخاب می‌کند.</p>
@@ -255,6 +309,13 @@ require __DIR__ . '/../app/views/header.php';
     اشتراک <b>فقط اجازه‌ی ارسال</b> می‌دهد: صندوق دریافت، منشی پیامک و فهرست لغو عضویتِ این خط همچنان فقط برای مالک
     (یا سازمان مالک) دیده می‌شود. برای اینکه کاربری پیام‌های ورودی یک خط را هم ببیند، باید خط به خودش یا به سازمانش
     تخصیص داده شود، نه اشتراکی.
+  </p>
+  <p class="hint">
+    <b>خدماتی (عبور از لیست سیاه):</b> برای خطوط خدماتی مثل اطلاع‌رسانی تراکنش، قبض یا نوبت‌دهی — همان «bypassBlackList» در وصال.
+    وقتی فعال باشد، ارسال از این شماره در هیچ مسیری (ارسال تکی و گروهی، زمان‌بندی، نظیر‌به‌نظیر، پیامک هوشمند، ارسال با کد پستی و پیش‌نمایش هزینه)
+    با لیست سیاه مشتری بررسی نمی‌شود، حتی اگر گزینه‌ی «فقط ارسال به لیست سفید» زده شده باشد.
+    لغو عضویتِ گیرنده از همین خط («۱۱») همچنان رعایت می‌شود. پیش‌فرض برای هر شماره‌ی جدید غیرفعال است و هر تغییر در گزارش رویدادها ثبت می‌شود.
+    کارهای گروهی‌ای که پیش از تغییر، بررسی لیست سیاه‌شان تمام شده، با همان نتیجه ارسال می‌شوند.
   </p>
   <p class="hint">
     <b>ارسال به URL:</b> پیامک‌های دریافتی روی هر خط و گزارش تحویل پیامک‌های ارسالی از آن را به آدرس http/https مشتری
