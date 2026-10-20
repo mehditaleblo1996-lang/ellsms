@@ -42,9 +42,10 @@ DELETE FROM ellsms_settings WHERE skey IN (
   'zarinpal_merchant_id', 'zarinpal_callback_url', 'zarinpal_sandbox',
   'alert_email_recipient', 'registration_admin_mobiles',
   'bale_base_url', 'bale_bot_id',
-  'vesal_bulk_base_url', 'vesal_bulk_username'
+  'vesal_bulk_base_url', 'vesal_bulk_username',
+  'voice_api_key', 'voice_base_url'
 );
-UPDATE ellsms_settings SET svalue = '0' WHERE skey IN ('bale_enabled', 'regional_bulk_enabled');
+UPDATE ellsms_settings SET svalue = '0' WHERE skey IN ('bale_enabled', 'regional_bulk_enabled', 'voice_enabled');
 
 -- 5. TOTP secrets were encrypted with production's MFA_MASTER_KEY, which staging does not have:
 --    without this nobody with 2FA could log in. Users can enrol again on staging.

@@ -44,6 +44,10 @@ function scheduler_jobs(): array {
         // stand-alone worker loop had.
         'bulk-archive' => ['title' => 'بایگانی ارسال‌های انبوه قدیمی', 'every' => 60,
             'steps' => [['bulk-archive-worker.php', '--once']], 'timeout' => 1800],
+        // Voice messages (app/VoiceMessages.php): due scheduled sends, ZarinCall progress polling and
+        // settlement of answered calls.
+        'voice-worker' => ['title' => 'ارسال و تسویه‌ی پیام‌های صوتی', 'every' => 60,
+            'steps' => [['voice-worker.php']], 'timeout' => 900],
         'backup' => ['title' => 'بکاپ روزانه‌ی پایگاه داده', 'daily' => scheduler_backup_time(),
             'steps' => [['backup.php'], ['backup-prune.php'], ['backup-offsite.php']], 'timeout' => 4 * 3600],
         'usage-reconcile' => ['title' => 'تطبیق شمارنده‌های مصرف', 'daily' => '04:10',

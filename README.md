@@ -58,6 +58,17 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 ELLSMS has its own push receivers, with the same URLs the backend platform used: `https://<host>/mo?from=…&to=…&content=…` for inbound SMS (Persian and emoji supported) and `https://<host>/delivery?id=…&status=…` for delivery reports. Guard them with `SMS_CALLBACK_TOKEN` and/or `SMS_CALLBACK_ALLOWED_IPS`. See [`docs/sms-callbacks.md`](docs/sms-callbacks.md).
 
+## Voice messages (ZarinCall)
+
+Customers can send voice files (uploaded WAV/MP3 or generated from Persian text) by phone call to a
+list of numbers, now or at a chosen time. Sends can be interactive (a key press triggers an SMS), and
+one-time codes can be read out by phone. Calls go through ZarinCall. The worst-case cost is reserved
+from the Rial wallet when the send is accepted; once ZarinCall reports, only answered calls are
+charged and the rest is released. The admin sets the API key (stored encrypted with
+`SMS_GATEWAY_MASTER_KEY`) and the prices on **/admin/voice**. Customers use **/messages/voice** and
+**/messages/voice/files**, or `POST /api/v1/voice/*` (scopes `voice:send` / `voice:read`). See
+[`docs/voice-messages.md`](docs/voice-messages.md).
+
 ## Login model
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.

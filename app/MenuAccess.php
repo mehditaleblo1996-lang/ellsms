@@ -43,6 +43,8 @@ function menu_catalog(): array {
         'buy_credit'    => ['خرید اعتبار',          '💳', '/buy-credit.php',    ['buy-credit.php']],
         'invoices'      => ['فاکتورها',             '🧾', '/invoices.php',      ['invoices.php']],
         'bale'          => ['پیام‌رسان بله',         '💬', '/bale-messages.php', ['bale-messages.php']],
+        'voice'         => ['پیام صوتی',            '🔊', '/voice.php',         ['voice.php']],
+        'voice_files'   => ['فایل‌های صوتی',         '🎙', '/voice-files.php',   ['voice-files.php']],
         'regional_bulk' => ['ارسال منطقه‌ای',        '🗺️', '/regional-bulk.php', ['regional-bulk.php']],
         'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
         'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php']],
@@ -64,6 +66,7 @@ function menu_groups(): array {
     return [
         'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
         'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'regional_bulk', 'aimed_bulk', 'schedules', 'autoreply']],
+        'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'inbox', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
         'finance'      => ['مالی',              ['buy_credit', 'invoices', 'billing']],
@@ -233,6 +236,7 @@ function menu_key_for_api_path(string $path): ?string {
         str_starts_with($path, '/api/v1/messages'),
         str_starts_with($path, '/api/v1/bulk-jobs') => 'send',
         str_starts_with($path, '/api/v1/contacts')  => 'contacts',
+        str_starts_with($path, '/api/v1/voice')     => 'voice',
         str_starts_with($path, '/api/v1/webhooks')  => 'webhooks',
         default => null,
     };
