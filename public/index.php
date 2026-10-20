@@ -134,7 +134,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card" style="border:1px solid #dfe3ff;background:linear-gradient(135deg,#fff,#f7f8ff)">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
     <div style="flex:1;min-width:250px">
-      <div class="hint">شروع کار با ELLSMS</div>
+      <div class="hint">شروع کار با داتیس رایان</div>
       <h2 style="margin:5px 0 8px">تکمیل حساب: <?= to_persian_digits((string)$onboarding['progress']) ?>٪</h2>
       <div style="height:8px;background:#eceefa;border-radius:999px;overflow:hidden;max-width:520px">
         <div style="height:100%;width:<?= (int)$onboarding['progress'] ?>%;background:linear-gradient(90deg,#5b36f2,#315cff)"></div>

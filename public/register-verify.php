@@ -79,13 +79,13 @@ if (strlen($maskedMobile) >= 7) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>تأیید موبایل — ELLSMS</title>
+<title>تأیید موبایل — داتیس رایان</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="/assets/img/logo.png" alt="ELLSMS" class="login-logo">
+    <img src="/assets/img/logo.png" alt="داتیس رایان" class="login-logo">
     <h1 style="font-size:1.3rem;margin:0 0 10px">تأیید شماره موبایل</h1>
     <p class="login-sub">کد ۶ رقمی ارسال‌شده به <span class="ltr"><?= e($maskedMobile) ?></span> را وارد کنید.</p>
 

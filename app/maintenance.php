@@ -86,7 +86,7 @@ function maintenance_mode_respond_and_exit(): never {
     $message = htmlspecialchars(maintenance_mode_message(), ENT_QUOTES, 'UTF-8');
     echo '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width,initial-scale=1">'
-       . '<title>در حال به‌روزرسانی — ELLSMS</title></head>'
+       . '<title>در حال به‌روزرسانی — داتیس رایان</title></head>'
        . '<body style="font-family:Tahoma,Arial,sans-serif;background:#f6f7f9;display:flex;'
        . 'align-items:center;justify-content:center;min-height:100vh;margin:0">'
        . '<main style="background:#fff;border-radius:12px;box-shadow:0 2px 16px rgba(0,0,0,.08);'

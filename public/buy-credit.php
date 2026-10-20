@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $totalAmountRial = (int)$invoiceResult['total_amount'];
         audit((int)$me['id'], 'invoice.issued_for_credit_purchase', "payment=#{$paymentId} credit={$credits}rial total={$totalAmountRial}rial");
 
-        $description = 'خرید ' . number_format($credits) . ' ریال اعتبار ELLSMS';
+        $description = 'خرید ' . number_format($credits) . ' ریال اعتبار داتیس رایان';
         $create = payment_gateway_create($gateway, $totalAmountRial, $paymentId, $description, (string)($me['mobile'] ?? ''));
 
         if ($create['ok']) {

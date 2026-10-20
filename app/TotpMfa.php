@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 const TOTP_MFA_PURPOSE = 'ellsms.auth.totp.v1';
-const TOTP_MFA_ISSUER = 'ELLSMS';
+const TOTP_MFA_ISSUER = 'Datis Rayan';
 
 function totp_base32_encode(string $data): string {
     $alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
