@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $file = voice_file_refresh($file);
             flash(voice_file_is_ready($file) ? 'success' : 'info', match (true) {
                 (int)$file['duration_seconds'] <= 0 => 'زرین‌کال هنوز مدت فایل را اعلام نکرده است.',
+                voice_ready_statuses() === [] => 'کد وضعیت این فایل در زرین‌کال: ' . to_persian_digits((string)($file['provider_status'] ?? '؟')) . ' (کدهای «آماده‌ی ارسال» هنوز در تنظیمات سرویس تعیین نشده است).',
                 voice_file_is_ready($file) => 'فایل آماده‌ی ارسال است (کد وضعیت ' . to_persian_digits((string)$file['provider_status']) . ').',
                 default => 'فایل هنوز در زرین‌کال آماده‌ی ارسال نیست (کد وضعیت ' . to_persian_digits((string)($file['provider_status'] ?? '؟')) . ').',
             });
@@ -128,7 +129,8 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= $pulses > 0 ? to_persian_digits((string)$pulses) : '—' ?></td>
         <td class="num"><?= $pulses > 0 && $configured ? to_persian_digits(number_format($isAdmin ? 0 : voice_unit_cost('voice', $pulses))) : '—' ?></td>
         <td>
-          <?php if (voice_file_is_ready($f)): ?><span class="badge badge-done">آماده‌ی ارسال</span>
+          <?php if ((int)$f['duration_seconds'] > 0 && voice_ready_statuses() === []): ?><span class="badge badge-off">بررسی‌نشده</span>
+          <?php elseif (voice_file_is_ready($f)): ?><span class="badge badge-done">آماده‌ی ارسال</span>
           <?php else: ?><span class="badge badge-pending">در انتظار زرین‌کال</span><?php endif; ?>
           <span class="hint">کد وضعیت: <span class="ltr"><?= $f['provider_status'] !== null ? (int)$f['provider_status'] : '—' ?></span></span>
         </td>
