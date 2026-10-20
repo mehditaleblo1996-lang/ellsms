@@ -12,7 +12,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title><?= e($pageTitle ?? 'داتیس رایان گستر ایرانیان') ?> — داتیس رایان گستر ایرانیان</title>
 <?php if (!empty($metaDescription)): ?><meta name="description" content="<?= e($metaDescription) ?>"><?php endif; ?>
-<link rel="icon" href="/assets/img/favicon.png">
+<link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="lp-body">
@@ -21,7 +21,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <header class="lp-nav">
   <div class="lp-nav-inner">
     <a href="/landing.php" class="lp-brand" aria-label="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک">
-      <img class="lp-brand-mark" src="/assets/img/brand-mark.png" alt="" aria-hidden="true">
+      <img class="lp-brand-mark" src="<?= e(asset_url('/assets/img/brand-mark.png')) ?>" alt="" aria-hidden="true">
       <span class="lp-brand-text"><b><i>Datis</i> Rayan</b><small>داتیس رایان گستر ایرانیان</small></span>
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">

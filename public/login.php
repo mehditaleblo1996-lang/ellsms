@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ورود — داتیس رایان گستر ایرانیان</title>
-<link rel="icon" href="/assets/img/favicon.png">
+<link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <?php /* Vazirmatn is preloaded so the first paint is already in it, never in a fallback face. */ ?>
 <link rel="preload" href="/assets/fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/assets/fonts/Vazirmatn-Medium.woff2" as="font" type="font/woff2" crossorigin>
@@ -98,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="auth-shell">
     <header class="auth-top rise" style="--d:0">
       <a href="/landing.php" class="auth-brand" aria-label="داتیس رایان گستر ایرانیان — صفحه‌ی اصلی">
-        <img class="auth-mark" src="/assets/img/brand-mark.png" alt="" aria-hidden="true">
+        <img class="auth-mark" src="<?= e(asset_url('/assets/img/brand-mark.png')) ?>" alt="" aria-hidden="true">
         <span class="auth-brand-text">
           <b class="auth-wordmark" dir="ltr"><span>Datis</span> Rayan</b>
           <small>داتیس رایان گستر ایرانیان</small>

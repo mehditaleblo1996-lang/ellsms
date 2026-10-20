@@ -164,7 +164,7 @@ require __DIR__ . '/../app/views/header.php';
     <div class="pq-band">
       <div class="pq-band-top">
         <div class="pq-brand">
-          <img src="/assets/img/logo.png" alt="داتیس رایان گستر ایرانیان">
+          <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان">
         </div>
         <div class="pq-tagline">پیامک<br>قدرت<br>ارتباط است</div>
       </div>
@@ -230,7 +230,7 @@ require __DIR__ . '/../app/views/header.php';
 
     <div class="pq-footer">
       <div class="pq-footer-brand">
-        <img src="/assets/img/logo.png" alt="داتیس رایان گستر ایرانیان">
+        <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان">
       </div>
       <div class="pq-footer-contact">
         <input name="phone1" value="<?= e($doc['phone1']) ?>">

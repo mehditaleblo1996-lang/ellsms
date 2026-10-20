@@ -44,12 +44,12 @@ if (!current_user()) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>خروج — داتیس رایان گستر ایرانیان</title>
-<link rel="icon" href="/assets/img/favicon.png">
+<link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="/assets/img/logo.png" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
     <p class="login-sub">آیا می‌خواهید از حساب کاربری خود خارج شوید؟</p>
     <form method="post">
       <?= csrf_field() ?>

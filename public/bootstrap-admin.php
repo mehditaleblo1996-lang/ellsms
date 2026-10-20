@@ -52,12 +52,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>راه‌اندازی اولیه — داتیس رایان گستر ایرانیان</title>
-<link rel="icon" href="/assets/img/favicon.png">
+<link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="/assets/img/logo.png" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
     <p class="login-sub">راه‌اندازی اولیه — هنوز هیچ حسابی به داتیس رایان گستر ایرانیان دسترسی ندارد.</p>
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post" autocomplete="off">

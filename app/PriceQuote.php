@@ -155,9 +155,7 @@ function price_quote_render_html(array $doc): string {
         .contact > div { flex:1 1 25%; padding:0 10px; border-right:1px solid #cbd8f3; font-size:10.5px; direction:rtl; }
         .contact > div:first-child { border:0; }
         .mini-logo { direction:ltr; text-align:left; }
-        .mini-logo strong { font-size:18px; letter-spacing:1px; color:#1b47ef; }
-        .mini-logo strong span { color:#0e1535; }
-        .mini-logo small { display:block; letter-spacing:2px; color:var(--muted); margin-top:2px; }
+        .mini-logo img { height:38px; width:auto; }
         .contact b { font-size:11px; }
         .contact p { margin:2px 0; font-size:10px; color:#5a6690; }
         .footline { margin-top:16px; padding:10px 26px; background:#f5f8ff; color:#9aabd0; display:flex; justify-content:space-between; font-size:9.5px; }
@@ -188,7 +186,7 @@ function price_quote_render_html(array $doc): string {
         </div>
         <div class="benefits">' . $featuresHtml . '</div>
         <div class="contact">
-            <div class="mini-logo"><strong>ELL<span>SMS</span></strong><small>Smart SMS Panel</small></div>
+            <div class="mini-logo"><img src="' . $imgPath . '/logo.png" alt="داتیس رایان گستر ایرانیان"></div>
             <div><b>واحد فروش</b><p>' . e($doc['phone1']) . '</p><p>' . e($doc['phone2']) . '</p></div>
             <div><b>' . e($doc['website']) . '</b><p>وب‌سایت رسمی</p></div>
             <div><b>' . e($doc['email']) . '</b><p>ایمیل ارتباطی</p></div>
