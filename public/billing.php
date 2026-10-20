@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $paymentId = (int)db()->lastInsertId();
             db()->prepare('UPDATE ellsms_billing_records SET payment_id = ? WHERE id = ?')->execute([$paymentId, $record['billing_record_id']]);
 
-            $create = payment_gateway_create($gateway, $record['amount'], $paymentId, "اشتراک {$plan['name']} — ELLSMS", (string)($me['mobile'] ?? ''));
+            $create = payment_gateway_create($gateway, $record['amount'], $paymentId, "اشتراک {$plan['name']} — داتیس رایان", (string)($me['mobile'] ?? ''));
             if ($create['ok']) {
                 db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$create['authority'], $paymentId]);
                 // FIN-4: subscription-purchase invoice, item_type distinguishes it from a pure
@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $paymentId = (int)db()->lastInsertId();
             db()->prepare('UPDATE ellsms_billing_records SET payment_id = ? WHERE id = ?')->execute([$paymentId, $record['billing_record_id']]);
 
-            $create = payment_gateway_create($gateway, $record['amount'], $paymentId, "تمدید اشتراک {$plan['name']} — ELLSMS", (string)($me['mobile'] ?? ''));
+            $create = payment_gateway_create($gateway, $record['amount'], $paymentId, "تمدید اشتراک {$plan['name']} — داتیس رایان", (string)($me['mobile'] ?? ''));
             if ($create['ok']) {
                 db()->prepare('UPDATE ellsms_payments SET authority=? WHERE id=?')->execute([$create['authority'], $paymentId]);
                 billing_invoice_create($paymentId, $orgId, (int)$me['id'], 'subscription', [[

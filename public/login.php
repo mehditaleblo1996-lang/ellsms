@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $m->execute([$u['id']]);
             $meta = $m->fetch();
             if (!$meta || !$meta['panel_access']) {
-                $error = 'این حساب وجود دارد، اما دسترسی به پنل ELLSMS برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
+                $error = 'این حساب وجود دارد، اما دسترسی به پنل داتیس رایان برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
             } elseif (($blockReason = customer_account_block_reason((int)$u['id'])) !== null) {
                 Logger::warning('auth.login.blocked', ['user_id' => $u['id'], 'reason' => $blockReason]);
                 $error = customer_block_message($blockReason);
@@ -79,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ورود — ELLSMS</title>
+<title>ورود — داتیس رایان</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <?php /* Vazirmatn is preloaded so the first paint is already in it, never in a fallback face. */ ?>
 <link rel="preload" href="/assets/fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
@@ -97,34 +97,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <div class="auth-shell">
     <header class="auth-top rise" style="--d:0">
-      <a href="/landing.php" class="auth-brand" aria-label="ELLSMS — صفحه‌ی اصلی">
-        <?php /* The brand mark redrawn from logo.png for a dark ground: the speech bubble with its motion
-                 streaks and the envelope behind it. The three dots pulse like someone typing. */ ?>
-        <svg class="auth-mark" viewBox="0 0 54 40" aria-hidden="true">
-          <defs>
-            <linearGradient id="authMarkFill" gradientUnits="userSpaceOnUse" x1="13" y1="2" x2="40" y2="36">
-              <stop offset="0" stop-color="#3f8cff"/><stop offset="1" stop-color="#4c48f0"/>
-            </linearGradient>
-          </defs>
-          <g class="auth-mark-streaks" stroke="#4f8fff" stroke-width="2.6" stroke-linecap="round">
-            <path d="M2 9.5h7"/><path d="M5 15.5h4"/><path d="M1 21.5h8"/>
-          </g>
-          <g transform="rotate(-11 42 24)">
-            <rect x="31" y="15" width="21" height="15" rx="3" fill="#eef2fb"/>
-            <path d="M32.2 16.4 41.5 23.6 50.8 16.4" fill="none" stroke="#b8c3dc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </g>
-          <rect x="13" y="2" width="29" height="26" rx="8" fill="url(#authMarkFill)"/>
-          <path d="M17 24v10.6c0 .8.9 1.2 1.5.7L29 25.6Z" fill="url(#authMarkFill)"/>
-          <g class="auth-mark-dots" fill="#fff">
-            <circle cx="21" cy="15" r="2.3"/><circle cx="27.5" cy="15" r="2.3"/><circle cx="34" cy="15" r="2.3"/>
-          </g>
-        </svg>
+      <a href="/landing.php" class="auth-brand" aria-label="داتیس رایان — صفحه‌ی اصلی">
+        <img class="auth-mark" src="/assets/img/brand-mark.png" alt="" aria-hidden="true">
         <span class="auth-brand-text">
-          <b class="auth-wordmark" dir="ltr"><span>ELL</span>SMS</b>
-          <small>پنل هوشمند پیامک</small>
+          <b class="auth-wordmark" dir="ltr"><span>Datis</span> Rayan</b>
+          <small>داتیس رایان · پنل هوشمند پیامک</small>
         </span>
       </a>
-      <a href="/landing.php" class="auth-toplink">درباره‌ی ELLSMS</a>
+      <a href="/landing.php" class="auth-toplink">درباره‌ی داتیس رایان</a>
     </header>
 
     <main class="auth-card rise" style="--d:1">

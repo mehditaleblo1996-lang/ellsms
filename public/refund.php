@@ -3,7 +3,7 @@ require_once __DIR__ . '/../app/bootstrap.php';
 require_once __DIR__ . '/../app/Legal.php';
 
 $pageTitle = 'شرایط انصراف و بازگشت وجه';
-$metaDescription = 'شرایط انصراف از خرید و بازگشت وجه اعتبار پیامک و اشتراک در ELLSMS.';
+$metaDescription = 'شرایط انصراف از خرید و بازگشت وجه اعتبار پیامک و اشتراک در داتیس رایان.';
 $processingDays = to_persian_digits((string) legal_refund_processing_days());
 require __DIR__ . '/../app/views/public_header.php';
 ?>

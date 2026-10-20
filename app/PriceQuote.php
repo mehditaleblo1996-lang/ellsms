@@ -19,7 +19,7 @@ function price_quote_default(): array {
         'validity_days'  => '7',
         'price_unit'     => 'تومان',
         'title'          => 'فاکتور / لیست قیمت خدمات پیامک',
-        'subtitle'       => 'ELLSMS Smart SMS Panel',
+        'subtitle'       => 'Datis Rayan Smart SMS Panel',
         'rows' => [
             ['title' => 'پیامک حقوقی',              'desc' => 'مناسب فاکتور رسمی / شرکتی',            'unit' => 'هر پیامک', 'price' => '115'],
             ['title' => 'پیامک غیررسمی',             'desc' => 'مناسب فاکتور شخصی / غیررسمی',          'unit' => 'هر پیامک', 'price' => '110'],
@@ -29,14 +29,14 @@ function price_quote_default(): array {
         'notes' => [
             'تمام قیمت‌ها به ازای هر پیامک محاسبه می‌شوند.',
             'تعرفه‌ها ممکن است بر اساس حجم ارسال با شرایط همکاری تغییر کنند.',
-            'برای دریافت مشاوره و خرید پنل، با واحد فروش ELLSMS تماس بگیرید.',
+            'برای دریافت مشاوره و خرید پنل، با واحد فروش داتیس رایان تماس بگیرید.',
         ],
         'features' => ['پایداری و امنیت', 'پشتیبانی حرفه‌ای', 'ارسال سریع', 'پوشش سراسری'],
         'phone1'   => '۰۹۱۲۳۳۴۸۴۱۷',
         'phone2'   => '۰۹۱۹۷۶۸۴۰۶۳',
         'website'  => 'www.ellsms.ir',
         'email'    => 'sales@ellsms.ir',
-        'footer_tagline' => 'با ELLSMS بیشتر دیده شوید ...',
+        'footer_tagline' => 'با داتیس رایان بیشتر دیده شوید ...',
     ];
 }
 
@@ -193,7 +193,7 @@ function price_quote_render_html(array $doc): string {
             <div><b>' . e($doc['website']) . '</b><p>وب‌سایت رسمی</p></div>
             <div><b>' . e($doc['email']) . '</b><p>ایمیل ارتباطی</p></div>
         </div>
-        <div class="footline"><span>ELLSMS | Smart SMS Panel | ' . e($doc['footer_tagline']) . '</span><span>ارتباط امروز، فرصت فردا ...</span></div>
+        <div class="footline"><span>Datis Rayan | Smart SMS Panel | ' . e($doc['footer_tagline']) . '</span><span>ارتباط امروز، فرصت فردا ...</span></div>
     </body></html>';
 }
 

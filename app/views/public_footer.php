@@ -2,12 +2,12 @@
 <?php require_once __DIR__ . '/../Legal.php'; ?>
 
 <footer class="lp-footer">
-  <img src="/assets/img/logo.png" alt="ELLSMS" class="lp-footer-logo">
+  <img src="/assets/img/logo.png" alt="داتیس رایان" class="lp-footer-logo">
   <?= legal_footer_links_html() ?>
   <div class="lp-footer-badges" style="display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;margin:14px 0 10px">
     <?= legal_trust_badges_html(110) ?>
   </div>
-  <p><?php if (legal_provider_name() !== 'ELLSMS'): ?><?= e(legal_provider_name()) ?> · <?php endif; ?>ELLSMS نسخه <span class="ltr"><?= e(app_version()) ?></span> · پنل هوشمند پیامک</p>
+  <p><?php if (legal_provider_name() !== 'داتیس رایان'): ?><?= e(legal_provider_name()) ?> · <?php endif; ?>داتیس رایان نسخه <span class="ltr"><?= e(app_version()) ?></span> · پنل هوشمند پیامک</p>
 </footer>
 
 <script>

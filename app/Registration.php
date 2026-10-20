@@ -131,7 +131,7 @@ function registration_notify_admins(int $registrationId, bool $force = false): a
     $name = trim((string)$row['first_name'] . ' ' . (string)$row['last_name']);
     $type = $row['account_type'] === 'legal' ? 'حقوقی' : 'حقیقی';
     $company = trim((string)$row['company_name']);
-    $text = "ثبت‌نام جدید ELLSMS\nشناسه: {$registrationId}\nنام: {$name}\nموبایل: {$row['mobile']}\nنوع: {$type}";
+    $text = "ثبت‌نام جدید داتیس رایان\nشناسه: {$registrationId}\nنام: {$name}\nموبایل: {$row['mobile']}\nنوع: {$type}";
     if ($company !== '') $text .= "\nشرکت: {$company}";
     $text .= "\nبرای بررسی وارد پنل مدیریت شوید.";
 
@@ -159,7 +159,7 @@ function registration_send_otp(int $registrationId, bool $isResend = false): arr
     }
 
     $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-    $text = "کد تأیید ثبت‌نام ELLSMS: {$code}\nاین کد تا ۵ دقیقه معتبر است.";
+    $text = "کد تأیید ثبت‌نام داتیس رایان: {$code}\nاین کد تا ۵ دقیقه معتبر است.";
     $send = registration_system_sms([(string)$row['mobile']], $text);
     if (empty($send['ok'])) {
         Logger::warning('registration.otp_send_failed', ['registration_id' => $registrationId]);
@@ -214,12 +214,12 @@ function registration_admin_decide(int $registrationId, int $adminUserId, string
         $st = db()->prepare("UPDATE ellsms_registration_requests SET state='approved', approved_at=NOW(), approved_by=?, decision_note=? WHERE id=? AND state='pending_admin_approval'");
         $st->execute([$adminUserId, $note, $registrationId]);
         $event = 'registration.approved';
-        $message = "درخواست ثبت‌نام شما در ELLSMS تأیید شد.\nحساب شما در مرحله فعال‌سازی است و پس از آماده‌شدن، پیامک بعدی ارسال می‌شود.";
+        $message = "درخواست ثبت‌نام شما در داتیس رایان تأیید شد.\nحساب شما در مرحله فعال‌سازی است و پس از آماده‌شدن، پیامک بعدی ارسال می‌شود.";
     } else {
         $st = db()->prepare("UPDATE ellsms_registration_requests SET state='rejected', rejected_at=NOW(), rejected_by=?, rejection_reason=?, decision_note=?, password_verifier='', backend_password_hash=NULL, otp_hash=NULL, otp_expires_at=NULL WHERE id=? AND state='pending_admin_approval'");
         $st->execute([$adminUserId, $note, $note, $registrationId]);
         $event = 'registration.rejected';
-        $message = "درخواست ثبت‌نام شما در ELLSMS تأیید نشد.\nدلیل: {$note}\nدر صورت اصلاح اطلاعات می‌توانید دوباره ثبت‌نام کنید.";
+        $message = "درخواست ثبت‌نام شما در داتیس رایان تأیید نشد.\nدلیل: {$note}\nدر صورت اصلاح اطلاعات می‌توانید دوباره ثبت‌نام کنید.";
     }
     if ($st->rowCount() !== 1) return ['ok' => false, 'error' => 'وضعیت درخواست همزمان تغییر کرده است.'];
 

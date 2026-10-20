@@ -322,7 +322,7 @@ function number_forward_render_url(string $template, array $vars, string $method
 function number_forward_sample_vars(string $kind, string $line = '5000123'): array {
     if ($kind === 'mo') {
         return [
-            'originator' => '989120000000', 'destination' => $line, 'content' => 'پیام آزمایشی ELLSMS',
+            'originator' => '989120000000', 'destination' => $line, 'content' => 'پیام آزمایشی داتیس رایان',
             'udh' => '', 'sourcePort' => '0', 'destinationPort' => '0', 'id' => '0',
             'received_at' => date('Y-m-d H:i:s'),
         ];

@@ -101,7 +101,7 @@ function registration_activate_account(int $registrationId, int $adminUserId, ar
         $sms = ['ok' => true, 'disabled' => !$smsEnabled];
         if ($smsEnabled) {
             $loginUrl = app_url() !== '' ? app_url() . '/login.php' : '/login.php';
-            $message = "حساب شما در ELLSMS فعال شد.\nنام کاربری: {$row['username']}\nورود: {$loginUrl}";
+            $message = "حساب شما در داتیس رایان فعال شد.\nنام کاربری: {$row['username']}\nورود: {$loginUrl}";
             $sms = registration_system_sms([(string)$row['mobile']], $message);
             if (empty($sms['ok'])) Logger::warning('registration.account_created.sms_failed', ['registration_id' => $registrationId]);
         }

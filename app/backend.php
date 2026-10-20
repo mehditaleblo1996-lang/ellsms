@@ -1327,7 +1327,7 @@ function send_2fa_code(int $userId, string $mobile): array {
     if ($originator === '') {
         return [false, 'خط ارسال پیش‌فرض تنظیم نشده — از مدیر بخواهید آن را در تنظیمات مشخص کند.'];
     }
-    $text = "کد ورود شما به ELLSMS: {$code}\nاین کد تا ۵ دقیقه معتبر است.";
+    $text = "کد ورود شما به داتیس رایان: {$code}\nاین کد تا ۵ دقیقه معتبر است.";
 
     // System message — sent under the target user's own id but with role
     // forced to 'admin' here only to bypass dispatch_message()'s credit

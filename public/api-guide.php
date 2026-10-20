@@ -19,7 +19,7 @@ if (!is_file($path)) {
 }
 
 header('Content-Type: application/pdf');
-header('Content-Disposition: attachment; filename="ELLSMS-API-Guide.pdf"');
+header('Content-Disposition: attachment; filename="DatisRayan-API-Guide.pdf"');
 header('Content-Length: ' . filesize($path));
 header('X-Content-Type-Options: nosniff');
 // private: a shared proxy must never hand a signed-in user's response to someone who is not.
