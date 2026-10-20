@@ -12,6 +12,7 @@
  *   ...99  the call is not answered (RecFailed)
  *   ...88  no outcome yet (neither RecSuccess nor RecFailed) — the message never finishes
  *   09120000000 in a send: the whole request is refused (R_Success false)
+ * A voice's VoiceStatus is 1 unless a test writes another one into the state file.
  * An OTP with code 00000 is accepted without a MsgID. A WAV upload reports its real duration,
  * anything else 20 seconds; text-to-speech reports 12 seconds.
  */
@@ -82,7 +83,7 @@ switch ($action) {
     case 'Voice/Get':
         $v = $state['voices'][$body['voiceId'] ?? ''] ?? null;
         if ($v === null) $reply(['Data' => null], false, 'not found');
-        $reply(['Data' => ['VoiceID' => $body['voiceId'], 'Title' => $v['Title'], 'Duration' => $v['Duration'], 'VoiceStatus' => 1, 'MediaTypeName' => 'audio/wav', 'DataSize' => 100, 'StoreForEver' => false]]);
+        $reply(['Data' => ['VoiceID' => $body['voiceId'], 'Title' => $v['Title'], 'Duration' => $v['Duration'], 'VoiceStatus' => $v['VoiceStatus'] ?? 1, 'MediaTypeName' => 'audio/wav', 'DataSize' => 100, 'StoreForEver' => false]]);
     case 'Voice/Download':
         $v = $state['voices'][$body['voiceId'] ?? ''] ?? null;
         if ($v === null) $reply([], false, 'not found');

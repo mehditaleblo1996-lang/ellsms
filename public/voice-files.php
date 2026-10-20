@@ -52,7 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $file = voice_file_find($me, (int)($_POST['id'] ?? 0));
         if ($file !== null) {
             $file = voice_file_refresh($file);
-            flash('success', (int)$file['duration_seconds'] > 0 ? 'مشخصات فایل به‌روز شد.' : 'زرین‌کال هنوز مدت فایل را اعلام نکرده است.');
+            flash(voice_file_is_ready($file) ? 'success' : 'info', match (true) {
+                (int)$file['duration_seconds'] <= 0 => 'زرین‌کال هنوز مدت فایل را اعلام نکرده است.',
+                voice_file_is_ready($file) => 'فایل آماده‌ی ارسال است (کد وضعیت ' . to_persian_digits((string)$file['provider_status']) . ').',
+                default => 'فایل هنوز در زرین‌کال آماده‌ی ارسال نیست (کد وضعیت ' . to_persian_digits((string)($file['provider_status'] ?? '؟')) . ').',
+            });
         }
     } elseif ($do === 'delete') {
         $r = voice_file_delete($me, (int)($_POST['id'] ?? 0));
@@ -114,7 +118,7 @@ require __DIR__ . '/../app/views/header.php';
   <h2>فایل‌های صوتی شما</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>عنوان</th><th>نوع</th><th>مدت</th><th>پالس</th><th>هزینه‌ی هر گیرنده (ریال)</th><th>تاریخ</th><th>پخش</th><th></th></tr>
+    <tr><th>عنوان</th><th>نوع</th><th>مدت</th><th>پالس</th><th>هزینه‌ی هر گیرنده (ریال)</th><th>وضعیت در زرین‌کال</th><th>تاریخ</th><th>پخش</th><th></th></tr>
     <?php foreach ($files as $f): ?>
       <?php $dur = (int)$f['duration_seconds']; $pulses = $dur > 0 ? voice_pulses($dur) : 0; ?>
       <tr>
@@ -123,17 +127,20 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= $dur > 0 ? to_persian_digits((string)$dur) . ' ثانیه' : '<span class="hint">در انتظار زرین‌کال</span>' ?></td>
         <td class="num"><?= $pulses > 0 ? to_persian_digits((string)$pulses) : '—' ?></td>
         <td class="num"><?= $pulses > 0 && $configured ? to_persian_digits(number_format($isAdmin ? 0 : voice_unit_cost('voice', $pulses))) : '—' ?></td>
+        <td>
+          <?php if (voice_file_is_ready($f)): ?><span class="badge badge-done">آماده‌ی ارسال</span>
+          <?php else: ?><span class="badge badge-pending">در انتظار زرین‌کال</span><?php endif; ?>
+          <span class="hint">کد وضعیت: <span class="ltr"><?= $f['provider_status'] !== null ? (int)$f['provider_status'] : '—' ?></span></span>
+        </td>
         <td class="num"><?= jdate((string)$f['created_at']) ?></td>
         <td><audio controls preload="none" src="/voice-files.php?play=<?= (int)$f['id'] ?>" style="max-width:220px"></audio></td>
         <td>
-          <?php if ($dur <= 0): ?>
-            <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="do" value="refresh"><input type="hidden" name="id" value="<?= (int)$f['id'] ?>"><button class="btn btn-sm">به‌روزرسانی</button></form>
-          <?php endif; ?>
+          <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="do" value="refresh"><input type="hidden" name="id" value="<?= (int)$f['id'] ?>"><button class="btn btn-sm">بررسی وضعیت</button></form>
           <form method="post" style="display:inline" onsubmit="return confirm(<?= e(json_encode('فایل «' . $f['title'] . '» حذف شود؟', JSON_UNESCAPED_UNICODE)) ?>)"><?= csrf_field() ?><input type="hidden" name="do" value="delete"><input type="hidden" name="id" value="<?= (int)$f['id'] ?>"><button class="btn btn-sm btn-danger">حذف</button></form>
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$files): ?><tr><td colspan="8" class="empty">هنوز فایل صوتی‌ای ندارید.</td></tr><?php endif; ?>
+    <?php if (!$files): ?><tr><td colspan="9" class="empty">هنوز فایل صوتی‌ای ندارید.</td></tr><?php endif; ?>
   </table>
   </div>
   <?= pager_links($page, pager_pages($total, $per), [], 'page', $total) ?>

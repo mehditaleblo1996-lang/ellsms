@@ -25,7 +25,13 @@ worker), `public/voice.php`, `public/voice-files.php`, `public/voice-settings.ph
      ZarinCall's `gender`, which its documentation does not name, so set them after trying), batch size, recipient limit, polling interval, settlement deadline,
      how long ZarinCall keeps generated speech, and the minimum interval between two OTP calls to one
      number.
-4. **Check the connection** on the same page. It reads the ZarinCall account balance (`User/GetPulse`).
+4. **Ready statuses.** ZarinCall checks every new file before it can be sent. Until then it answers
+   «فایل صوتی آماده به ارسال نیست» ("voice file is not ready to send"), and it does not document its
+   `VoiceStatus` codes. The files page shows each file's code. Once a file has gone out successfully,
+   enter its code in **voice_ready_statuses** (comma-separated). From then on, a file with another code
+   is refused before any call is made (`voice_file_not_approved`), and the worker re-reads it every
+   five minutes for up to seven days until it is ready. Left empty, ZarinCall alone decides.
+5. **Check the connection** on the same page. It reads the ZarinCall account balance (`User/GetPulse`).
 
 The menus «پیام صوتی» and «فایل‌های صوتی» appear for customers once the service is ready. Menu
 roles (`voice`, `voice_files`) can close them per user, like any other menu.

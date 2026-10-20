@@ -312,6 +312,47 @@ function voice_file_tts(array $user, string $title, string $text, int $speaker):
     return ['ok' => true, 'id' => $id];
 }
 
+/**
+ * ZarinCall's VoiceStatus values that mean "ready to send", from voice_ready_statuses (admin settings,
+ * comma-separated). ZarinCall checks a new file before it can be sent (it answers «فایل صوتی آماده به
+ * ارسال نیست» until then) and does not document its status codes, so the admin sets them after seeing
+ * a sendable file's status on the files page. Empty = no local check: ZarinCall alone decides.
+ *
+ * @return list<int>
+ */
+function voice_ready_statuses(): array {
+    preg_match_all('/-?\d+/', from_persian_digits(voice_setting('voice_ready_statuses', '')), $m);
+    return array_values(array_unique(array_map('intval', $m[0])));
+}
+
+/** Whether a file can be sent: its duration is known and, with ready statuses configured, its status is one of them. */
+function voice_file_is_ready(array $file): bool {
+    if ((int)$file['duration_seconds'] <= 0) {
+        return false;
+    }
+    $statuses = voice_ready_statuses();
+    return $statuses === [] || ($file['provider_status'] !== null && in_array((int)$file['provider_status'], $statuses, true));
+}
+
+/**
+ * Refuses a send of a file that is not ready yet, re-reading it from ZarinCall once first.
+ *
+ * @return array{ok:bool, file?:array, error?:string, error_code?:string}
+ */
+function voice_file_check_ready(array $file): array {
+    if (!voice_file_is_ready($file)) {
+        $file = voice_file_refresh($file);
+    }
+    if ((int)$file['duration_seconds'] <= 0) {
+        return voice_fail('voice_file_not_ready', 'مدت فایل صوتی هنوز از زرین‌کال دریافت نشده است؛ چند دقیقه بعد دوباره تلاش کنید.');
+    }
+    if (!voice_file_is_ready($file)) {
+        return voice_fail('voice_file_not_approved', 'فایل صوتی هنوز در زرین‌کال آماده‌ی ارسال نیست (وضعیت '
+            . to_persian_digits((string)($file['provider_status'] ?? '؟')) . ')؛ پس از تایید زرین‌کال دوباره تلاش کنید.');
+    }
+    return ['ok' => true, 'file' => $file];
+}
+
 /** Re-reads a file's duration and status from ZarinCall. Returns the updated row. */
 function voice_file_refresh(array $file): array {
     $info = zarincall_voice_get((string)$file['provider_voice_id']);
@@ -414,12 +455,11 @@ function voice_message_create(array $user, array $input, string $source = 'panel
     if ($file === null) {
         return voice_fail('voice_file_not_found', 'فایل صوتی پیدا نشد.');
     }
-    if ((int)$file['duration_seconds'] <= 0) {
-        $file = voice_file_refresh($file);
+    $ready = voice_file_check_ready($file);
+    if (!$ready['ok']) {
+        return $ready;
     }
-    if ((int)$file['duration_seconds'] <= 0) {
-        return voice_fail('voice_file_not_ready', 'مدت فایل صوتی هنوز از زرین‌کال دریافت نشده است؛ چند دقیقه بعد دوباره تلاش کنید.');
-    }
+    $file = $ready['file'];
 
     $digit = null;
     $sms = null;
@@ -523,12 +563,11 @@ function voice_otp_send(array $user, string $destination, string $code, ?int $vo
         if ($file === null) {
             return voice_fail('voice_file_not_found', 'فایل صوتی پیدا نشد.');
         }
-        if ((int)$file['duration_seconds'] <= 0) {
-            $file = voice_file_refresh($file);
+        $ready = voice_file_check_ready($file);
+        if (!$ready['ok']) {
+            return $ready;
         }
-        if ((int)$file['duration_seconds'] <= 0) {
-            return voice_fail('voice_file_not_ready', 'مدت فایل صوتی هنوز از زرین‌کال دریافت نشده است.');
-        }
+        $file = $ready['file'];
         $pulses = voice_pulses((int)$file['duration_seconds']);
     }
     $kind = $file === null ? 'otp' : 'otp2';
@@ -630,6 +669,7 @@ function voice_message_send_batches(int $id, ?string $otpCode = null): void {
     $markSending = db()->prepare("UPDATE ellsms_voice_message_batches SET status = 'sending' WHERE id = ? AND status = 'pending'");
     $markSent = db()->prepare("UPDATE ellsms_voice_message_batches SET status = 'sent', provider_msg_id = ?, sent_at = ? WHERE id = ?");
     $markFailed = db()->prepare("UPDATE ellsms_voice_message_batches SET status = 'failed', error = ? WHERE id = ?");
+    $refusedByProvider = false;
 
     foreach (voice_message_batches($id) as $batch) {
         if ($batch['status'] !== 'pending') {
@@ -651,6 +691,7 @@ function voice_message_send_batches(int $id, ?string $otpCode = null): void {
         if (!$result['ok']) {
             $markFailed->execute([mb_strimwidth((string)$result['error'], 0, 480, '…'), (int)$batch['id']]);
             Metrics::increment('voice.batch.failed', 1, ['kind' => (string)$message['kind']]);
+            $refusedByProvider = $refusedByProvider || !$result['transport'];
             continue;
         }
         $markSent->execute([$result['msg_id'], voice_now(), (int)$batch['id']]);
@@ -662,6 +703,12 @@ function voice_message_send_batches(int $id, ?string $otpCode = null): void {
             $batch['recipients_count'] = count($numbers);
             voice_batch_settle($batch, $message, count($numbers), 0, 'accepted_without_msg_id');
         }
+    }
+    if ($refusedByProvider && $message['voice_file_id'] !== null) {
+        // A refused file (often «not ready to send» while ZarinCall checks it) shows its current status on the files page.
+        $file = db()->prepare("SELECT * FROM ellsms_voice_files WHERE id = ?");
+        $file->execute([(int)$message['voice_file_id']]);
+        if ($row = $file->fetch()) voice_file_refresh($row);
     }
     voice_message_finish_dispatch($id);
 }
@@ -849,16 +896,25 @@ function voice_poll_sent(int $limit = 200): int {
     return $settled;
 }
 
-/** Files whose duration ZarinCall had not reported yet, re-read for up to two days. */
+/**
+ * Files not ready yet (no duration, or a status that is not a ready one), re-read from ZarinCall at
+ * most every five minutes for up to seven days, so they become sendable once ZarinCall approves them.
+ */
 function voice_refresh_pending_files(int $limit = 50): int {
     if (!zarincall_api_key_stored()) {
         return 0;
     }
-    $st = db()->prepare("SELECT * FROM ellsms_voice_files WHERE status = 'active' AND (duration_seconds IS NULL OR duration_seconds = 0) AND created_at > ? ORDER BY id LIMIT " . max(1, $limit));
-    $st->execute([date('Y-m-d H:i:s', time() - 2 * 86400)]);
+    $statuses = voice_ready_statuses();
+    $notReady = '(duration_seconds IS NULL OR duration_seconds = 0'
+        . ($statuses !== [] ? ' OR provider_status IS NULL OR provider_status NOT IN (' . implode(',', $statuses) . ')' : '') . ')';
+    $st = db()->prepare("SELECT * FROM ellsms_voice_files WHERE status = 'active' AND {$notReady} AND created_at > ?
+                         AND (refreshed_at IS NULL OR refreshed_at < ?) ORDER BY id LIMIT " . max(1, $limit));
+    $st->execute([date('Y-m-d H:i:s', time() - 7 * 86400), date('Y-m-d H:i:s', time() - 300)]);
     $n = 0;
     foreach ($st->fetchAll() as $file) {
-        if ((int)voice_file_refresh($file)['duration_seconds'] > 0) $n++;
+        $file = voice_file_refresh($file);
+        db()->prepare('UPDATE ellsms_voice_files SET refreshed_at = ? WHERE id = ?')->execute([voice_now(), (int)$file['id']]);
+        if (voice_file_is_ready($file)) $n++;
     }
     return $n;
 }
@@ -941,6 +997,8 @@ function voice_file_public(array $f): array {
         'title' => (string)$f['title'],
         'source' => (string)$f['source'],
         'duration_seconds' => $f['duration_seconds'] !== null ? (int)$f['duration_seconds'] : null,
+        'provider_status' => $f['provider_status'] !== null ? (int)$f['provider_status'] : null,
+        'ready' => voice_file_is_ready($f),
         'pulses' => (int)$f['duration_seconds'] > 0 ? voice_pulses((int)$f['duration_seconds']) : null,
         'created_at' => (string)$f['created_at'],
     ];

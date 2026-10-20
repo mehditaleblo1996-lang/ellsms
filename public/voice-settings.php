@@ -51,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($error === null && !empty($_POST['voice_enabled']) && $newKey === '' && !zarincall_api_key_stored()) {
             $error = 'برای فعال‌سازی، کلید API زرین‌کال را وارد کنید.';
         }
+        $readyStatuses = preg_replace('/[^\d,\-]/', '', str_replace(['،', ' '], [',', ''], from_persian_digits((string)($_POST['voice_ready_statuses'] ?? '')))) ?? '';
         $speakersRaw = trim((string)($_POST['voice_tts_speakers'] ?? ''));
         if ($error === null && voice_tts_speakers_parse($speakersRaw) === []) {
             $error = 'گوینده‌های متن به صوت: دست‌کم یک خط به شکل «مقدار=نام» (مثلاً «1=مرد») لازم است.';
@@ -73,6 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($prices as $key => $v) {
                 set_setting($key, $v);
             }
+            set_setting('voice_ready_statuses', trim($readyStatuses, ','));
             $speakers = voice_tts_speakers_parse($speakersRaw);
             set_setting('voice_tts_speakers', implode("\n", array_map(static fn($v, $l) => "{$v}={$l}", array_keys($speakers), $speakers)));
             foreach ($numberFields as $key => [, $default, $min, $max]) {
@@ -158,6 +160,10 @@ require __DIR__ . '/../app/views/header.php';
         <label><?= e($label) ?> <input type="number" name="<?= e($key) ?>" class="ltr" min="<?= $min ?>" max="<?= $max ?>" value="<?= (int)voice_setting($key, (string)$default) ?>"></label>
       <?php endforeach; ?>
     </div>
+    <label style="display:block">کدهای وضعیت «آماده‌ی ارسال» فایل در زرین‌کال (با کاما جدا؛ خالی = بدون بررسی، فقط زرین‌کال تصمیم می‌گیرد)
+      <input type="text" name="voice_ready_statuses" class="ltr" value="<?= e(implode(',', voice_ready_statuses())) ?>" placeholder="مثلاً 1">
+      <span class="hint">زرین‌کال هر فایل جدید را پیش از ارسال بررسی می‌کند و کد وضعیتش را مستند نکرده است. کد وضعیت فایلی که ارسالش موفق بود را از صفحه‌ی فایل‌های صوتی ببینید و اینجا وارد کنید؛ از آن پس فایل‌های تاییدنشده قبل از ارسال رد می‌شوند و هر پنج دقیقه دوباره بررسی می‌شوند.</span>
+    </label>
     <label style="display:block">گوینده‌های متن به صوت — هر خط «مقدار=نام»؛ مقدار همان gender در زرین‌کال است
       <textarea name="voice_tts_speakers" rows="3" style="width:100%"><?= e(implode("\n", array_map(static fn($v, $l) => "{$v}={$l}", array_keys(voice_tts_speakers()), voice_tts_speakers()))) ?></textarea>
     </label>

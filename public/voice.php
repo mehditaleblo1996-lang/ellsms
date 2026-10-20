@@ -71,7 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $configured = voice_configured();
 $isAdmin = $me['role'] === 'admin';
-$files = $configured ? array_values(array_filter(voice_files_list($me, 500), static fn(array $f): bool => (int)$f['duration_seconds'] > 0)) : [];
+$files = $configured ? array_values(array_filter(voice_files_list($me, 500), 'voice_file_is_ready')) : [];
 
 $detail = isset($_GET['id']) ? voice_message_find($me, (int)$_GET['id']) : null;
 $detailBatches = $detail ? voice_message_batches((int)$detail['id']) : [];

@@ -369,6 +369,42 @@ final class VoiceMessagesTest extends IntegrationTestCase
         $this->assertSame(6, $this->recorded('Voice/TextToVoice')[0]['body']['gender']);
     }
 
+    private function setProviderStatus(string $voiceId, int $status): void
+    {
+        $state = json_decode((string)file_get_contents(self::$stateFile), true);
+        $state['voices'][$voiceId]['VoiceStatus'] = $status;
+        file_put_contents(self::$stateFile, json_encode($state));
+    }
+
+    public function testAFileZarinCallHasNotApprovedIsNotSentUntilItIs(): void
+    {
+        set_setting('voice_ready_statuses', '1, 3');
+        $fileId = $this->uploadFile(20);
+        $voiceId = (string)voice_file_find($this->user(), $fileId)['provider_voice_id'];
+        $this->setProviderStatus($voiceId, 0);
+        voice_file_refresh(voice_file_find($this->user(), $fileId));
+        $this->assertFalse(voice_file_is_ready(voice_file_find($this->user(), $fileId)));
+
+        $refused = voice_message_create($this->user(), ['voice_file_id' => $fileId, 'destinations' => ['09121111111']]);
+        $this->assertSame('voice_file_not_approved', $refused['error_code']);
+        $this->assertSame([], $this->recorded('Message/Send'));
+        $this->assertSame(100000, $this->available());
+        $this->assertSame('voice_file_not_approved', voice_otp_send($this->user(), '09121111111', '1234', $fileId)['error_code']);
+
+        // The worker re-reads it (at most every five minutes) and it becomes sendable once approved.
+        $this->setProviderStatus($voiceId, 3);
+        db()->prepare('UPDATE ellsms_voice_files SET refreshed_at = ? WHERE id = ?')->execute([date('Y-m-d H:i:s', time() - 600), $fileId]);
+        $this->assertSame(1, voice_refresh_pending_files());
+        $this->assertTrue(voice_file_is_ready(voice_file_find($this->user(), $fileId)));
+        $sent = voice_message_create($this->user(), ['voice_file_id' => $fileId, 'destinations' => ['09121111111']]);
+        $this->assertSame('sent', $sent['status']);
+
+        set_setting('voice_ready_statuses', '');
+        $this->setProviderStatus($voiceId, 0);
+        voice_file_refresh(voice_file_find($this->user(), $fileId));
+        $this->assertTrue(voice_file_is_ready(voice_file_find($this->user(), $fileId)), 'without configured statuses ZarinCall alone decides');
+    }
+
     public function testFilesAndSendsAreInvisibleToOtherCustomers(): void
     {
         $fileId = $this->uploadFile(20);
