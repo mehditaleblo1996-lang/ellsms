@@ -68,6 +68,30 @@ function voice_poll_interval_seconds(): int { return max(30, (int)voice_setting(
 function voice_tts_save_days(): int { return max(0, (int)voice_setting('voice_tts_save_days', '365')); }
 function voice_otp_min_interval_seconds(): int { return max(0, (int)voice_setting('voice_otp_min_interval_seconds', '60')); }
 
+const VOICE_TTS_SPEAKERS_DEFAULT = "1=گوینده‌ی ۱\n2=گوینده‌ی ۲";
+
+/**
+ * Text-to-speech speakers offered to customers: ZarinCall's `gender` value => label, one
+ * "value=label" per line in voice_tts_speakers (admin settings). ZarinCall does not document which
+ * value is which voice, so the admin sets and names them after trying them.
+ *
+ * @return array<int, string>
+ */
+function voice_tts_speakers_parse(string $raw): array {
+    $out = [];
+    foreach (preg_split('/\R/u', from_persian_digits($raw)) ?: [] as $line) {
+        if (preg_match('/^\s*(\d{1,3})\s*=\s*(.+?)\s*$/u', $line, $m) && (int)$m[1] <= 255) {
+            $out[(int)$m[1]] = mb_substr($m[2], 0, 60);
+        }
+    }
+    return $out;
+}
+
+/** @return array<int, string> */
+function voice_tts_speakers(): array {
+    return voice_tts_speakers_parse(voice_setting('voice_tts_speakers', VOICE_TTS_SPEAKERS_DEFAULT)) ?: voice_tts_speakers_parse(VOICE_TTS_SPEAKERS_DEFAULT);
+}
+
 /** Ready for voice sends: switched on, with an API key and a pulse price. */
 function voice_configured(): bool {
     return voice_enabled() && zarincall_api_key_stored() && voice_price_per_pulse() !== null;
@@ -249,7 +273,7 @@ function voice_file_tts(array $user, string $title, string $text, int $speaker):
     if (mb_strlen($text) > VOICE_TTS_MAX_CHARS) {
         return ['ok' => false, 'error' => 'متن حداکثر ' . to_persian_digits((string)VOICE_TTS_MAX_CHARS) . ' نویسه می‌تواند باشد.'];
     }
-    if (!in_array($speaker, [1, 2], true)) {
+    if (!array_key_exists($speaker, voice_tts_speakers())) {
         return ['ok' => false, 'error' => 'گوینده نامعتبر است.'];
     }
     if (($ruleId = content_policy_violation($text)) !== null) {

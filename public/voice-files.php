@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'فایل صوتی بارگذاری شد.' : (string)$r['error']);
         }
     } elseif ($do === 'tts') {
-        $r = voice_file_tts($me, (string)($_POST['title'] ?? ''), (string)($_POST['text'] ?? ''), (int)($_POST['speaker'] ?? 1));
+        $r = voice_file_tts($me, (string)($_POST['title'] ?? ''), (string)($_POST['text'] ?? ''), (int)($_POST['speaker'] ?? array_key_first(voice_tts_speakers())));
         flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'فایل صوتی از متن ساخته شد.' : (string)$r['error']);
     } elseif ($do === 'refresh') {
         $file = voice_file_find($me, (int)($_POST['id'] ?? 0));
@@ -100,8 +100,7 @@ require __DIR__ . '/../app/views/header.php';
       <label>عنوان <input type="text" name="title" maxlength="190"></label>
       <label>گوینده
         <select name="speaker">
-          <option value="1">گوینده‌ی ۱</option>
-          <option value="2">گوینده‌ی ۲</option>
+          <?php foreach (voice_tts_speakers() as $value => $label): ?><option value="<?= (int)$value ?>"><?= e($label) ?></option><?php endforeach; ?>
         </select>
       </label>
     </div>

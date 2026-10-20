@@ -433,7 +433,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 2000 }, title: { type: string }, speaker: { type: integer, enum: [1, 2] } } }
+            schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 2000 }, title: { type: string }, speaker: { type: integer, description: "one of the speaker values configured on /admin/voice (ZarinCall's gender); default the first" } } }
       responses:
         "201": { description: Created, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/VoiceFile' } } } } } }
         "402": { description: Insufficient credit }

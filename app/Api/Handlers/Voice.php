@@ -74,9 +74,10 @@ function api_handle_voice_tts(array $ctx): void {
     if (isset($body['title']) && !is_string($body['title'])) {
         $fields['title'] = ['must_be_string'];
     }
-    $speaker = $body['speaker'] ?? 1;
-    if (!is_int($speaker) || !in_array($speaker, [1, 2], true)) {
-        $fields['speaker'] = ['must_be_one_of: 1, 2'];
+    $speakers = array_keys(voice_tts_speakers());
+    $speaker = $body['speaker'] ?? $speakers[0];
+    if (!is_int($speaker) || !in_array($speaker, $speakers, true)) {
+        $fields['speaker'] = ['must_be_one_of: ' . implode(', ', $speakers)];
     }
     if ($fields) {
         ApiResponse::validationFailed($fields);

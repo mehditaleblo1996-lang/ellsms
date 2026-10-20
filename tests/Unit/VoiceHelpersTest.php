@@ -67,6 +67,13 @@ final class VoiceHelpersTest extends TestCase
         $this->assertNull(zarincall_id(['x']));
     }
 
+    public function testSpeakersAreReadAsValueEqualsLabelLines(): void
+    {
+        $this->assertSame([1 => 'مرد', 2 => 'زن'], voice_tts_speakers_parse("1=مرد\r\n ۲ = زن \n"));
+        $this->assertSame([7 => 'a=b'], voice_tts_speakers_parse("x=y\n7=a=b\n300=too big\n=empty"));
+        $this->assertSame([], voice_tts_speakers_parse(''));
+    }
+
     public function testBatchCountsAreFinalOnlyWhenEveryRecipientHasAnOutcome(): void
     {
         $this->assertTrue(voice_batch_counts_final(3, 2, 1));

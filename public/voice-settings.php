@@ -51,6 +51,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($error === null && !empty($_POST['voice_enabled']) && $newKey === '' && !zarincall_api_key_stored()) {
             $error = 'برای فعال‌سازی، کلید API زرین‌کال را وارد کنید.';
         }
+        $speakersRaw = trim((string)($_POST['voice_tts_speakers'] ?? ''));
+        if ($error === null && voice_tts_speakers_parse($speakersRaw) === []) {
+            $error = 'گوینده‌های متن به صوت: دست‌کم یک خط به شکل «مقدار=نام» (مثلاً «1=مرد») لازم است.';
+        }
         if ($error === null && $newKey !== '') {
             try {
                 zarincall_api_key_save($newKey);
@@ -69,6 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ($prices as $key => $v) {
                 set_setting($key, $v);
             }
+            $speakers = voice_tts_speakers_parse($speakersRaw);
+            set_setting('voice_tts_speakers', implode("\n", array_map(static fn($v, $l) => "{$v}={$l}", array_keys($speakers), $speakers)));
             foreach ($numberFields as $key => [, $default, $min, $max]) {
                 $v = (int)from_persian_digits((string)($_POST[$key] ?? $default));
                 set_setting($key, (string)max($min, min($max, $v)));
@@ -152,6 +158,9 @@ require __DIR__ . '/../app/views/header.php';
         <label><?= e($label) ?> <input type="number" name="<?= e($key) ?>" class="ltr" min="<?= $min ?>" max="<?= $max ?>" value="<?= (int)voice_setting($key, (string)$default) ?>"></label>
       <?php endforeach; ?>
     </div>
+    <label style="display:block">گوینده‌های متن به صوت — هر خط «مقدار=نام»؛ مقدار همان gender در زرین‌کال است
+      <textarea name="voice_tts_speakers" rows="3" style="width:100%"><?= e(implode("\n", array_map(static fn($v, $l) => "{$v}={$l}", array_keys(voice_tts_speakers()), voice_tts_speakers()))) ?></textarea>
+    </label>
     <button class="btn btn-primary">ذخیره</button>
   </form>
 </div>

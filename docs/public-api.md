@@ -355,7 +355,7 @@ service_unavailable`); the full behaviour — pricing in pulses, reserve → cha
 release the rest — is in `docs/voice-messages.md`. Voice files are uploaded in the panel
 (/messages/voice/files); the API refers to them by id.
 - `GET /voice/files?limit=&page=` — `[{"id", "title", "source": "upload"|"tts", "duration_seconds", "pulses", "created_at"}]`
-- `POST /voice/tts` — `{"text": "…", "title": "…", "speaker": 1|2}` → `201` with the new file
+- `POST /voice/tts` — `{"text": "…", "title": "…", "speaker": <a value the admin configured, default the first>}` → `201` with the new file
 - `POST /voice/messages` — `{"voice_file_id": 12, "destinations": ["0912…"], "type": "voice"|"ivc", "ivc_digit": 1, "ivc_sms": "…", "scheduled_at": "2026-11-01T10:00:00+03:30", "title": "…", "client_message_id": "…"}`
   → `201` `{"id", "kind", "status": "sent"|"scheduled"|"failed", "recipients", "blocked", "invalid", "pulses", "unit_cost", "reserved_cost", "charged_cost", "answered", "not_answered", …}`.
   `ivc_digit`/`ivc_sms` only for `type: "ivc"`; without `scheduled_at` the send goes out at once; up to 10,000 numbers;

@@ -359,6 +359,16 @@ final class VoiceMessagesTest extends IntegrationTestCase
         $this->assertSame(99700, $this->available());
     }
 
+    public function testOnlyTheSpeakersTheAdminConfiguredAreAccepted(): void
+    {
+        set_setting('voice_tts_speakers', "5=زن\n6=مرد");
+        $this->assertSame([5 => 'زن', 6 => 'مرد'], voice_tts_speakers());
+        $this->assertFalse(voice_file_tts($this->user(), 't', 'سلام', 2)['ok']);
+        $this->assertSame([], $this->recorded('Voice/TextToVoice'));
+        $this->assertTrue(voice_file_tts($this->user(), 't', 'سلام', 6)['ok']);
+        $this->assertSame(6, $this->recorded('Voice/TextToVoice')[0]['body']['gender']);
+    }
+
     public function testFilesAndSendsAreInvisibleToOtherCustomers(): void
     {
         $fileId = $this->uploadFile(20);

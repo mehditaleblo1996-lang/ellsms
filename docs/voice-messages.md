@@ -21,7 +21,8 @@ worker), `public/voice.php`, `public/voice-files.php`, `public/voice-settings.ph
    - **Price per pulse** (Rial, per recipient). Sending stays closed until this is set.
    - **OTP price** (Rial). Voice OTP stays closed until this is set.
    - Optional: extra price per recipient for interactive sends, price per text-to-speech, pulse
-     length (30 s, Vesal's unit), batch size, recipient limit, polling interval, settlement deadline,
+     length (30 s, Vesal's unit), the text-to-speech speakers (one `value=name` per line: the value is
+     ZarinCall's `gender`, which its documentation does not name, so set them after trying), batch size, recipient limit, polling interval, settlement deadline,
      how long ZarinCall keeps generated speech, and the minimum interval between two OTP calls to one
      number.
 4. **Check the connection** on the same page. It reads the ZarinCall account balance (`User/GetPulse`).
@@ -34,7 +35,7 @@ roles (`voice`, `voice_files`) can close them per user, like any other menu.
 | | Where | ZarinCall call |
 |---|---|---|
 | Upload a WAV/MP3 (≤ 10 MB) | /messages/voice/files | `Voice/UploadBase64`, then `Voice/Get` for the duration |
-| Generate speech from Persian text (≤ 2000 chars, speaker 1 or 2) | /messages/voice/files, `POST /api/v1/voice/tts` | `Voice/TextToVoice` |
+| Generate speech from Persian text (≤ 2000 chars, a speaker the admin configured) | /messages/voice/files, `POST /api/v1/voice/tts` | `Voice/TextToVoice` |
 | Listen to a file, delete it | /messages/voice/files | `Voice/Download`, `Voice/Delete` |
 | Send a file to numbers (typed, a .txt/.csv file, or a contact group), now or at a chosen time | /messages/voice, `POST /api/v1/voice/messages` | `Message/Send` |
 | Interactive send: a recipient who presses digit *d* is sent an SMS | same, `type: ivc` | `Message/SendIVC` |
