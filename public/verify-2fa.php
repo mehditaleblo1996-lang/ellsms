@@ -147,7 +147,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="login-body">
   <main class="login-card" style="max-width:430px">
-    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
 
     <?php if ($method === 'choose'): ?>

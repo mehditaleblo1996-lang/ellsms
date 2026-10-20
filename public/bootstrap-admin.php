@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
     <p class="login-sub">راه‌اندازی اولیه — هنوز هیچ حسابی به داتیس رایان گستر ایرانیان دسترسی ندارد.</p>
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post" autocomplete="off">

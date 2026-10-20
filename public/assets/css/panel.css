@@ -31,7 +31,7 @@
 .panel .sidebar::before { height: 3px; flex: 0 0 3px; }
 .panel .sidebar-head { display: flex; align-items: center; justify-content: space-between; padding: 22px 22px 10px; }
 .panel .brand { padding: 0; display: inline-flex; }
-.panel .brand img { width: 132px; height: 82px; object-fit: contain; border-radius: 0; }
+.panel .brand img { width: 184px; height: auto; border-radius: 0; background: none; }
 .panel .sidebar-workspace { padding: 0 24px 16px; color: var(--muted); font-size: 13px; }
 .panel .sidebar-close { display: none; }
 .panel .nav-search { display: flex; align-items: center; gap: 8px; margin: 0 16px 16px; padding-inline: 12px; background: rgb(255 255 255 / 70%); border: 1px solid #dedff0; border-radius: 12px; color: var(--muted); }

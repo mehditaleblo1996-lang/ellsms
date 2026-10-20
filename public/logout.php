@@ -49,7 +49,7 @@ if (!current_user()) {
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
     <p class="login-sub">آیا می‌خواهید از حساب کاربری خود خارج شوید؟</p>
     <form method="post">
       <?= csrf_field() ?>

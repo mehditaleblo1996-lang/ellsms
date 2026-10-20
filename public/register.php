@@ -157,7 +157,7 @@ function reg_error_attrs(string $field, ?string $errorField): string {
 </head>
 <body class="login-body">
   <main class="login-card" style="max-width:680px;width:min(680px,calc(100% - 30px))">
-    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان" class="login-logo">
     <h1 style="font-size:1.35rem;margin:0 0 10px">ثبت‌نام در داتیس رایان گستر ایرانیان</h1>
     <p class="login-sub">اطلاعات اولیه را وارد کنید. یک کد ۶ رقمی برای تأیید شماره موبایل شما ارسال می‌شود و پس از تأیید، درخواست برای مدیر می‌رود.</p>
 

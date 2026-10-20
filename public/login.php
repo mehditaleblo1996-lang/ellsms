@@ -98,7 +98,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <div class="auth-shell">
     <header class="auth-top rise" style="--d:0">
       <a href="/landing.php" class="auth-brand" aria-label="داتیس رایان گستر ایرانیان — صفحه‌ی اصلی">
-        <img class="auth-mark" src="<?= e(asset_url('/assets/img/brand-mark.png')) ?>" alt="" aria-hidden="true">
+        <img class="auth-mark" src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" aria-hidden="true">
         <span class="auth-brand-text">
           <b class="auth-wordmark" dir="ltr"><span>Datis</span> Rayan</b>
           <small>داتیس رایان گستر ایرانیان</small>

@@ -21,7 +21,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <header class="lp-nav">
   <div class="lp-nav-inner">
     <a href="/landing.php" class="lp-brand" aria-label="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک">
-      <img class="lp-brand-mark" src="<?= e(asset_url('/assets/img/brand-mark.png')) ?>" alt="" aria-hidden="true">
+      <img class="lp-brand-mark" src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" aria-hidden="true">
       <span class="lp-brand-text"><b><i>Datis</i> Rayan</b><small>داتیس رایان گستر ایرانیان</small></span>
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">

@@ -85,7 +85,7 @@ if (strlen($maskedMobile) >= 7) {
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان" class="login-logo">
     <h1 style="font-size:1.3rem;margin:0 0 10px">تأیید شماره موبایل</h1>
     <p class="login-sub">کد ۶ رقمی ارسال‌شده به <span class="ltr"><?= e($maskedMobile) ?></span> را وارد کنید.</p>
 

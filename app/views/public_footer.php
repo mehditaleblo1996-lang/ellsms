@@ -2,7 +2,7 @@
 <?php require_once __DIR__ . '/../Legal.php'; ?>
 
 <footer class="lp-footer">
-  <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان" class="lp-footer-logo">
+  <img src="<?= e(asset_url('/assets/img/brand/logo.svg')) ?>" alt="داتیس رایان گستر ایرانیان" class="lp-footer-logo">
   <?= legal_footer_links_html() ?>
   <div class="lp-footer-badges" style="display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;margin:14px 0 10px">
     <?= legal_trust_badges_html(110) ?>

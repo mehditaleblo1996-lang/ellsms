@@ -17,7 +17,7 @@ if ($request['state'] === 'pending_mobile_verification') redirect('/register-ver
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="<?= e(asset_url('/assets/img/logo.png')) ?>" alt="داتیس رایان گستر ایرانیان" class="login-logo">
+    <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان" class="login-logo">
     <?php if ($request['state'] === 'pending_admin_approval'): ?>
       <div class="flash flash-success">شماره موبایل شما با موفقیت تأیید شد.</div>
       <h1 style="font-size:1.25rem">در انتظار تأیید مدیر</h1>
