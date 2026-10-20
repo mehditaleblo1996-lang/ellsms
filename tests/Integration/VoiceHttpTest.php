@@ -192,6 +192,9 @@ final class VoiceHttpTest extends TestCase
 
         $test = $this->http('POST', '/voice-settings.php', ['sid' => $admin, 'form' => ['_csrf' => $this->csrf($page['body']), 'do' => 'test']]);
         $this->assertStringContainsString('اتصال برقرار است', $test['body']);
+        $list = $this->http('POST', '/voice-settings.php', ['sid' => $admin, 'form' => ['_csrf' => $this->csrf($page['body']), 'do' => 'list_files']]);
+        $voiceId = (string)db()->query('SELECT provider_voice_id FROM ellsms_voice_files WHERE id = ' . self::$fileId)->fetchColumn();
+        $this->assertStringContainsString($voiceId, $list['body'], 'the ZarinCall account\'s files are listed with their status');
 
         $customer = $this->http('GET', '/voice-settings.php', ['sid' => $this->session(self::$org['owner_id'])]);
         $this->assertSame(403, $customer['code']);

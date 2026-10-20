@@ -84,6 +84,12 @@ switch ($action) {
         $v = $state['voices'][$body['voiceId'] ?? ''] ?? null;
         if ($v === null) $reply(['Data' => null], false, 'not found');
         $reply(['Data' => ['VoiceID' => $body['voiceId'], 'Title' => $v['Title'], 'Duration' => $v['Duration'], 'VoiceStatus' => $v['VoiceStatus'] ?? 1, 'MediaTypeName' => 'audio/wav', 'DataSize' => 100, 'StoreForEver' => false]]);
+    case 'Voice/List':
+        $rows = [];
+        foreach ($state['voices'] as $id => $v) {
+            $rows[] = ['VoiceID' => $id, 'Title' => $v['Title'], 'Duration' => $v['Duration'], 'VoiceStatus' => $v['VoiceStatus'] ?? 1, 'AddDateFarsi' => '1405/07/28'];
+        }
+        $reply(['DataList' => $rows]);
     case 'Voice/Download':
         $v = $state['voices'][$body['voiceId'] ?? ''] ?? null;
         if ($v === null) $reply([], false, 'not found');

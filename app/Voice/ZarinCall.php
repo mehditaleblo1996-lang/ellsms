@@ -300,6 +300,27 @@ function zarincall_voice_download(string $voiceId): array {
     ];
 }
 
+/**
+ * The account's voice files at ZarinCall, newest first, with their VoiceStatus — what the admin reads
+ * the "ready to send" code from (ZarinCall does not document its status codes).
+ *
+ * @return array{ok:bool, error:?string, files:list<array{voice_id:?string, title:?string, duration:?int, status:?int, add_date:?string}>}
+ */
+function zarincall_voice_list(int $page = 1, int $pageSize = 50): array {
+    $r = zarincall_call('Voice/List', ['voiceStatus' => null, 'addDateFrom' => null, 'addDateTo' => null,
+        'page' => max(1, $page), 'pageSize' => max(1, min(200, $pageSize)), 'search' => null], 20000);
+    $list = zarincall_field($r['data'], 'DataList');
+    $files = [];
+    foreach (is_array($list) ? $list : [] as $row) {
+        if (!is_array($row)) continue;
+        $int = static fn(string $n): ?int => is_numeric(zarincall_field($row, $n)) ? (int)zarincall_field($row, $n) : null;
+        $str = static fn(string $n): ?string => is_scalar(zarincall_field($row, $n)) ? (string)zarincall_field($row, $n) : null;
+        $files[] = ['voice_id' => zarincall_id(zarincall_field($row, 'VoiceID')), 'title' => $str('Title'), 'duration' => $int('Duration'),
+                    'status' => $int('VoiceStatus'), 'add_date' => $str('AddDateFarsi') ?? $str('AddDate')];
+    }
+    return ['ok' => $r['ok'], 'error' => $r['error'], 'files' => $files];
+}
+
 /** @return array{ok:bool, error:?string} */
 function zarincall_voice_delete(string $voiceId): array {
     $r = zarincall_call('Voice/Delete', ['voiceId' => $voiceId], 15000);

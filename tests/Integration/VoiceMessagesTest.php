@@ -430,6 +430,13 @@ final class VoiceMessagesTest extends IntegrationTestCase
     public function testDisabledServiceRefusesAndConnectionCheckReadsTheBalance(): void
     {
         $this->assertSame(['ok' => true, 'pulse' => 5000, 'error' => null], zarincall_user_pulse());
+        $this->uploadFile(20);
+        $list = zarincall_voice_list();
+        $this->assertTrue($list['ok']);
+        $this->assertSame(1, $list['files'][0]['status']);
+        $this->assertSame(20, $list['files'][0]['duration']);
+        $this->assertSame(['voiceStatus' => null, 'addDateFrom' => null, 'addDateTo' => null, 'page' => 1, 'pageSize' => 50, 'search' => null],
+            $this->recorded('Voice/List')[0]['body']);
         set_setting('voice_enabled', '0');
         $this->assertSame('not_configured', voice_message_create($this->user(), ['voice_file_id' => 1, 'destinations' => ['09121111111']])['error_code']);
         $this->assertSame('not_configured', voice_otp_send($this->user(), '09121111111', '1234')['error_code']);

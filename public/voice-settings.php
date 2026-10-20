@@ -26,10 +26,13 @@ $numberFields = [
 ];
 
 $connection = null;
+$providerFiles = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = (string)($_POST['do'] ?? 'save');
-    if ($do === 'test') {
+    if ($do === 'list_files') {
+        $providerFiles = zarincall_voice_list();
+    } elseif ($do === 'test') {
         $connection = zarincall_user_pulse();
         audit((int)$me['id'], 'voice.settings.test', $connection['ok'] ? 'ok' : 'failed');
     } else {
@@ -127,6 +130,38 @@ require __DIR__ . '/../app/views/header.php';
     <?php else: ?>
       <p class="flash flash-error">اتصال ناموفق: <span class="ltr"><?= e((string)$connection['error']) ?></span></p>
     <?php endif; ?>
+  <?php endif; ?>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h2>فایل‌های حساب زرین‌کال و کد وضعیتشان</h2>
+  <p class="hint">
+    زرین‌کال هر فایل را پیش از ارسال تایید می‌کند و معنای کدهای وضعیت را مستند نکرده است. کد فایلی که در پنل زرین‌کال «آماده به ارسال» است را
+    از این فهرست ببینید و در «کدهای وضعیت آماده‌ی ارسال» پایین همین صفحه وارد کنید (اکنون: <b class="ltr"><?= e(implode(',', voice_ready_statuses()) ?: '—') ?></b>).
+  </p>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="list_files">
+    <button class="btn" <?= $keyReadable ? '' : 'disabled' ?>>نمایش فایل‌های زرین‌کال</button>
+  </form>
+  <?php if ($providerFiles !== null && !$providerFiles['ok']): ?>
+    <p class="flash flash-error">دریافت فهرست ناموفق: <span class="ltr"><?= e((string)$providerFiles['error']) ?></span></p>
+  <?php elseif ($providerFiles !== null): ?>
+    <div class="table-wrap">
+    <table>
+      <tr><th>عنوان</th><th>مدت (ثانیه)</th><th>کد وضعیت</th><th>تاریخ</th><th>شناسه</th></tr>
+      <?php foreach ($providerFiles['files'] as $pf): ?>
+        <tr>
+          <td><?= e((string)$pf['title']) ?></td>
+          <td class="num"><?= $pf['duration'] !== null ? to_persian_digits((string)$pf['duration']) : '—' ?></td>
+          <td class="num"><b class="ltr"><?= $pf['status'] !== null ? (int)$pf['status'] : '—' ?></b></td>
+          <td class="num"><?= e(to_persian_digits((string)$pf['add_date'])) ?></td>
+          <td class="ltr hint"><?= e((string)$pf['voice_id']) ?></td>
+        </tr>
+      <?php endforeach; ?>
+      <?php if (!$providerFiles['files']): ?><tr><td colspan="5" class="empty">فایلی در حساب زرین‌کال نیست.</td></tr><?php endif; ?>
+    </table>
+    </div>
   <?php endif; ?>
 </div>
 
