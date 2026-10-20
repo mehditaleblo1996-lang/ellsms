@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Datis Rayan Public API
+  title: Datis Rayan Gostar Iranian Public API
   version: "1.0"
   description: >
     Phase 12 public integration API. See docs/public-api.md and docs/webhooks.md for the full

@@ -2,7 +2,7 @@
     </main>
     <footer class="site-footer panel-footer">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;line-height:1.9">
-        <strong class="footer-brand">داتیس رایان</strong>
+        <strong class="footer-brand">داتیس رایان گستر ایرانیان</strong>
         <span style="opacity:.78">سامانه مدیریت و ارسال پیامک</span>
       </div>
       <?= legal_footer_links_html() ?>

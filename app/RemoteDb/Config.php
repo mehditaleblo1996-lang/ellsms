@@ -46,7 +46,7 @@ const REMOTE_DB_OUTBOUND_FIELDS = [
     'originator'   => ['ستون خط فرستنده (اختیاری)', false],
     'due_at'       => ['ستون زمان ارسال (اختیاری)', false],
     'priority'     => ['ستون اولویت (اختیاری، کمتر = زودتر)', false],
-    'reference'    => ['ستون شناسه داتیس رایان (اختیاری)', false],
+    'reference'    => ['ستون شناسه داتیس رایان گستر ایرانیان (اختیاری)', false],
     'provider_id'  => ['ستون شناسه اپراتور (اختیاری)', false],
     'parts'        => ['ستون تعداد پارت (اختیاری)', false],
     'error'        => ['ستون متن خطا (اختیاری)', false],
@@ -61,7 +61,7 @@ const REMOTE_DB_INBOUND_FIELDS = [
     'destination' => ['ستون خط دریافت‌کننده', true],
     'content'     => ['ستون متن پیام', true],
     'received_at' => ['ستون زمان دریافت (اختیاری)', false],
-    'external_id' => ['ستون شناسه داتیس رایان (اختیاری، جلوی درج تکراری را می‌گیرد)', false],
+    'external_id' => ['ستون شناسه داتیس رایان گستر ایرانیان (اختیاری، جلوی درج تکراری را می‌گیرد)', false],
 ];
 
 const REMOTE_DB_PENDING_MODES = [

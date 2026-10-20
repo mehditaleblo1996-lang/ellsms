@@ -11,13 +11,13 @@ if ($request['state'] === 'pending_mobile_verification') redirect('/register-ver
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ثبت درخواست — داتیس رایان</title>
+<title>ثبت درخواست — داتیس رایان گستر ایرانیان</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="/assets/img/logo.png" alt="داتیس رایان" class="login-logo">
+    <img src="/assets/img/logo.png" alt="داتیس رایان گستر ایرانیان" class="login-logo">
     <?php if ($request['state'] === 'pending_admin_approval'): ?>
       <div class="flash flash-success">شماره موبایل شما با موفقیت تأیید شد.</div>
       <h1 style="font-size:1.25rem">در انتظار تأیید مدیر</h1>

@@ -40,7 +40,7 @@ function legal_identity_rows(): array {
 /** The provider name for running text: the registered name if entered, else the brand. */
 function legal_provider_name(): string {
     $name = trim((string) setting('legal_company_name', ''));
-    return $name !== '' ? $name : 'داتیس رایان';
+    return $name !== '' ? $name : 'داتیس رایان گستر ایرانیان';
 }
 
 /** Renders the «مشخصات ارائه‌دهنده» block shared by the legal pages. */
@@ -48,7 +48,7 @@ function legal_identity_block(): string {
     $rows = legal_identity_rows();
     $html = '<dl class="lp-legal-identity">';
     if (!$rows) {
-        $html .= '<dt>ارائه‌دهنده</dt><dd>داتیس رایان — برای ارتباط از صفحه‌ی <a href="/contact">تماس با ما</a> استفاده کنید.</dd>';
+        $html .= '<dt>ارائه‌دهنده</dt><dd>داتیس رایان گستر ایرانیان — برای ارتباط از صفحه‌ی <a href="/contact">تماس با ما</a> استفاده کنید.</dd>';
     }
     foreach ($rows as [$label, $value, $ltr]) {
         $html .= '<dt>' . e($label) . '</dt><dd' . ($ltr ? ' class="ltr"' : '') . '>' . nl2br(e($value)) . '</dd>';

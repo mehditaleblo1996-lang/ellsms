@@ -208,6 +208,6 @@ require __DIR__ . '/../../../app/views/header.php';
   <?php else: ?>
     <div class="flash flash-warning">در حال حاضر هیچ روش MFA برای حساب فعال نیست.</div>
   <?php endif; ?>
-  <p class="hint">Secret مربوط به TOTP به‌صورت AES-256-GCM رمزگذاری می‌شود. تولید QR هم داخل خود کانتینر داتیس رایان انجام می‌شود و Secret برای هیچ سرویس QR خارجی ارسال نمی‌شود.</p>
+  <p class="hint">Secret مربوط به TOTP به‌صورت AES-256-GCM رمزگذاری می‌شود. تولید QR هم داخل خود کانتینر داتیس رایان گستر ایرانیان انجام می‌شود و Secret برای هیچ سرویس QR خارجی ارسال نمی‌شود.</p>
 </div>
 <?php require __DIR__ . '/../../../app/views/footer.php'; ?>

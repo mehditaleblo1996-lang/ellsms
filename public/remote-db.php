@@ -272,7 +272,7 @@ if ($view === 'list'):
         <a class="btn btn-primary" href="/remote-db.php?new=1">اتصال جدید</a>
       </div>
       <p class="hint">
-        مشتری پیام‌ها را در جدول دیتابیس خودش (MySQL/MariaDB، SQL Server یا PostgreSQL) ثبت می‌کند؛ داتیس رایان ردیف‌های در انتظار را برمی‌دارد،
+        مشتری پیام‌ها را در جدول دیتابیس خودش (MySQL/MariaDB، SQL Server یا PostgreSQL) ثبت می‌کند؛ داتیس رایان گستر ایرانیان ردیف‌های در انتظار را برمی‌دارد،
         از حساب همان کاربر (با کیف پول، تعرفه، سقف پلن و فیلتر محتوا) ارسال می‌کند و وضعیت ارسال/تحویل و پیام‌های دریافتی را در دیتابیس او می‌نویسد.
         اجرای این سرویس با کانتینر <code class="ltr">remote-db-worker</code> است.
       </p>
@@ -376,7 +376,7 @@ elseif ($view === 'detail'):
     <div class="card" style="margin-top:18px">
       <h2>آخرین ردیف‌ها</h2>
       <div class="table-wrap"><table>
-        <tr><th>شناسه ردیف مشتری</th><th>گیرنده</th><th>خط</th><th>وضعیت</th><th>شناسه داتیس رایان</th><th>آخرین نوشتن</th><th>برداشت</th></tr>
+        <tr><th>شناسه ردیف مشتری</th><th>گیرنده</th><th>خط</th><th>وضعیت</th><th>شناسه داتیس رایان گستر ایرانیان</th><th>آخرین نوشتن</th><th>برداشت</th></tr>
         <?php foreach ($recent as $r): ?>
           <tr>
             <td class="ltr"><?= e((string)$r['remote_row_id']) ?></td>

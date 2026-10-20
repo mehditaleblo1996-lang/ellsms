@@ -15,7 +15,7 @@ require __DIR__ . '/../app/views/public_header.php';
        Slide 1 reuses the tilted-phone shot of the ELLSMS promo video as one still (≈43 KB WebP);
        everything else is drawn in CSS/SVG. Auto-advances, pauses on hover/off-screen, and stays on
        the first slide without motion for prefers-reduced-motion. -->
-  <section class="lp-banner" data-lp-banner aria-roledescription="carousel" aria-label="معرفی داتیس رایان">
+  <section class="lp-banner" data-lp-banner aria-roledescription="carousel" aria-label="معرفی داتیس رایان گستر ایرانیان">
     <svg class="lp-banner-circuit" viewBox="0 0 1200 520" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
       <path d="M0 140h220l40 40h180"/><path d="M0 300h160l50-50h240"/><path d="M0 420h300l40-40h120"/>
       <path d="M1200 110H980l-40 40H800"/><path d="M1200 260h-190l-50 50H760"/><path d="M1200 430H930l-40-40H780"/>
@@ -36,7 +36,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
         <div class="lp-banner-copy">
           <h2>پیامک انبوه، <span class="is-blue">ساده</span> و <span class="is-green">قابل پیگیری</span></h2>
-          <p>با داتیس رایان پیام خود را از یک پنل به فهرست مخاطبانتان بفرستید و وضعیت تحویل هر پیامک را ببینید.</p>
+          <p>با داتیس رایان گستر ایرانیان پیام خود را از یک پنل به فهرست مخاطبانتان بفرستید و وضعیت تحویل هر پیامک را ببینید.</p>
           <div class="lp-banner-feats">
             <div><svg viewBox="0 0 24 24"><path d="M4 16a8 8 0 1 1 16 0"/><path d="m12 16 4-5"/><path d="M2 20h20"/></svg><b>ارسال مستقیم</b><span>ارسال فوری یا زمان‌بندی‌شده</span></div>
             <div><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg><b>پیگیری هر پیام</b><span>وضعیت تحویل هر پیامک</span></div>
@@ -182,7 +182,7 @@ require __DIR__ . '/../app/views/public_header.php';
         <h1>ارسال پیامک انبوه، <span class="lp-heading-accent">شخصی‌سازی‌شده</span> و خودکار<br>همه در یک پنل</h1>
         <p class="lp-hero-sub">
           از ارسال ساده و زمان‌بندی‌شده تا پیامک هوشمند با قالب پویا، منشی پیامک خودکار
-          و گزارش لحظه‌ای وضعیت هر پیام — داتیس رایان ابزار پیامک‌رسانی کسب‌وکار شماست.
+          و گزارش لحظه‌ای وضعیت هر پیام — داتیس رایان گستر ایرانیان ابزار پیامک‌رسانی کسب‌وکار شماست.
         </p>
         <div class="lp-hero-cta">
           <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
@@ -404,7 +404,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <div class="lp-compare-row lp-compare-head">
         <div></div>
         <div>ارسال دستی / اکسل پراکنده</div>
-        <div class="lp-compare-highlight">داتیس رایان</div>
+        <div class="lp-compare-highlight">داتیس رایان گستر ایرانیان</div>
       </div>
       <div class="lp-compare-row">
         <div>شخصی‌سازی هر پیام</div>

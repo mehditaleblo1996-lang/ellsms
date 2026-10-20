@@ -93,7 +93,7 @@ function notification_send_email(string $email, string $title, string $body): bo
     if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) return false;
     $from = trim((string)setting('notification_email_from', ''));
     $headers = ['Content-Type: text/plain; charset=UTF-8'];
-    if ($from !== '' && filter_var($from, FILTER_VALIDATE_EMAIL)) $headers[] = 'From: Datis Rayan <' . $from . '>';
+    if ($from !== '' && filter_var($from, FILTER_VALIDATE_EMAIL)) $headers[] = 'From: Datis Rayan Gostar Iranian <' . $from . '>';
     return @mail($email, '=?UTF-8?B?' . base64_encode($title) . '?=', $body, implode("\r\n", $headers));
 }
 

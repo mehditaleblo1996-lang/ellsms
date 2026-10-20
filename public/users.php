@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($orgResult['created']) {
                 audit((int)$me['id'], 'user.organization_ensured', "#{$targetUserId} org=#{$orgResult['organization_id']}");
             }
-            flash('success', 'دسترسی به داتیس رایان داده شد.');
+            flash('success', 'دسترسی به داتیس رایان گستر ایرانیان داده شد.');
         }
     } elseif ($do === 'enable_2fa_all') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
@@ -59,14 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          */
         $target = resolve_ellsms_managed_user($id);
         if (!$target) {
-            flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان نیست یا یافت نشد.');
+            flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان گستر ایرانیان نیست یا یافت نشد.');
         } elseif (in_array($do, ['revoke', 'toggle_admin'], true) && !can_demote_or_revoke($me, $id)) {
             flash('error', 'شما نمی‌توانید این عملیات را روی حساب خودتان انجام دهید.');
         } elseif ($do === 'revoke') {
             db()->prepare('UPDATE ellsms_meta SET panel_access=0, is_admin=0 WHERE user_id=?')->execute([$id]);
             audit((int)$me['id'], 'user.revoke_access', "#{$id}");
             Logger::info('user.revoke_access', ['actor_id' => $me['id'], 'target_id' => $id]);
-            flash('info', 'دسترسی به داتیس رایان لغو شد.');
+            flash('info', 'دسترسی به داتیس رایان گستر ایرانیان لغو شد.');
         } elseif ($do === 'toggle_admin') {
             db()->prepare('UPDATE ellsms_meta SET is_admin = 1 - is_admin WHERE user_id=?')->execute([$id]);
             audit((int)$me['id'], 'user.toggle_admin', "#{$id}");
@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 backend_update_user_password($id, backend_hash_password($p));
                 audit((int)$me['id'], 'user.password_reset', "#{$id}");
                 Logger::info('user.password_reset', ['actor_id' => $me['id'], 'target_id' => $id]);
-                flash('success', 'رمز عبور تغییر کرد. توجه: این رمز همه‌جا برای این حساب استفاده می‌شود، نه فقط در داتیس رایان.');
+                flash('success', 'رمز عبور تغییر کرد. توجه: این رمز همه‌جا برای این حساب استفاده می‌شود، نه فقط در داتیس رایان گستر ایرانیان.');
             }
         } elseif ($do === 'kyc_save') {
             try {
@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $parentId = $parentUsername === '' ? 0 : (int)(backend_find_user_id_by_username($parentUsername) ?? -1);
             $tariffBp = customer_tariff_bp_from_input((string)($_POST['tariff_percent'] ?? '100'));
             if ($parentId < 0 || ($parentId > 0 && !resolve_ellsms_managed_user($parentId))) {
-                flash('error', 'حساب والد با این نام کاربری در داتیس رایان پیدا نشد.');
+                flash('error', 'حساب والد با این نام کاربری در داتیس رایان گستر ایرانیان پیدا نشد.');
             } elseif ($tariffBp === null) {
                 flash('error', customer_error_message('invalid_tariff'));
             } else {
@@ -269,7 +269,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 });
                 audit((int)$me['id'], 'user.create_account', $username);
-                flash('success', 'حساب «' . $username . '» ساخته شد و دسترسی داتیس رایان نیز فعال شد.');
+                flash('success', 'حساب «' . $username . '» ساخته شد و دسترسی داتیس رایان گستر ایرانیان نیز فعال شد.');
                 redirect('/users.php?edit=' . $newUserId);
             } else {
                 flash('error', 'ساخت حساب ناموفق بود: ' . $info);
@@ -283,7 +283,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (in_array($do, ['profile_personal', 'profile_organization', 'profile_address', 'profile_notifications', 'profile_document_upload', 'profile_document_archive'], true)) {
         $target = resolve_ellsms_managed_user($id);
         if (!$target) {
-            flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان نیست یا یافت نشد.');
+            flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان گستر ایرانیان نیست یا یافت نشد.');
         } else {
             // The organization is resolved from the TARGET's own memberships, never from the request:
             // accepting an organization_id here would let a crafted POST write another tenant's
@@ -358,7 +358,7 @@ if (!empty($_GET['edit'])) {
     // finding #2).
     $editUser = resolve_ellsms_managed_user((int)$_GET['edit']);
     if (!$editUser) {
-        flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان نیست یا یافت نشد.');
+        flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان گستر ایرانیان نیست یا یافت نشد.');
     } else {
         $kst = db()->prepare('SELECT * FROM ellsms_user_kyc WHERE user_id = ?');
         $kst->execute([$editUser['id']]);
@@ -608,7 +608,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="grid grid-2">
   <div class="card">
     <h2>تعیین رمز عبور جدید</h2>
-    <p class="hint">این کار رمز عبور حساب را همه‌جا تغییر می‌دهد، نه فقط در داتیس رایان.</p>
+    <p class="hint">این کار رمز عبور حساب را همه‌جا تغییر می‌دهد، نه فقط در داتیس رایان گستر ایرانیان.</p>
     <form method="post" style="margin-top:var(--sp-3)">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="password">
@@ -882,7 +882,7 @@ if ($editOrganizationId > 0) {
 <section class="tab-panel" data-panel="kyc" role="tabpanel">
 <div class="card">
   <h2>اطلاعات هویتی (KYC)</h2>
-  <p class="hint">نام، نام‌خانوادگی و موبایل از سامانه‌ی مرکزی می‌آید (بالا نمایش داده شد). فیلدهای زیر فقط در داتیس رایان نگهداری می‌شوند.</p>
+  <p class="hint">نام، نام‌خانوادگی و موبایل از سامانه‌ی مرکزی می‌آید (بالا نمایش داده شد). فیلدهای زیر فقط در داتیس رایان گستر ایرانیان نگهداری می‌شوند.</p>
   <form method="post" enctype="multipart/form-data" style="margin-top:var(--sp-3)">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="kyc_save">
@@ -1082,7 +1082,7 @@ if ($editOrganizationId > 0) {
 
 <section class="tab-panel" data-panel="list" role="tabpanel">
 <div class="card">
-  <h2>حساب‌های دارای دسترسی داتیس رایان</h2>
+  <h2>حساب‌های دارای دسترسی داتیس رایان گستر ایرانیان</h2>
   <form method="post" onsubmit="return confirm('ورود دومرحله‌ای با پیامک برای همه‌ی کاربران فعال شود؟')" style="margin-bottom:14px">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="enable_2fa_all">
@@ -1112,7 +1112,7 @@ if ($editOrganizationId > 0) {
         <td style="white-space:nowrap">
           <a class="btn btn-sm" href="/users.php?edit=<?= $u['id'] ?>">ویرایش</a>
           <?php if ((int)$u['id'] !== (int)$me['id']): ?>
-          <form method="post" style="display:inline" onsubmit="return confirm('دسترسی داتیس رایان برای <?= e($u['username']) ?> لغو شود؟')">
+          <form method="post" style="display:inline" onsubmit="return confirm('دسترسی داتیس رایان گستر ایرانیان برای <?= e($u['username']) ?> لغو شود؟')">
             <?= csrf_field() ?>
             <input type="hidden" name="do" value="revoke">
             <input type="hidden" name="id" value="<?= $u['id'] ?>">
@@ -1133,7 +1133,7 @@ if ($editOrganizationId > 0) {
   <div class="card-head">
     <div>
       <h2>ساخت حساب تازه</h2>
-      <p class="hint">پس از ساخت، دسترسی داتیس رایان خودکار فعال می‌شود و می‌توانید بلافاصله اعتبار، شماره و اطلاعات هویتی را تنظیم کنید. کد کاربری (code) خودکار و یکتا تولید می‌شود.</p>
+      <p class="hint">پس از ساخت، دسترسی داتیس رایان گستر ایرانیان خودکار فعال می‌شود و می‌توانید بلافاصله اعتبار، شماره و اطلاعات هویتی را تنظیم کنید. کد کاربری (code) خودکار و یکتا تولید می‌شود.</p>
     </div>
   </div>
   <?php if (!$domains): ?>
@@ -1205,7 +1205,7 @@ if ($editOrganizationId > 0) {
     <label>نام کاربری <input type="text" name="username" required placeholder="نام کاربری موجود"></label>
     <button class="btn btn-primary">دادن دسترسی</button>
   </form>
-  <p class="hint">اگر حساب از قبل در سامانه‌ی مرکزی وجود دارد (مثلاً از طریق ابزارهای دیگر ساخته شده)، به‌جای ساخت دوباره، فقط دسترسی داتیس رایان را برایش فعال کنید.</p>
+  <p class="hint">اگر حساب از قبل در سامانه‌ی مرکزی وجود دارد (مثلاً از طریق ابزارهای دیگر ساخته شده)، به‌جای ساخت دوباره، فقط دسترسی داتیس رایان گستر ایرانیان را برایش فعال کنید.</p>
 </div>
 </section>
 </div>

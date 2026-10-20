@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (int)$result['user_id'],
                 (int)$result['organization_id'],
                 'registration.account_created',
-                'حساب داتیس رایان شما فعال شد',
+                'حساب داتیس رایان گستر ایرانیان شما فعال شد',
                 'حساب شما با موفقیت فعال شده است. از بخش شروع کار می‌توانید مراحل تکمیل حساب را ادامه دهید.',
                 '/onboarding.php',
                 'success'
@@ -119,7 +119,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="form-row">
     <div><strong>وضعیت پیامک</strong><div><?= $row['admin_notified_at'] ? '✓ ارسال شده' : 'ارسال نشده' ?></div></div>
     <div><strong>آخرین ارسال</strong><div class="ltr"><?= e($row['admin_notified_at'] ?: '—') ?></div></div>
-    <div style="flex:2"><strong>گیرنده</strong><div class="hint">شماره‌های تنظیم‌شده در Settings؛ اگر خالی باشند، موبایل مدیران فعال داتیس رایان استفاده می‌شود.</div></div>
+    <div style="flex:2"><strong>گیرنده</strong><div class="hint">شماره‌های تنظیم‌شده در Settings؛ اگر خالی باشند، موبایل مدیران فعال داتیس رایان گستر ایرانیان استفاده می‌شود.</div></div>
   </div>
   <?php if ($row['state'] === 'pending_admin_approval'): ?>
     <form method="post" style="margin-top:14px">
@@ -145,7 +145,7 @@ require __DIR__ . '/../app/views/header.php';
 <?php if (in_array($row['state'], ['pending_admin_approval', 'approved'], true)): ?>
 <div class="card">
   <h2><?= $row['state'] === 'approved' ? 'تکمیل فعال‌سازی حساب' : 'تأیید و فعال‌سازی' ?></h2>
-  <p class="hint">با تأیید، حساب واقعی ساخته می‌شود، دسترسی داتیس رایان فعال می‌شود و Organization مالک ایجاد می‌شود.</p>
+  <p class="hint">با تأیید، حساب واقعی ساخته می‌شود، دسترسی داتیس رایان گستر ایرانیان فعال می‌شود و Organization مالک ایجاد می‌شود.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
