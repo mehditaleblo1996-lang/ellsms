@@ -93,7 +93,7 @@
   letter-spacing: .12em !important;
   color: var(--a-ink); text-align: right;
 }
-.auth-wordmark span { color: var(--a-brand); }
+.auth-wordmark span { color: #1fb5c9; }
 .auth-brand-text small { font-size: var(--a-fs-xs); color: var(--a-soft); line-height: 1.6; }
 @keyframes mark-typing { 0%, 60%, 100% { opacity: 1; } 30% { opacity: .35; } }
 .auth-toplink { font-size: var(--a-fs-base); }
