@@ -10,7 +10,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title><?= e($pageTitle ?? 'داتیس رایان') ?> — داتیس رایان</title>
+<title><?= e($pageTitle ?? 'داتیس رایان گستر ایرانیان') ?> — داتیس رایان گستر ایرانیان</title>
 <?php if (!empty($metaDescription)): ?><meta name="description" content="<?= e($metaDescription) ?>"><?php endif; ?>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
@@ -20,9 +20,9 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 
 <header class="lp-nav">
   <div class="lp-nav-inner">
-    <a href="/landing.php" class="lp-brand" aria-label="داتیس رایان — پنل هوشمند پیامک">
+    <a href="/landing.php" class="lp-brand" aria-label="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک">
       <img class="lp-brand-mark" src="/assets/img/brand-mark.png" alt="" aria-hidden="true">
-      <span class="lp-brand-text"><b><i>Datis</i> Rayan</b><small>داتیس رایان · پنل هوشمند پیامک</small></span>
+      <span class="lp-brand-text"><b><i>Datis</i> Rayan</b><small>داتیس رایان گستر ایرانیان</small></span>
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
       <a href="/landing.php#features">امکانات</a>

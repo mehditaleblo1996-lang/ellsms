@@ -20,7 +20,7 @@ $target = $targetId > 0 ? resolve_ellsms_managed_user($targetId) : null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     if (!$target) {
-        flash('error', 'کاربر موردنظر در محدوده مدیریت داتیس رایان نیست.');
+        flash('error', 'کاربر موردنظر در محدوده مدیریت داتیس رایان گستر ایرانیان نیست.');
         redirect('/user-send-policies.php');
     }
     if (impersonation_guard_post('user.send_policy')) {
@@ -55,7 +55,7 @@ require __DIR__ . '/../app/views/header.php';
 </div>
 
 <?php if ($q !== '' && !$target): ?>
-<div class="flash flash-error">کاربر پیدا نشد یا دسترسی داتیس رایان ندارد.</div>
+<div class="flash flash-error">کاربر پیدا نشد یا دسترسی داتیس رایان گستر ایرانیان ندارد.</div>
 <?php endif; ?>
 
 <?php if ($target && $policy): ?>

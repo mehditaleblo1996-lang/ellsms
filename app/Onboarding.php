@@ -12,7 +12,7 @@ function onboarding_video_url(): string {
 }
 
 function onboarding_video_title(): string {
-    return trim((string)setting('onboarding_video_title', 'آموزش شروع کار با داتیس رایان'));
+    return trim((string)setting('onboarding_video_title', 'آموزش شروع کار با داتیس رایان گستر ایرانیان'));
 }
 
 /**

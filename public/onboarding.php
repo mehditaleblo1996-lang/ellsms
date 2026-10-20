@@ -22,7 +22,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card" style="overflow:hidden">
   <div style="display:flex;gap:24px;align-items:center;justify-content:space-between;flex-wrap:wrap">
     <div style="flex:1;min-width:260px">
-      <div class="hint">راه‌اندازی حساب داتیس رایان</div>
+      <div class="hint">راه‌اندازی حساب داتیس رایان گستر ایرانیان</div>
       <h2 style="margin:5px 0 8px"><?= $status['complete'] ? 'حساب شما آماده استفاده است ✓' : 'چند قدم تا آماده‌شدن کامل حساب' ?></h2>
       <p class="hint" style="margin:0">این مراحل از وضعیت واقعی حساب محاسبه می‌شوند و نیازی به علامت‌زدن دستی ندارند.</p>
     </div>

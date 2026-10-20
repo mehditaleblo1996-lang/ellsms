@@ -134,7 +134,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title><?= e($pageTitle ?? 'داتیس رایان') ?> — داتیس رایان</title>
+<title><?= e($pageTitle ?? 'داتیس رایان گستر ایرانیان') ?> — داتیس رایان گستر ایرانیان</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/panel-layout-fixes.css')) ?>">
@@ -148,7 +148,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
   <aside class="sidebar" id="sidebar" aria-label="منوی پنل">
     <div class="sidebar-head">
     <a class="brand" href="/index.php">
-      <img src="/assets/img/logo.png" alt="داتیس رایان">
+      <img src="/assets/img/logo.png" alt="داتیس رایان گستر ایرانیان">
     </a>
     <button type="button" class="sidebar-close icon-button" id="sidebarClose" aria-label="بستن منو"><?= panel_icon('close') ?></button>
     </div>
@@ -175,7 +175,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
       <?php endforeach; ?>
     </nav>
     <p class="nav-search-empty" id="navSearchEmpty" hidden role="status">منویی پیدا نشد؛ عبارت دیگری بنویسید.</p>
-    <div class="sidebar-foot">Datis Rayan v<?= e(app_version()) ?><?php if (app_env() !== 'production'): ?> · <?= e(strtoupper(app_env())) ?><?php endif; ?></div>
+    <div class="sidebar-foot">Datis Rayan Gostar Iranian v<?= e(app_version()) ?><?php if (app_env() !== 'production'): ?> · <?= e(strtoupper(app_env())) ?><?php endif; ?></div>
   </aside>
 
   <div class="main">

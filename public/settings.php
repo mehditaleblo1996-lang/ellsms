@@ -120,7 +120,7 @@ require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
   <h2>ارسال</h2>
-  <p class="hint">داتیس رایان با فراخوانی REST API خود سامانه‌ی مرکزی پیامک ارسال می‌کند.</p>
+  <p class="hint">داتیس رایان گستر ایرانیان با فراخوانی REST API خود سامانه‌ی مرکزی پیامک ارسال می‌کند.</p>
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="general">
@@ -158,7 +158,7 @@ require __DIR__ . '/../app/views/header.php';
     </div>
     <label>شماره موبایل مدیران دریافت‌کننده اعلان
       <textarea name="registration_admin_mobiles" rows="4" class="ltr" placeholder="0912... هر خط یک شماره"><?= e(setting('registration_admin_mobiles','')) ?></textarea>
-      <div class="hint">اگر خالی باشد، موبایل مدیران فعال داتیس رایان به‌صورت خودکار استفاده می‌شود.</div>
+      <div class="hint">اگر خالی باشد، موبایل مدیران فعال داتیس رایان گستر ایرانیان به‌صورت خودکار استفاده می‌شود.</div>
     </label>
     <button class="btn btn-primary">ذخیره تنظیمات ثبت‌نام</button>
     <a class="btn btn-ghost" href="/registration-requests.php">مشاهده درخواست‌ها</a>
@@ -177,7 +177,7 @@ require __DIR__ . '/../app/views/header.php';
     </label>
     <div class="form-row" style="margin-top:14px">
       <label>عنوان ویدیو (اختیاری)
-        <input type="text" maxlength="160" name="onboarding_video_title" value="<?= e(setting('onboarding_video_title','آموزش شروع کار با داتیس رایان')) ?>">
+        <input type="text" maxlength="160" name="onboarding_video_title" value="<?= e(setting('onboarding_video_title','آموزش شروع کار با داتیس رایان گستر ایرانیان')) ?>">
       </label>
       <label>لینک ویدیو (اختیاری)
         <input type="url" name="onboarding_video_url" class="ltr" placeholder="https://..." value="<?= e(setting('onboarding_video_url','')) ?>">
@@ -371,6 +371,6 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <h2>دریافت پیامک و گزارش تحویل</h2>
-  <p>نیازی به تنظیم چیزی در اینجا نیست — پیامک‌های دریافتی و به‌روزرسانی‌های وضعیت تحویل به‌طور خودکار از طریق اندپوینت‌های خود سامانه‌ی مرکزی وارد پایگاه‌داده‌ی مشترک می‌شوند. داتیس رایان فقط جدول‌های <code class="kbd">inbound_message</code> و <code class="kbd">outbound_message</code> را می‌خواند.</p>
+  <p>نیازی به تنظیم چیزی در اینجا نیست — پیامک‌های دریافتی و به‌روزرسانی‌های وضعیت تحویل به‌طور خودکار از طریق اندپوینت‌های خود سامانه‌ی مرکزی وارد پایگاه‌داده‌ی مشترک می‌شوند. داتیس رایان گستر ایرانیان فقط جدول‌های <code class="kbd">inbound_message</code> و <code class="kbd">outbound_message</code> را می‌خواند.</p>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

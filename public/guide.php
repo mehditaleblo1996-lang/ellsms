@@ -3,7 +3,7 @@ require_once __DIR__ . '/../app/bootstrap.php';
 
 $me = current_user();
 $pageTitle = 'راهنمای کاربران';
-$metaDescription = 'راهنمای کامل و گام‌به‌گام استفاده از پنل داتیس رایان.';
+$metaDescription = 'راهنمای کامل و گام‌به‌گام استفاده از پنل داتیس رایان گستر ایرانیان.';
 $active = 'guide';
 
 // Admin-managed articles remain available after the built-in product guide. This keeps the guide
@@ -176,7 +176,7 @@ $sections = [
         'id' => 'api',
         'icon' => '🔑',
         'title' => 'API و Webhook',
-        'summary' => 'اتصال نرم‌افزار شما به داتیس رایان به‌صورت امن.',
+        'summary' => 'اتصال نرم‌افزار شما به داتیس رایان گستر ایرانیان به‌صورت امن.',
         'body' => [
             'اگر پلن و سطح دسترسی شما اجازه دهد، از «کلیدهای API» یک کلید بسازید. مقدار محرمانه کلید را فقط همان زمان ایجاد ذخیره کنید و آن را داخل کد یا Git قرار ندهید.',
             'برای ارسال جدید از API عمومی نسخه v1 استفاده کنید. در ارسال تکی، فرستادن client_message_id (یا هدر Idempotency-Key) اختیاری ولی توصیه‌شده است تا تکرار ناخواسته درخواست باعث ارسال یا برداشت دوباره نشود؛ در ارسال انبوه (Bulk Jobs) هدر Idempotency-Key اجباری است.',
@@ -248,7 +248,7 @@ if ($me) {
 </style>
 <div class="guide-shell">
   <div class="card guide-hero">
-    <h2 style="margin-top:0">راهنمای کامل کاربران داتیس رایان</h2>
+    <h2 style="margin-top:0">راهنمای کامل کاربران داتیس رایان گستر ایرانیان</h2>
     <p class="hint">هر بخش را باز کنید و قدم‌به‌قدم جلو بروید. این راهنما بر اساس قابلیت‌های فعلی پنل نوشته شده و با اضافه‌شدن امکانات جدید قابل به‌روزرسانی است.</p>
     <input id="guideSearch" class="guide-search" type="search" placeholder="جستجو در راهنما؛ مثلاً API، احراز هویت، زمان‌بندی..." autocomplete="off">
     <div class="guide-nav">

@@ -400,11 +400,11 @@ function impersonation_target_refusal(?array $target, int $actorUserId): ?string
 /** Persian explanation for a refusal code — operator-facing, on an admin-only page, so it may be specific. */
 function impersonation_refusal_message(string $reason): string {
     return [
-        'target_not_found'           => 'این حساب در محدوده‌ی مدیریت داتیس رایان نیست یا یافت نشد.',
+        'target_not_found'           => 'این حساب در محدوده‌ی مدیریت داتیس رایان گستر ایرانیان نیست یا یافت نشد.',
         'target_is_self'             => 'ورود به پنل خودتان معنایی ندارد.',
         'target_deleted'             => 'این حساب حذف شده است و امکان ورود پشتیبانی وجود ندارد.',
         'target_is_platform_admin'   => 'ورود به پنل یک مدیر سامانه مجاز نیست.',
-        'target_has_no_panel_access' => 'این حساب دسترسی پنل داتیس رایان ندارد.',
+        'target_has_no_panel_access' => 'این حساب دسترسی پنل داتیس رایان گستر ایرانیان ندارد.',
         'already_impersonating'      => 'هم‌اکنون در حالت پشتیبانی هستید. ابتدا از آن خارج شوید.',
         'not_platform_admin'         => 'این عملیات فقط برای مدیران سامانه مجاز است.',
         'not_parent'                 => 'این حساب زیرمجموعه‌ی شما نیست.',

@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['uid'] = $u['id'];
                     session_mark_authenticated();
                     audit((int)$u['id'], 'bootstrap_admin');
-                    flash('success', 'این حساب اکنون مدیر داتیس رایان است. از بخش «کاربران» می‌توانید به حساب‌های دیگر دسترسی بدهید.');
+                    flash('success', 'این حساب اکنون مدیر داتیس رایان گستر ایرانیان است. از بخش «کاربران» می‌توانید به حساب‌های دیگر دسترسی بدهید.');
                     redirect('/index.php');
                 } else {
                     redirect('/login.php');
@@ -51,25 +51,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>راه‌اندازی اولیه — داتیس رایان</title>
+<title>راه‌اندازی اولیه — داتیس رایان گستر ایرانیان</title>
 <link rel="icon" href="/assets/img/favicon.png">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card">
-    <img src="/assets/img/logo.png" alt="داتیس رایان — پنل هوشمند پیامک" class="login-logo">
-    <p class="login-sub">راه‌اندازی اولیه — هنوز هیچ حسابی به داتیس رایان دسترسی ندارد.</p>
+    <img src="/assets/img/logo.png" alt="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک" class="login-logo">
+    <p class="login-sub">راه‌اندازی اولیه — هنوز هیچ حسابی به داتیس رایان گستر ایرانیان دسترسی ندارد.</p>
     <?php if ($error): ?><div class="flash flash-error"><?= e($error) ?></div><?php endif; ?>
     <form method="post" autocomplete="off">
       <?= csrf_field() ?>
       <label>نام کاربری موجود
         <input type="text" name="username" required autofocus>
-        <div class="hint">هر حسابی که از قبل در سامانه‌ی مرکزی وجود دارد. این حساب مدیر اول داتیس رایان می‌شود.</div>
+        <div class="hint">هر حسابی که از قبل در سامانه‌ی مرکزی وجود دارد. این حساب مدیر اول داتیس رایان گستر ایرانیان می‌شود.</div>
       </label>
       <label>رمز عبور
         <input type="password" name="password" required>
       </label>
-      <button type="submit" class="btn btn-primary btn-block">این حساب را مدیر داتیس رایان کن</button>
+      <button type="submit" class="btn btn-primary btn-block">این حساب را مدیر داتیس رایان گستر ایرانیان کن</button>
     </form>
   </main>
 </body>

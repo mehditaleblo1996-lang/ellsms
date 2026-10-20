@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = 'تماس با ما';
-$metaDescription = 'راه‌های تماس با داتیس رایان و فرم ارسال تیکت پشتیبانی.';
+$metaDescription = 'راه‌های تماس با داتیس رایان گستر ایرانیان و فرم ارسال تیکت پشتیبانی.';
 $address = trim((string) setting('contact_address', ''));
 $phone   = trim((string) setting('contact_phone', ''));
 $email   = trim((string) setting('contact_email', ''));
