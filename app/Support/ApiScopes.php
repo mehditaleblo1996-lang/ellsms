@@ -28,6 +28,8 @@ final class ApiScopes
     public const BALANCE_READ   = 'balance:read';
     public const WEBHOOKS_READ  = 'webhooks:read';
     public const WEBHOOKS_WRITE = 'webhooks:write';
+    public const VOICE_SEND     = 'voice:send';
+    public const VOICE_READ     = 'voice:read';
 
     /** Every scope constant this class defines — never hand-maintained twice (mirrors Permissions::all()). */
     public static function all(): array
@@ -38,6 +40,7 @@ final class ApiScopes
             self::CONTACTS_READ, self::CONTACTS_WRITE,
             self::BALANCE_READ,
             self::WEBHOOKS_READ, self::WEBHOOKS_WRITE,
+            self::VOICE_SEND, self::VOICE_READ,
         ];
     }
 

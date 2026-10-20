@@ -32,6 +32,11 @@ $nav += [
 if ($me['role'] === 'admin' || bale_configured()) {
     $nav['bale'] = ['/bale-messages.php', 'پیام‌رسان بله', '💬'];
 }
+// Voice messages through ZarinCall, shown once the service is set up (admins always, to follow sends).
+if ($me['role'] === 'admin' || voice_configured()) {
+    $nav['voice'] = ['/voice.php', 'پیام صوتی', '🔊'];
+    $nav['voice_files'] = ['/voice-files.php', 'فایل‌های صوتی', '🎙'];
+}
 // #43 — regional bulk through Vesal, shown once it is set up (admins always, to set it up).
 if ($me['role'] === 'admin' || regional_bulk_configured()) {
     $nav['regional_bulk'] = ['/regional-bulk.php', 'ارسال منطقه‌ای', '🗺️'];
@@ -99,6 +104,7 @@ $adminNav = [
     'price_quote'           => ['/price-quote.php',           'فاکتور / لیست قیمت', '🧾'],
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
+    'voice_settings'        => ['/voice-settings.php',        'سرویس پیام صوتی',     '🔊'],
     'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
     'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
@@ -115,7 +121,7 @@ $adminNav = [
 $adminNavGroups = menu_group_items($adminNav, [
     'admin_users'    => ['کاربران و نمایندگان', ['users', 'registration_requests', 'menu_roles', 'reseller_profits', 'user_send_policies']],
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
-    'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'remote_db']],
+    'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin']],
     'admin_sending'  => ['کنترل ارسال',          ['prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],

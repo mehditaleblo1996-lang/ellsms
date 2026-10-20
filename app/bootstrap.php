@@ -115,6 +115,9 @@ require_once __DIR__ . '/Sms/Smpp.php';
 require_once __DIR__ . '/RemoteDb/Config.php';
 require_once __DIR__ . '/RemoteDb/Dialect.php';
 require_once __DIR__ . '/RemoteDb/Sync.php';
+// Voice messages through ZarinCall (docs/voice-messages.md).
+require_once __DIR__ . '/Voice/ZarinCall.php';
+require_once __DIR__ . '/VoiceMessages.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';

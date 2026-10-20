@@ -36,6 +36,7 @@ require_once __DIR__ . '/../../app/Api/Handlers/Contacts.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Balance.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Webhooks.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Preview.php';
+require_once __DIR__ . '/../../app/Api/Handlers/Voice.php';
 
 Logger::setCliMirror(false); // pure JSON stdout even if this ever runs under `php -S` for testing (Phase 11 precedent)
 
@@ -77,6 +78,13 @@ $router->map('PATCH', '/api/v1/webhooks/{id}',                'api_handle_webhoo
 $router->map('DELETE','/api/v1/webhooks/{id}',                'api_handle_webhooks_delete', ApiScopes::WEBHOOKS_WRITE);
 $router->map('POST',  '/api/v1/webhooks/{id}/rotate-secret',  'api_handle_webhooks_rotate_secret', ApiScopes::WEBHOOKS_WRITE);
 $router->map('POST',  '/api/v1/webhooks/{id}/test',           'api_handle_webhooks_test', ApiScopes::WEBHOOKS_WRITE);
+// Voice messages through ZarinCall (app/Api/Handlers/Voice.php).
+$router->map('GET',   '/api/v1/voice/files',                 'api_handle_voice_files_list', ApiScopes::VOICE_READ);
+$router->map('POST',  '/api/v1/voice/tts',                   'api_handle_voice_tts', ApiScopes::VOICE_SEND);
+$router->map('POST',  '/api/v1/voice/messages',              'api_handle_voice_messages_send', ApiScopes::VOICE_SEND);
+$router->map('GET',   '/api/v1/voice/messages/{id}',         'api_handle_voice_messages_get', ApiScopes::VOICE_READ);
+$router->map('POST',  '/api/v1/voice/messages/{id}/cancel',  'api_handle_voice_messages_cancel', ApiScopes::VOICE_SEND);
+$router->map('POST',  '/api/v1/voice/otp',                   'api_handle_voice_otp', ApiScopes::VOICE_SEND);
 
 $route = $router->dispatch($method, $path);
 if (!$route['matched']) {

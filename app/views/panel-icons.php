@@ -30,13 +30,15 @@ function panel_icon(string $name): string {
         'search' => '<circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5"/>',
         'close' => '<path d="m6 6 12 12M6 18 18 6"/>',
         'check' => '<path d="m5 12 4 4L20 5"/>',
+        'speaker' => '<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
+        'mic' => '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/>',
     ];
     $names = [
         'dashboard'=>'grid', 'notifications'=>'bell', 'guide'=>'book', 'onboarding'=>'check',
         'new_send'=>'spark', 'send'=>'send', 'p2p'=>'users', 'smart'=>'spark', 'schedules'=>'clock',
         'autoreply'=>'message', 'reports'=>'chart', 'reports_bulk'=>'chart', 'inbox'=>'inbox',
         'contacts'=>'users', 'blacklist'=>'ban', 'line_optouts'=>'ban', 'tickets'=>'help',
-        'buy_credit'=>'wallet', 'invoices'=>'receipt', 'bale'=>'message', 'regional_bulk'=>'globe',
+        'buy_credit'=>'wallet', 'invoices'=>'receipt', 'bale'=>'message', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe',
         'api_keys'=>'key', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',
         'number_forwards'=>'send', 'billing'=>'wallet', 'subaccounts'=>'users', 'menu_roles'=>'shield',
         'reseller_profits'=>'chart', 'user_send_policies'=>'shield', 'registration_requests'=>'user',

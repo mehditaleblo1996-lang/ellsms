@@ -82,6 +82,8 @@ create a key at all** — these are two separate, deliberately independent layer
 | `balance:read` | `GET /balance` |
 | `webhooks:read` | `GET /webhooks`, `GET /webhooks/{id}` |
 | `webhooks:write` | `POST /webhooks`, `PATCH`, `DELETE`, rotate-secret, test |
+| `voice:send` | `POST /voice/messages`, `POST /voice/messages/{id}/cancel`, `POST /voice/otp`, `POST /voice/tts` |
+| `voice:read` | `GET /voice/files`, `GET /voice/messages/{id}` |
 
 An unrecognized scope string is rejected outright at key-creation time — never silently dropped, and
 never accepted as a partial match. A request against an endpoint the key wasn't granted returns
@@ -346,6 +348,22 @@ Full CRUD plus lifecycle actions — see `docs/webhooks.md` for the complete ref
 - `GET /webhooks`, `POST /webhooks`, `GET /webhooks/{id}`, `PATCH /webhooks/{id}`, `DELETE /webhooks/{id}`
 - `POST /webhooks/{id}/rotate-secret`
 - `POST /webhooks/{id}/test`
+
+### Voice messages (ZarinCall) — scopes `voice:send` / `voice:read`
+Available while the platform admin has the voice service switched on (otherwise `503
+service_unavailable`); the full behaviour — pricing in pulses, reserve → charge answered calls →
+release the rest — is in `docs/voice-messages.md`. Voice files are uploaded in the panel
+(/messages/voice/files); the API refers to them by id.
+- `GET /voice/files?limit=&page=` — `[{"id", "title", "source": "upload"|"tts", "duration_seconds", "pulses", "created_at"}]`
+- `POST /voice/tts` — `{"text": "…", "title": "…", "speaker": 1|2}` → `201` with the new file
+- `POST /voice/messages` — `{"voice_file_id": 12, "destinations": ["0912…"], "type": "voice"|"ivc", "ivc_digit": 1, "ivc_sms": "…", "scheduled_at": "2026-11-01T10:00:00+03:30", "title": "…", "client_message_id": "…"}`
+  → `201` `{"id", "kind", "status": "sent"|"scheduled"|"failed", "recipients", "blocked", "invalid", "pulses", "unit_cost", "reserved_cost", "charged_cost", "answered", "not_answered", …}`.
+  `ivc_digit`/`ivc_sms` only for `type: "ivc"`; without `scheduled_at` the send goes out at once; up to 10,000 numbers;
+  blacklisted numbers are skipped. `402` when credit does not cover the worst case, `404` for an unknown file.
+- `GET /voice/messages/{id}` — the same shape; `answered`, `not_answered` and `charged_cost` are final once `status` is `completed`
+- `POST /voice/messages/{id}/cancel` — only while `scheduled`; the reservation is released (`409` otherwise)
+- `POST /voice/otp` — `{"destination": "0912…", "code": "48213", "voice_file_id": 7}` (the file is an optional announcement played first)
+  → `201`; `429` when the same number was called within the configured interval. The code is never stored.
 
 ## Plan enforcement (Phase 13)
 

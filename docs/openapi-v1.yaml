@@ -161,6 +161,39 @@ components:
         name: { type: string }
         group: { type: string }
 
+    VoiceFile:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        source: { type: string, enum: [upload, tts] }
+        duration_seconds: { type: integer, nullable: true }
+        pulses: { type: integer, nullable: true, description: "ceil(duration / pulse length) — what one call of this file is priced in" }
+        created_at: { type: string }
+
+    VoiceMessage:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [voice, ivc, otp, otp2] }
+        status: { type: string, enum: [scheduled, sending, sent, completed, failed, cancelled] }
+        voice_file_id: { type: integer, nullable: true }
+        title: { type: string }
+        recipients: { type: integer }
+        blocked: { type: integer, description: "numbers skipped because they are on the blacklist" }
+        invalid: { type: integer, description: "POST /voice/messages only: numbers that were not valid mobiles" }
+        pulses: { type: integer }
+        unit_cost: { type: integer, description: Rial per recipient }
+        reserved_cost: { type: integer, description: "Rial reserved when accepted (unit_cost × recipients)" }
+        charged_cost: { type: integer, description: "Rial charged — answered calls only; final once status is completed" }
+        answered: { type: integer }
+        not_answered: { type: integer }
+        scheduled_at: { type: string }
+        sent_at: { type: string, nullable: true }
+        completed_at: { type: string, nullable: true }
+        created_at: { type: string }
+        error: { type: string, nullable: true }
+
     Balance:
       type: object
       properties:
@@ -382,6 +415,94 @@ paths:
             application/json:
               schema: { type: object, properties: { data: { type: object, properties: { event_id: { type: string }, note: { type: string } } } } }
         "404": { $ref: '#/components/responses/NotFound' }
+
+  /voice/files:
+    get:
+      summary: List voice files (scope voice:read)
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/VoiceFile' } } } } } } }
+        "503": { description: Voice service not enabled }
+
+  /voice/tts:
+    post:
+      summary: Generate a voice file from text (scope voice:send)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [text], properties: { text: { type: string, maxLength: 2000 }, title: { type: string }, speaker: { type: integer, enum: [1, 2] } } }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/VoiceFile' } } } } } }
+        "402": { description: Insufficient credit }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+
+  /voice/messages:
+    post:
+      summary: Send a voice file to numbers, now or at scheduled_at (scope voice:send)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [voice_file_id, destinations]
+              properties:
+                voice_file_id: { type: integer }
+                destinations: { type: array, maxItems: 10000, items: { type: string } }
+                type: { type: string, enum: [voice, ivc], default: voice }
+                ivc_digit: { type: integer, minimum: 0, maximum: 9, description: "type ivc: the key the recipient presses" }
+                ivc_sms: { type: string, maxLength: 500, description: "type ivc: the SMS sent when the key is pressed" }
+                scheduled_at: { type: string, format: date-time }
+                title: { type: string }
+                client_message_id: { type: string }
+      responses:
+        "201": { description: Accepted, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/VoiceMessage' } } } } } }
+        "402": { description: Insufficient credit for the worst case }
+        "404": { description: Unknown voice file }
+        "409": { $ref: '#/components/responses/IdempotencyConflict' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+
+  /voice/messages/{id}:
+    get:
+      summary: A voice message's status, answered / not answered calls and cost (scope voice:read)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/VoiceMessage' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /voice/messages/{id}/cancel:
+    post:
+      summary: Cancel a scheduled voice message and release its reservation (scope voice:send)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Cancelled, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/VoiceMessage' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { description: Already started }
+
+  /voice/otp:
+    post:
+      summary: Send a one-time code read out by phone (scope voice:send)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination, code]
+              properties:
+                destination: { type: string }
+                code: { type: string, pattern: '^[0-9]{3,10}$' }
+                voice_file_id: { type: integer, description: "optional announcement played before the code" }
+                client_message_id: { type: string }
+      responses:
+        "201": { description: Sent, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/VoiceMessage' } } } } } }
+        "402": { description: Insufficient credit }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+        "429": { description: The same number was called too recently }
+        "502": { description: ZarinCall refused the call }
 
 components:
   responses:
