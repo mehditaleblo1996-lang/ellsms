@@ -148,7 +148,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
   <aside class="sidebar" id="sidebar" aria-label="منوی پنل">
     <div class="sidebar-head">
     <a class="brand" href="/index.php">
-      <img src="<?= e(asset_url('/assets/img/brand/logo.svg')) ?>" alt="داتیس رایان گستر ایرانیان">
+      <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان">
     </a>
     <button type="button" class="sidebar-close icon-button" id="sidebarClose" aria-label="بستن منو"><?= panel_icon('close') ?></button>
     </div>
