@@ -11,7 +11,7 @@ $metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، 
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 require __DIR__ . '/../app/views/public_header.php';
 ?>
-  <!-- Top banner: three animated slides (plain HTML/CSS + a tiny script below, no video file).
+  <!-- Top banner: five animated slides (plain HTML/CSS + a tiny script below, no video file).
        Slide 1 reuses the tilted-phone shot of the ELLSMS promo video as one still (≈43 KB WebP);
        everything else is drawn in CSS/SVG. Auto-advances, pauses on hover/off-screen, and stays on
        the first slide without motion for prefers-reduced-motion. -->
@@ -24,7 +24,7 @@ require __DIR__ . '/../app/views/public_header.php';
     </svg>
     <div class="lp-banner-track">
 
-      <article class="lp-banner-slide is-active" id="lpSlide1" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۳">
+      <article class="lp-banner-slide is-active" id="lpSlide1" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۵">
         <div class="lp-banner-visual lp-banner-phone" aria-hidden="true">
           <picture>
             <source srcset="/assets/img/landing/banner-phone.webp" type="image/webp">
@@ -47,7 +47,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide2" role="tabpanel" aria-roledescription="slide" aria-label="۲ از ۳">
+      <article class="lp-banner-slide" id="lpSlide2" role="tabpanel" aria-roledescription="slide" aria-label="۲ از ۵">
         <div class="lp-banner-visual lp-banner-smart" aria-hidden="true">
           <div class="lp-smart-template">سلام <b>{نام}</b>، شما <b>{شانس}</b> شانس دارید</div>
           <div class="lp-smart-bubble" style="--i:0">سلام <b>علی</b>، شما <b>۲</b> شانس دارید <em>✓</em></div>
@@ -66,7 +66,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۳">
+      <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۵">
         <div class="lp-banner-visual lp-banner-report" aria-hidden="true">
           <div class="lp-report-card">
             <div class="lp-report-head"><span>نمونه — ارسال امروز</span><b>۱۲٬۴۸۰</b></div>
@@ -88,6 +88,72 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
+      <article class="lp-banner-slide" id="lpSlide4" role="tabpanel" aria-roledescription="slide" aria-label="۴ از ۵">
+        <div class="lp-banner-visual lp-banner-voice" aria-hidden="true">
+          <div class="lp-voice-card">
+            <div class="lp-voice-head">
+              <span class="lp-voice-orb"><i></i><i></i><i></i>
+                <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7"/></svg>
+              </span>
+              <div class="lp-voice-title"><b>پیام صوتی — جشنواره پاییزه</b><span>ارسال به ۸٬۲۰۰ شماره</span></div>
+              <time class="lp-voice-time">۰:۲۴</time>
+            </div>
+            <div class="lp-voice-wave">
+              <?php foreach ([30, 52, 74, 46, 88, 62, 38, 70, 96, 58, 42, 80, 64, 34, 76, 92, 54, 40, 68, 84, 48, 72, 36, 60, 90, 56, 44, 78, 50, 32, 66, 40] as $k => $h): ?>
+                <i style="--h:<?= $h ?>%;--k:<?= $k ?>"></i>
+              <?php endforeach; ?>
+            </div>
+            <div class="lp-voice-row" style="--i:0"><span class="ltr">021•••4410</span><em class="is-ok">شنیده شد</em></div>
+            <div class="lp-voice-row" style="--i:1"><span class="ltr">0912•••7731</span><em class="is-live"><s><i></i><i></i><i></i></s>در حال پخش</em></div>
+            <div class="lp-voice-row" style="--i:2"><span class="ltr">031•••2280</span><em class="is-wait">در صف تماس</em></div>
+          </div>
+        </div>
+        <div class="lp-banner-copy">
+          <h2>پیام <span class="is-blue">صوتی</span>؛ صدای شما، روی <span class="is-green">هر تلفنی</span></h2>
+          <p>پیامتان را ضبط کنید و با یک تماس خودکار به گوش مخاطبان برسانید؛ روی خط ثابت و همراه، بدون نیاز به اینترنت.</p>
+          <ul class="lp-banner-points">
+            <li>ارسال به تلفن ثابت و همراه</li>
+            <li>زمان‌بندی تماس در ساعت‌های مناسب</li>
+            <li>گزارش تماس‌های پاسخ‌داده‌شده</li>
+          </ul>
+          <a href="<?= e($primaryHref ?? '/login.php') ?>" class="btn btn-primary">شروع پیام صوتی</a>
+        </div>
+      </article>
+
+      <article class="lp-banner-slide" id="lpSlide5" role="tabpanel" aria-roledescription="slide" aria-label="۵ از ۵">
+        <div class="lp-banner-visual lp-banner-bale" aria-hidden="true">
+          <div class="lp-bale-chat">
+            <div class="lp-bale-head">
+              <span class="lp-bale-avatar"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1.2 11a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8Z"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/></svg></span>
+              <div><b>فروشگاه نمونه <svg class="lp-bale-verified" viewBox="0 0 24 24"><path d="m12 2 2.4 2.1 3.2-.3.9 3.1 2.8 1.6-1.1 3 1.1 3-2.8 1.6-.9 3.1-3.2-.3L12 22l-2.4-2.1-3.2.3-.9-3.1-2.8-1.6 1.1-3-1.1-3 2.8-1.6.9-3.1 3.2.3Z"/><path class="is-tick" d="m8.5 12 2.4 2.4 4.6-4.8"/></svg></b><span>حساب کسب‌وکار در بله</span></div>
+            </div>
+            <div class="lp-bale-body">
+              <span class="lp-bale-day">امروز</span>
+              <p class="lp-bale-typing"><i></i><i></i><i></i></p>
+              <p class="lp-bale-msg" style="--i:0">سلام سارا جان 👋 سفارش <b>۴۸۲۱</b> شما ارسال شد و فردا به دستتان می‌رسد.
+                <small>۱۰:۲۴ <svg viewBox="0 0 24 16"><path d="m1 8.5 4 4 8-9"/><path class="is-second" d="m7 10.5 2 2 8-9"/></svg></small>
+              </p>
+              <p class="lp-bale-msg" style="--i:1">کد رهگیری مرسوله: <b class="ltr">EL-21794</b>
+                <small>۱۰:۲۴ <svg viewBox="0 0 24 16"><path d="m1 8.5 4 4 8-9"/><path class="is-second" d="m7 10.5 2 2 8-9"/></svg></small>
+              </p>
+              <span class="lp-bale-btn">پیگیری سفارش</span>
+            </div>
+          </div>
+          <div class="lp-bale-chip is-a"><b>۸۴٪</b>تحویل در بله</div>
+          <div class="lp-bale-chip is-b"><b>۱۶٪</b>پیامک جایگزین</div>
+        </div>
+        <div class="lp-banner-copy">
+          <h2>پیام در <span class="is-blue">بله</span>؛ ارزان‌تر از پیامک، <span class="is-green">بی‌واسطه</span></h2>
+          <p>پیام‌های اطلاع‌رسانی و کد تأیید را مستقیم به حساب بله‌ی مخاطب بفرستید؛ برای هر کس که در بله نبود، پیامک جایش را می‌گیرد.</p>
+          <ul class="lp-banner-points">
+            <li>ارسال به شماره‌ی موبایل، بدون نیاز به عضویت در کانال</li>
+            <li>پیامک جایگزین خودکار برای بقیه</li>
+            <li>هزینه فقط برای پیام‌های تحویل‌شده در هر کانال</li>
+          </ul>
+          <a href="<?= e($primaryHref ?? '/login.php') ?>" class="btn btn-primary">ارسال در بله</a>
+        </div>
+      </article>
+
     </div>
     <div class="lp-banner-controls">
       <button type="button" class="lp-banner-toggle" data-lp-banner-toggle aria-pressed="false">
@@ -97,6 +163,8 @@ require __DIR__ . '/../app/views/public_header.php';
         <button type="button" role="tab" id="lpSlideTab1" aria-controls="lpSlide1" aria-selected="true" aria-label="اسلاید ۱" class="is-active"></button>
         <button type="button" role="tab" id="lpSlideTab2" aria-controls="lpSlide2" aria-selected="false" aria-label="اسلاید ۲" tabindex="-1"></button>
         <button type="button" role="tab" id="lpSlideTab3" aria-controls="lpSlide3" aria-selected="false" aria-label="اسلاید ۳" tabindex="-1"></button>
+        <button type="button" role="tab" id="lpSlideTab4" aria-controls="lpSlide4" aria-selected="false" aria-label="اسلاید ۴" tabindex="-1"></button>
+        <button type="button" role="tab" id="lpSlideTab5" aria-controls="lpSlide5" aria-selected="false" aria-label="اسلاید ۵" tabindex="-1"></button>
       </div>
     </div>
   </section>
