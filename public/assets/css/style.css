@@ -895,7 +895,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .lp-section { padding: 50px 20px; }
   .lp-cta { border-radius: 20px; padding: 40px 20px; }
 }
-/* ---------- Landing top banner: three animated slides ---------- */
+/* ---------- Landing top banner: five animated slides ---------- */
 .lp-banner {
   position: relative; overflow: hidden; isolation: isolate;
   min-height: clamp(460px, 44vw, 580px);
@@ -1002,6 +1002,126 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-report-row em.is-ok { color: #34d399; background: rgba(52, 211, 153, .14); }
 .lp-report-row em.is-wait { color: #fbbf24; background: rgba(251, 191, 36, .14); }
 
+/* Slide 4: a voice message playing out — ripples round the mic, the waveform fills as it plays, calls land. */
+.lp-voice-card {
+  position: relative; width: min(400px, 94%); margin-inline: auto; padding: 18px; border-radius: 20px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .03));
+  border: 1px solid rgba(96, 165, 250, .25); box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+.lp-voice-card::before {
+  content: ""; position: absolute; inset: -40px -30px auto auto; width: 180px; height: 180px; z-index: -1; border-radius: 50%;
+  background: radial-gradient(circle, rgba(74, 50, 232, .45), transparent 70%); filter: blur(10px);
+}
+.lp-voice-head { display: flex; align-items: center; gap: 14px; }
+.lp-voice-orb {
+  position: relative; flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(135deg, #4a32e8, #2e63f6); box-shadow: 0 8px 24px -6px rgba(74, 50, 232, .8);
+}
+.lp-voice-orb svg { position: relative; width: 24px; height: 24px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lp-voice-orb i { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(125, 211, 252, .7); opacity: 0; }
+.lp-banner-slide.is-active .lp-voice-orb i { animation: lp-voice-ripple 2.4s ease-out infinite; }
+.lp-voice-orb i:nth-child(2) { animation-delay: .8s !important; }
+.lp-voice-orb i:nth-child(3) { animation-delay: 1.6s !important; }
+@keyframes lp-voice-ripple { from { transform: scale(1); opacity: .8; } to { transform: scale(2.1); opacity: 0; } }
+.lp-voice-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lp-voice-title b { color: #fff; font-size: 14.5px; }
+.lp-voice-title span { color: #93a3c8; font-size: 12px; }
+.lp-voice-time { color: #c4b5fd; font-family: var(--font-num); font-size: 14px; font-weight: 700; }
+.lp-voice-wave { display: flex; align-items: center; gap: 3px; height: 74px; margin: 16px 0 10px; }
+.lp-voice-wave i {
+  flex: 1; height: var(--h); border-radius: 999px; background: rgba(255, 255, 255, .22); transform: scaleY(.25);
+}
+/* Each bar breathes on its own phase; the colour sweep marks how much of the message has played. */
+.lp-banner-slide.is-active .lp-voice-wave i {
+  animation: lp-voice-bar 1.1s ease-in-out infinite alternate, lp-voice-played .35s ease forwards;
+  animation-delay: calc(var(--k) * -.13s), calc(.6s + var(--k) * .17s);
+}
+@keyframes lp-voice-bar { from { transform: scaleY(.35); } to { transform: scaleY(1); } }
+@keyframes lp-voice-played { to { background: linear-gradient(180deg, #7dd3fc, #4a32e8); box-shadow: 0 0 8px rgba(125, 211, 252, .45); } }
+.lp-voice-row {
+  display: flex; justify-content: space-between; align-items: center; padding: 8px 2px; border-top: 1px solid rgba(255, 255, 255, .07);
+  font-size: 13px; color: #cbd5f5; opacity: 0;
+}
+.lp-banner-slide.is-active .lp-voice-row { animation: lp-banner-rise .5s ease both; animation-delay: calc(1s + var(--i) * .4s); }
+.lp-voice-row em { display: inline-flex; align-items: center; gap: 6px; font-style: normal; font-size: 12px; font-weight: 700; padding: 2px 10px; border-radius: 999px; }
+.lp-voice-row em.is-ok { color: #34d399; background: rgba(52, 211, 153, .14); }
+.lp-voice-row em.is-live { color: #7dd3fc; background: rgba(125, 211, 252, .14); }
+.lp-voice-row em.is-wait { color: #fbbf24; background: rgba(251, 191, 36, .14); }
+.lp-voice-row s { display: inline-flex; align-items: flex-end; gap: 2px; height: 10px; }
+.lp-voice-row s i { width: 2px; height: 100%; border-radius: 2px; background: currentColor; animation: lp-voice-bar .6s ease-in-out infinite alternate; transform-origin: bottom; }
+.lp-voice-row s i:nth-child(2) { animation-delay: -.2s; } .lp-voice-row s i:nth-child(3) { animation-delay: -.4s; }
+
+/* Slide 5: a Bale business chat — the panel types, the messages land and get read, the split floats beside. */
+.lp-banner-bale { width: min(380px, 94%); margin-inline: auto; }
+.lp-bale-chat {
+  border-radius: 22px; overflow: hidden; background: rgba(8, 20, 40, .72);
+  border: 1px solid rgba(45, 212, 191, .28); box-shadow: 0 30px 60px -20px rgba(0, 0, 0, .65), 0 0 0 6px rgba(255, 255, 255, .03);
+}
+.lp-bale-head {
+  display: flex; align-items: center; gap: 11px; padding: 12px 14px;
+  background: linear-gradient(120deg, rgba(20, 184, 166, .32), rgba(46, 99, 246, .18)); border-bottom: 1px solid rgba(255, 255, 255, .07);
+}
+.lp-bale-head > div { display: flex; flex-direction: column; gap: 1px; }
+.lp-bale-head b { display: inline-flex; align-items: center; gap: 5px; color: #fff; font-size: 14px; }
+.lp-bale-head span { color: #99f6e4; font-size: 11.5px; }
+.lp-bale-avatar {
+  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: linear-gradient(135deg, #14b8a6, #2e63f6); box-shadow: 0 6px 18px -6px rgba(20, 184, 166, .9);
+}
+.lp-bale-avatar svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.lp-bale-verified { width: 16px; height: 16px; fill: #2dd4bf; }
+.lp-bale-verified .is-tick { fill: none; stroke: #04201c; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.lp-bale-body {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 14px 16px; min-height: 236px;
+  background:
+    radial-gradient(circle at 15% 20%, rgba(45, 212, 191, .08), transparent 40%),
+    radial-gradient(circle at 85% 80%, rgba(74, 50, 232, .12), transparent 45%);
+}
+.lp-bale-day { align-self: center; font-size: 11px; color: #a7b4d6; background: rgba(255, 255, 255, .06); padding: 2px 10px; border-radius: 999px; }
+.lp-bale-typing {
+  position: absolute; top: 46px; inset-inline-start: 14px; margin: 0; display: flex; gap: 4px; padding: 11px 14px;
+  border-radius: 16px 4px 16px 16px; background: rgba(255, 255, 255, .08); opacity: 0;
+}
+.lp-bale-typing i { width: 6px; height: 6px; border-radius: 50%; background: #99f6e4; animation: lp-bale-dot 1s ease-in-out infinite; }
+.lp-bale-typing i:nth-child(2) { animation-delay: .15s; } .lp-bale-typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes lp-bale-dot { 0%, 60%, 100% { transform: none; opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
+.lp-banner-slide.is-active .lp-bale-typing { animation: lp-bale-typing 1.3s ease both .3s; }
+@keyframes lp-bale-typing { 0% { opacity: 0; transform: translateY(6px); } 20%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.lp-bale-msg {
+  position: relative; max-width: 88%; margin: 0; padding: 9px 13px 20px; border-radius: 16px 4px 16px 16px;
+  font-size: 13.5px; line-height: 1.75; color: #f1f5ff; opacity: 0; transform: translateY(12px);
+  background: linear-gradient(130deg, rgba(20, 184, 166, .32), rgba(46, 99, 246, .26)); border: 1px solid rgba(153, 246, 228, .16);
+}
+.lp-bale-msg b { color: #a7f3d0; }
+.lp-bale-msg small { position: absolute; bottom: 4px; inset-inline-end: 10px; display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; color: #a7b4d6; font-family: var(--font-num); }
+.lp-bale-msg small svg { width: 17px; height: 11px; fill: none; stroke: #a7b4d6; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lp-bale-msg small .is-second { stroke-dasharray: 16; stroke-dashoffset: 16; }
+.lp-banner-slide.is-active .lp-bale-msg { animation: lp-banner-rise .55s cubic-bezier(.2, .8, .3, 1) both; animation-delay: calc(1.5s + var(--i) * .7s); }
+/* Read receipt: the second tick draws in and both turn teal. */
+.lp-banner-slide.is-active .lp-bale-msg small svg { animation: lp-bale-read .3s ease forwards; animation-delay: calc(2.4s + var(--i) * .7s); }
+.lp-banner-slide.is-active .lp-bale-msg small .is-second { animation: lp-bale-tick .35s ease forwards; animation-delay: calc(2.4s + var(--i) * .7s); }
+@keyframes lp-bale-read { to { stroke: #2dd4bf; } }
+@keyframes lp-bale-tick { to { stroke-dashoffset: 0; } }
+.lp-bale-btn {
+  align-self: stretch; text-align: center; font-size: 13px; font-weight: 700; color: #99f6e4; padding: 8px; border-radius: 12px;
+  background: rgba(45, 212, 191, .1); border: 1px solid rgba(45, 212, 191, .35); opacity: 0;
+}
+.lp-banner-slide.is-active .lp-bale-btn { animation: lp-banner-rise .5s ease both 3.2s; }
+.lp-bale-chip {
+  position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 9px 14px; border-radius: 14px;
+  font-size: 11.5px; color: #cbd5f5; background: rgba(6, 18, 40, .82); border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: 0 18px 36px -14px rgba(0, 0, 0, .7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); opacity: 0;
+}
+.lp-bale-chip b { font-family: var(--font-num); font-size: 19px; }
+.lp-bale-chip.is-a { top: 4px; left: -52px; }
+.lp-bale-chip.is-a b { color: #2dd4bf; }
+.lp-bale-chip.is-b { top: 196px; left: -52px; }
+.lp-bale-chip.is-b b { color: #60a5fa; }
+.lp-banner-slide.is-active .lp-bale-chip { animation: lp-banner-rise .6s ease both, lp-bale-float 4s ease-in-out infinite; }
+.lp-banner-slide.is-active .lp-bale-chip.is-a { animation-delay: 3.6s, 4.2s; }
+.lp-banner-slide.is-active .lp-bale-chip.is-b { animation-delay: 4s, 4.6s; }
+@keyframes lp-bale-float { 50% { transform: translateY(-7px); } }
+
 .lp-banner-controls {
   position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 2;
   display: flex; align-items: center; gap: 10px;
@@ -1042,11 +1162,15 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .lp-banner-phone { margin: -26px -20px 0; height: 300px; }
   .lp-banner-phone { -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 35%); mask-image: linear-gradient(to top, transparent 0%, #000 35%); }
   .lp-banner-phone img { object-position: center 30%; }
+  .lp-bale-chip.is-a, .lp-bale-chip.is-b { left: -6px; }
+  .lp-bale-body { min-height: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .lp-banner *, .lp-banner-slide.is-active * { animation: none !important; }
-  .lp-smart-bubble, .lp-smart-bubble em, .lp-report-row { opacity: 1; transform: none; }
-  .lp-report-bars i { transform: none; }
+  .lp-smart-bubble, .lp-smart-bubble em, .lp-report-row, .lp-voice-row, .lp-bale-msg, .lp-bale-btn, .lp-bale-chip { opacity: 1; transform: none; }
+  .lp-report-bars i, .lp-voice-wave i { transform: none; }
+  .lp-voice-wave i:nth-child(-n+14) { background: linear-gradient(180deg, #7dd3fc, #4a32e8); }
+  .lp-bale-msg small .is-second { stroke-dashoffset: 0; }
   .lp-banner-streaks, .lp-banner-circuit path.is-glow { display: none; }
 }
 
