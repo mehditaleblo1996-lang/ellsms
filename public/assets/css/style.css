@@ -679,11 +679,8 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 }
 .lp-brand { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; }
 .lp-brand:hover { text-decoration: none; }
-.lp-brand-mark { width: 40px; height: 34px; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(31, 181, 201, .45)); }
-.lp-brand-text { display: flex; flex-direction: column; line-height: 1.1; }
-.lp-brand-text b { direction: ltr; font-size: 21px; font-weight: 800; letter-spacing: .06em; color: #fff; }
-.lp-brand-text b i { font-style: normal; background: linear-gradient(90deg, #1fb5c9, #5fdbe8); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.lp-brand-text small { font-size: 10.5px; color: #8fa3cf; margin-top: 2px; }
+/* Full DATIS wordmark (white ink) — the SVG carries its own entrance + breathing triangle animation. */
+.lp-brand-logo { display: block; height: 54px; width: auto; filter: drop-shadow(0 4px 14px rgba(31, 181, 201, .28)); }
 .lp-nav-links { display: flex; gap: 4px; flex: 1; justify-content: center; }
 .lp-nav-links a {
   position: relative; color: #c9d4f2; font-weight: 600; font-size: 14px; padding: 8px 12px; border-radius: 10px;
@@ -885,7 +882,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .lp-nav-links a:last-child { border-bottom: 0; }
 }
 @media (max-width: 560px) {
-  .lp-brand-text small { display: none; }
+  .lp-brand-logo { height: 44px; }
   .lp-nav-inner { gap: 12px; padding: 10px 16px; }
   .lp-grid, .lp-grid-narrow { grid-template-columns: 1fr; }
   .lp-bento { grid-template-columns: 1fr; grid-template-areas: none; }
