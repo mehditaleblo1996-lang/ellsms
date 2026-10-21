@@ -79,27 +79,12 @@
 }
 .auth-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .auth-brand { display: inline-flex; align-items: center; gap: 14px; text-decoration: none !important; }
-.auth-mark {
-  width: 54px; height: 40px; display: block; object-fit: contain;
-
-  transition: transform .4s var(--ease-out);
-}
-.auth-brand:hover .auth-mark { transform: translateX(3px) rotate(-2deg); }
-.auth-brand-text { display: grid; gap: 2px; line-height: 1.2; }
-/* The wordmark echoes logo.png: a wide, heavy Latin face, "Datis" in the brand blue and "Rayan" in the ink. */
-.auth-wordmark, .auth-wordmark span {
-  font-family: 'Segoe UI', 'Helvetica Neue', Arial, var(--a-font) !important;
-  font-size: 22px; font-weight: 800; line-height: 1;
-  letter-spacing: .12em !important;
-  color: var(--a-ink); text-align: right;
-}
-.auth-wordmark span { color: #1fb5c9; }
-.auth-brand-text small { font-size: var(--a-fs-xs); color: var(--a-soft); line-height: 1.6; }
+/* Full DATIS wordmark — the SVG carries its own entrance + breathing triangle animation. */
+.auth-logo { display: block; height: 64px; width: auto; }
 @keyframes mark-typing { 0%, 60%, 100% { opacity: 1; } 30% { opacity: .35; } }
 .auth-toplink { font-size: var(--a-fs-base); }
 .auth-bottom { text-align: center; font-size: var(--a-fs-xs); color: var(--a-on-night-soft); line-height: 1.6; }
-.auth-top .auth-wordmark, .auth-top a { color: var(--a-on-night); }
-.auth-top .auth-brand-text small { color: var(--a-on-night-soft); }
+.auth-top a { color: var(--a-on-night); }
 .auth-top a.auth-toplink { text-decoration-color: var(--a-on-night-soft); }
 .auth-top a.auth-toplink:hover { text-decoration-color: var(--a-on-night); }
 
@@ -229,6 +214,5 @@
   .auth-top { gap: 8px; }
   .auth-toplink { font-size: 13px; }
   .auth-brand { gap: 8px; }
-  .auth-wordmark, .auth-wordmark span { font-size: 20px; }
-  .auth-mark { width: 44px; }
+  .auth-logo { height: 50px; }
 }
