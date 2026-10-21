@@ -898,7 +898,10 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 /* ---------- Landing top banner: five animated slides ---------- */
 .lp-banner {
   position: relative; overflow: hidden; isolation: isolate;
-  min-height: clamp(460px, 44vw, 580px);
+  /* Fills the first screen below the sticky nav (--lp-nav-h is measured by landing.php); svh keeps
+     it steady while a mobile browser's address bar shows/hides. */
+  min-height: max(460px, calc(100vh - var(--lp-nav-h, 58px)));
+  min-height: max(460px, calc(100svh - var(--lp-nav-h, 58px)));
   background: radial-gradient(ellipse at 22% 50%, #0b2447 0%, #061228 45%, #030b18 100%);
   border-bottom: 1px solid rgba(255, 255, 255, .06);
 }
@@ -912,7 +915,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-banner-track { position: relative; min-height: inherit; }
 .lp-banner-slide {
   position: absolute; inset: 0; display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 30px;
-  max-width: 1160px; margin: 0 auto; padding: 40px 26px 64px;
+  max-width: 1240px; margin: 0 auto; padding: 40px 26px 64px;
   opacity: 0; visibility: hidden; transition: opacity .7s ease, visibility 0s linear .7s;
 }
 .lp-banner-slide.is-active { opacity: 1; visibility: visible; transition: opacity .7s ease, visibility 0s; }
@@ -946,8 +949,15 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 @keyframes lp-banner-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
 /* Slide 1: the tilted phone, fading into the background on its inner side, with light streaks. */
-.lp-banner-phone { align-self: stretch; margin: -40px 0 -64px; }
-.lp-banner-phone picture, .lp-banner-phone img { display: block; height: 100%; width: 100%; object-fit: cover; object-position: left center; }
+.lp-banner-phone { align-self: stretch; margin: -40px 0 -64px; display: flex; align-items: center; }
+/* Never drawn taller than the 720px source, so a tall full-screen banner doesn't upscale (blur) it;
+   when capped, its top/bottom edges fade into the background like the sides. */
+.lp-banner-phone picture {
+  display: block; width: 100%; height: 100%; max-height: 720px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 88%, transparent 100%);
+}
+.lp-banner-phone img { display: block; height: 100%; width: 100%; object-fit: cover; object-position: left center; }
 .lp-banner-phone {
   -webkit-mask-image: linear-gradient(to left, transparent 0%, #000 32%, #000 82%, transparent 100%);
   mask-image: linear-gradient(to left, transparent 0%, #000 32%, #000 82%, transparent 100%);
@@ -1141,7 +1151,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-banner-toggle {
   display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 3px 12px;
   border: 1px solid rgba(255, 255, 255, .35); border-radius: 999px; background: rgba(6, 8, 20, .55);
-  color: #f3f4fb; font: inherit; font-size: 12.5px; cursor: pointer;
+  color: #f3f4fb; font: inherit; font-size: 12.5px; white-space: nowrap; cursor: pointer;
 }
 .lp-banner-toggle-icon { width: 10px; height: 10px; border-inline: 3px solid currentColor; box-sizing: border-box; }
 .lp-banner-toggle[aria-pressed="true"] .lp-banner-toggle-icon {
@@ -1150,16 +1160,17 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-banner-dots button:focus-visible, .lp-banner-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 999px; }
 .lp-banner.is-paused *, .lp-banner.is-stopped * { animation-play-state: paused !important; }
 @media (max-width: 860px) {
-  .lp-banner { min-height: 0; }
+  .lp-banner { min-height: calc(100vh - var(--lp-nav-h, 54px)); min-height: calc(100svh - var(--lp-nav-h, 54px)); }
   .lp-banner-track { display: grid; }
-  .lp-banner-slide { position: relative; grid-area: 1 / 1; grid-template-columns: 1fr; gap: 18px; padding: 26px 20px 60px; text-align: center; }
+  .lp-banner-slide { position: relative; grid-area: 1 / 1; grid-template-columns: 1fr; align-content: center; gap: 18px; padding: 26px 20px 60px; text-align: center; }
   .lp-banner-copy, .lp-banner-visual { grid-column: 1; }
   .lp-banner-visual { grid-row: 1; }
   .lp-banner-copy { grid-row: 2; }
   .lp-banner-copy > p { margin-inline: auto; }
   .lp-banner-feats { grid-template-columns: repeat(2, 1fr); }
   .lp-banner-points { justify-items: center; }
-  .lp-banner-phone { margin: -26px -20px 0; height: 300px; }
+  .lp-banner-phone { margin: -26px -20px 0; height: min(300px, 30svh); }
+  .lp-banner-phone picture { -webkit-mask-image: none; mask-image: none; }
   .lp-banner-phone { -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 35%); mask-image: linear-gradient(to top, transparent 0%, #000 35%); }
   .lp-banner-phone img { object-position: center 30%; }
   .lp-bale-chip.is-a, .lp-bale-chip.is-b { left: -6px; }
