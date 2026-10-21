@@ -10,6 +10,9 @@
  * run only executes after that has been reviewed, matching every other Phase 11 retention tool's
  * convention (cron/backup-prune.php).
  *
+ * Also prunes WebEngage message rows (app/WebEngage.php) whose DSN is finished (sent/failed, or none
+ * owed) older than WEBENGAGE_MESSAGE_RETENTION_DAYS. A row still waiting or pending is never touched.
+ *
  * Usage:
  *   php cron/webhook-prune.php --dry-run
  *   php cron/webhook-prune.php
@@ -26,6 +29,8 @@ if ($json) {
 
 $deliveryRetentionDays = max(1, (int)(env('WEBHOOK_DELIVERY_RETENTION_DAYS', '30') ?? '30'));
 $eventRetentionDays = max(1, (int)(env('WEBHOOK_EVENT_RETENTION_DAYS', '90') ?? '90'));
+$webEngageRetentionDays = max(1, (int)(env('WEBENGAGE_MESSAGE_RETENTION_DAYS', '90') ?? '90'));
+$webEngageWhere = "dsn_status IN ('sent','failed','none') AND status <> 'processing' AND created_at < DATE_SUB(NOW(), INTERVAL ? DAY)";
 
 $deliveryStatuses = $includeDeadLetter ? ['delivered', 'failed', 'dead_letter'] : ['delivered', 'failed'];
 $placeholders = implode(',', array_fill(0, count($deliveryStatuses), '?'));
@@ -40,6 +45,12 @@ if ($dryRun) {
     );
     $eventsSt->execute([$eventRetentionDays]);
     $eventsWouldDelete = (int)$eventsSt->fetch()['c'];
+    $webEngageWouldDelete = 0;
+    if (webengage_available()) {
+        $weSt = db()->prepare("SELECT COUNT(*) FROM ellsms_webengage_messages WHERE {$webEngageWhere}");
+        $weSt->execute([$webEngageRetentionDays]);
+        $webEngageWouldDelete = (int)$weSt->fetchColumn();
+    }
 } else {
     $st = db()->prepare("DELETE FROM ellsms_webhook_deliveries WHERE status IN ({$placeholders}) AND completed_at < DATE_SUB(NOW(), INTERVAL ? DAY)");
     $st->execute([...$deliveryStatuses, $deliveryRetentionDays]);
@@ -52,7 +63,14 @@ if ($dryRun) {
     $eventsSt->execute([$eventRetentionDays]);
     $eventsWouldDelete = $eventsSt->rowCount();
 
-    Logger::info('webhook.prune.completed', ['deliveries_deleted' => $deliveriesWouldDelete, 'events_deleted' => $eventsWouldDelete]);
+    $webEngageWouldDelete = 0;
+    if (webengage_available()) {
+        $weSt = db()->prepare("DELETE FROM ellsms_webengage_messages WHERE {$webEngageWhere}");
+        $weSt->execute([$webEngageRetentionDays]);
+        $webEngageWouldDelete = $weSt->rowCount();
+    }
+
+    Logger::info('webhook.prune.completed', ['deliveries_deleted' => $deliveriesWouldDelete, 'events_deleted' => $eventsWouldDelete, 'webengage_messages_deleted' => $webEngageWouldDelete]);
 }
 
 $result = [
@@ -62,12 +80,14 @@ $result = [
     'dead_letter_included' => $includeDeadLetter,
     'deliveries' => $deliveriesWouldDelete,
     'orphaned_events' => $eventsWouldDelete,
+    'webengage_retention_days' => $webEngageRetentionDays,
+    'webengage_messages' => $webEngageWouldDelete,
 ];
 
 if ($json) {
     echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
 } else {
-    echo ($dryRun ? "[dry-run] would delete" : "Deleted") . " {$deliveriesWouldDelete} delivery row(s) and {$eventsWouldDelete} orphaned event row(s).\n";
-    echo "(delivery_retention_days={$deliveryRetentionDays}, event_retention_days={$eventRetentionDays}, dead_letter_included=" . ($includeDeadLetter ? 'yes' : 'no') . ")\n";
+    echo ($dryRun ? "[dry-run] would delete" : "Deleted") . " {$deliveriesWouldDelete} delivery row(s), {$eventsWouldDelete} orphaned event row(s) and {$webEngageWouldDelete} WebEngage message row(s).\n";
+    echo "(delivery_retention_days={$deliveryRetentionDays}, event_retention_days={$eventRetentionDays}, webengage_retention_days={$webEngageRetentionDays}, dead_letter_included=" . ($includeDeadLetter ? 'yes' : 'no') . ")\n";
 }
 exit(0);

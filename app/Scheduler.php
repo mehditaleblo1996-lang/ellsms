@@ -37,6 +37,10 @@ function scheduler_jobs(): array {
             'steps' => [['payments-reconcile.php']], 'timeout' => 900],
         'invoices-expire' => ['title' => 'منقضی کردن فاکتورهای سررسیدگذشته', 'every' => 900,
             'steps' => [['invoices-expire.php']], 'timeout' => 300],
+        // Delivery-based billing: refunds undelivered messages the status path itself did not
+        // refund (app/DeliveryRefunds.php). A no-op until an admin switches the service on for someone.
+        'delivery-refunds' => ['title' => 'بازگشت هزینه‌ی پیام‌های تحویل‌نشده', 'every' => 300,
+            'steps' => [['delivery-refunds.php']], 'timeout' => 600],
         // Trial/grace expiry and period rollover. Skips itself while BILLING_ENABLED=0.
         'subscription-lifecycle' => ['title' => 'چرخه‌ی عمر اشتراک‌ها', 'every' => 900,
             'steps' => [['subscription-lifecycle.php']], 'timeout' => 900],

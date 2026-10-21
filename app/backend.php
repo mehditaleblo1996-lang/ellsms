@@ -126,6 +126,7 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         'route_ids'              => $result['route_ids'] ?? null,
         'gateway_ids'            => $result['gateway_ids'] ?? null,
         'operators'              => $result['operators'] ?? [],
+        'attempt_ids'            => [],
     ];
 
     if (!$result['ok'] && $result['sent'] === [] && $result['http'] === 0) {
@@ -164,7 +165,7 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         $referenceType = $scheduleId !== null ? 'schedule' : 'direct_send';
         $referenceId   = $scheduleId !== null ? (string)$scheduleId : dispatch_direct_send_dedup_key((int)($user['id'] ?? 0), $originator, $destinations, $content);
         foreach ($result['sent'] as $destination) {
-            backend_record_gateway_send(
+            $recorded = backend_record_gateway_send(
                 isset($user['organization_id']) ? (int)$user['organization_id'] : null,
                 (int)($user['id'] ?? 0),
                 $referenceType,
@@ -181,6 +182,11 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                     'content'                => $content,
                 ]
             );
+            if ($recorded) {
+                // Which attempt row each destination got, so settlement can write that one
+                // destination's charge onto it (delivery_billing_record_attempt_charges()).
+                $meta['attempt_ids'][$destination] = (int)db()->lastInsertId();
+            }
         }
     }
 
@@ -598,6 +604,9 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         $actualCost = $settlement['cost'];
         if ($actualCost > 0) {
             wallet_commit_reservation($refType, $refId, $actualCost, "commit:{$refType}:{$refId}", null, ['sent' => $sentCount]);
+            // The ledger row covers every destination at once; delivery-based billing needs each
+            // destination's own share to refund one undelivered message (app/DeliveryRefunds.php).
+            delivery_billing_record_attempt_charges($priced, (array)($gatewayMeta['attempt_ids'] ?? []), $actualCost);
         }
         // Release whatever wasn't actually spent — the full reservation
         // on total failure, just the unsent remainder on partial success.
@@ -618,7 +627,9 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         usage_commit_messages($refType, $refId, $sentCount);
     }
 
-    return [$ok, $info, $ok ? false : $retryable, $sentCount, $total, $parts];
+    // $gatewayMeta (index 6) carries the per-destination provider message ids of a gateway send;
+    // null for the legacy transport. Additive, like the three before it.
+    return [$ok, $info, $ok ? false : $retryable, $sentCount, $total, $parts, $gatewayMeta];
 }
 
 /**
@@ -737,6 +748,7 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
         $actualCost = $settlement['cost'];
         if ($actualCost > 0) {
             wallet_commit_reservation($refType, $refId, $actualCost, "commit:{$refType}:{$refId}", null, ['sent' => $sentCount]);
+            delivery_billing_record_attempt_charges($priced, (array)($gatewayMeta['attempt_ids'] ?? []), $actualCost);
         }
         wallet_release_reservation($refType, $refId);
     }

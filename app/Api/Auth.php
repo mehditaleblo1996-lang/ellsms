@@ -41,14 +41,37 @@ final class ApiAuth
      * (STEP 42: "generic 401, not detailed sensitive status") so a caller probing for valid prefixes
      * learns nothing from the response shape.
      */
-    public static function authenticate(): ?array
+    public static function authenticate(bool $allowBasic = false): ?array
     {
         $header = self::authorizationHeader();
-        if ($header === null || !preg_match('/^Bearer\s+(.+)$/i', trim($header), $m)) {
+        if ($header === null) {
             return null;
         }
         // NEVER pass $header itself to Logger — only ever the already-authenticated principal's
         // key_prefix (not secret-bearing) is logged, by the caller, after this returns.
-        return api_key_authenticate(trim($m[1]));
+        if (preg_match('/^Bearer\s+(.+)$/i', trim($header), $m)) {
+            return api_key_authenticate(trim($m[1]));
+        }
+        $key = $allowBasic ? self::basicCredentialKey($header) : null;
+        return $key !== null ? api_key_authenticate($key) : null;
+    }
+
+    /**
+     * The API key carried in an `Authorization: Basic` header, for callers that can only send Basic
+     * auth (WebEngage's SSP settings offer Basic or Bearer): the password is the key, the username is
+     * free text. A blank password falls back to the username. Only routes that opt in accept this.
+     */
+    public static function basicCredentialKey(string $header): ?string
+    {
+        if (!preg_match('/^Basic\s+([A-Za-z0-9+\/=]+)$/i', trim($header), $m)) {
+            return null;
+        }
+        $decoded = base64_decode($m[1], true);
+        if ($decoded === false) {
+            return null;
+        }
+        [$username, $password] = array_pad(explode(':', $decoded, 2), 2, '');
+        $key = trim($password !== '' ? $password : $username);
+        return $key !== '' ? $key : null;
     }
 }

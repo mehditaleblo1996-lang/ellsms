@@ -37,17 +37,25 @@ require_once __DIR__ . '/../../app/Api/Handlers/Balance.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Webhooks.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Preview.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Voice.php';
+require_once __DIR__ . '/../../app/Api/Handlers/WebEngage.php';
 
 Logger::setCliMirror(false); // pure JSON stdout even if this ever runs under `php -S` for testing (Phase 11 precedent)
 
 $startedAt = microtime(true);
+
+$path = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
+// WebEngage dictates its own response shape ({"status":"sms_rejected","statusCode":N,...}), so every
+// error on its route, from the very first gate on, is rendered that way (app/Api/Handlers/WebEngage.php).
+$isWebEngage = $path === WEBENGAGE_API_PATH;
+if ($isWebEngage) {
+    ApiResponse::setErrorRenderer('webengage_render_api_error');
+}
 
 if ((env('API_ENABLED', '0') ?? '0') !== '1') {
     ApiResponse::error(503, ApiResponse::CODE_SERVICE_UNAVAILABLE, 'The public API is not enabled on this deployment.');
     exit;
 }
 
-$path = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
 $method = (string)($_SERVER['REQUEST_METHOD'] ?? 'GET');
 // Bounded for metrics only (issue #14) -- the raw REQUEST_METHOD header is client-controlled and a
 // caller could send an arbitrary token; every route this router actually registers only ever uses
@@ -85,6 +93,8 @@ $router->map('POST',  '/api/v1/voice/messages',              'api_handle_voice_m
 $router->map('GET',   '/api/v1/voice/messages/{id}',         'api_handle_voice_messages_get', ApiScopes::VOICE_READ);
 $router->map('POST',  '/api/v1/voice/messages/{id}/cancel',  'api_handle_voice_messages_cancel', ApiScopes::VOICE_SEND);
 $router->map('POST',  '/api/v1/voice/otp',                   'api_handle_voice_otp', ApiScopes::VOICE_SEND);
+// WebEngage SMS service provider endpoint (app/Api/Handlers/WebEngage.php, docs/webengage.md).
+$router->map('POST',  WEBENGAGE_API_PATH,                    'api_handle_webengage_sms', ApiScopes::MESSAGES_SEND);
 
 $route = $router->dispatch($method, $path);
 if (!$route['matched']) {
@@ -113,7 +123,8 @@ register_shutdown_function(static function () use ($metricRoute, $metricMethod, 
     api_request_metric_record($metricRoute, $metricMethod, $statusBucket, $durationMs);
 });
 
-$principal = ApiAuth::authenticate();
+// Basic auth (API key as the password) only where the caller cannot send a Bearer token.
+$principal = ApiAuth::authenticate($isWebEngage);
 $authFailureCategory = $principal === null ? (ApiAuth::authorizationHeader() === null ? 'no_credentials' : 'invalid_credentials') : null;
 
 $rateLimit = api_rate_limit_check($principal);
@@ -138,6 +149,10 @@ if ($principal === null) {
 $ipAccess = allowed_ip_access_decision((int)$principal['organization_id']);
 if (!$ipAccess['allowed']) {
     allowed_ip_record_api_denial($principal, $ipAccess);
+    if ($isWebEngage) {
+        webengage_reject(WEBENGAGE_CODE_IP_NOT_WHITELISTED, 'Request source IP is not allowed for this organization.');
+        exit;
+    }
     ApiResponse::error(403, ApiResponse::CODE_FORBIDDEN, 'Request source IP is not allowed for this organization.');
     exit;
 }
