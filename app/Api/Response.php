@@ -41,7 +41,20 @@ final class ApiResponse
     public const CODE_QUOTA_EXCEEDED          = 'quota_exceeded';
     public const CODE_RESOURCE_LIMIT_REACHED  = 'resource_limit_reached';
 
+    /** @var ?callable(int, string, string): void — set by a route that answers errors in its own format */
+    private static $errorRenderer = null;
+
     private function __construct() {}
+
+    /**
+     * Routes every error() through $renderer(status, code, message) instead of the envelope below —
+     * for an endpoint whose caller dictates the response shape (POST /api/v1/webengage/sms). The
+     * status/code decisions stay where they are; only the rendering changes. null restores the default.
+     */
+    public static function setErrorRenderer(?callable $renderer): void
+    {
+        self::$errorRenderer = $renderer;
+    }
 
     /** Emits a success envelope and returns — does not exit, so callers/tests can still run cleanup. */
     public static function success(int $status, array $data, array $meta = []): void
@@ -62,6 +75,10 @@ final class ApiResponse
      */
     public static function error(int $status, string $code, string $message, array $fields = []): void
     {
+        if (self::$errorRenderer !== null) {
+            (self::$errorRenderer)($status, $code, $message);
+            return;
+        }
         $error = [
             'code'       => $code,
             'message'    => $message,

@@ -234,6 +234,7 @@ function menu_access_enforce(array $user, ?string $script = null): void {
 function menu_key_for_api_path(string $path): ?string {
     return match (true) {
         str_starts_with($path, '/api/v1/messages'),
+        str_starts_with($path, '/api/v1/webengage'),
         str_starts_with($path, '/api/v1/bulk-jobs') => 'send',
         str_starts_with($path, '/api/v1/contacts')  => 'contacts',
         str_starts_with($path, '/api/v1/voice')     => 'voice',

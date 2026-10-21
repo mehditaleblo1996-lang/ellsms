@@ -21,6 +21,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: "ellsms_{live|test}_{prefix}_{secret}"
+    basicApiKey:
+      type: http
+      scheme: basic
+      description: Only on POST /webengage/sms — any username, the API key as the password.
 
   parameters:
     IdempotencyKey:
@@ -41,6 +45,14 @@ components:
       schema: { type: string }
 
   schemas:
+    WebEngageResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [sms_accepted, sms_rejected] }
+        statusCode: { type: integer, description: "WebEngage status code (docs/webengage.md); absent when accepted" }
+        message: { type: string }
+        supportedVersion: { type: string, description: "only with statusCode 2010" }
     Error:
       type: object
       properties:
@@ -503,6 +515,43 @@ paths:
         "422": { $ref: '#/components/responses/ValidationFailed' }
         "429": { description: The same number was called too recently }
         "502": { description: ZarinCall refused the call }
+
+  /webengage/sms:
+    post:
+      summary: WebEngage SMS Service Provider endpoint (scope messages:send) — see docs/webengage.md
+      description: >
+        Answers in WebEngage's own shape, including for authentication, scope, plan and rate-limit
+        refusals. A repeated metadata.messageId replays the first answer and is never sent twice.
+      security: [{ bearerAuth: [] }, { basicApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, smsData, metadata]
+              properties:
+                version: { type: string, enum: ["1.0", "2.0"] }
+                smsData:
+                  type: object
+                  required: [toNumber, body]
+                  properties:
+                    toNumber: { type: string }
+                    fromNumber: { type: string, description: "empty = the key owner's default line" }
+                    body: { type: string, maxLength: 2000 }
+                metadata:
+                  type: object
+                  required: [messageId]
+                  properties:
+                    messageId: { type: string, maxLength: 190 }
+                    campaignType: { type: string }
+      responses:
+        "200": { description: "Accepted ({\"status\":\"sms_accepted\"}), or rejected with statusCode 2000 / 9988", content: { application/json: { schema: { $ref: '#/components/schemas/WebEngageResult' } } } }
+        "400": { description: "Rejected — 2002, 2003, 2004 or 2010", content: { application/json: { schema: { $ref: '#/components/schemas/WebEngageResult' } } } }
+        "401": { description: "Rejected — 2011 (credentials) or 2001 (IP)", content: { application/json: { schema: { $ref: '#/components/schemas/WebEngageResult' } } } }
+        "403": { description: "Rejected — 2005 or 3000", content: { application/json: { schema: { $ref: '#/components/schemas/WebEngageResult' } } } }
+        "413": { description: "Rejected — 2007", content: { application/json: { schema: { $ref: '#/components/schemas/WebEngageResult' } } } }
+        "429": { description: "Rejected — 2015, retry", content: { application/json: { schema: { $ref: '#/components/schemas/WebEngageResult' } } } }
 
 components:
   responses:

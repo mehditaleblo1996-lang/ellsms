@@ -62,6 +62,7 @@ require_once __DIR__ . '/Idempotency.php';
 require_once __DIR__ . '/Webhooks.php';
 require_once __DIR__ . '/MessageWebhooks.php';
 require_once __DIR__ . '/NumberForwarding.php';
+require_once __DIR__ . '/WebEngage.php';
 // Phase 13 — plans/subscriptions/entitlements/quotas (docs/plans-and-entitlements.md). Loaded last
 // because Entitlements.php builds on Billing.php, which builds on tenant.php's organization model
 // and db_transaction(); nothing above depends on either of these two.

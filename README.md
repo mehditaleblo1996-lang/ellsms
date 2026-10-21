@@ -69,6 +69,15 @@ charged and the rest is released. The admin sets the API key (stored encrypted w
 **/messages/voice/files**, or `POST /api/v1/voice/*` (scopes `voice:send` / `voice:read`). See
 [`docs/voice-messages.md`](docs/voice-messages.md).
 
+## WebEngage (SMS service provider)
+
+ELLSMS can be added in WebEngage as a custom SMS Service Provider, so WebEngage campaigns send their
+SMS through the panel. WebEngage calls `POST /api/v1/webengage/sms` with an API key that has
+`messages:send` (Bearer, or Basic with the key as the password); the message goes out like any API
+send, and its delivery status goes back to WebEngage as a DSN once the gateway's delivery report
+arrives. Each organization turns it on and enters WebEngage's DSN token on **/integrations.php**.
+See [`docs/webengage.md`](docs/webengage.md).
+
 ## Login model
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.

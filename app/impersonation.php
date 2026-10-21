@@ -82,6 +82,7 @@ function impersonation_blocked_actions(): array {
         'apikey.revoke'        => 'ابطال کلید API در حالت پشتیبانی غیرفعال است.',
         'webhook.write'        => 'تغییر تنظیمات وب‌هوک در حالت پشتیبانی غیرفعال است.',
         'webhook.rotate'       => 'چرخش کلید وب‌هوک در حالت پشتیبانی غیرفعال است.',
+        'webengage.write'      => 'تغییر تنظیمات WebEngage در حالت پشتیبانی غیرفعال است.',
 
         // SMS gateway connectors (docs/sms-gateway-connectors.md). require_admin() already keeps the
         // page itself unreachable during a support session — $_SESSION['uid'] is the TARGET, and the

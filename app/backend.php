@@ -618,7 +618,9 @@ function dispatch_message(array $user, string $originator, array $destinations, 
         usage_commit_messages($refType, $refId, $sentCount);
     }
 
-    return [$ok, $info, $ok ? false : $retryable, $sentCount, $total, $parts];
+    // $gatewayMeta (index 6) carries the per-destination provider message ids of a gateway send;
+    // null for the legacy transport. Additive, like the three before it.
+    return [$ok, $info, $ok ? false : $retryable, $sentCount, $total, $parts, $gatewayMeta];
 }
 
 /**

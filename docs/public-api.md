@@ -365,6 +365,13 @@ release the rest — is in `docs/voice-messages.md`. Voice files are uploaded in
 - `POST /voice/otp` — `{"destination": "0912…", "code": "48213", "voice_file_id": 7}` (the file is an optional announcement played first)
   → `201`; `429` when the same number was called within the configured interval. The code is never stored.
 
+### WebEngage — scope `messages:send`
+`POST /webengage/sms` is the SMS Service Provider endpoint WebEngage calls. It accepts WebEngage's own
+payload and answers in WebEngage's own shape (`{"status":"sms_accepted"}` or
+`{"status":"sms_rejected","statusCode":…,"message":"…"}`), including for the shared gates above
+(401 → `2011`, 403 → `2005`, 429 → `2015`). It also accepts `Authorization: Basic` with the API key as
+the password. See `docs/webengage.md`.
+
 ## Plan enforcement (Phase 13)
 
 If this deployment has billing enabled (`BILLING_ENABLED=1`), the organization's subscription plan is

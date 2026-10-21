@@ -1,6 +1,6 @@
 <?php
 /**
- * ELLSMS webhook delivery worker (Phase 12, STEP 33).
+ * ELLSMS webhook delivery worker (Phase 12, STEP 33). Also delivers WebEngage DSNs (app/WebEngage.php).
  *
  * Deliberately a SEPARATE process/container from cron/worker.php (STEP 33's own explicit "do not
  * block SMS workers indefinitely on slow webhook endpoints") — a customer's slow/unreachable
@@ -112,6 +112,16 @@ do {
     } catch (Throwable $t) {
         Logger::critical('webhook_worker.pass.failed', ['exception' => $t]);
         Metrics::increment('webhook_worker.pass.failed', 1);
+    }
+
+    // WebEngage delivery status notifications (app/WebEngage.php): the same kind of outbound call to
+    // a customer-configured endpoint, so it runs here rather than in an SMS worker.
+    try {
+        $n = webengage_dsn_run_pass($batchSize);
+        if ($n > 0) Logger::info('webhook_worker.webengage_dsn_processed', ['count' => $n]);
+    } catch (Throwable $t) {
+        Logger::critical('webhook_worker.webengage_dsn_pass.failed', ['exception' => $t]);
+        Metrics::increment('webhook_worker.pass.failed', 1, ['pass' => 'webengage_dsn']);
     }
 
     if ($once || $shuttingDown) break;
