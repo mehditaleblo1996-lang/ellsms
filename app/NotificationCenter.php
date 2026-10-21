@@ -21,6 +21,10 @@ const NOTIFICATION_EVENTS = [
     'import.ready'                  => 'آماده‌شدن واردسازی',
     'import.failed'                 => 'خطای واردسازی',
     'gateway.failed'                => 'خطای درگاه پیامک',
+    'reseller.announcement'         => 'اطلاعیه‌ی نماینده',
+    'reseller.ticket'               => 'تیکت مشتریان نماینده',
+    'reseller.package'              => 'بسته‌ی نماینده',
+    'reseller.registration'         => 'ثبت‌نام از لینک نماینده',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];

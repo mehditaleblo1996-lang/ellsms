@@ -24,6 +24,8 @@ $childIds  = $available ? customer_child_ids($meId) : [];
 if ($me['role'] === 'admin') {
     redirect('/users.php');
 }
+// A reseller has its own panel (app/ResellerPanel.php); this page keeps working and points there.
+$resellerPanelLink = $myAccount['customer_type'] === 'reseller' && reseller_panel_available();
 if (!$available || (!customer_can_have_children($myAccount) && $childIds === [])) {
     http_response_code(403);
     exit('۴۰۳ — حساب شما نماینده یا سازمان نیست و زیرمجموعه ندارد.');
@@ -187,6 +189,9 @@ $expiryText = static fn(?string $d): string => $d === null ? 'بدون انقض�
 require __DIR__ . '/../app/views/header.php';
 ?>
 
+<?php if ($resellerPanelLink): ?>
+<div class="flash flash-info">همه‌ی امکانات نمایندگی (تعرفه‌های نام‌دار، بسته‌ها، کد تخفیف، برند اختصاصی، کارمندان و …) در <a href="<?= $view !== null ? '/reseller/customers/view?id=' . (int)$viewId : '/reseller' ?>">پنل نمایندگی</a> است.</div>
+<?php endif; ?>
 <?php if ($view === null): ?>
 <div class="card">
   <div class="card-head">

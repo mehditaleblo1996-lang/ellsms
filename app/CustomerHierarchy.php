@@ -62,6 +62,7 @@ function customer_account_defaults(int $userId): array {
         'level'            => 0,
         'max_subset_limit' => 0,
         'tariff_bp'        => CUSTOMER_TARIFF_BASE_BP,
+        'tariff_id'        => null,
         'expires_on'       => null,
         'suspended'        => 0,
         'exists'           => false,
@@ -76,6 +77,8 @@ function customer_account_normalize(array $row): array {
         'level'            => (int)$row['level'],
         'max_subset_limit' => (int)$row['max_subset_limit'],
         'tariff_bp'        => (int)$row['tariff_bp'],
+        // Named tariff (app/ResellerTariffs.php), present once 2026_10_24_reseller_panel.sql is applied.
+        'tariff_id'        => isset($row['tariff_id']) ? (int)$row['tariff_id'] : null,
         'expires_on'       => $row['expires_on'] !== null ? (string)$row['expires_on'] : null,
         'suspended'        => (int)$row['suspended'],
         'exists'           => true,
@@ -489,9 +492,10 @@ function customer_relevel_children(PDO $db, int $userId, int $level, int $depth 
  *
  * @return array{ok:bool, reason?:string, message?:string, user_id?:int}
  */
-function customer_create_sub_account(array $parentUser, array $input): array {
+function customer_create_sub_account(array $parentUser, array $input, ?int $actorId = null): array {
     if (!customer_hierarchy_available()) return ['ok' => false, 'reason' => 'not_migrated'];
     $parentId = (int)$parentUser['id'];
+    $actorId ??= $parentId; // a reseller's staff account acts for the reseller (app/ResellerPanel.php)
     $parent = customer_account($parentId);
     $type = (string)($input['customer_type'] ?? 'normal');
     $maxSubset = max(0, (int)from_persian_digits((string)($input['max_subset_limit'] ?? '0')));
@@ -548,7 +552,7 @@ function customer_create_sub_account(array $parentUser, array $input): array {
             profile_organization_save($org['organization_id'], ['account_type' => $accountType], $parentId);
         }
     });
-    $attached = customer_attach_child($parentId, $childId, $type, $maxSubset, $tariffBp, $expiresOn, $parentId);
+    $attached = customer_attach_child($parentId, $childId, $type, $maxSubset, $tariffBp, $expiresOn, $actorId);
     if (!$attached['ok']) {
         // Lost a race for the last quota slot between the check above and the lock: the backend
         // account exists but must not stay usable outside the hierarchy.
@@ -556,7 +560,12 @@ function customer_create_sub_account(array $parentUser, array $input): array {
         Logger::warning('customer.child_attach_failed', ['parent_id' => $parentId, 'child_id' => $childId, 'reason' => $attached['reason']]);
         return $attached;
     }
-    audit($parentId, 'customer.sub_account_created', "#{$childId} {$username} type={$type}");
+    // A named tariff chosen at creation (app/ResellerTariffs.php).
+    $tariffId = (int)($input['tariff_id'] ?? 0);
+    if ($tariffId > 0 && function_exists('reseller_assign_tariff')) {
+        reseller_assign_tariff($parentId, $childId, $tariffId, $actorId);
+    }
+    audit($actorId, 'customer.sub_account_created', "#{$childId} {$username} type={$type} parent=#{$parentId}");
     return ['ok' => true, 'user_id' => $childId];
 }
 
@@ -685,6 +694,50 @@ function customer_profit_split(int $amount, array $chain): array {
 }
 
 /**
+ * Pure: a charge of $amount spread over a send's price-snapshot groups, each group's share in
+ * proportion to its accepted cost, and each share split by that group's chain prices.
+ *
+ * @param list<array{cost:int, chain:list<array{0:int,1:string,2:?int}>}> $groups
+ * @return array<int,float> reseller user id => profit (unrounded)
+ */
+function customer_profit_split_by_groups(int $amount, array $groups): array {
+    $total = array_sum(array_map(static fn(array $g): int => max(0, (int)$g['cost']), $groups));
+    if ($amount <= 0 || $total <= 0) return [];
+    $out = [];
+    foreach ($groups as $group) {
+        $share = $amount * max(0, (int)$group['cost']) / $total;
+        $chain = [];
+        foreach ($group['chain'] as [$userId, $type, $price]) {
+            if ($price === null) break;
+            $chain[] = ['user_id' => (int)$userId, 'type' => (string)$type, 'bp' => (int)$price];
+        }
+        foreach (customer_profit_split((int)round($share * 1000), $chain) as $resellerId => $profit) {
+            $out[$resellerId] = ($out[$resellerId] ?? 0.0) + $profit / 1000;
+        }
+    }
+    return $out;
+}
+
+/**
+ * The chain-priced snapshot groups of one send by $userId: [{cost, chain}], empty when the send has
+ * none (no snapshot, no parent, or a snapshot from before chain prices were recorded).
+ */
+function customer_profit_snapshot_groups(string $referenceType, string $referenceId, int $userId): array {
+    if (!function_exists('sms_price_snapshot_has_chain_column') || !sms_price_snapshot_has_chain_column()) return [];
+    $st = db()->prepare('SELECT total_cost_credits, chain_prices FROM ellsms_sms_price_snapshots
+                         WHERE reference_type = ? AND reference_id = ? AND user_id = ? AND chain_prices IS NOT NULL');
+    $st->execute([$referenceType, $referenceId, $userId]);
+    $groups = [];
+    foreach ($st as $row) {
+        $chain = json_decode((string)$row['chain_prices'], true);
+        if (is_array($chain) && count($chain) >= 2) {
+            $groups[] = ['cost' => (int)$row['total_cost_credits'], 'chain' => $chain];
+        }
+    }
+    return $groups;
+}
+
+/**
  * Pays resellers their profit for every finished Tehran-local day not yet processed, up to
  * yesterday (counting a day as finished an hour after it ends). Each day is one transaction: the per-source rows, one wallet credit per reseller
  * (idempotency key reseller_profit:<day>:<reseller>) and the day's completion marker. Safe to run
@@ -727,7 +780,7 @@ function customer_profit_run_day(string $day, bool $dryRun = false): array {
 
     // Charges by accounts that have a parent. sms_debit is the only ledger type that is a spend:
     // reservations move nothing until committed, and a release returns what was never spent.
-    $st = db()->prepare("SELECT t.user_id, t.amount, t.created_at
+    $st = db()->prepare("SELECT t.user_id, t.amount, t.created_at, t.reference_type, t.reference_id
                          FROM ellsms_wallet_transactions t
                          JOIN ellsms_customer_accounts c ON c.user_id = t.user_id AND c.parent_user_id IS NOT NULL
                          WHERE t.type = 'sms_debit' AND t.amount < 0 AND t.created_at >= ? AND t.created_at < ?");
@@ -744,18 +797,29 @@ function customer_profit_run_day(string $day, bool $dryRun = false): array {
             $history[(int)$row['user_id']][] = [(string)$row['effective_from'], (int)$row['tariff_bp']];
         }
     }
+    $snapshotChains = [];
     foreach ($charges as $charge) {
         $sourceId = (int)$charge['user_id'];
         $amount = -(int)$charge['amount'];
-        $chain = [];
-        $current = $sourceId;
-        $seen = [];
-        while ($current !== null && isset($accounts[$current]) && count($chain) <= CUSTOMER_MAX_DEPTH && !isset($seen[$current])) {
-            $seen[$current] = true;
-            $chain[] = ['user_id' => $current, 'type' => $accounts[$current]['customer_type'], 'bp' => customer_tariff_at($current, (string)$charge['created_at'], $history, $accounts)];
-            $current = $accounts[$current]['parent_user_id'];
+        // A send priced down the chain (app/ResellerTariffs.php) recorded what every account on it
+        // paid; profit follows those exact prices. Anything else (older sends, voice, Bale) is
+        // split by the tariff percentages in force at the time of the charge.
+        $refKey = $charge['reference_type'] . "\0" . $charge['reference_id'] . "\0" . $sourceId;
+        $snapshotChains[$refKey] ??= customer_profit_snapshot_groups((string)$charge['reference_type'], (string)$charge['reference_id'], $sourceId);
+        if ($snapshotChains[$refKey] !== []) {
+            $split = customer_profit_split_by_groups($amount, $snapshotChains[$refKey]);
+        } else {
+            $chain = [];
+            $current = $sourceId;
+            $seen = [];
+            while ($current !== null && isset($accounts[$current]) && count($chain) <= CUSTOMER_MAX_DEPTH && !isset($seen[$current])) {
+                $seen[$current] = true;
+                $chain[] = ['user_id' => $current, 'type' => $accounts[$current]['customer_type'], 'bp' => customer_tariff_at($current, (string)$charge['created_at'], $history, $accounts)];
+                $current = $accounts[$current]['parent_user_id'];
+            }
+            $split = customer_profit_split($amount, $chain);
         }
-        foreach (customer_profit_split($amount, $chain) as $resellerId => $profit) {
+        foreach ($split as $resellerId => $profit) {
             $key = $resellerId . ':' . $sourceId;
             $profits[$key] ??= ['reseller' => $resellerId, 'source' => $sourceId, 'spent' => 0, 'profit' => 0.0];
             $profits[$key]['spent'] += $amount;

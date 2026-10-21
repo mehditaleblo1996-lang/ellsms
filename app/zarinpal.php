@@ -39,6 +39,12 @@ function zarinpal_merchant_id(): string {
 }
 
 function zarinpal_callback_url(): string {
+    // A customer paying on a reseller's own host (app/ResellerPanel.php) returns to that host, where
+    // its session is, when the merchant account accepts callbacks there (RESELLER_HOST_PAYMENT_CALLBACK=1).
+    // The host comes from the reseller's saved settings, never from the request's Host header alone.
+    if (env('RESELLER_HOST_PAYMENT_CALLBACK', '0') === '1' && ($brand = reseller_brand_for_host()) !== null && $brand['host'] !== null) {
+        return 'https://' . $brand['host'] . '/zarinpal-callback.php';
+    }
     $configured = setting('zarinpal_callback_url', env('ZARINPAL_CALLBACK_URL', ''));
     if ($configured) return rtrim($configured, '/');
     // Next: an explicit, admin-controlled APP_URL — safer than deriving
@@ -293,6 +299,13 @@ function payment_claim_and_credit(array $payment, string $refId): array {
         // 'issued'.
         if (isset($payment['invoice_id']) && $payment['invoice_id'] !== null) {
             billing_invoice_mark_paid($db, (int)$payment['invoice_id']);
+        }
+
+        // A reseller's package bought online (app/ResellerPackages.php): the customer's credit, the
+        // reseller's settlement and the package's tariff/validity/quota, all in this claim.
+        if (!empty($payment['reseller_order_id'])) {
+            $fulfilled = reseller_package_fulfil_payment($db, $payment);
+            return ['claimed' => true, 'credit' => $fulfilled['credit'], 'reseller_package' => $fulfilled['ok']];
         }
 
         $credit = wallet_credit(

@@ -26,6 +26,7 @@ if (!$payment || (int)$payment['user_id'] !== (int)$me['id']) {
     $result = ['ok' => true, 'message' => 'این پرداخت قبلاً با موفقیت ثبت شده است.'];
 } elseif ($status !== 'OK') {
     db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=? AND status IN ('pending','verification_failed')")->execute([$paymentId]);
+    if (!empty($payment['reseller_order_id'])) reseller_package_order_fail_for_payment($paymentId);
     Logger::warning('payment.cancelled_or_failed_at_gateway', ['payment_id' => $paymentId, 'user_id' => $me['id']]);
     $result = ['ok' => false, 'message' => 'پرداخت توسط شما لغو شد یا ناموفق بود.'];
     $notificationEvent = 'payment.failed';
@@ -134,7 +135,11 @@ require __DIR__ . '/../app/views/header.php';
   </table>
   <?php endif; ?>
   <div class="toolbar" style="margin-top:14px">
-    <a class="btn btn-primary" href="/buy-credit.php">بازگشت به خرید اعتبار</a>
+    <?php if (!empty($payment['reseller_order_id'])): ?>
+      <a class="btn btn-primary" href="/billing/packages">بازگشت به بسته‌ها</a>
+    <?php else: ?>
+      <a class="btn btn-primary" href="/buy-credit.php">بازگشت به خرید اعتبار</a>
+    <?php endif; ?>
     <a class="btn" href="/index.php">داشبورد</a>
   </div>
 </div>

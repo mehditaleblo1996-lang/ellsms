@@ -40,14 +40,17 @@ function menu_catalog(): array {
         'blacklist'     => ['لیست سیاه',            '🚫', '/blacklist.php',     ['blacklist.php']],
         'line_optouts'  => ['لغو عضویت (۱۱)',       '⛔', '/line-optouts.php',  ['line-optouts.php']],
         'tickets'       => ['پشتیبانی',             '🎫', '/tickets.php',       ['tickets.php']],
-        'buy_credit'    => ['خرید اعتبار',          '💳', '/buy-credit.php',    ['buy-credit.php']],
+        'buy_credit'    => ['خرید اعتبار',          '💳', '/buy-credit.php',    ['buy-credit.php', 'packages.php']],
         'invoices'      => ['فاکتورها',             '🧾', '/invoices.php',      ['invoices.php']],
         'bale'          => ['پیام‌رسان بله',         '💬', '/bale-messages.php', ['bale-messages.php']],
         'voice'         => ['پیام صوتی',            '🔊', '/voice.php',         ['voice.php']],
         'voice_files'   => ['فایل‌های صوتی',         '🎙', '/voice-files.php',   ['voice-files.php']],
         'regional_bulk' => ['ارسال منطقه‌ای',        '🗺️', '/regional-bulk.php', ['regional-bulk.php']],
         'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
-        'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php']],
+        // A reseller's panel (app/ResellerPanel.php) is its sub-account menu: closing it closes the panel.
+        'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php',
+                                                                                'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-tickets.php',
+                                                                                'reseller-announcements.php', 'reseller-registrations.php', 'reseller-staff.php', 'reseller-settings.php']],
         'api_keys'      => ['کلیدهای API',          '🔑', '/api-keys.php',      ['api-keys.php']],
         'integrations'  => ['افزونه ووکامرس و SDK', '🧩', '/integrations.php',  ['integrations.php']],
         'remote_db'     => ['اتصال به دیتابیس',     '🗄', '/remote-db.php',     ['remote-db.php']],
@@ -69,9 +72,9 @@ function menu_groups(): array {
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'inbox', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
-        'finance'      => ['مالی',              ['buy_credit', 'invoices', 'billing']],
+        'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'billing']],
         'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
-        'account'      => ['حساب و پشتیبانی',   ['subaccounts', 'tickets']],
+        'account'      => ['حساب و پشتیبانی',   ['reseller_panel', 'subaccounts', 'tickets']],
     ];
 }
 

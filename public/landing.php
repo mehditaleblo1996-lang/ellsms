@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 require_once __DIR__ . '/../app/Registration.php';
+// A reseller's own host (app/ResellerPanel.php) has no platform marketing site: it opens on the login.
+if (reseller_brand_for_host() !== null) redirect('/login');
 // The "how it works" step and the FAQ describe how an account is actually obtained: with registration
 // closed an admin creates accounts; otherwise the visitor signs up, verifies the mobile, and an admin
 // approves. (The 'auto_after_otp' mode still lands in pending_admin_approval — see

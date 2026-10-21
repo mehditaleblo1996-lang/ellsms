@@ -45,9 +45,17 @@ function ticket_notify_telegram(string $text): void {
  * ticket). Returns the new ticket id.
  */
 function ticket_create(int $userId, string $username, string $subject, string $body, ?int $organizationId = null): int {
-    $ticketId = db_transaction(function (PDO $db) use ($userId, $subject, $body, $organizationId): int {
-        $db->prepare('INSERT INTO ellsms_tickets (user_id, organization_id, subject, status) VALUES (?, ?, ?, ?)')
-           ->execute([$userId, $organizationId, $subject, 'open']);
+    // A reseller's customer's ticket goes to that reseller (app/ResellerPanel.php), unless the
+    // reseller sends its customers' tickets to platform support. Platform admins still see it.
+    $assigneeId = reseller_ticket_assignee($userId);
+    $ticketId = db_transaction(function (PDO $db) use ($userId, $subject, $body, $organizationId, $assigneeId): int {
+        if ($assigneeId !== null) {
+            $db->prepare('INSERT INTO ellsms_tickets (user_id, organization_id, subject, status, assignee_user_id) VALUES (?, ?, ?, ?, ?)')
+               ->execute([$userId, $organizationId, $subject, 'open', $assigneeId]);
+        } else {
+            $db->prepare('INSERT INTO ellsms_tickets (user_id, organization_id, subject, status) VALUES (?, ?, ?, ?)')
+               ->execute([$userId, $organizationId, $subject, 'open']);
+        }
         $ticketId = (int)$db->lastInsertId();
 
         $db->prepare('INSERT INTO ellsms_ticket_replies (ticket_id, user_id, is_admin_reply, body) VALUES (?, ?, 0, ?)')
@@ -56,9 +64,13 @@ function ticket_create(int $userId, string $username, string $subject, string $b
         return $ticketId;
     });
 
-    ticket_notify_telegram(
-        "🎫 تیکت جدید #{$ticketId} از {$username}\nموضوع: {$subject}\n" . mb_strimwidth($body, 0, 500, '…')
-    );
+    if ($assigneeId !== null) {
+        notification_insert_panel($assigneeId, null, 'reseller.ticket', 'تیکت جدید از ' . $username, $subject, '/reseller/tickets?id=' . $ticketId, 'info');
+    } else {
+        ticket_notify_telegram(
+            "🎫 تیکت جدید #{$ticketId} از {$username}\nموضوع: {$subject}\n" . mb_strimwidth($body, 0, 500, '…')
+        );
+    }
 
     return $ticketId;
 }
@@ -79,10 +91,41 @@ function ticket_add_reply(int $ticketId, int $userId, string $username, string $
     $db->prepare('UPDATE ellsms_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')->execute([$newStatus, $ticketId]);
 
     if (!$isAdmin) {
-        ticket_notify_telegram(
-            "💬 پاسخ جدید روی تیکت #{$ticketId} از {$username}:\n" . mb_strimwidth($body, 0, 500, '…')
-        );
+        $assigneeId = (int)(ticket_find($ticketId)['assignee_user_id'] ?? 0);
+        if ($assigneeId > 0) {
+            notification_insert_panel($assigneeId, null, 'reseller.ticket', 'پاسخ مشتری روی تیکت #' . $ticketId, mb_strimwidth($body, 0, 300, '…'), '/reseller/tickets?id=' . $ticketId, 'info');
+        } else {
+            ticket_notify_telegram(
+                "💬 پاسخ جدید روی تیکت #{$ticketId} از {$username}:\n" . mb_strimwidth($body, 0, 500, '…')
+            );
+        }
     }
+}
+
+/**
+ * Tickets a reseller answers (assignee_user_id), paged like ticket_list(). Returns [rows, total].
+ */
+function ticket_list_for_assignee(int $assigneeId, string $statusFilter, int $page, int $per): array {
+    $where = 't.assignee_user_id = ?';
+    $params = [$assigneeId];
+    if (in_array($statusFilter, ['open', 'answered', 'closed'], true)) {
+        $where .= ' AND t.status = ?';
+        $params[] = $statusFilter;
+    }
+    $c = db()->prepare("SELECT COUNT(*) FROM ellsms_tickets t WHERE {$where}");
+    $c->execute($params);
+    $total = (int)$c->fetchColumn();
+    $per = max(1, $per);
+    $off = max(0, ($page - 1) * $per);
+    $st = db()->prepare("SELECT t.* FROM ellsms_tickets t WHERE {$where} ORDER BY t.status = 'open' DESC, t.updated_at DESC LIMIT {$per} OFFSET {$off}");
+    $st->execute($params);
+    $rows = $st->fetchAll();
+    $usernames = backend_usernames_by_ids(array_column($rows, 'user_id'));
+    foreach ($rows as &$r) {
+        $r['username'] = $usernames[(int)$r['user_id']] ?? null;
+    }
+    unset($r);
+    return [$rows, $total];
 }
 
 /** Set a ticket's status directly. No-ops silently on an invalid value. Caller enforces admin-only. */
@@ -157,4 +200,15 @@ function ticket_list(int $ownerUserId, string $statusFilter, int $page, int $per
     unset($r);
 
     return [$rows, $total];
+}
+
+/** ' (مدیر)' / ' (پشتیبانی نماینده)' after a support reply's author, '' for the customer's own. */
+function ticket_reply_role_label(array $ticket, array $reply): string {
+    if (empty($reply['is_admin_reply'])) return '';
+    $assigneeId = (int)($ticket['assignee_user_id'] ?? 0);
+    $authorId = (int)$reply['user_id'];
+    if ($assigneeId > 0 && ($authorId === $assigneeId || (reseller_staff_row($authorId)['reseller_user_id'] ?? 0) === $assigneeId)) {
+        return ' (پشتیبانی نماینده)';
+    }
+    return ' (مدیر)';
 }

@@ -264,6 +264,17 @@ matching API routes are refused. A sub-account never sees more than its parent.
 Apply `db/migrations/2026_10_12_customer_hierarchy.sql`. Until an account is configured, nothing
 changes for it. See `docs/resellers-and-menu-access.md`.
 
+### Reseller panel (پنل نمایندگی)
+
+A reseller works in its own panel at **/reseller** (after `db/migrations/2026_10_24_reseller_panel.sql`):
+dashboard, customers with search filters and CSV export, **named tariffs** (a price per operator and
+Persian/Latin text, never below the reseller's own price; profit follows the exact prices recorded in
+each send's price snapshot), **packages** it gives or sells online (credit, tariff, validity, quota),
+**gift and discount codes**, finance and profit, its customers' **tickets**, **announcements**, a
+**sign-up link** whose requests it approves, **staff accounts** with permissions, and a **white-label
+brand on its own host name** (name, logo, colour; only its own tree signs in there). Customers buy
+their reseller's packages on **/billing/packages**. See `docs/reseller-panel.md`.
+
 ## Developer Commands
 
 A `Makefile` wraps the commands below so a new developer doesn't need to read `app/`/`docker/` to

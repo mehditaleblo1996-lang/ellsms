@@ -770,6 +770,8 @@ function sms_pricing_price_source_label(string $source): string {
         'admin_exempt'    => 'مدیر (بدون کسر)',
         'customer_price'  => 'تعرفه‌ی اختصاصی مشتری',
         'gateway_price'   => 'تعرفه‌ی درگاه',
+        'reseller_tariff' => 'تعرفه‌ی نماینده',
+        'reseller_floor'  => 'حداقل قیمت نماینده',
     ][$source] ?? $source;
 }
 
@@ -825,13 +827,19 @@ function sms_pricing_next_effective_from(int $routeId, ?int $operatorId, string 
  * losing any reconciliation precision (STEP 24).
  */
 function sms_pricing_group_key(array $resolution): string {
-    return hash('sha256', implode('|', [
+    $parts = [
         (string)($resolution['route_id'] ?? ''),
         (string)($resolution['operator_id'] ?? ''),
         (string)$resolution['unit_price'],
         (string)$resolution['message_type'],
         (string)$resolution['price_source'],
-    ]));
+    ];
+    // An account priced down its reseller chain: the same price to the customer can mean different
+    // prices to the resellers above it (another gateway), and the profit run needs each one.
+    if (($resolution['chain_key'] ?? '') !== '') {
+        $parts[] = (string)$resolution['chain_key'];
+    }
+    return hash('sha256', implode('|', $parts));
 }
 
 /* ==========================================================================
@@ -876,7 +884,11 @@ function sms_pricing_price_messages(
     // The price matrix (app/GatewayPrices.php), read once per pass at the same pricing instant:
     // the account's own cells (exact prices) and the global cells (list prices). An exempt pass
     // costs nothing, so it skips both.
-    $priceOwner  = (!$exempt && $customerUserId !== null) ? customer_price_owner($customerUserId) : null;
+    // An account with a parent is priced down its chain instead (app/ResellerTariffs.php): its
+    // reseller's named tariff, never below the reseller's own price, and every account's price on
+    // the chain is kept for the reseller profit run. Its own cells are the chain top's.
+    $pricingContext = (!$exempt && $customerUserId !== null) ? customer_pricing_context($customerUserId, $atUtc) : null;
+    $priceOwner  = (!$exempt && $customerUserId !== null && $pricingContext === null) ? customer_price_owner($customerUserId) : null;
     $userCells   = $priceOwner !== null ? gateway_prices_at($priceOwner, $atUtc) : [];
     $globalCells = !$exempt ? gateway_prices_at(null, $atUtc) : [];
     $gatewayByOperator = [];
@@ -901,7 +913,7 @@ function sms_pricing_price_messages(
         $totalSegs += $segments;
 
         $resolution = $batch['by_phone'][$mobile] ?? null;
-        if ($resolution !== null && ($userCells !== [] || $globalCells !== [])) {
+        if ($resolution !== null && ($userCells !== [] || $globalCells !== [] || $pricingContext !== null)) {
             $operatorId = $resolution['operator_id'] === null ? null : (int)$resolution['operator_id'];
             $gatewayId  = $gatewayByOperator[$operatorId ?? '-'] ??= sms_pricing_gateway_for($sender, $messageType, $mobile);
             $column     = gateway_price_column_for($mobile, $operatorId);
@@ -913,6 +925,9 @@ function sms_pricing_price_messages(
                 $resolution = sms_pricing_with_customer_price($resolution, $cell);
             } elseif (($cell = $globalCells[$cellKey] ?? $globalCells[$allKey] ?? null) !== null) {
                 $resolution = sms_pricing_with_matrix_price($resolution, $cell);
+            }
+            if ($pricingContext !== null) {
+                $resolution = sms_pricing_with_chain_price($resolution, $pricingContext, $cellKey, $allKey, $column, $encoding);
             }
         }
         if ($resolution === null || !$resolution['ok']) {
@@ -935,7 +950,7 @@ function sms_pricing_price_messages(
         if ($resolution['price_source'] === 'legacy_fallback') {
             $fallbackUsed = true;
         }
-        if ($tariffBp !== CUSTOMER_TARIFF_BASE_BP && $resolution['price_source'] !== 'customer_price') {
+        if ($tariffBp !== CUSTOMER_TARIFF_BASE_BP && $resolution['price_source'] !== 'customer_price' && empty($resolution['chain_priced'])) {
             $resolution['list_unit_price'] = (int)$resolution['unit_price'];
             $resolution['unit_price'] = customer_tariff_apply((int)$resolution['unit_price'], $tariffBp);
         }
@@ -960,6 +975,7 @@ function sms_pricing_price_messages(
                 'currency'        => $resolution['currency'],
                 'price_source'    => $resolution['price_source'],
                 'pricing_rule_id' => $resolution['pricing_rule_id'],
+                'chain'           => $resolution['chain'] ?? null,
                 'recipients'      => 0,
                 'segments'        => 0,
                 'cost'            => 0,
@@ -1031,6 +1047,40 @@ function sms_pricing_with_cell_price(array $resolution, array $cell, string $sou
     $resolution['price_source']    = $source;
     $resolution['pricing_rule_id'] = null;
     $resolution['matrix_price_id'] = (int)$cell['id'];
+    return $resolution;
+}
+
+/**
+ * A recipient's resolution re-priced down the charged account's chain (customer_chain_prices()).
+ * The list price is what the resolution carries so far (the global matrix cell, else the route
+ * price); the top account's own cell comes from $context. The resolution keeps its route, provider
+ * and operator. When nothing on the chain can price the message, it is returned unchanged.
+ */
+function sms_pricing_with_chain_price(array $resolution, array $context, string $cellKey, string $allKey, string $column, string $encoding): array {
+    $list = $resolution['ok'] ? (int)$resolution['unit_price'] : null;
+    $topCell = $context['top_cells'][$cellKey]['millicredits'] ?? $context['top_cells'][$allKey]['millicredits'] ?? null;
+    $prices = customer_chain_prices($context['chain'], $list, $topCell, $context['tariff_cells'], $column, $encoding);
+    $own = $prices[0];
+    if ($own['price'] === null) {
+        return $resolution;
+    }
+    if (!$resolution['ok']) {
+        unset($resolution['reason']);
+        $resolution['ok'] = true;
+        $resolution['currency'] = SMS_PRICING_CURRENCY;
+        $resolution['pricing_rule_id'] = null;
+        $resolution['price_source'] = 'customer_price';
+    }
+    if ($list !== null) {
+        $resolution['list_unit_price'] = $list;
+    }
+    $resolution['unit_price'] = (int)$own['price'];
+    if ($own['source'] !== 'list') {
+        $resolution['price_source'] = $own['source'];
+    }
+    $resolution['chain'] = array_map(static fn(array $p): array => [$p['user_id'], $p['type'], $p['price']], $prices);
+    $resolution['chain_key'] = implode(',', array_map(static fn(array $p): string => $p['user_id'] . ':' . ($p['price'] ?? '-'), $prices));
+    $resolution['chain_priced'] = true;
     return $resolution;
 }
 
@@ -1136,6 +1186,7 @@ function sms_pricing_apply_snapshot_prices(array $priced, array $snapshotRows): 
             'currency' => $entry['currency'],
             'price_source' => ($priced['exempt'] ?? false) ? 'admin_exempt' : $entry['price_source'],
             'pricing_rule_id' => $entry['pricing_rule_id'],
+            'chain' => $entry['chain'] ?? null,
             'recipients' => 0, 'segments' => 0, 'cost' => 0,
         ];
         $groups[$gk]['recipients']++;
@@ -1226,18 +1277,22 @@ function sms_price_snapshot_record(array $priced, ?int $organizationId, ?int $us
         return;
     }
     try {
+        // chain_prices (2026_10_24_reseller_panel.sql): what every account up a reseller chain pays
+        // for this group, read by the reseller profit run. Written only once the column exists.
+        $withChain = sms_price_snapshot_has_chain_column();
         $st = db()->prepare(
             "INSERT INTO ellsms_sms_price_snapshots
                (organization_id, user_id, reference_type, reference_id, group_key,
                 operator_id, operator_code, operator_source, provider_id, provider_code,
                 route_id, route_code, message_type, unit_price_millicredits, currency,
                 price_source, pricing_rule_id, recipient_count, segment_count,
-                total_cost_credits, committed_cost_credits, status, priced_at)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'accepted',?)
+                total_cost_credits, committed_cost_credits, status, priced_at" . ($withChain ? ', chain_prices' : '') . ")
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,'accepted',?" . ($withChain ? ',?' : '') . ")
              ON DUPLICATE KEY UPDATE id = id"
         );
         foreach ($priced['groups'] as $group) {
-            $st->execute([
+            $chain = $withChain && !empty($group['chain']) ? [json_encode($group['chain'])] : ($withChain ? [null] : []);
+            $st->execute([...[
                 $organizationId ?: null,
                 $userId ?: null,
                 $referenceType,
@@ -1259,7 +1314,7 @@ function sms_price_snapshot_record(array $priced, ?int $organizationId, ?int $us
                 $group['segments'],
                 $group['cost'],
                 $priced['priced_at'],
-            ]);
+            ], ...$chain]);
             Metrics::gauge('sms_pricing.cost_by_provider', (float)$group['cost'], ['provider' => (string)$group['provider_code']]);
         }
     } catch (Throwable $t) {
@@ -1267,6 +1322,23 @@ function sms_price_snapshot_record(array $priced, ?int $organizationId, ?int $us
             'reference_type' => $referenceType, 'reference_id' => $referenceId, 'exception' => $t,
         ]);
     }
+}
+
+/** Whether ellsms_sms_price_snapshots has chain_prices yet. Cached per process. */
+function sms_price_snapshot_has_chain_column(?bool $set = null): bool {
+    static $has = null;
+    if ($set !== null) {
+        return $has = $set;
+    }
+    if ($has === null) {
+        try {
+            db()->query('SELECT chain_prices FROM ellsms_sms_price_snapshots LIMIT 0');
+            $has = true;
+        } catch (PDOException) {
+            $has = false;
+        }
+    }
+    return $has;
 }
 
 /**

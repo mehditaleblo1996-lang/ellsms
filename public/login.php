@@ -6,6 +6,10 @@ if (current_user()) redirect('/dashboard');
 if (!ellsms_has_admin()) redirect('/admin/bootstrap');
 
 $error = null;
+// On a reseller's own host (app/ResellerPanel.php) the page carries the reseller's brand and, by
+// default, signs in only the reseller, its staff and its own customers.
+$brand = current_brand();
+$hostBrand = reseller_brand_for_host();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $username = trim($_POST['username'] ?? '');
@@ -30,6 +34,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $meta = $m->fetch();
             if (!$meta || !$meta['panel_access']) {
                 $error = 'این حساب وجود دارد، اما دسترسی به پنل داتیس رایان گستر ایرانیان برای آن فعال نشده است. از مدیر پنل بخواهید دسترسی بدهد.';
+            } elseif (($hostRefusal = reseller_host_login_refusal((int)$u['id'], $hostBrand)) !== null) {
+                Logger::warning('auth.login.wrong_host', ['user_id' => $u['id'], 'host' => request_host()]);
+                $error = reseller_error_message($hostRefusal);
             } elseif (($blockReason = customer_account_block_reason((int)$u['id'])) !== null) {
                 Logger::warning('auth.login.blocked', ['user_id' => $u['id'], 'reason' => $blockReason]);
                 $error = customer_block_message($blockReason);
@@ -79,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ورود — داتیس رایان گستر ایرانیان</title>
+<title>ورود — <?= e($brand['name']) ?></title>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <?php /* Vazirmatn is preloaded so the first paint is already in it, never in a fallback face. */ ?>
 <link rel="preload" href="/assets/fonts/Vazirmatn-Regular.woff2" as="font" type="font/woff2" crossorigin>
@@ -89,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/login.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/login-slider.css')) ?>">
 <script>document.documentElement.classList.add('js');</script>
+<?= brand_color_style($brand) ?>
 </head>
 <body class="auth">
 <?php /* A light sign-in card using the panel brand: the form in its start half, a slider of the
@@ -97,16 +105,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <div class="auth-shell">
     <header class="auth-top rise" style="--d:0">
+      <?php if ($hostBrand !== null): ?>
+        <span class="auth-brand" aria-label="<?= e($brand['name']) ?>">
+          <?php if ($brand['logo'] !== ''): ?><img class="auth-logo" src="<?= e($brand['logo']) ?>" alt="" aria-hidden="true"><?php else: ?><strong><?= e($brand['name']) ?></strong><?php endif; ?>
+        </span>
+        <?php if ($brand['support_phone'] !== ''): ?><span class="auth-toplink">پشتیبانی: <span class="ltr"><?= e($brand['support_phone']) ?></span></span><?php endif; ?>
+      <?php else: ?>
       <a href="/landing.php" class="auth-brand" aria-label="داتیس رایان گستر ایرانیان — صفحه‌ی اصلی">
         <img class="auth-logo" src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="" aria-hidden="true">
       </a>
       <a href="/landing.php" class="auth-toplink">درباره‌ی داتیس رایان گستر ایرانیان</a>
+      <?php endif; ?>
     </header>
 
     <main class="auth-card rise" style="--d:1">
       <section class="auth-form-side" aria-labelledby="authTitle">
         <h1 class="auth-title lines" id="authTitle"><span class="line"><span data-line style="--i:0">ورود به حساب کاربری</span></span></h1>
-        <p class="auth-lede">برای مدیریت ارسال‌ها، گزارش تحویل و اعتبار حساب وارد شوید.</p>
+        <p class="auth-lede"><?= $hostBrand !== null && $brand['login_note'] !== '' ? e($brand['login_note']) : 'برای مدیریت ارسال‌ها، گزارش تحویل و اعتبار حساب وارد شوید.' ?></p>
 
         <?php if ($error): ?><div class="auth-error" role="alert"><?= e($error) ?></div><?php endif; ?>
 
@@ -126,12 +141,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <button type="submit" class="auth-submit">ورود</button>
         </form>
 
-        <?php if (setting('registration_mode', 'approval') !== 'closed'): ?>
+        <?php if ($hostBrand !== null ? $hostBrand['signup_enabled'] : setting('registration_mode', 'approval') !== 'closed'): ?>
           <p class="auth-register">حساب کاربری ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
         <?php endif; ?>
       </section>
 
-      <?php require __DIR__ . '/../app/views/partials/login_slider.php'; ?>
+      <?php if ($hostBrand === null) require __DIR__ . '/../app/views/partials/login_slider.php'; ?>
     </main>
 
     <footer class="auth-bottom rise" style="--d:2">

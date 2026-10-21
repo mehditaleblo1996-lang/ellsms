@@ -4,6 +4,25 @@ require_once __DIR__ . '/../app/Registration.php';
 
 if (current_user()) redirect('/index.php');
 
+// A sign-up through a reseller's link (?r=<code>) or on a reseller's own host goes to that reseller
+// for approval (app/ResellerPanel.php). On a reseller's host there is no platform sign-up at all.
+$hostBrand = reseller_brand_for_host();
+$signupCode = (string)($_GET['r'] ?? $_POST['r'] ?? $_SESSION['registration_reseller_code'] ?? '');
+if ($hostBrand !== null) {
+    $signupResellerId = $hostBrand['signup_enabled'] ? $hostBrand['reseller_user_id'] : null;
+    $signupOpen = $signupResellerId !== null;
+} else {
+    $signupResellerId = $signupCode !== '' ? reseller_by_signup_code($signupCode) : null;
+    $signupOpen = $signupResellerId !== null || registration_enabled();
+}
+if ($signupResellerId !== null && $signupCode !== '') {
+    $_SESSION['registration_reseller_code'] = $signupCode;
+} else {
+    unset($_SESSION['registration_reseller_code']);
+}
+$signupBrand = registration_brand_name($signupResellerId !== null ? ['reseller_user_id' => $signupResellerId] : null);
+$brand = current_brand();
+
 $error = null;
 $errorField = null; // the input the error is about, so it can point at it (aria-describedby)
 $created = false;
@@ -46,7 +65,10 @@ function registration_captcha_verify(string $answer): bool {
     return $ok;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$signupOpen) {
+    csrf_check();
+    $error = 'ثبت‌نام در حال حاضر غیرفعال است.';
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
     // Honeypot: real users never see/fill this. Silently pretend success to avoid teaching bots.
@@ -108,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'کد ملی باید دقیقاً ۱۰ رقم باشد.';
                     $errorField = 'national_id';
                 } else {
-                    $result = registration_request_create($_POST);
+                    $result = registration_request_create($_POST, $signupResellerId);
                     if (!empty($result['ok'])) {
                         $registrationId = (int)$result['id'];
                         // Phase 4 needs the backend platform's own legacy verifier. It is derived here
@@ -151,23 +173,24 @@ function reg_error_attrs(string $field, ?string $errorField): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ثبت‌نام — داتیس رایان گستر ایرانیان</title>
+<title>ثبت‌نام — <?= e($signupBrand) ?></title>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
   <main class="login-card" style="max-width:680px;width:min(680px,calc(100% - 30px))">
-    <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان" class="login-logo">
-    <h1 style="font-size:1.35rem;margin:0 0 10px">ثبت‌نام در داتیس رایان گستر ایرانیان</h1>
-    <p class="login-sub">اطلاعات اولیه را وارد کنید. یک کد ۶ رقمی برای تأیید شماره موبایل شما ارسال می‌شود و پس از تأیید، درخواست برای مدیر می‌رود.</p>
+    <?php if ($brand['logo'] !== ''): ?><img src="<?= e($brand['logo']) ?>" alt="<?= e($brand['name']) ?>" class="login-logo"><?php endif; ?>
+    <h1 style="font-size:1.35rem;margin:0 0 10px">ثبت‌نام در <?= e($signupBrand) ?></h1>
+    <p class="login-sub">اطلاعات اولیه را وارد کنید. یک کد ۶ رقمی برای تأیید شماره موبایل شما ارسال می‌شود و پس از تأیید، درخواست برای <?= $signupResellerId !== null ? 'نماینده' : 'مدیر' ?> می‌رود.</p>
 
-    <?php if (!registration_enabled()): ?>
+    <?php if (!$signupOpen): ?>
       <div class="flash flash-error">ثبت‌نام در حال حاضر غیرفعال است.</div>
       <p class="login-foot"><a href="/login.php">بازگشت به ورود</a></p>
     <?php else: ?>
       <?php if ($error): ?><div class="flash flash-error" id="formError" role="alert"><?= e($error) ?></div><?php endif; ?>
       <form method="post" autocomplete="off">
         <?= csrf_field() ?>
+        <?php if ($signupResellerId !== null && $signupCode !== ''): ?><input type="hidden" name="r" value="<?= e($signupCode) ?>"><?php endif; ?>
         <div style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden" aria-hidden="true">
           <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
         </div>

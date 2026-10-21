@@ -1,0 +1,90 @@
+/* The reseller panel (app/views/reseller_header.php): only what the shared panel styles lack. */
+
+.reseller-workspace-name {
+  display: block;
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flash-warning { background: var(--warn-bg); color: var(--warn); }
+
+.reseller-kpis .stat-value small {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.reseller-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 14px;
+  align-items: end;
+}
+.reseller-filters .form-actions { margin: 0; }
+
+.reseller-link-box {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--tint);
+  word-break: break-all;
+}
+
+.tariff-matrix input {
+  width: 100%;
+  min-width: 90px;
+  text-align: left;
+  direction: ltr;
+}
+.tariff-matrix td, .tariff-matrix th { white-space: nowrap; }
+.tariff-matrix .floor { display: block; font-size: var(--fs-xs); color: var(--muted); }
+
+.package-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+.package-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+.package-card h3 { margin: 0; font-size: var(--fs-lg); }
+.package-card .package-price { font-size: var(--fs-xl); font-weight: 700; color: var(--indigo); }
+.package-card .package-old-price { text-decoration: line-through; color: var(--muted); font-size: var(--fs-sm); }
+.package-card ul { margin: 0; padding-inline-start: 18px; color: var(--muted); font-size: var(--fs-sm); }
+.package-card form { margin-top: auto; }
+
+.voucher-code {
+  font-family: var(--font-mono);
+  letter-spacing: 1px;
+  direction: ltr;
+  unicode-bidi: embed;
+}
+
+.perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 6px 14px;
+}
+
+.reseller-filters > * { min-width: 0; }
+.reseller-filters .jdate { display: flex; flex-wrap: wrap; gap: 4px; }
+.reseller-filters .jdate select { flex: 1 1 70px; min-width: 0; }
+
+@media (max-width: 640px) {
+  .reseller-filters { grid-template-columns: 1fr; }
+  .package-cards { grid-template-columns: 1fr; }
+}

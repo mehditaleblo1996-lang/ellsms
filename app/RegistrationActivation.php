@@ -93,6 +93,11 @@ function registration_activate_account(int $registrationId, int $adminUserId, ar
         $db->prepare("UPDATE ellsms_registration_requests SET state='account_created', approved_at=COALESCE(approved_at,NOW()), approved_by=COALESCE(approved_by,?), account_created_at=NOW(), national_id=?, gender=?, domain_id=?, activation_error='', backend_password_hash=NULL, password_verifier='' WHERE id=?")
            ->execute([$adminUserId, $nationalId, $gender, $domainId, $registrationId]);
 
+        // A sign-up through a reseller's link becomes that reseller's customer (app/ResellerPanel.php).
+        if ((int)($row['reseller_user_id'] ?? 0) > 0) {
+            reseller_registration_attach($row, $userId, $adminUserId);
+        }
+
         audit($adminUserId, 'registration.account_created', "registration=#{$registrationId} user=#{$userId} org=#{$organizationId}");
         Logger::info('registration.account_created', ['registration_id' => $registrationId, 'user_id' => $userId, 'organization_id' => $organizationId]);
         if (function_exists('audit_mongo_event')) audit_mongo_event('registration.account_created', ['registration_id'=>$registrationId,'created_user_id'=>$userId,'organization_id'=>$organizationId,'admin_user_id'=>$adminUserId], true);
@@ -100,8 +105,8 @@ function registration_activate_account(int $registrationId, int $adminUserId, ar
         $smsEnabled = notification_channel_enabled('registration.account_created', 'sms');
         $sms = ['ok' => true, 'disabled' => !$smsEnabled];
         if ($smsEnabled) {
-            $loginUrl = app_url() !== '' ? app_url() . '/login.php' : '/login.php';
-            $message = "حساب شما در داتیس رایان گستر ایرانیان فعال شد.\nنام کاربری: {$row['username']}\nورود: {$loginUrl}";
+            $loginUrl = registration_login_url($row);
+            $message = 'حساب شما در ' . registration_brand_name($row) . " فعال شد.\nنام کاربری: {$row['username']}\nورود: {$loginUrl}";
             $sms = registration_system_sms([(string)$row['mobile']], $message);
             if (empty($sms['ok'])) Logger::warning('registration.account_created.sms_failed', ['registration_id' => $registrationId]);
         }

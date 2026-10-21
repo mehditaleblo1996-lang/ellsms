@@ -31,7 +31,35 @@ function registration_request_get(int $id): ?array {
     return $row ?: null;
 }
 
-function registration_request_create(array $input): array {
+/**
+ * The display name sign-up messages use: the reseller's brand for a request made through a
+ * reseller's link or host (app/ResellerPanel.php), else the platform's.
+ */
+function registration_brand_name(?array $row): string {
+    $resellerId = (int)($row['reseller_user_id'] ?? 0);
+    if ($resellerId > 0) {
+        $settings = reseller_settings($resellerId);
+        if ($settings['brand_enabled'] && $settings['brand_name'] !== '') return $settings['brand_name'];
+    }
+    return 'داتیس رایان گستر ایرانیان';
+}
+
+/** Where a new account signs in: the reseller's own host when it has one, else the platform. */
+function registration_login_url(?array $row): string {
+    $resellerId = (int)($row['reseller_user_id'] ?? 0);
+    if ($resellerId > 0) {
+        $settings = reseller_settings($resellerId);
+        if ($settings['brand_enabled'] && $settings['host'] !== null) return 'https://' . $settings['host'] . '/login';
+    }
+    return app_url() !== '' ? app_url() . '/login.php' : '/login.php';
+}
+
+/**
+ * $resellerId: the reseller whose sign-up link or host the request came through (resolved by the
+ * caller from the link code or the host, never from the form). Such a request is accepted even while
+ * the platform's own sign-up is closed, and goes to that reseller for approval.
+ */
+function registration_request_create(array $input, ?int $resellerId = null): array {
     $firstName = trim((string)($input['first_name'] ?? ''));
     $lastName = trim((string)($input['last_name'] ?? ''));
     $mobile = normalize_msisdn((string)($input['mobile'] ?? ''));
@@ -42,7 +70,7 @@ function registration_request_create(array $input): array {
     $accountType = ($input['account_type'] ?? 'individual') === 'legal' ? 'legal' : 'individual';
     $companyName = trim((string)($input['company_name'] ?? ''));
 
-    if (!registration_enabled()) return ['ok' => false, 'error' => 'ثبت‌نام در حال حاضر غیرفعال است.'];
+    if (!registration_enabled() && $resellerId === null) return ['ok' => false, 'error' => 'ثبت‌نام در حال حاضر غیرفعال است.'];
     if ($firstName === '' || $lastName === '') return ['ok' => false, 'error' => 'نام و نام خانوادگی الزامی است.', 'field' => $firstName === '' ? 'first_name' : 'last_name'];
     if ($mobile === null) return ['ok' => false, 'error' => 'شماره موبایل معتبر وارد کنید.', 'field' => 'mobile'];
     if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) return ['ok' => false, 'error' => 'ایمیل معتبر وارد کنید.', 'field' => 'email'];
@@ -74,8 +102,11 @@ function registration_request_create(array $input): array {
     );
     $st->execute([$firstName, $lastName, $mobile, $email, $username, $verifier, $accountType, $companyName, $ip, $ua, LEGAL_TERMS_VERSION]);
     $id = (int)db()->lastInsertId();
+    if ($resellerId !== null) {
+        db()->prepare('UPDATE ellsms_registration_requests SET reseller_user_id = ? WHERE id = ?')->execute([$resellerId, $id]);
+    }
 
-    Logger::info('registration.started', ['registration_id' => $id, 'account_type' => $accountType, 'has_email' => $email !== '']);
+    Logger::info('registration.started', ['registration_id' => $id, 'account_type' => $accountType, 'has_email' => $email !== '', 'reseller_id' => $resellerId]);
     if (function_exists('audit_mongo_event')) audit_mongo_event('registration.started', ['registration_id' => $id, 'account_type' => $accountType], true);
     return ['ok' => true, 'id' => $id];
 }
@@ -120,6 +151,13 @@ function registration_notify_admins(int $registrationId, bool $force = false): a
     $row = registration_request_get($registrationId);
     if (!$row || $row['state'] !== 'pending_admin_approval') return ['ok' => false, 'error' => 'درخواست در وضعیت انتظار بررسی مدیر نیست.'];
     if (!$force && !empty($row['admin_notified_at'])) return ['ok' => true, 'already_sent' => true];
+    // A request through a reseller's link is the reseller's to review, in its panel.
+    if ((int)($row['reseller_user_id'] ?? 0) > 0) {
+        notification_insert_panel((int)$row['reseller_user_id'], null, 'reseller.registration', 'درخواست ثبت‌نام جدید',
+            trim((string)$row['first_name'] . ' ' . (string)$row['last_name']) . ' — ' . (string)$row['mobile'], '/reseller/registrations', 'info');
+        db()->prepare('UPDATE ellsms_registration_requests SET admin_notified_at = NOW() WHERE id = ?')->execute([$registrationId]);
+        return ['ok' => true, 'reseller' => true];
+    }
     if (!$force && !notification_channel_enabled('registration.new', 'sms')) return ['ok' => true, 'disabled' => true];
 
     $mobiles = registration_admin_mobiles();
@@ -159,7 +197,7 @@ function registration_send_otp(int $registrationId, bool $isResend = false): arr
     }
 
     $code = str_pad((string)random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-    $text = "کد تأیید ثبت‌نام داتیس رایان گستر ایرانیان: {$code}\nاعتبار کد: ۵ دقیقه";
+    $text = 'کد تأیید ثبت‌نام ' . registration_brand_name($row) . ": {$code}\nاعتبار کد: ۵ دقیقه";
     $send = registration_system_sms([(string)$row['mobile']], $text);
     if (empty($send['ok'])) {
         Logger::warning('registration.otp_send_failed', ['registration_id' => $registrationId]);
@@ -198,7 +236,7 @@ function registration_verify_otp(int $registrationId, string $code): array {
 
     Logger::info('registration.mobile_verified', ['registration_id' => $registrationId]);
     if (function_exists('audit_mongo_event')) audit_mongo_event('registration.mobile_verified', ['registration_id' => $registrationId], true);
-    if (registration_mode() !== 'closed') registration_notify_admins($registrationId);
+    if (registration_mode() !== 'closed' || (int)($row['reseller_user_id'] ?? 0) > 0) registration_notify_admins($registrationId);
     return ['ok' => true];
 }
 
@@ -214,12 +252,12 @@ function registration_admin_decide(int $registrationId, int $adminUserId, string
         $st = db()->prepare("UPDATE ellsms_registration_requests SET state='approved', approved_at=NOW(), approved_by=?, decision_note=? WHERE id=? AND state='pending_admin_approval'");
         $st->execute([$adminUserId, $note, $registrationId]);
         $event = 'registration.approved';
-        $message = "درخواست ثبت‌نام شما در داتیس رایان گستر ایرانیان تأیید شد.\nحساب شما در مرحله فعال‌سازی است و پس از آماده‌شدن، پیامک بعدی ارسال می‌شود.";
+        $message = 'درخواست ثبت‌نام شما در ' . registration_brand_name($row) . " تأیید شد.\nحساب شما در مرحله فعال‌سازی است و پس از آماده‌شدن، پیامک بعدی ارسال می‌شود.";
     } else {
         $st = db()->prepare("UPDATE ellsms_registration_requests SET state='rejected', rejected_at=NOW(), rejected_by=?, rejection_reason=?, decision_note=?, password_verifier='', backend_password_hash=NULL, otp_hash=NULL, otp_expires_at=NULL WHERE id=? AND state='pending_admin_approval'");
         $st->execute([$adminUserId, $note, $note, $registrationId]);
         $event = 'registration.rejected';
-        $message = "درخواست ثبت‌نام شما در داتیس رایان گستر ایرانیان تأیید نشد.\nدلیل: {$note}\nدر صورت اصلاح اطلاعات می‌توانید دوباره ثبت‌نام کنید.";
+        $message = 'درخواست ثبت‌نام شما در ' . registration_brand_name($row) . " تأیید نشد.\nدلیل: {$note}\nدر صورت اصلاح اطلاعات می‌توانید دوباره ثبت‌نام کنید.";
     }
     if ($st->rowCount() !== 1) return ['ok' => false, 'error' => 'وضعیت درخواست همزمان تغییر کرده است.'];
 

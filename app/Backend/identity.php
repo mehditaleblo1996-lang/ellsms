@@ -153,6 +153,46 @@ function backend_users_by_ids(array $userIds): array {
     return $out;
 }
 
+/**
+ * The reseller panel's customer list (app/ResellerPanel.php): identity, contact details and balance
+ * of the given accounts, keyed by id.
+ */
+function backend_user_details_by_ids(array $userIds): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $userIds), static fn(int $id): bool => $id > 0)));
+    if (!$ids) return [];
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $st = db()->prepare(
+        "SELECT u.id, u.username, u.firstname AS first_name, u.lastname AS last_name, u.email, u.mobile,
+                " . BACKEND_CREDIT_COLUMNS . ", u.active, u.deleted
+         FROM user_ u LEFT JOIN ellsms_wallet_accounts w ON w.user_id = u.id
+         WHERE u.id IN ({$placeholders})"
+    );
+    $st->execute($ids);
+    $out = [];
+    foreach ($st->fetchAll() as $row) $out[(int)$row['id']] = $row;
+    return $out;
+}
+
+/**
+ * Of $userIds, those whose username, first or last name, email or mobile contains $needle. Bounded
+ * by the caller's id list (a reseller's own customers), so it never scans the backend's whole table.
+ *
+ * @return list<int>
+ */
+function backend_user_ids_matching(array $userIds, string $needle): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $userIds), static fn(int $id): bool => $id > 0)));
+    $needle = trim($needle);
+    if (!$ids || $needle === '') return $ids;
+    $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $needle) . '%';
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $st = db()->prepare(
+        "SELECT id FROM user_ WHERE id IN ({$placeholders})
+           AND (username LIKE ? OR firstname LIKE ? OR lastname LIKE ? OR CONCAT(firstname, ' ', lastname) LIKE ? OR email LIKE ? OR mobile LIKE ?)"
+    );
+    $st->execute([...$ids, $like, $like, $like, $like, $like, $like]);
+    return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+}
+
 function backend_list_users_summary(): array {
     return db()->query('SELECT id, username FROM user_ WHERE deleted = 0 ORDER BY username')->fetchAll();
 }

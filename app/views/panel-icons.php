@@ -32,6 +32,9 @@ function panel_icon(string $name): string {
         'check' => '<path d="m5 12 4 4L20 5"/>',
         'speaker' => '<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
         'mic' => '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/>',
+        'gift' => '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M5 12v9h14v-9M12 8v13M12 8S10 3 7.5 4 9 8 12 8Zm0 0s2-5 4.5-4S15 8 12 8Z"/>',
+        'megaphone' => '<path d="M3 10v4h3l7 4V6L6 10H3ZM16 9a4 4 0 0 1 0 6M7 14l1 6h3l-1-5"/>',
+        'home' => '<path d="m3 11 9-8 9 8v10h-6v-6H9v6H3V11Z"/>',
     ];
     $names = [
         'dashboard'=>'grid', 'notifications'=>'bell', 'guide'=>'book', 'onboarding'=>'check',
@@ -47,6 +50,9 @@ function panel_icon(string $name): string {
         'price_quote'=>'receipt', 'sms_pricing'=>'wallet', 'sms_gateways'=>'link', 'prohibited_words'=>'ban',
         'queue_cancellation'=>'ban', 'queue_monitor'=>'chart', 'alerts'=>'bell', 'bulk_archive'=>'folder', 'sms_gateway_clone'=>'copy',
         'guide_admin'=>'book', 'billing_admin'=>'wallet', 'financial_admin'=>'receipt',
+        'reseller_packages'=>'gift', 'reseller_dashboard'=>'grid', 'reseller_customers'=>'users', 'reseller_tariffs'=>'wallet',
+        'reseller_package_admin'=>'gift', 'reseller_finance'=>'chart', 'reseller_tickets'=>'help', 'reseller_announcements'=>'megaphone',
+        'reseller_registrations'=>'user', 'reseller_staff'=>'shield', 'reseller_settings'=>'settings', 'reseller_back'=>'home', 'reseller_panel'=>'users',
     ];
     $path = $paths[$names[$name] ?? $name] ?? $paths['grid'];
     return '<svg class="ui-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $path . '</svg>';

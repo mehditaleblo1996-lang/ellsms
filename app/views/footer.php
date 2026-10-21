@@ -2,13 +2,17 @@
     </main>
     <footer class="site-footer panel-footer">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;line-height:1.9">
-        <strong class="footer-brand">داتیس رایان گستر ایرانیان</strong>
-        <span style="opacity:.78">سامانه مدیریت و ارسال پیامک</span>
+        <?php $footerBrand = current_brand(); ?>
+        <strong class="footer-brand"><?= e($footerBrand['name']) ?></strong>
+        <span style="opacity:.78"><?= e($footerBrand['tagline']) ?></span>
+        <?php if ($footerBrand['support_phone'] !== ''): ?><span style="opacity:.78">پشتیبانی: <span class="ltr"><?= e($footerBrand['support_phone']) ?></span></span><?php endif; ?>
       </div>
       <?= legal_footer_links_html() ?>
+      <?php if ($footerBrand['reseller_id'] === null): /* the platform's own trust badges, not a reseller's */ ?>
       <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
         <?= legal_trust_badges_html(52) ?>
       </div>
+      <?php endif; ?>
     </footer>
   </div>
 </div>

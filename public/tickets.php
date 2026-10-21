@@ -74,6 +74,7 @@ if ($ticketId) {
           <h2 style="margin:0 0 6px"><?= e($ticket['subject']) ?></h2>
           <span class="badge badge-<?= e($ticket['status']) ?>"><?= e($statusFa[$ticket['status']] ?? $ticket['status']) ?></span>
           <?php if (is_admin()): ?><span class="hint">— <?= e($ticket['username']) ?></span><?php endif; ?>
+          <?php if (($ticket['assignee_user_id'] ?? null) !== null): ?><span class="hint">— پاسخ‌گو: <?= is_admin() ? 'نماینده‌ی ' . e((string)(backend_usernames_by_ids([(int)$ticket['assignee_user_id']])[(int)$ticket['assignee_user_id']] ?? '')) : 'نماینده‌ی شما' ?></span><?php endif; ?>
         </div>
         <a class="btn btn-sm" href="/tickets.php">← بازگشت به فهرست</a>
       </div>
@@ -82,7 +83,7 @@ if ($ticketId) {
         <?php foreach ($replies as $r): ?>
           <div class="ticket-msg<?= $r['is_admin_reply'] ? ' is-admin' : '' ?>">
             <div class="ticket-msg-meta">
-              <?= e($r['username']) ?><?= $r['is_admin_reply'] ? ' (مدیر)' : '' ?> — <?= jdate($r['created_at']) ?>
+              <?= e($r['username']) ?><?= e(ticket_reply_role_label($ticket, $r)) ?> — <?= jdate($r['created_at']) ?>
             </div>
             <div><?= nl2br(e($r['body'])) ?></div>
           </div>

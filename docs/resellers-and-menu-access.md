@@ -8,6 +8,9 @@ Code: `app/CustomerHierarchy.php`, `app/MenuAccess.php`, `public/subaccounts.php
 `public/menu-roles.php`, `public/reseller-profits.php`, the «نمایندگی و دسترسی منو» tab of
 `public/users.php`. Schema: `db/migrations/2026_10_12_customer_hierarchy.sql`.
 
+The reseller's own panel built on this — named tariffs, packages and codes, white-label host, staff,
+tickets, announcements and a sign-up link — is described in [`reseller-panel.md`](reseller-panel.md).
+
 **Inert until migrated and configured.** Before the migration is applied, and for any account with
 no row in `ellsms_customer_accounts`, nothing changes: a normal customer, 100% tariff, no expiry, every
 menu visible.

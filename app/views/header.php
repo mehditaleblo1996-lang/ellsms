@@ -75,11 +75,21 @@ if (number_forward_available() && ($me['role'] === 'admin' || allowed_originator
 if ($navOrg && membership_has_permission($navOrg, Permissions::BILLING_VIEW)) {
     $integrationNav['billing'] = ['/billing.php', 'اشتراک و مصرف', '📦'];
 }
-// Resellers and organizations manage their sub-accounts (app/CustomerHierarchy.php).
+// Resellers and organizations manage their sub-accounts (app/CustomerHierarchy.php); a reseller in
+// its own panel (app/ResellerPanel.php).
 if ($me['role'] !== 'admin') {
     $navAccount = customer_account((int)$me['id']);
     if (customer_can_have_children($navAccount) || customer_child_ids((int)$me['id']) !== []) {
         $nav['subaccounts'] = ['/subaccounts.php', customer_type_label($navAccount) === 'سازمانی' ? 'زیرسازمان‌ها' : 'زیرمجموعه‌ها', '👥'];
+    }
+    // Follows the «زیرمجموعه‌ها» menu: closing it closes the panel too (app/MenuAccess.php).
+    if ($navAccount['customer_type'] === 'reseller' && reseller_panel_available() && menu_access_allows($me, 'subaccounts')) {
+        $nav['reseller_panel'] = ['/reseller', 'پنل نمایندگی', '👥'];
+    }
+    // A reseller's customer buys its reseller's packages and redeems its codes.
+    if ($navAccount['parent_user_id'] !== null && reseller_panel_available() && reseller_is_reseller((int)$navAccount['parent_user_id'])
+        && menu_access_allows($me, 'buy_credit')) {
+        $nav['reseller_packages'] = ['/billing/packages', 'بسته‌های نماینده', '🎁'];
     }
     // Menus closed for this user (app/MenuAccess.php) are left out; their pages answer 403 too.
     $nav = array_filter($nav + $integrationNav, static fn(string $key): bool => menu_access_allows($me, $key), ARRAY_FILTER_USE_KEY);
@@ -128,18 +138,23 @@ $adminNavGroups = menu_group_items($adminNav, [
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
 ]);
 $sidebarGroups = $me['role'] === 'admin' ? $navGroups + $adminNavGroups : $navGroups;
+// On a reseller's own host the panel carries the reseller's brand (app/ResellerPanel.php).
+$brand = current_brand();
 $notificationUnread = notification_unread_count((int)$me['id']);
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title><?= e($pageTitle ?? 'داتیس رایان گستر ایرانیان') ?> — داتیس رایان گستر ایرانیان</title>
+<title><?= e($pageTitle ?? $brand['name']) ?> — <?= e($brand['name']) ?></title>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/panel-layout-fixes.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/panel.css')) ?>">
+<?php foreach (($extraStyles ?? []) as $extraStyle): ?><link rel="stylesheet" href="<?= e(asset_url((string)$extraStyle)) ?>">
+<?php endforeach; ?>
 <script src="<?= e(asset_url('/assets/js/panel.js')) ?>" defer></script>
+<?= brand_color_style($brand) ?>
 </head>
 <body class="panel">
 <a class="skip-link" href="#main">پرش به محتوای اصلی</a>
@@ -148,7 +163,7 @@ $notificationUnread = notification_unread_count((int)$me['id']);
   <aside class="sidebar" id="sidebar" aria-label="منوی پنل">
     <div class="sidebar-head">
     <a class="brand" href="/index.php">
-      <img src="<?= e(asset_url('/assets/img/brand/logo-animated.svg')) ?>" alt="داتیس رایان گستر ایرانیان">
+      <?php if ($brand['logo'] !== ''): ?><img src="<?= e($brand['logo']) ?>" alt="<?= e($brand['name']) ?>"><?php else: ?><strong><?= e($brand['name']) ?></strong><?php endif; ?>
     </a>
     <button type="button" class="sidebar-close icon-button" id="sidebarClose" aria-label="بستن منو"><?= panel_icon('close') ?></button>
     </div>

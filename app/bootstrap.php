@@ -46,6 +46,11 @@ require_once __DIR__ . '/rbac.php';
 // Resellers / organizational customers (tariff, credit transfer, expiry) and per-user menu access.
 require_once __DIR__ . '/CustomerHierarchy.php';
 require_once __DIR__ . '/GatewayPrices.php';
+// The reseller panel (docs/reseller-panel.md): named tariffs, packages and vouchers, white-label
+// brand, staff, tickets and announcements.
+require_once __DIR__ . '/ResellerTariffs.php';
+require_once __DIR__ . '/ResellerPackages.php';
+require_once __DIR__ . '/ResellerPanel.php';
 require_once __DIR__ . '/OperatorLogos.php';
 require_once __DIR__ . '/MenuAccess.php';
 require_once __DIR__ . '/RialConversion.php';
@@ -667,6 +672,8 @@ function require_login(): array {
     impersonation_enforce();
     // A page whose menu is closed for this user answers 403 (app/MenuAccess.php).
     menu_access_enforce($u);
+    // A reseller's staff account works only in its reseller's panel (app/ResellerPanel.php).
+    reseller_staff_enforce($u);
     $org = current_organization();
     if ($org) {
         $u['organization_id'] = (int)$org['organization_id'];

@@ -128,8 +128,21 @@ if (lazy_part_begin('jobs')) {
     exit;
 }
 
+// News from the reseller(s) above this account (app/ResellerPanel.php).
+$resellerAnnouncements = $me['role'] !== 'admin' ? reseller_announcements_for_customer((int)$me['id']) : [];
 require __DIR__ . '/../app/views/header.php';
 ?>
+<?php if ($resellerAnnouncements): ?>
+<div class="card reseller-news">
+  <h2>اطلاعیه‌های نماینده</h2>
+  <?php foreach ($resellerAnnouncements as $news): ?>
+    <div class="flash flash-<?= e($news['severity'] === 'error' ? 'error' : ($news['severity'] === 'success' ? 'success' : 'info')) ?>">
+      <strong><?= e($news['title']) ?></strong> <span class="hint"><?= e(jdate_from_utc((string)$news['created_at'])) ?></span>
+      <div style="margin-top:6px"><?= nl2br(e($news['body'])) ?></div>
+    </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
 <?php if ($onboarding && !$onboarding['complete']): ?>
 <div class="card" style="border:1px solid #dfe3ff;background:linear-gradient(135deg,#fff,#f7f8ff)">
   <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
