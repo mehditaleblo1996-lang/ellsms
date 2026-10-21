@@ -68,6 +68,8 @@ RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-avail
 # in memory. Keep a finite per-request ceiling, but allow up to 4G for very large operator workloads.
 # AuditPrepend registers a shutdown hook for every HTTP PHP entrypoint. It does no Mongo I/O before
 # the application runs and is fail-safe, so MongoDB can never make an ELLSMS request unavailable.
+# session.upload_progress is unused by ELLSMS (no PHP_SESSION_UPLOAD_PROGRESS anywhere) and is a
+# known way to turn a local-file-inclusion bug into code execution, so it stays off.
 RUN { \
       echo 'date.timezone = Asia/Tehran'; \
       echo 'memory_limit = 4G'; \
@@ -76,6 +78,7 @@ RUN { \
       echo 'expose_php = Off'; \
       echo 'display_errors = Off'; \
       echo 'log_errors = On'; \
+      echo 'session.upload_progress.enabled = Off'; \
       echo 'auto_prepend_file = /var/www/html/app/Support/AuditPrepend.php'; \
     } > /usr/local/etc/php/conf.d/ellsms.ini
 

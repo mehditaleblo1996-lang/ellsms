@@ -175,6 +175,11 @@ require __DIR__ . '/../app/views/public_header.php';
   // ARIA tablist: arrow keys / Home / End move between slides, only the current tab is in the tab order.
   var root = document.querySelector('[data-lp-banner]');
   if (!root) return;
+  // The banner fills the screen below the sticky nav; expose the nav's real height to the CSS.
+  var nav = document.querySelector('.lp-nav');
+  function setNavHeight() { if (nav) document.documentElement.style.setProperty('--lp-nav-h', nav.offsetHeight + 'px'); }
+  setNavHeight();
+  window.addEventListener('resize', setNavHeight);
   var slides = root.querySelectorAll('.lp-banner-slide');
   var dots = root.querySelectorAll('.lp-banner-dots [role="tab"]');
   var toggle = root.querySelector('[data-lp-banner-toggle]');
