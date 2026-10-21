@@ -96,6 +96,8 @@ require_once __DIR__ . '/telegram.php';
 require_once __DIR__ . '/PriceQuote.php';
 require_once __DIR__ . '/NotificationCenter.php';
 require_once __DIR__ . '/LowCreditAlerts.php';
+// Delivery-based billing: refunds undelivered gateway sends for users an admin switched it on for.
+require_once __DIR__ . '/DeliveryRefunds.php';
 require_once __DIR__ . '/SubscriptionReminders.php';
 require_once __DIR__ . '/Alerting/AlertManager.php';
 // SMS gateway connectors — admin-configurable provider send/status APIs

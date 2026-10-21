@@ -10,6 +10,7 @@ before.
 |---|---|---|
 | `payments-reconcile` | every 10 min | re-verifies payments whose callback never arrived or whose verify failed, and credits the ones ZarinPal completed |
 | `invoices-expire` | every 15 min | marks issued invoices past their `due_at` expired (an invoice without one never expires; a late payment still marks it paid) |
+| `delivery-refunds` | every 5 min | refunds undelivered messages of delivery-based-billing users that the status path itself missed (`docs/delivery-based-billing.md`); a no-op until an admin switches the service on for someone |
 | `subscription-lifecycle` | every 15 min | trial and grace expiry, period rollover, stale usage reservations (skips itself while `BILLING_ENABLED=0`) |
 | `bulk-archive` | every minute | advances approved bulk-archive runs one bounded pass |
 | `voice-worker` | every minute | sends due scheduled voice messages, polls ZarinCall for answered / not answered calls and settles their cost (`docs/voice-messages.md`) |

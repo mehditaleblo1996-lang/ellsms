@@ -78,6 +78,16 @@ send, and its delivery status goes back to WebEngage as a DSN once the gateway's
 arrives. Each organization turns it on and enters WebEngage's DSN token on **/integrations.php**.
 See [`docs/webengage.md`](docs/webengage.md).
 
+## Delivery-based billing (ارسال بر اساس تحویل)
+
+An admin can switch it on per user (**Users → user → ارسال بر اساس تحویل**) and set a refund percentage
+(1–100, default 100). After that, if one of the user's gateway-transport messages gets a final report
+of failed, rejected or expired, that percentage of the message's own charge goes back to the wallet,
+exactly once, as a `delivery_refund` ledger entry. Messages with no final report aren't refunded. The
+percentage that applies is the one in force when the message was sent. The scheduler job
+`delivery-refunds` catches anything the status path missed. See
+[`docs/delivery-based-billing.md`](docs/delivery-based-billing.md).
+
 ## Login model
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.

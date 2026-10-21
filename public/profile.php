@@ -249,6 +249,11 @@ foreach ($organizationDocuments as $d) {
     }
 }
 
+// Delivery-based billing (app/DeliveryRefunds.php): an admin turns it on; the customer only sees it.
+$deliveryPolicy = delivery_billing_policy((int)$me['id']);
+$deliveryTotals = delivery_refund_totals((int)$me['id']);
+$deliveryRefunds = ($deliveryPolicy['enabled'] || $deliveryTotals['count'] > 0) ? delivery_refunds_recent((int)$me['id'], 10) : [];
+
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'profile.personal';
 require __DIR__ . '/../app/views/impersonation_notice.php';
@@ -354,6 +359,10 @@ $showCompany  = $organizationId > 0 && ($accountType === 'legal' || $hasLegalDat
       <div class="summary-label">جنسیت</div>
       <div class="summary-value"><?= e(PROFILE_GENDERS[$userProfile['gender'] ?? 'unspecified'] ?? '—') ?></div>
     </div>
+    <div class="summary-item">
+      <div class="summary-label">ارسال بر اساس تحویل</div>
+      <div class="summary-value"><?= $deliveryPolicy['enabled'] ? 'فعال — بازگشت ' . to_persian_digits((string)$deliveryPolicy['refund_percent']) . '٪ هزینه‌ی پیام تحویل‌نشده' : 'غیرفعال' ?></div>
+    </div>
     <?php if ($organizationId > 0): ?>
     <div class="summary-item">
       <div class="summary-label">IP فعال/مجاز</div>
@@ -373,6 +382,31 @@ $showCompany  = $organizationId > 0 && ($accountType === 'legal' || $hasLegalDat
     <p class="hint" style="margin-top:12px">تکمیل‌نشده: <?= e(implode('، ', $score['missing'])) ?></p>
   <?php endif; ?>
 </div>
+
+<?php if ($deliveryRefunds): ?>
+<div class="card">
+  <h2>بازگشت هزینه‌ی پیام‌های تحویل‌نشده</h2>
+  <p class="hint">
+    هزینه‌ی پیامکی که گزارش نهایی آن «تحویل نشده»، «رد شده» یا «منقضی شده» باشد به کیف پول شما برمی‌گردد.
+    تاکنون <?= to_persian_digits(number_format($deliveryTotals['count'])) ?> پیام و مجموعاً <?= to_persian_digits(number_format($deliveryTotals['amount'])) ?> ریال.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>زمان</th><th>گیرنده</th><th>وضعیت</th><th>بازگشت (ریال)</th></tr></thead>
+      <tbody>
+      <?php foreach ($deliveryRefunds as $refund): ?>
+        <tr>
+          <td class="num"><?= e(jdate($refund['created_at'])) ?></td>
+          <td class="ltr"><?= e($refund['destination']) ?></td>
+          <td><?= e(delivery_refund_state_label($refund['delivery_status'])) ?></td>
+          <td class="num"><?= to_persian_digits(number_format($refund['refund_amount'])) ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if ($organizationId > 0): ?>
 <div class="card">

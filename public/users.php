@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save', 'ensure_organization', 'account_type', 'customer_save', 'menu_save', 'operator_prices_save'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save', 'ensure_organization', 'account_type', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -184,6 +184,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash($result['ok'] ? 'success' : 'error', $result['ok']
                 ? 'تعرفه‌ی اختصاصی ذخیره شد. از همین لحظه برای ارسال‌های جدید اعمال می‌شود.'
                 : gateway_price_error_message((string)$result['reason']));
+        } elseif ($do === 'delivery_billing_save') {
+            // Delivery-based billing (app/DeliveryRefunds.php): admin-only per-user switch plus the
+            // share of an undelivered message's price that goes back to the wallet.
+            $enabled = !empty($_POST['delivery_billing_enabled']);
+            $percent = delivery_billing_parse_percent($_POST['refund_percent'] ?? '');
+            $result = $percent === null ? ['ok' => false, 'reason' => 'invalid_percent'] : delivery_billing_save($id, $enabled, $percent, (int)$me['id']);
+            flash($result['ok'] ? 'success' : 'error', $result['ok']
+                ? ($result['reason'] === 'unchanged' ? 'تغییری در تنظیمات ارسال بر اساس تحویل نبود.'
+                    : ($enabled ? 'ارسال بر اساس تحویل فعال شد؛ از همین لحظه برای پیام‌های جدید اعمال می‌شود.' : 'ارسال بر اساس تحویل غیرفعال شد.'))
+                : delivery_billing_error_message((string)$result['reason']));
         } elseif ($do === 'menu_save') {
             $roleId = (int)($_POST['menu_role_id'] ?? 0) ?: null;
             $result = menu_user_access_save($id, $roleId, (array)($_POST['menu_override'] ?? []), null, (int)$me['id']);
@@ -415,6 +425,12 @@ if (!empty($_GET['edit'])) {
         $editPricesReady = gateway_prices_available();
         $editPriceOwner = $editPricesReady ? customer_price_owner($editUserId) : null;
         $editMenuEffective = menu_access_effective($editUserId);
+        // Delivery-based billing (app/DeliveryRefunds.php).
+        $editDeliveryReady = delivery_billing_available();
+        $editDeliveryPolicy = delivery_billing_policy($editUserId);
+        $editDeliveryTotals = delivery_refund_totals($editUserId);
+        $editDeliveryPeriods = delivery_billing_periods($editUserId, 10);
+        $editDeliveryRefunds = delivery_refunds_recent($editUserId, 20);
     }
 }
 
@@ -569,6 +585,7 @@ require __DIR__ . '/../app/views/header.php';
   <button type="button" role="tab" data-tab="kyc">اطلاعات هویتی (KYC)</button>
   <button type="button" role="tab" data-tab="hierarchy">نمایندگی و دسترسی منو</button>
   <button type="button" role="tab" data-tab="operator-prices">تعرفه‌ی اختصاصی</button>
+  <button type="button" role="tab" data-tab="delivery-billing">ارسال بر اساس تحویل</button>
   <button type="button" role="tab" data-tab="remote-db">اتصال به دیتابیس</button>
 </nav>
 
@@ -990,6 +1007,93 @@ if ($editOrganizationId > 0) {
     ?>
   <?php endif; ?>
 </div>
+</section>
+
+<section class="tab-panel" data-panel="delivery-billing" role="tabpanel">
+<div class="card">
+  <h2>ارسال بر اساس تحویل</h2>
+  <?php if (!$editDeliveryReady): ?>
+    <div class="flash flash-error"><?= e(delivery_billing_error_message('not_migrated')) ?></div>
+  <?php else: ?>
+    <p class="hint">
+      وقتی فعال باشد، هزینه‌ی هر پیامکی که این کاربر از طریق درگاه ارسال می‌کند و گزارش نهایی آن «تحویل نشده»، «رد شده» یا «منقضی شده» است،
+      به نسبت درصد زیر به کیف پولش برمی‌گردد. پیامی که گزارش نهایی ندارد (وضعیت نامشخص) برگشت داده نمی‌شود.
+      درصدی ملاک است که هنگام <strong>ارسال</strong> پیام فعال بوده؛ تغییر یا غیرفعال‌کردن، پیام‌های در راه را تغییر نمی‌دهد.
+      ارسال‌های مسیر قدیمی (API سامانه‌ی مرکزی) شامل این سرویس نمی‌شوند.
+    </p>
+    <form method="post">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="delivery_billing_save">
+      <input type="hidden" name="id" value="<?= (int)$editUser['id'] ?>">
+      <input type="hidden" name="back" value="1">
+      <div class="form-grid cols-2">
+        <label class="check"><input type="checkbox" name="delivery_billing_enabled" value="1"<?= $editDeliveryPolicy['enabled'] ? ' checked' : '' ?>> ارسال بر اساس تحویل برای این کاربر فعال است</label>
+        <label>درصد بازگشت هزینه‌ی پیام تحویل‌نشده
+          <input type="text" name="refund_percent" class="ltr" inputmode="numeric" maxlength="3" value="<?= (int)$editDeliveryPolicy['refund_percent'] ?>" required>
+          <span class="hint" style="display:block">عددی از ۱ تا ۱۰۰؛ ۱۰۰ یعنی کل هزینه برمی‌گردد.</span>
+        </label>
+      </div>
+      <div class="form-actions"><button class="btn btn-primary btn-sm">ذخیره</button></div>
+    </form>
+    <div class="summary-grid" style="margin-top:14px">
+      <div class="summary-item">
+        <div class="summary-label">وضعیت</div>
+        <div class="summary-value"><?= $editDeliveryPolicy['enabled']
+            ? 'فعال از ' . e(jdate((string)$editDeliveryPolicy['enabled_since'])) . ' — ' . to_persian_digits((string)$editDeliveryPolicy['refund_percent']) . '٪'
+            : 'غیرفعال' ?></div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">پیام‌های برگشت‌داده‌شده</div>
+        <div class="summary-value num"><?= to_persian_digits(number_format($editDeliveryTotals['count'])) ?></div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">مجموع مبلغ برگشتی (ریال)</div>
+        <div class="summary-value num"><?= to_persian_digits(number_format($editDeliveryTotals['amount'])) ?></div>
+      </div>
+    </div>
+  <?php endif; ?>
+</div>
+<?php if ($editDeliveryReady && $editDeliveryPeriods): ?>
+<div class="card">
+  <h2>دوره‌های فعال بودن</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>از</th><th>تا</th><th>درصد بازگشت</th></tr></thead>
+      <tbody>
+      <?php foreach ($editDeliveryPeriods as $period): ?>
+        <tr>
+          <td class="num"><?= e(jdate((string)$period['started_at'])) ?></td>
+          <td class="num"><?= $period['ended_at'] !== null ? e(jdate((string)$period['ended_at'])) : 'اکنون' ?></td>
+          <td class="num"><?= to_persian_digits((string)(int)$period['refund_percent']) ?>٪</td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
+<?php if ($editDeliveryReady && $editDeliveryRefunds): ?>
+<div class="card">
+  <h2>آخرین بازگشت‌ها</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>زمان</th><th>گیرنده</th><th>ارسال</th><th>وضعیت</th><th>هزینه (ریال)</th><th>بازگشت (ریال)</th></tr></thead>
+      <tbody>
+      <?php foreach ($editDeliveryRefunds as $refund): ?>
+        <tr>
+          <td class="num"><?= e(jdate($refund['created_at'])) ?></td>
+          <td class="ltr"><?= e($refund['destination']) ?></td>
+          <td><?php if ($refund['job_id'] !== null): ?><a href="/bulk-job.php?id=<?= (int)$refund['job_id'] ?>">انبوه #<?= to_persian_digits((string)$refund['job_id']) ?></a><?php elseif ($refund['source'] === 'bulk_item'): ?>انبوه (بایگانی‌شده)<?php else: ?>ارسال تکی / API<?php endif; ?></td>
+          <td><?= e(delivery_refund_state_label($refund['delivery_status'])) ?></td>
+          <td class="num"><?= to_persian_digits(number_format($refund['charged_amount'])) ?></td>
+          <td class="num"><?= to_persian_digits(number_format($refund['refund_amount'])) ?> (<?= to_persian_digits((string)$refund['refund_percent']) ?>٪)</td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
 </section>
 
 <section class="tab-panel" data-panel="hierarchy" role="tabpanel">

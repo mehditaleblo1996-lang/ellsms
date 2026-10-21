@@ -44,6 +44,7 @@ that makes a retried operation a safe no-op (Invariant C/F).
 | `sms_debit` | `wallet_commit_reservation()` (spending part/all of a reservation) or `wallet_debit()` directly |
 | `manual_credit` / `manual_debit` | `wallet_manual_adjustment()` (admin credit/debit, STEP 17) |
 | `reservation_release` | `wallet_release_reservation()` (unused reserved credit returned) |
+| `delivery_refund` | `delivery_refund_apply()` — part or all of one undelivered message's charge, for a user with delivery-based billing switched on (`docs/delivery-based-billing.md`) |
 | `migration_opening_balance` | `wallet_backfill_user()` (STEP 4), or `wallet_ensure_account()` for an account first touched after it: one row per user, once |
 
 ## Idempotency — how it actually works
