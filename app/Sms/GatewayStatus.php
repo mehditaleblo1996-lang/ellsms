@@ -530,10 +530,12 @@ function gateway_status_record(string $source, int $rowId, ?string $current, str
     Metrics::increment('gateway_delivery_status', 1, ['state' => $next]);
     // #39 — this UPDATE is the one that moved the row into a final state (the SQL guard lets exactly
     // one writer win it), so the delivery webhook and the line's DLR forward (app/NumberForwarding.php)
-    // fire here exactly once.
+    // fire here exactly once. Delivery-based billing refunds an undelivered message from the same
+    // point (app/DeliveryRefunds.php); it is idempotent on its own, so a missed call is swept later.
     if (gateway_state_is_terminal($next)) {
         webhook_emit_delivery_state($source, $rowId, $next, $deliveredAt);
         number_forward_enqueue_dlr($source, $rowId, $next, $deliveredAt);
+        delivery_refund_on_terminal($source, $rowId, $next);
     }
     return true;
 }
