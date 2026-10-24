@@ -95,6 +95,7 @@ if (PHP_SAPI !== 'cli') {
                 '/billing.php' => '/billing',
                 '/buy-credit.php' => '/billing/credit',
                 '/invoices.php' => '/billing/invoices',
+                '/financial-log.php' => '/billing/history',
                 '/api-keys.php' => '/developers/api-keys',
                 '/webhooks.php' => '/developers/webhooks',
                 '/number-forwards.php' => '/developers/line-forwarding',
