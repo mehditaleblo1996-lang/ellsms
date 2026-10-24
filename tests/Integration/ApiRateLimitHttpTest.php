@@ -85,7 +85,6 @@ final class ApiRateLimitHttpTest extends TestCase
         $raw = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        curl_close($ch);
         $rawHeaders = substr((string)$raw, 0, $headerSize);
         $body = substr((string)$raw, $headerSize);
         $respHeaders = [];

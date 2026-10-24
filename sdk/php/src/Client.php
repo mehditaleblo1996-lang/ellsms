@@ -196,7 +196,10 @@ final class Client
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
         $curlError = curl_error($ch);
-        curl_close($ch);
+        // curl_close() frees the handle on PHP 7.x only; it is a no-op since 8.0 and deprecated in 8.5.
+        if (PHP_VERSION_ID < 80000) {
+            curl_close($ch);
+        }
 
         if ($raw === false || $status === 0) {
             throw new EllsmsException(0, 'network_error', 'Could not reach ELLSMS: ' . $curlError);

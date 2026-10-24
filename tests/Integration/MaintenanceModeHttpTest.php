@@ -73,7 +73,6 @@ final class MaintenanceModeHttpTest extends TestCase
         $this->assertNotFalse($raw, 'curl request failed: ' . curl_error($ch));
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        curl_close($ch);
         $rawHeaders = substr($raw, 0, $headerSize);
         $body = substr($raw, $headerSize);
         $headers = [];

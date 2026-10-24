@@ -308,13 +308,13 @@ function db(): PDO {
         // self-signed cert on an internal network; set BACKEND_DB_SSL_VERIFY=1 to require a real,
         // trusted certificate instead (pair with BACKEND_DB_SSL_CA if it's not in the system store).
         if ((env('BACKEND_DB_SSL_VERIFY', '0') ?? '0') === '1') {
-            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            $options[Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = true;
             $sslCa = env('BACKEND_DB_SSL_CA', '');
             if ($sslCa !== '') {
-                $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+                $options[Pdo\Mysql::ATTR_SSL_CA] = $sslCa;
             }
         } else {
-            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+            $options[Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = false;
         }
         $pdo = new PDO($dsn, $user, $pass, $options);
     }

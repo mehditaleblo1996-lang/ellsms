@@ -186,7 +186,6 @@ final class ImpersonationHttpTest extends TestCase
         $this->assertNotSame('', $raw, 'curl failed: ' . curl_error($ch));
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        curl_close($ch);
 
         $headers = substr($raw, 0, $headerSize);
         $newSession = preg_match('/Set-Cookie:\s*ELLSMS_SESSION=([^;]+)/i', $headers, $m) === 1 ? $m[1] : null;

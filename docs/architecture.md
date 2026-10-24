@@ -4,7 +4,7 @@ This document describes the architecture of ELLSMS **as it exists today**. It is
 snapshot, not a target design — see `PATHFINDER-2026-07-26/03-unified-proposal.md` for
 forward-looking recommendations, which are explicitly out of scope for this document.
 
-ELLSMS is a self-hosted SMS panel (PHP 8.2, no framework, no `vendor/`) that deliberately does
+ELLSMS is a self-hosted SMS panel (PHP 8.5, no framework, no `vendor/`) that deliberately does
 **not** own its own user database or talk to an SMS gateway directly. It attaches to the Docker
 network and MySQL database of an external, pre-existing "backend" SMS platform, authenticates
 against that platform's own accounts, and sends messages by calling that platform's own REST API

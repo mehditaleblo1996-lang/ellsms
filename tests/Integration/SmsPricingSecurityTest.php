@@ -131,7 +131,6 @@ final class SmsPricingSecurityTest extends TestCase
         $body = curl_exec($ch);
         $this->assertNotFalse($body, 'curl failed: ' . curl_error($ch));
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         return ['code' => $code, 'body' => (string)$body];
     }
 

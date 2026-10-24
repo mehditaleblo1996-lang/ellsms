@@ -659,14 +659,12 @@ function number_forward_http_execute(array $requests, int $concurrency, int $tim
                 (int)round((float)curl_getinfo($ch, CURLINFO_TOTAL_TIME) * 1000), $buffers[$key]);
             unset($buffers[$key]);
             curl_multi_remove_handle($multi, $ch);
-            curl_close($ch);
             $finished = true;
         }
         if ($status !== CURLM_OK) {
             foreach ($active as [$key, $ch]) {
                 $results[$key] = ['outcome' => 'retry', 'http_status' => null, 'error_code' => 'connection_failed', 'response_excerpt' => null, 'duration_ms' => 0];
                 curl_multi_remove_handle($multi, $ch);
-                curl_close($ch);
             }
             $active = [];
         } elseif (!$finished && $active !== []) {

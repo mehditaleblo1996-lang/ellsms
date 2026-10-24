@@ -62,7 +62,6 @@ final class HealthCheck
             ]);
             curl_exec($ch);
             $errNo = curl_errno($ch);
-            curl_close($ch);
             if ($errNo !== 0) {
                 Logger::warning('health.backend_api_unreachable', ['curl_errno' => $errNo]);
             }

@@ -93,7 +93,6 @@ final class CostPreviewApiTest extends TestCase
         $raw = curl_exec($ch);
         $this->assertNotFalse($raw, 'curl failed: ' . curl_error($ch));
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         return ['code' => $code, 'json' => json_decode((string)$raw, true), 'raw' => (string)$raw];
     }
 
