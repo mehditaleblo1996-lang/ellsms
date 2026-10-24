@@ -276,7 +276,7 @@ function report_bulk_items(int $jobId, ?int $organizationId, int $limit = 200, i
         $sql .= ' AND bj.organization_id = ?';
         $params[] = $organizationId;
     }
-    $sql .= ' ORDER BY bi.id ASC LIMIT ' . max(1, min(500, $limit)) . ' OFFSET ' . max(0, $offset);
+    $sql .= ' ORDER BY bi.id DESC LIMIT ' . max(1, min(500, $limit)) . ' OFFSET ' . max(0, $offset);
     $st = db()->prepare($sql);
     $st->execute($params);
     return $st->fetchAll();

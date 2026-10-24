@@ -74,7 +74,7 @@ $isAdmin = $me['role'] === 'admin';
 $files = $configured ? array_values(array_filter(voice_files_list($me, 500), 'voice_file_is_ready')) : [];
 
 $detail = isset($_GET['id']) ? voice_message_find($me, (int)$_GET['id']) : null;
-$detailBatches = $detail ? voice_message_batches((int)$detail['id']) : [];
+$detailBatches = $detail ? array_reverse(voice_message_batches((int)$detail['id'])) : [];
 
 $per = 50;
 $filterStatus = isset($_GET['status']) && $_GET['status'] !== '' ? (string)$_GET['status'] : null;
