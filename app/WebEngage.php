@@ -480,7 +480,6 @@ function webengage_dsn_attempt(array $row): array {
     curl_exec($ch);
     $errno = curl_errno($ch);
     $httpStatus = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
 
     if ($errno !== 0) {
         return ['outcome' => 'retry', 'http_status' => null, 'error' => $errno === CURLE_OPERATION_TIMEDOUT ? 'timeout' : 'connection_failed'];

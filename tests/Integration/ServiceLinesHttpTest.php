@@ -96,7 +96,6 @@ final class ServiceLinesHttpTest extends TestCase
         curl_setopt_array($ch, $opts);
         $body = (string)curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         return ['code' => $code, 'body' => $body];
     }
 

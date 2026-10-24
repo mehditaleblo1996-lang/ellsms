@@ -581,10 +581,14 @@ function webhook_attempt_delivery(array $delivery): array {
         CURLOPT_POSTFIELDS     => $rawBody,
         CURLOPT_HTTPHEADER     => [
             'Content-Type: application/json',
+            'X-Datis-Event-ID: ' . $delivery['event_uuid'],
+            'X-Datis-Timestamp: ' . $timestamp,
+            'X-Datis-Signature: ' . $signature,
+            // Pre-rebrand names, same values: receivers written against them keep verifying.
             'X-ELLSMS-Event-ID: ' . $delivery['event_uuid'],
             'X-ELLSMS-Timestamp: ' . $timestamp,
             'X-ELLSMS-Signature: ' . $signature,
-            'User-Agent: ELLSMS-Webhooks/1.0',
+            'User-Agent: DatisRayan-Webhooks/1.0',
         ],
         CURLOPT_TIMEOUT        => webhook_config_timeout_seconds(),
         CURLOPT_CONNECTTIMEOUT => min(5, webhook_config_timeout_seconds()),
@@ -606,7 +610,6 @@ function webhook_attempt_delivery(array $delivery): array {
     $durationMs = (int)((microtime(true) - $startedAt) * 1000);
     $errno = curl_errno($ch);
     $httpStatus = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
 
     // Belt-and-suspenders on top of the WRITEFUNCTION's own per-chunk cap above (STEP 35: never
     // store the full response) -- a hard substr() here guarantees the bound regardless of how curl

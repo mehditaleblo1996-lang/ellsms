@@ -2,7 +2,7 @@
 
 # ELLSMS — Smart SMS Panel
 
-A self-hosted SMS panel (**PHP 8.2 + Docker Compose**) that shares its **database with a connected backend SMS platform** — no separate user database, no duplicate accounts. It logs in with existing backend accounts, and sends SMS through one of two transports: the **SMS gateway connectors** ELLSMS configures and calls itself (`SMS_GATEWAY_TRANSPORT=1`), or the backend platform's own REST API (the legacy transport, still the default when the switch is off). See [Sending transports](#sending-transports-gateway-vs-legacy-backend-api).
+A self-hosted SMS panel (**PHP 8.5 + Docker Compose**) that shares its **database with a connected backend SMS platform** — no separate user database, no duplicate accounts. It logs in with existing backend accounts, and sends SMS through one of two transports: the **SMS gateway connectors** ELLSMS configures and calls itself (`SMS_GATEWAY_TRANSPORT=1`), or the backend platform's own REST API (the legacy transport, still the default when the switch is off). See [Sending transports](#sending-transports-gateway-vs-legacy-backend-api).
 
 ## How this fits together with the backend platform
 

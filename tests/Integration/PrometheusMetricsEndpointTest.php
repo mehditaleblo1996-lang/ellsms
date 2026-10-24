@@ -67,7 +67,6 @@ final class PrometheusMetricsEndpointTest extends TestCase
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
         $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-        curl_close($ch);
         return ['code' => $code, 'content_type' => $contentType, 'body' => substr((string)$raw, $headerSize)];
     }
 

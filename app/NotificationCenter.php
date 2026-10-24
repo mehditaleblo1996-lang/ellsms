@@ -115,7 +115,6 @@ function notification_send_telegram(string $title, string $body): bool {
     ]);
     $result = curl_exec($ch);
     $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
     return $result !== false && $code >= 200 && $code < 300;
 }
 

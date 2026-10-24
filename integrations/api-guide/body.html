@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>راهنمای API پیامک داتیس رایان گستر ایرانیان</title>
+<link rel="stylesheet" href="guide.css">
+<style>@page { size: A4; margin: 17mm 17mm 20mm; }</style>
+</head>
+<body>
+
+<!-- ۱ -->
+<h2 class="sec" id="s1"><span class="n">۱</span>شروع سریع</h2>
+<p>با API پیامک داتیس رایان گستر ایرانیان، نرم‌افزار، فروشگاه یا سامانه‌ی شما بدون ورود به پنل پیامک می‌فرستد، وضعیت تحویل را می‌گیرد و موجودی اعتبار را می‌بیند. همه‌ی درخواست‌ها <span class="ltr">JSON</span> هستند و از <span class="ltr">HTTPS</span> ارسال می‌شوند.</p>
+
+<div class="cards">
+  <div class="card"><span class="b">۱</span><h4>کلید بسازید</h4>
+    <p>در پنل، بخش «توسعه‌دهندگان ← کلیدهای API»، یک کلید با دسترسی‌های لازم بسازید.</p></div>
+  <div class="card"><span class="b">۲</span><h4>هدر بگذارید</h4>
+    <p>کلید را در هدر <span class="c">Authorization</span> هر درخواست قرار دهید.</p></div>
+  <div class="card"><span class="b">۳</span><h4>بفرستید</h4>
+    <p>یک درخواست <span class="c">POST</span> به مسیر <span class="c">/messages</span> بزنید و نتیجه را همان لحظه بگیرید.</p></div>
+</div>
+
+<h3>آدرس پایه</h3>
+<div class="base">https://datisrayan.com/api/v1</div>
+
+<h3>اولین پیامک شما</h3>
+<div class="code"><div class="lbl">CURL</div><pre>
+curl -X POST https://datisrayan.com/api/v1/messages \
+  -H "Authorization: Bearer $DATIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"destinations": ["989121234567"], "content": "سلام! این اولین پیامک من است."}'
+</pre></div>
+
+<div class="call ok"><b class="h">همین!</b>
+<p>اگر پاسخ با کد <span class="c">201</span> و <span class="c">"status": "sent"</span> برگشت، پیامک ارسال شده است. ادامه‌ی این راهنما همه‌ی جزئیات را توضیح می‌دهد.</p></div>
+
+<!-- ۲ -->
+<h2 class="sec" id="s2"><span class="n">۲</span>احراز هویت و کلیدها</h2>
+<p>هر درخواست باید یک کلید API معتبر داشته باشد. کلید را فقط در هدر بفرستید؛ کلیدی که در آدرس (<span class="ltr">query string</span>) بیاید پذیرفته نمی‌شود.</p>
+<div class="code"><div class="lbl">HEADERS</div><pre>
+Authorization: Bearer datis_live_a1b2c3d4e5f6_kQ3fZ8...
+Content-Type: application/json
+</pre></div>
+
+<div class="call warn"><b class="h">کلید فقط یک بار نمایش داده می‌شود</b>
+<p>بلافاصله پس از ساخت، آن را در جای امنی (مثل متغیر محیطی سرور) ذخیره کنید. داتیس رایان گستر ایرانیان خودِ کلید را نگه نمی‌دارد و قابل بازیابی نیست؛ اگر گم شد، کلید را چرخش (<span class="ltr">rotate</span>) دهید یا کلید تازه بسازید. هرگز کلید را در کد سمت مرورگر یا اپلیکیشن موبایل قرار ندهید.</p></div>
+
+<p class="note">کلیدهای جدید با <span class="c">datis_live_</span> شروع می‌شوند. کلیدهایی که پیش از تغییر نام ساخته شده‌اند و با <span class="c">ellsms_live_</span> شروع می‌شوند همچنان معتبرند و نیازی به تعویض ندارند.</p>
+
+<h3>دسترسی‌ها (<span class="ltr">Scope</span>)</h3>
+<p>هنگام ساخت کلید مشخص می‌کنید آن کلید چه کارهایی مجاز است انجام دهد. بهتر است هر کلید فقط دسترسی‌هایی را داشته باشد که واقعاً لازم دارد.</p>
+<table class="t">
+  <tr><th style="width:42%">Scope</th><th>اجازه می‌دهد</th></tr>
+  <tr><td><span class="c">messages:send</span></td><td>ارسال پیامک تکی/گروهی و پیش‌نمایش هزینه‌ی آن</td></tr>
+  <tr><td><span class="c">messages:read</span></td><td>خواندن وضعیت یک ارسال</td></tr>
+  <tr><td><span class="c">bulk:write</span></td><td>ساخت ارسال انبوه و پیش‌نمایش هزینه‌ی آن</td></tr>
+  <tr><td><span class="c">bulk:read</span></td><td>پیگیری وضعیت ارسال انبوه</td></tr>
+  <tr><td><span class="c">contacts:read</span> / <span class="c">contacts:write</span></td><td>خواندن / ساخت، ویرایش و حذف مخاطبین</td></tr>
+  <tr><td><span class="c">balance:read</span></td><td>مشاهده‌ی موجودی اعتبار</td></tr>
+  <tr><td><span class="c">webhooks:read</span> / <span class="c">webhooks:write</span></td><td>مدیریت وبهوک‌ها</td></tr>
+</table>
+
+<h3>محدودیت آی‌پی (اختیاری)</h3>
+<p>مالک یا مدیر سازمان می‌تواند در همان صفحه‌ی کلیدها، فهرست آی‌پی‌های مجاز را فعال کند. پس از آن، درخواستی که از آی‌پی دیگری برسد با خطای <span class="c">403</span> رد می‌شود — حتی اگر کلید درست باشد. برای سرورهایی با آی‌پی ثابت توصیه می‌شود.</p>
+
+<!-- ۳ -->
+<h2 class="sec" id="s3"><span class="n">۳</span>انواع ارسال</h2>
+<p>بسته به اینکه یک متن را برای چند نفر می‌فرستید یا برای هر نفر متن جداگانه دارید، یکی از این روش‌ها را انتخاب کنید:</p>
+<div class="cards">
+  <div class="card"><span class="tag">فوری</span><h4>تکی و گروهی</h4>
+    <p>یک متن برای ۱ تا ۱۰۰ شماره. نتیجه‌ی نهایی در همان پاسخ برمی‌گردد. مناسب کد تأیید، اطلاع‌رسانی سفارش و هشدار.</p>
+    <div class="cf">POST /messages</div></div>
+  <div class="card"><span class="tag">در صف</span><h4>انبوه شخصی‌سازی‌شده</h4>
+    <p>متن متفاوت برای هر شماره، تا ۵۰۰۰ ردیف در هر درخواست. شناسه می‌گیرید و پیشرفت را پیگیری می‌کنید.</p>
+    <div class="cf">POST /bulk-jobs</div></div>
+  <div class="card"><span class="tag">در صف، کنترل‌شده</span><h4>تدریجی</h4>
+    <p>مثل انبوه، ولی با سرعت مشخص — مثلاً هر ۱۰ دقیقه ۱۰۰ پیامک — تا ترافیک یا پشتیبانی شما یکجا درگیر نشود.</p>
+    <div class="cf">type: gradual</div></div>
+</div>
+<table class="t">
+  <tr><th style="width:55%">اگر…</th><th>از این استفاده کنید</th></tr>
+  <tr><td>یک پیام یکسان برای چند نفر دارید (تا ۱۰۰ نفر)</td><td><span class="c">POST /messages</span></td></tr>
+  <tr><td>برای هر نفر متن خاص خودش را دارید (نام، مبلغ، کد…)</td><td><span class="c">POST /bulk-jobs</span> با <span class="c">type: p2p</span></td></tr>
+  <tr><td>بیش از ۱۰۰ گیرنده دارید، حتی با متن یکسان</td><td><span class="c">POST /bulk-jobs</span></td></tr>
+  <tr><td>می‌خواهید ارسال در طول زمان پخش شود</td><td><span class="c">POST /bulk-jobs</span> با <span class="c">type: gradual</span></td></tr>
+</table>
+
+<!-- ۴ -->
+<h2 class="sec" id="s4"><span class="n">۴</span>ارسال تکی و گروهی</h2>
+<div class="ep"><span class="m post">POST</span>/api/v1/messages</div>
+<p>یک متن را برای یک یا چند شماره می‌فرستد. این درخواست <b>همزمان</b> است: پاسخ، نتیجه‌ی نهایی ارسال را در خود دارد و نیازی به پیگیری جداگانه نیست. دسترسی لازم: <span class="c">messages:send</span></p>
+
+<h3>فیلدهای درخواست</h3>
+<table class="t">
+  <tr><th style="width:24%">فیلد</th><th style="width:13%">وضعیت</th><th>توضیح</th></tr>
+  <tr><td><span class="c">destinations</span></td><td class="req">اجباری</td><td>آرایه‌ای از شماره‌ها (رشته)، حداکثر ۱۰۰ عدد. شکل‌های <span class="c">0912…</span> و <span class="c">98912…</span> هر دو پذیرفته و خودکار یکسان می‌شوند.</td></tr>
+  <tr><td><span class="c">content</span></td><td class="req">اجباری</td><td>متن پیام، حداکثر ۲۰۰۰ نویسه. پیام‌های طولانی خودکار چندبخشی ارسال و به همان اندازه محاسبه می‌شوند.</td></tr>
+  <tr><td><span class="c">originator</span></td><td class="opt">اختیاری</td><td>خط ارسال‌کننده. باید یکی از خطوط مجاز صاحب کلید باشد (اختصاصی، سازمانی یا اشتراکی). اگر نفرستید، خط پیش‌فرض پنل استفاده می‌شود.</td></tr>
+  <tr><td><span class="c">channel</span></td><td class="opt">اختیاری</td><td><span class="c">sms</span> (پیش‌فرض)، <span class="c">bale</span> یا <span class="c">bale_sms</span> — جدول پایین.</td></tr>
+  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>شناسه‌ی یکتای شما برای جلوگیری از ارسال تکراری (بخش ۷).</td></tr>
+</table>
+
+<h3>نمونه</h3>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl -X POST https://datisrayan.com/api/v1/messages \
+  -H "Authorization: Bearer $DATIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "originator": "500030898989",
+    "destinations": ["989121234567", "09351111111"],
+    "content": "سفارش ۱۰۲۴ شما ثبت شد. ممنون از خریدتان.",
+    "client_message_id": "order-1024-confirm"
+  }'
+</pre></div>
+<div class="code"><div class="lbl">RESPONSE · 201 CREATED</div><pre>
+{
+  "data": {
+    "id": "482",
+    "status": "sent",
+    "sent_count": 2,
+    "total_count": 2,
+    "channel": "sms"
+  }
+}
+</pre></div>
+
+<h3>وضعیت ارسال</h3>
+<table class="t">
+  <tr><th style="width:24%">status</th><th style="width:13%">کد HTTP</th><th>معنی</th></tr>
+  <tr><td><span class="pill ok">sent</span></td><td><span class="c">201</span></td><td>به همه‌ی گیرنده‌ها ارسال شد.</td></tr>
+  <tr><td><span class="pill warn">partially_sent</span></td><td><span class="c">201</span></td><td>به بخشی ارسال شد؛ <span class="c">sent_count</span> و <span class="c">total_count</span> را مقایسه کنید.</td></tr>
+  <tr><td><span class="pill err">failed</span></td><td><span class="c">422</span></td><td>به هیچ گیرنده‌ای ارسال نشد و اعتباری کم نشد.</td></tr>
+</table>
+<div class="call"><b class="h">«ارسال شد» یعنی «تحویل شد» نیست</b>
+<p><span class="c">sent</span> یعنی پیامک به اپراتور سپرده شد. برای اطلاع از تحویل واقعی به گوشی گیرنده، وبهوک <span class="c">message.delivered</span> را فعال کنید (بخش ۹).</p></div>
+
+<h3>کانال ارسال</h3>
+<table class="t">
+  <tr><th style="width:24%">channel</th><th>رفتار</th></tr>
+  <tr><td><span class="c">sms</span></td><td>پیامک معمولی. پیش‌فرض.</td></tr>
+  <tr><td><span class="c">bale</span></td><td>فقط از طریق پیام‌رسان بله.</td></tr>
+  <tr><td><span class="c">bale_sms</span></td><td>اول بله؛ برای گیرنده‌هایی که بله نپذیرفت، پیامک. پاسخ شامل <span class="c">sent_by_channel</span> است، مثلاً <span class="c">{"bale": 8, "sms": 2}</span>.</td></tr>
+</table>
+<p class="note">کانال‌های بله فقط زمانی در دسترس‌اند که روی سامانه پیکربندی شده باشند.</p>
+
+<h3>پیگیری بعدی</h3>
+<div class="ep"><span class="m get">GET</span>/api/v1/messages/{id}</div>
+<p>همان ساختار پاسخ بالا را با شناسه برمی‌گرداند. دسترسی لازم: <span class="c">messages:read</span></p>
+
+<!-- ۵ -->
+<h2 class="sec" id="s5"><span class="n">۵</span>ارسال انبوه و تدریجی</h2>
+<div class="ep"><span class="m post">POST</span>/api/v1/bulk-jobs</div>
+<p>برای هر گیرنده متن خودش را دارید، یا تعدادشان از ۱۰۰ بیشتر است. درخواست در صف قرار می‌گیرد و شما یک شناسه برای پیگیری دریافت می‌کنید. دسترسی لازم: <span class="c">bulk:write</span></p>
+<div class="call warn"><b class="h">هدر <span class="c">Idempotency-Key</span> در این مسیر اجباری است</b>
+<p>برای هر کمپین یک مقدار یکتا بسازید (مثلاً <span class="c">campaign-1405-07-invoices</span>). اگر درخواست قطع شد و دوباره فرستادید، با همان کلید کمپین دوباره ساخته نمی‌شود.</p></div>
+
+<h3>فیلدهای درخواست</h3>
+<table class="t">
+  <tr><th style="width:24%">فیلد</th><th style="width:13%">وضعیت</th><th>توضیح</th></tr>
+  <tr><td><span class="c">type</span></td><td class="req">اجباری</td><td><span class="c">p2p</span>، <span class="c">smart</span> یا <span class="c">gradual</span> — جدول پایین.</td></tr>
+  <tr><td><span class="c">title</span></td><td class="req">اجباری</td><td>عنوان کمپین؛ در گزارش‌های پنل با همین نام دیده می‌شود.</td></tr>
+  <tr><td><span class="c">items</span></td><td class="req">اجباری</td><td>آرایه‌ای از <span class="c">{"mobile", "content"}</span>، حداکثر ۵۰۰۰ ردیف.</td></tr>
+  <tr><td><span class="c">originator</span></td><td class="opt">اختیاری</td><td>خط ارسال‌کننده، با همان قاعده‌ی ارسال تکی.</td></tr>
+  <tr><td><span class="c">throttle_count</span></td><td class="opt">فقط <span class="ltr">gradual</span></td><td>تعداد پیامک در هر نوبت (عدد صحیح ≥ ۱).</td></tr>
+  <tr><td><span class="c">throttle_minutes</span></td><td class="opt">فقط <span class="ltr">gradual</span></td><td>فاصله‌ی بین نوبت‌ها به دقیقه (عدد صحیح ≥ ۱).</td></tr>
+</table>
+
+<h3>مقادیر <span class="ltr">type</span></h3>
+<table class="t">
+  <tr><th style="width:24%">type</th><th>رفتار</th></tr>
+  <tr><td><span class="c">p2p</span></td><td>ارسال نظیربه‌نظیر: هر ردیف با متن خودش، با بیشترین سرعت ممکن.</td></tr>
+  <tr><td><span class="c">smart</span></td><td>از نظر ارسال دقیقاً مانند <span class="c">p2p</span> است؛ فقط در گزارش‌ها با برچسب «پیامک هوشمند» نمایش داده می‌شود.</td></tr>
+  <tr><td><span class="c">gradual</span></td><td>ارسال تدریجی: هر <span class="c">throttle_minutes</span> دقیقه، <span class="c">throttle_count</span> پیامک.</td></tr>
+</table>
+
+<h3>نمونه</h3>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl -X POST https://datisrayan.com/api/v1/bulk-jobs \
+  -H "Authorization: Bearer $DATIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Idempotency-Key: campaign-1405-07-invoices" \
+  -d '{
+    "type": "p2p",
+    "title": "یادآوری فاکتور مهر",
+    "originator": "500030898989",
+    "items": [
+      {"mobile": "989121234567", "content": "آقای رضایی، مبلغ فاکتور شما ۲۵۰,۰۰۰ تومان است."},
+      {"mobile": "989351111111", "content": "خانم احمدی، مبلغ فاکتور شما ۴۸۰,۰۰۰ تومان است."}
+    ]
+  }'
+</pre></div>
+<div class="code"><div class="lbl">RESPONSE · 201 CREATED</div><pre>
+{ "data": { "id": "91", "status": "pending", "total_rows": 2 } }
+</pre></div>
+
+<h3>نمونه‌ی تدریجی</h3>
+<div class="code"><div class="lbl">BODY</div><pre>
+{
+  "type": "gradual",
+  "title": "اطلاع‌رسانی جشنواره",
+  "throttle_count": 100,
+  "throttle_minutes": 10,
+  "items": [ ... ]
+}
+</pre></div>
+
+<h3>پیگیری پیشرفت</h3>
+<div class="ep"><span class="m get">GET</span>/api/v1/bulk-jobs/{id}</div>
+<div class="code"><div class="lbl">RESPONSE · 200</div><pre>
+{
+  "id": "91", "type": "p2p", "title": "یادآوری فاکتور مهر",
+  "status": "processing",
+  "sent_rows": 1240, "failed_rows": 3, "total_rows": 5000,
+  "created_at": "2026-10-04T09:30:00+03:30"
+}
+</pre></div>
+<p>به‌جای پرسیدن مکرر، می‌توانید وبهوک <span class="c">bulk.completed</span> را فعال کنید تا پایان کار به شما اطلاع داده شود. دسترسی لازم: <span class="c">bulk:read</span></p>
+
+<!-- ۶ -->
+<h2 class="sec" id="s6"><span class="n">۶</span>پیش‌نمایش هزینه</h2>
+<p>پیش از ارسال واقعی، می‌توانید <b>همان بدنه‌ی درخواست</b> را به مسیر پیش‌نمایش بفرستید تا هزینه را ببینید:</p>
+<div class="ep"><span class="m post">POST</span>/api/v1/messages/preview</div>
+<div class="ep"><span class="m post">POST</span>/api/v1/bulk-jobs/preview</div>
+<p>پاسخ شامل تعداد گیرنده‌های معتبر، تعداد بخش‌های هر پیام، هزینه‌ی تخمینی، موجودی پیش و پس از ارسال و اثر آن بر سهمیه است.</p>
+<div class="call ok"><b class="h">پیش‌نمایش هیچ چیزی را تغییر نمی‌دهد</b>
+<p>نه پیامی ارسال می‌شود، نه اعتباری رزرو می‌شود و نه از سهمیه کم می‌شود. هرچند بار که بخواهید می‌توانید آن را صدا بزنید و به <span class="c">Idempotency-Key</span> هم نیازی ندارد.</p></div>
+<p class="note">پیش‌نمایش تخمینی است: هنگام ارسال واقعی، هزینه دوباره محاسبه و همان لحظه رزرو می‌شود. اگر در این فاصله موجودی کافی نباشد، ارسال با خطا متوقف می‌شود — هرگز بیش از موجودی برداشت نمی‌شود.</p>
+
+<!-- ۷ -->
+<h2 class="sec" id="s7"><span class="n">۷</span>جلوگیری از ارسال تکراری</h2>
+<p>شبکه همیشه قابل اعتماد نیست. اگر درخواست شما با خطای زمان‌انتظار (<span class="ltr">timeout</span>) قطع شد، نمی‌دانید پیامک رفته یا نه. ارسال دوباره‌ی بی‌گدار ممکن است به مشتری دو پیامک برساند و دو بار هزینه بگیرد.</p>
+<p>راه‌حل: به هر ارسال یک شناسه‌ی یکتا از طرف خودتان بدهید — مثلاً شماره‌ی سفارش:</p>
+<div class="code"><div class="lbl">BODY</div><pre>
+{ "client_message_id": "order-1024-confirm", "destinations": [...], "content": "..." }
+</pre></div>
+<p>یا همان مقدار را در هدر <span class="c">Idempotency-Key</span> بفرستید. سپس:</p>
+<table class="t">
+  <tr><th style="width:42%">اگر دوباره بفرستید…</th><th>نتیجه</th></tr>
+  <tr><td>با همان شناسه و همان بدنه</td><td>همان پاسخ قبلی برمی‌گردد. <b>پیامکی دوباره ارسال نمی‌شود.</b></td></tr>
+  <tr><td>با همان شناسه ولی بدنه‌ی متفاوت</td><td>خطای <span class="c">409 conflict</span> — شناسه را اشتباهاً تکرار کرده‌اید.</td></tr>
+  <tr><td>وقتی درخواست اول هنوز در جریان است</td><td>خطای <span class="c">409</span> — کمی بعد دوباره امتحان کنید.</td></tr>
+</table>
+<p>این شناسه برای <span class="c">/messages</span> تا ۲۴ ساعت معتبر است.</p>
+
+<!-- ۸ -->
+<h2 class="sec" id="s8"><span class="n">۸</span>سایر مسیرها</h2>
+<table class="t">
+  <tr><th style="width:42%">مسیر</th><th style="width:22%">دسترسی</th><th>کاربرد</th></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/me</span></td><td>—</td><td>اطلاعات کلید فعلی و دسترسی‌هایش. برای تست اتصال عالی است.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/organization</span></td><td>—</td><td>اطلاعات سازمان صاحب کلید.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/balance</span></td><td><span class="c">balance:read</span></td><td>موجودی اعتبار.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}</span></td><td><span class="c">messages:read</span></td><td>وضعیت یک ارسال تکی/گروهی.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/bulk-jobs/{id}</span></td><td><span class="c">bulk:read</span></td><td>پیشرفت یک ارسال انبوه.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="m post">POST</span> <span class="c">/contacts</span></td><td><span class="c">contacts:*</span></td><td>فهرست و ساخت مخاطب.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="m patch">PATCH</span> <span class="m delete">DELETE</span> <span class="c">/contacts/{id}</span></td><td><span class="c">contacts:*</span></td><td>خواندن، ویرایش و حذف مخاطب.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="m post">POST</span> <span class="c">/webhooks</span></td><td><span class="c">webhooks:*</span></td><td>فهرست و ساخت وبهوک.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="m patch">PATCH</span> <span class="m delete">DELETE</span> <span class="c">/webhooks/{id}</span></td><td><span class="c">webhooks:*</span></td><td>مدیریت یک وبهوک.</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/webhooks/{id}/rotate-secret</span></td><td><span class="c">webhooks:write</span></td><td>تعویض کلید امضای وبهوک.</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/webhooks/{id}/test</span></td><td><span class="c">webhooks:write</span></td><td>ارسال یک رویداد آزمایشی.</td></tr>
+</table>
+
+<h3>نمونه: موجودی اعتبار</h3>
+<div class="code"><div class="lbl">GET /BALANCE · 200</div><pre>
+{ "data": { "available": 6876380, "reserved": 12500, "total": 6888880, "unit": "credits" } }
+</pre></div>
+<p><span class="c">reserved</span> اعتباری است که برای ارسال‌های در جریان کنار گذاشته شده و پس از پایان آن‌ها یا کم می‌شود یا برمی‌گردد.</p>
+
+<!-- ۹ -->
+<h2 class="sec" id="s9"><span class="n">۹</span>وبهوک‌ها</h2>
+<p>به‌جای اینکه مدام وضعیت را بپرسید، داتیس رایان گستر ایرانیان هر اتفاق مهم را با یک درخواست <span class="c">POST</span> به آدرس شما خبر می‌دهد. آدرس باید <span class="c">HTTPS</span> باشد.</p>
+
+<h3>رویدادها</h3>
+<table class="t">
+  <tr><th style="width:42%">رویداد</th><th>زمان ارسال</th></tr>
+  <tr><td><span class="c">message.sent</span></td><td>پیامک به اپراتور سپرده شد.</td></tr>
+  <tr><td><span class="c">message.failed</span></td><td>ارسال پیامک ناموفق بود.</td></tr>
+  <tr><td><span class="c">message.delivered</span></td><td>پیامک به گوشی گیرنده رسید.</td></tr>
+  <tr><td><span class="c">message.undelivered</span></td><td>اپراتور اعلام کرد پیامک تحویل نشد.</td></tr>
+  <tr><td><span class="c">message.received</span></td><td>پیامکی به یکی از خطوط شما رسید.</td></tr>
+  <tr><td><span class="c">bulk.completed</span> / <span class="c">bulk.failed</span></td><td>یک ارسال انبوه تمام شد / متوقف شد.</td></tr>
+  <tr><td><span class="c">payment.credited</span></td><td>اعتبار حساب شارژ شد.</td></tr>
+</table>
+
+<h3>بررسی امضا — حتماً انجام دهید</h3>
+<p>هر درخواست وبهوک این هدرها را دارد. با بررسی امضا مطمئن می‌شوید درخواست واقعاً از داتیس رایان گستر ایرانیان آمده و دست‌کاری نشده است:</p>
+<div class="code"><div class="lbl">HEADERS</div><pre>
+X-Datis-Event-ID:  52bbf726-b067-4443-8a5c-ea4fe11a4f8b
+X-Datis-Timestamp: 1754392345
+X-Datis-Signature: 3f29a1…   (hex HMAC-SHA256)
+</pre></div>
+<div class="code"><div class="lbl">FORMULA</div><pre>
+signature = hex( HMAC_SHA256( secret, timestamp + "." + raw_body ) )
+</pre></div>
+<div class="code"><div class="lbl">PHP</div><pre>
+&lt;?php
+function verify_webhook(string $secret, string $timestamp, string $rawBody, string $signature): bool {
+    // reject stale or replayed deliveries (5 minutes)
+    if (!ctype_digit($timestamp) || abs(time() - (int)$timestamp) > 300) return false;
+    $expected = hash_hmac('sha256', $timestamp . '.' . $rawBody, $secret);
+    return hash_equals($expected, $signature);   // constant-time
+}
+</pre></div>
+<div class="call"><b class="h">نکته‌ها</b>
+<p><span class="c">raw_body</span> باید همان بایت‌هایی باشد که دریافت کرده‌اید، پیش از هر <span class="c">json_decode</span>. سریع با کد <span class="c">2xx</span> پاسخ دهید و پردازش سنگین را بعداً انجام دهید. با <span class="c">X-Datis-Event-ID</span> رویدادهای تکراری را تشخیص دهید.</p>
+<p style="margin-top:5pt">هر درخواست همین سه مقدار را با نام‌های قبلی (<span class="c">X-ELLSMS-Event-ID</span>، <span class="c">X-ELLSMS-Timestamp</span> و <span class="c">X-ELLSMS-Signature</span>) هم دارد تا گیرنده‌هایی که پیش از تغییر نام نوشته شده‌اند بدون تغییر کار کنند.</p></div>
+
+<!-- ۱۰ -->
+<h2 class="sec" id="s10"><span class="n">۱۰</span>محدودیت‌ها</h2>
+<table class="t">
+  <tr><th style="width:50%">مورد</th><th>مقدار</th></tr>
+  <tr><td>نرخ درخواست برای هر کلید</td><td>۶۰ درخواست در دقیقه، با تحمل جهش تا ۱۵ درخواست</td></tr>
+  <tr><td>گیرنده در هر <span class="c">POST /messages</span></td><td>حداکثر ۱۰۰</td></tr>
+  <tr><td>طول متن پیام</td><td>حداکثر ۲۰۰۰ نویسه</td></tr>
+  <tr><td>ردیف در هر <span class="c">POST /bulk-jobs</span></td><td>حداکثر ۵۰۰۰</td></tr>
+  <tr><td>حجم بدنه‌ی درخواست</td><td>حداکثر ۲۵۶ کیلوبایت</td></tr>
+  <tr><td>اعتبار <span class="c">client_message_id</span></td><td>۲۴ ساعت</td></tr>
+</table>
+<p class="note">پلن اشتراک سازمان ممکن است این سقف‌ها را پایین‌تر بیاورد، ولی هرگز بالاتر نمی‌برد.</p>
+<p>اگر از نرخ مجاز بیشتر بفرستید، پاسخ <span class="c">429</span> با هدر <span class="c">Retry-After</span> برمی‌گردد که می‌گوید چند ثانیه صبر کنید.</p>
+
+<!-- ۱۱ -->
+<h2 class="sec" id="s11"><span class="n">۱۱</span>خطاها</h2>
+<p>همه‌ی خطاها یک قالب ثابت دارند. فیلد <span class="c">code</span> را در کد خود بررسی کنید؛ <span class="c">message</span> برای انسان است و ممکن است تغییر کند.</p>
+<div class="code"><div class="lbl">ERROR · 422</div><pre>
+{
+  "error": {
+    "code": "validation_failed",
+    "message": "Request validation failed.",
+    "request_id": "593da5ec9575f879",
+    "fields": { "destinations": ["required"], "content": ["too_long — max 2000 characters"] }
+  }
+}
+</pre></div>
+<table class="t">
+  <tr><th style="width:9%">HTTP</th><th style="width:31%">code</th><th>یعنی چه، چه کار کنید</th></tr>
+  <tr><td><span class="c">400</span></td><td><span class="c">invalid_request</span></td><td>درخواست بدشکل است (مثلاً JSON نامعتبر یا هدر اجباری جاافتاده).</td></tr>
+  <tr><td><span class="c">401</span></td><td><span class="c">unauthenticated</span></td><td>کلید نیست، اشتباه است، باطل شده یا منقضی شده.</td></tr>
+  <tr><td><span class="c">402</span></td><td><span class="c">subscription_inactive</span></td><td>اشتراک سازمان فعال نیست.</td></tr>
+  <tr><td><span class="c">403</span></td><td><span class="c">forbidden</span></td><td>کلید دسترسی لازم را ندارد، یا آی‌پی شما مجاز نیست.</td></tr>
+  <tr><td><span class="c">403</span></td><td><span class="c">feature_not_available</span></td><td>این قابلیت در پلن فعلی نیست.</td></tr>
+  <tr><td><span class="c">404</span></td><td><span class="c">not_found</span></td><td>مسیر یا شناسه وجود ندارد.</td></tr>
+  <tr><td><span class="c">409</span></td><td><span class="c">conflict</span></td><td>شناسه‌ی ضدتکرار با بدنه‌ی دیگری استفاده شده، یا درخواست قبلی هنوز در جریان است.</td></tr>
+  <tr><td><span class="c">413</span></td><td><span class="c">payload_too_large</span></td><td>بدنه بیش از ۲۵۶ کیلوبایت است؛ آن را چند قسمت کنید.</td></tr>
+  <tr><td><span class="c">422</span></td><td><span class="c">validation_failed</span></td><td>فیلدی ایراد دارد؛ جزئیات در <span class="c">fields</span>. مثلاً <span class="c">originator: not_allowed</span> یعنی این خط به شما تعلق ندارد.</td></tr>
+  <tr><td><span class="c">429</span></td><td><span class="c">rate_limited</span></td><td>بیش از حد مجاز درخواست زدید؛ به اندازه‌ی <span class="c">Retry-After</span> صبر کنید.</td></tr>
+  <tr><td><span class="c">429</span></td><td><span class="c">quota_exceeded</span></td><td>سهمیه‌ی پیامک دوره‌ی فعلی تمام شده.</td></tr>
+  <tr><td><span class="c">500</span></td><td><span class="c">internal_error</span></td><td>خطای سمت سرور؛ با <span class="c">request_id</span> به پشتیبانی اطلاع دهید.</td></tr>
+  <tr><td><span class="c">503</span></td><td><span class="c">service_unavailable</span></td><td>سرویس موقتاً در دسترس نیست؛ کمی بعد تلاش کنید.</td></tr>
+</table>
+<div class="call"><b class="h">همیشه <span class="c">request_id</span> را لاگ کنید</b>
+<p>اگر به مشکلی برخوردید، همین شناسه را برای پشتیبانی بفرستید تا درخواست شما دقیقاً پیدا شود.</p></div>
+
+<!-- ۱۲ -->
+<h2 class="sec" id="s12"><span class="n">۱۲</span>نمونه کد</h2>
+<h3>PHP</h3>
+<div class="code"><div class="lbl">PHP</div><pre>
+&lt;?php
+$ch = curl_init('https://datisrayan.com/api/v1/messages');
+curl_setopt_array($ch, [
+    CURLOPT_POST           => true,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER     => [
+        'Authorization: Bearer ' . getenv('DATIS_API_KEY'),
+        'Content-Type: application/json',
+    ],
+    CURLOPT_POSTFIELDS     => json_encode([
+        'destinations'      => ['989121234567'],
+        'content'           => 'کد ورود شما: 4521',
+        'client_message_id' => 'otp-' . $userId . '-' . time(),
+    ], JSON_UNESCAPED_UNICODE),
+]);
+$response = json_decode(curl_exec($ch), true);
+$status   = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+</pre></div>
+
+<h3>Python</h3>
+<div class="code"><div class="lbl">PYTHON</div><pre>
+import os, requests
+
+r = requests.post(
+    "https://datisrayan.com/api/v1/messages",
+    headers={"Authorization": f"Bearer {os.environ['DATIS_API_KEY']}"},
+    json={"destinations": ["989121234567"], "content": "کد ورود شما: 4521"},
+    timeout=30,
+)
+if r.status_code == 201:
+    print(r.json()["data"]["status"])
+else:
+    err = r.json()["error"]
+    print(err["code"], err["request_id"])
+</pre></div>
+
+<h3>JavaScript (Node.js)</h3>
+<div class="code"><div class="lbl">NODE.JS</div><pre>
+const res = await fetch("https://datisrayan.com/api/v1/messages", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${process.env.DATIS_API_KEY}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ destinations: ["989121234567"], content: "کد ورود شما: 4521" }),
+});
+const body = await res.json();
+if (!res.ok) console.error(body.error.code, body.error.request_id);
+</pre></div>
+
+<!-- ۱۳ -->
+<h2 class="sec" id="s13"><span class="n">۱۳</span>کتابخانه‌ها و منابع</h2>
+<p>برای اینکه درخواست‌ها را دستی نسازید، کتابخانه‌ی رسمی برای سه زبان آماده است. همه‌ی موارد این راهنما — احراز هویت، ضدتکرار و قالب خطا — در آن‌ها پیاده شده‌اند:</p>
+<table class="t">
+  <tr><th style="width:42%">زبان</th><th>محل</th></tr>
+  <tr><td class="ltr" style="text-align:right">PHP</td><td><span class="c">sdk/php</span></td></tr>
+  <tr><td class="ltr" style="text-align:right">JavaScript / TypeScript</td><td><span class="c">sdk/js</span></td></tr>
+  <tr><td class="ltr" style="text-align:right">Python</td><td><span class="c">sdk/python</span></td></tr>
+</table>
+
+<h3>مشخصات <span class="ltr">OpenAPI</span></h3>
+<p>توضیح ماشین‌خوان کل API در فایل <span class="c">openapi-v1.yaml</span> موجود است. می‌توانید آن را مستقیم در <span class="ltr">Postman</span> یا <span class="ltr">Insomnia</span> وارد کنید یا با ابزارهای تولید کد، کلاینت هر زبانی را بسازید.</p>
+
+<div class="keep">
+<h3>چک‌لیست پیش از رفتن به محیط واقعی</h3>
+<ul class="check">
+  <li>کلید در متغیر محیطی سرور است، نه در کد یا مخزن.</li>
+  <li>هر کلید فقط دسترسی‌های لازم را دارد.</li>
+  <li>برای ارسال‌های مهم <span class="c">client_message_id</span> می‌فرستید.</li>
+  <li>خطای <span class="c">429</span> را با صبر به اندازه‌ی <span class="c">Retry-After</span> مدیریت می‌کنید.</li>
+  <li><span class="c">request_id</span> خطاها را لاگ می‌کنید.</li>
+  <li>اگر وبهوک دارید، امضای هر درخواست را بررسی می‌کنید.</li>
+</ul>
+</div>
+
+<script src="highlight.js"></script>
+</body>
+</html>

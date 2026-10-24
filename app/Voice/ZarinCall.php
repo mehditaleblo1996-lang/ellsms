@@ -165,7 +165,6 @@ function zarincall_call(string $action, array $body, int $timeoutMs = 30000): ar
     $raw = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $curlError = curl_error($ch);
-    curl_close($ch);
     Metrics::timing('voice.provider.duration', (microtime(true) - $started) * 1000, ['action' => $action]);
 
     if ($raw === false) {

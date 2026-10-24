@@ -221,7 +221,6 @@ final class GatewayEndpointSafetyTest extends IntegrationTestCase
         ]);
         $raw = curl_exec($ch);
         $errno = curl_errno($ch);
-        curl_close($ch);
 
         $this->assertSame(0, $errno, 'the pinned request must complete: ' . $errno);
         $this->assertNotFalse($raw);

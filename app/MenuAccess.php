@@ -42,6 +42,7 @@ function menu_catalog(): array {
         'tickets'       => ['پشتیبانی',             '🎫', '/tickets.php',       ['tickets.php']],
         'buy_credit'    => ['خرید اعتبار',          '💳', '/buy-credit.php',    ['buy-credit.php', 'packages.php']],
         'invoices'      => ['فاکتورها',             '🧾', '/invoices.php',      ['invoices.php']],
+        'financial_log' => ['تاریخچه مالی',         '📒', '/financial-log.php', ['financial-log.php']],
         'bale'          => ['پیام‌رسان بله',         '💬', '/bale-messages.php', ['bale-messages.php']],
         'voice'         => ['پیام صوتی',            '🔊', '/voice.php',         ['voice.php']],
         'voice_files'   => ['فایل‌های صوتی',         '🎙', '/voice-files.php',   ['voice-files.php']],
@@ -72,7 +73,7 @@ function menu_groups(): array {
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'inbox', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
-        'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'billing']],
+        'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
         'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
         'account'      => ['حساب و پشتیبانی',   ['reseller_panel', 'subaccounts', 'tickets']],
     ];

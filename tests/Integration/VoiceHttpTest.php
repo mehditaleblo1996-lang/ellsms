@@ -163,7 +163,6 @@ final class VoiceHttpTest extends TestCase
         $body = (string)curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $type = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-        curl_close($ch);
         return ['code' => $code, 'body' => $body, 'json' => json_decode($body, true), 'type' => $type];
     }
 

@@ -3,7 +3,7 @@
  * ELLSMS public API v1 client for Node.js 18+ (built-in fetch, no dependencies).
  *
  *   const { EllsmsClient } = require('ellsms');
- *   const sms = new EllsmsClient({ apiKey: 'ellsms_live_…', baseUrl: 'https://panel.example.com' });
+ *   const sms = new EllsmsClient({ apiKey: 'datis_live_…', baseUrl: 'https://panel.example.com' });
  *   await sms.sendMessage(['09121234567'], 'سلام');
  *
  * Every method resolves to the "data" part of the answer and rejects with EllsmsError on any error.
