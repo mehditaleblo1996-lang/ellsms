@@ -47,7 +47,6 @@ function smpp_bridge_request(string $method, string $path, ?array $body = null, 
     $errno = curl_errno($ch);
     $error = curl_error($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
     if ($raw === false) {
         return ['ok' => false, 'http' => 0, 'data' => null, 'error' => 'smpp-bridge unreachable: ' . $error, 'timed_out' => $errno === CURLE_OPERATION_TIMEDOUT];
     }

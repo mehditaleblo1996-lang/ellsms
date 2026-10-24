@@ -341,7 +341,7 @@ function gateway_execute(array $connector, string $connectorKind, array $request
     $startedAt=microtime(true); $ch=curl_init($request['url']);
     $options=[CURLOPT_CUSTOMREQUEST=>$request['method'],CURLOPT_HTTPHEADER=>$request['headers'],CURLOPT_RETURNTRANSFER=>true,CURLOPT_HEADER=>false,CURLOPT_CONNECTTIMEOUT_MS=>$section['connect_timeout_ms'],CURLOPT_TIMEOUT_MS=>$section['request_timeout_ms'],CURLOPT_SSL_VERIFYPEER=>$section['tls_verify'],CURLOPT_SSL_VERIFYHOST=>$section['tls_verify']?2:0,CURLOPT_FOLLOWLOCATION=>false];
     if($endpointCheck['resolve']!==[])$options[CURLOPT_RESOLVE]=$endpointCheck['resolve']; if($request['body']!==null)$options[CURLOPT_POSTFIELDS]=$request['body']; curl_setopt_array($ch,$options);
-    $raw=curl_exec($ch); $curlErrno=curl_errno($ch); $curlError=curl_error($ch); $http=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE); curl_close($ch); $elapsedMs=(int)round((microtime(true)-$startedAt)*1000);
+    $raw=curl_exec($ch); $curlErrno=curl_errno($ch); $curlError=curl_error($ch); $http=(int)curl_getinfo($ch,CURLINFO_RESPONSE_CODE); $elapsedMs=(int)round((microtime(true)-$startedAt)*1000);
     $metricTags=['gateway'=>$connector['gateway_code'],'connector'=>$connectorKind];
     if($raw===false){
         $errorClass=$curlErrno===CURLE_OPERATION_TIMEDOUT?BackendError::TIMEOUT:BackendError::UNAVAILABLE;

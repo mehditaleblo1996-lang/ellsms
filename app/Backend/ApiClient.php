@@ -126,7 +126,6 @@ function backend_api_request(string $method, string $path, ?array $jsonBody, int
     $curlError = curl_error($ch);
     $http      = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-    curl_close($ch);
     $elapsedMs = (int)round((microtime(true) - $startedAt) * 1000);
 
     if ($raw === false) {

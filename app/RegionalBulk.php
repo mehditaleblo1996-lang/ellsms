@@ -92,7 +92,6 @@ function vesal_bulk_call(string $endpoint, array $payload): array {
     curl_setopt_array($ch, $options);
     $raw = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
     if ($raw === false || $http < 200 || $http >= 300) {
         // Never log the body we sent: it carries the password.
         Logger::warning('regional_bulk.vesal_call_failed', ['endpoint' => $endpoint, 'http' => $http]);

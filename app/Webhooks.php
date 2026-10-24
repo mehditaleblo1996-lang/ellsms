@@ -606,7 +606,6 @@ function webhook_attempt_delivery(array $delivery): array {
     $durationMs = (int)((microtime(true) - $startedAt) * 1000);
     $errno = curl_errno($ch);
     $httpStatus = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
 
     // Belt-and-suspenders on top of the WRITEFUNCTION's own per-chunk cap above (STEP 35: never
     // store the full response) -- a hard substr() here guarantees the bound regardless of how curl

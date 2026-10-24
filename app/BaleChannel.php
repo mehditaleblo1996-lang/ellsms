@@ -97,7 +97,6 @@ function bale_http_send(string $mobile, string $text): array {
     $raw = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $curlError = curl_error($ch);
-    curl_close($ch);
 
     if ($raw === false) {
         return ['ok' => false, 'message_id' => null, 'error' => 'connection: ' . mb_strimwidth($curlError, 0, 200, '…')];

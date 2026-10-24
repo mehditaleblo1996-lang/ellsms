@@ -155,7 +155,6 @@ final class SubaccountsHttpTest extends TestCase
         $this->assertNotSame('', $raw, 'curl failed: ' . curl_error($ch));
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        curl_close($ch);
         $headers = substr($raw, 0, $headerSize);
         return [
             'code' => $code,

@@ -40,7 +40,6 @@ function smoke_fetch(string $url, int $timeoutSeconds = 10): array {
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
     $errno = curl_errno($ch);
-    curl_close($ch);
     if ($raw === false) {
         return ['http' => 0, 'body' => '', 'headers' => '', 'ok' => false];
     }

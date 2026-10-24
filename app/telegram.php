@@ -47,7 +47,6 @@ function telegram_send_message_to(string $chatId, string $text): array {
     ]);
     $body = curl_exec($ch);
     $err  = curl_error($ch);
-    curl_close($ch);
 
     if ($body === false) {
         return [false, 'اتصال به تلگرام برقرار نشد: ' . $err];
@@ -90,7 +89,6 @@ function telegram_send_document_to(string $chatId, string $filename, string $bin
     ]);
     $body = curl_exec($ch);
     $err  = curl_error($ch);
-    curl_close($ch);
     @unlink($tmpFile);
 
     if ($body === false) {
