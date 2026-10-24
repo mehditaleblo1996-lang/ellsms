@@ -26,6 +26,8 @@ function financial_log_type_labels(): array {
         'transfer_in'               => 'انتقال اعتبار (دریافت)',
         'transfer_out'              => 'انتقال اعتبار (پرداخت)',
         'reseller_profit'           => 'سود نمایندگی',
+        'reseller_package_sale'     => 'تسویه‌ی فروش بسته',
+        'delivery_refund'           => 'بازگشت هزینه‌ی پیام تحویل‌نشده',
         'migration_opening_balance' => 'موجودی اولیه',
         'currency_conversion'       => 'تبدیل واحد پول به ریال',
         'adjustment'                => 'اصلاح موجودی',
@@ -138,6 +140,7 @@ function financial_log_reference_labels(): array {
         'regional_bulk'     => 'ارسال منطقه‌ای',
         'voice_message'     => 'پیام صوتی',
         'voice_tts'         => 'ساخت فایل صوتی',
+        'reseller_package'  => 'بسته‌ی نماینده',
     ];
 }
 
