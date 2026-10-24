@@ -27,6 +27,7 @@ $nav += [
     'tickets'    => ['/tickets.php',     'پشتیبانی',        '🎫'],
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
+    'financial_log' => ['/financial-log.php', 'تاریخچه مالی', '📒'],
 ];
 // #42 — the Bale channel's message record, shown once the channel is set up (admins always, to set it up).
 if ($me['role'] === 'admin' || bale_configured()) {
