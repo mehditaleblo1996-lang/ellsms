@@ -27,7 +27,7 @@ final class ApiKeyLifecycleTest extends IntegrationTestCase
         $org = $this->makeOrganization('Org A');
         $result = api_key_create($org['organization_id'], $org['owner_id'], 'CI key', [\ApiScopes::MESSAGES_SEND]);
         $this->assertTrue($result['ok']);
-        $this->assertStringStartsWith('ellsms_live_', $result['raw_key']);
+        $this->assertStringStartsWith('datis_live_', $result['raw_key']);
 
         $row = db()->query('SELECT secret_hash FROM ellsms_api_keys WHERE id = ' . (int)$result['id'])->fetch();
         $this->assertNotFalse($row);
@@ -64,7 +64,7 @@ final class ApiKeyLifecycleTest extends IntegrationTestCase
 
     public function testAuthenticateFailsForUnknownPrefix(): void
     {
-        $this->assertNull(api_key_authenticate('ellsms_live_' . bin2hex(random_bytes(6)) . '_' . api_key_generate_secret()));
+        $this->assertNull(api_key_authenticate('datis_live_' . bin2hex(random_bytes(6)) . '_' . api_key_generate_secret()));
     }
 
     public function testAuthenticateFailsForMalformedKeyShape(): void

@@ -105,10 +105,14 @@ API keys).
 Every delivery carries three headers:
 
 ```
-X-ELLSMS-Event-ID: 52bbf726-b067-4443-8a5c-ea4fe11a4f8b
-X-ELLSMS-Timestamp: 1754392345
-X-ELLSMS-Signature: 3f29a1...  (hex HMAC-SHA256, 64 chars)
+X-Datis-Event-ID: 52bbf726-b067-4443-8a5c-ea4fe11a4f8b
+X-Datis-Timestamp: 1754392345
+X-Datis-Signature: 3f29a1...  (hex HMAC-SHA256, 64 chars)
 ```
+
+Each delivery also repeats the same three values under their pre-rebrand names
+(`X-ELLSMS-Event-ID`, `X-ELLSMS-Timestamp`, `X-ELLSMS-Signature`) so receivers written before the
+Datis Rayan rename keep verifying.
 
 Canonical signed string: **`"{timestamp}.{raw request body}"`** (a literal `.` joining them —
 the body is the exact bytes received, before any JSON re-serialization on your end).
@@ -156,7 +160,7 @@ mismatch even for a genuine delivery.
 - The timestamp is checked against a **tolerance window** (documented default: 300 seconds — apply
   your own if you need something tighter). A captured request replayed after this window fails
   verification.
-- `X-ELLSMS-Event-ID` is stable across retries of the *same* logical delivery — track ids you've
+- `X-Datis-Event-ID` is stable across retries of the *same* logical delivery — track ids you've
   already processed (even within the tolerance window) if your endpoint isn't naturally idempotent,
   since a legitimate retry of a still-pending delivery carries the same id with a fresh
   timestamp/signature.

@@ -581,10 +581,14 @@ function webhook_attempt_delivery(array $delivery): array {
         CURLOPT_POSTFIELDS     => $rawBody,
         CURLOPT_HTTPHEADER     => [
             'Content-Type: application/json',
+            'X-Datis-Event-ID: ' . $delivery['event_uuid'],
+            'X-Datis-Timestamp: ' . $timestamp,
+            'X-Datis-Signature: ' . $signature,
+            // Pre-rebrand names, same values: receivers written against them keep verifying.
             'X-ELLSMS-Event-ID: ' . $delivery['event_uuid'],
             'X-ELLSMS-Timestamp: ' . $timestamp,
             'X-ELLSMS-Signature: ' . $signature,
-            'User-Agent: ELLSMS-Webhooks/1.0',
+            'User-Agent: DatisRayan-Webhooks/1.0',
         ],
         CURLOPT_TIMEOUT        => webhook_config_timeout_seconds(),
         CURLOPT_CONNECTTIMEOUT => min(5, webhook_config_timeout_seconds()),
