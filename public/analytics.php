@@ -248,6 +248,6 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 </div>
 
-<?= lazy_part_placeholder('traffic', 420) ?>
+<?= lazy_part_placeholder('traffic', 420, shape: 'chart') ?>
 <?= lazy_part_placeholder('cost', 160) ?>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

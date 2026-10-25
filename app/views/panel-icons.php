@@ -59,3 +59,15 @@ function panel_icon(string $name): string {
     $path = $paths[$names[$name] ?? $name] ?? $paths['grid'];
     return '<svg class="ui-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $path . '</svg>';
 }
+
+/**
+ * An empty list or table: an icon, what is missing, an optional hint and an optional next step
+ * ($action = [href, label]). Inside a table it goes in a full-width <td class="empty-cell">.
+ */
+function panel_empty_state(string $title, string $text = '', ?array $action = null, string $icon = 'inbox'): string {
+    $html = '<div class="empty-state"><span class="empty-state-icon">' . panel_icon($icon) . '</span>'
+        . '<strong class="empty-state-title">' . e($title) . '</strong>';
+    if ($text !== '') $html .= '<p class="empty-state-text">' . e($text) . '</p>';
+    if ($action !== null) $html .= '<a class="btn btn-sm btn-primary" href="' . e($action[0]) . '">' . e($action[1]) . '</a>';
+    return $html . '</div>';
+}

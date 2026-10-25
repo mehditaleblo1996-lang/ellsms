@@ -12,6 +12,7 @@ $active = 'dashboard';
 $onboarding = ($me['role'] !== 'admin' && onboarding_enabled()) ? onboarding_status($me) : null;
 
 require_once __DIR__ . '/../app/Dashboard.php';
+require_once __DIR__ . '/../app/views/panel-icons.php'; // the fragments' empty states run before header.php
 
 // Everything below reads ELLSMS's own send records (bulk items + gateway send attempts); see
 // app/Dashboard.php. The legacy backend's outbound_message is not used any more. Each section is a
@@ -126,7 +127,7 @@ if (lazy_part_begin('recent')) {
 <div class="card">
   <h2>آخرین پیامک‌ها <a class="btn btn-sm btn-ghost" style="float:left" href="/reports.php">مشاهده‌ی گزارش کامل ←</a></h2>
   <div class="table-wrap">
-  <table class="dash-recent<?= is_admin() ? ' has-user' : '' ?>">
+  <table data-cards class="dash-recent<?= is_admin() ? ' has-user' : '' ?>">
     <caption class="sr-only">آخرین پیامک‌های ارسال‌شده</caption>
     <thead>
       <tr><?php if (is_admin()): ?><th scope="col">کاربر</th><?php endif; ?><th scope="col">گیرنده</th><th scope="col">متن پیام</th><th scope="col">نوع ارسال</th><th scope="col">وضعیت</th><th scope="col">زمان</th></tr>
@@ -142,7 +143,7 @@ if (lazy_part_begin('recent')) {
         <td class="num"><?= jdate_from_utc($m['at']) ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$recent): ?><tr><td colspan="<?= is_admin() ? 6 : 5 ?>" class="empty">هنوز پیامکی ارسال نشده — از <a href="/send.php">ارسال پیامک</a> شروع کنید.</td></tr><?php endif; ?>
+    <?php if (!$recent): ?><tr><td colspan="<?= is_admin() ? 6 : 5 ?>" class="empty-cell"><?= panel_empty_state('هنوز پیامکی ارسال نشده', 'اولین پیامک را بفرستید تا وضعیتش اینجا نمایش داده شود.', ['/send.php', 'ارسال پیامک'], 'send') ?></td></tr><?php endif; ?>
     </tbody>
   </table>
   </div>
@@ -161,7 +162,7 @@ if (lazy_part_begin('jobs')) {
 <?= $hasRunning ? lazy_part_refresh_marker(30) : '' ?>
 <div class="card">
   <h2>ارسال‌های حجیم اخیر <a class="btn btn-sm btn-ghost" style="float:left" href="/reports-bulk.php">همه‌ی ارسال‌های حجیم ←</a></h2>
-  <?php if (!$jobs): ?><p class="empty">هنوز ارسال حجیمی ثبت نشده است.</p><?php endif; ?>
+  <?php if (!$jobs): ?><?= panel_empty_state('هنوز ارسال حجیمی ثبت نشده', 'برای ارسال به تعداد زیادی شماره، فایل اکسل یا گروهی از مخاطبین را در صفحه‌ی ارسال انتخاب کنید.', ['/send.php', 'شروع ارسال'], 'users') ?><?php endif; ?>
   <div class="dash-jobs">
     <?php foreach ($jobs as $j):
       $total = max(1, (int)$j['total_rows']);
@@ -223,8 +224,8 @@ $quickActions = array_filter([
 </div>
 <?php endif; ?>
 
-<?= lazy_part_placeholder('today', 110) ?>
-<?= lazy_part_placeholder('chart', 200) ?>
+<?= lazy_part_placeholder('today', 110, shape: 'stats') ?>
+<?= lazy_part_placeholder('chart', 200, shape: 'chart') ?>
 
 <?php
 /*
@@ -240,11 +241,11 @@ $quickActions = array_filter([
 </nav>
 
 <section class="tab-panel" data-panel="recent" role="tabpanel">
-<?= lazy_part_placeholder('recent', 260) ?>
+<?= lazy_part_placeholder('recent', 260, shape: 'table') ?>
 </section>
 
 <section class="tab-panel" data-panel="bulk" role="tabpanel">
-<?= lazy_part_placeholder('jobs', 260) ?>
+<?= lazy_part_placeholder('jobs', 260, shape: 'list') ?>
 </section>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

@@ -185,7 +185,7 @@
     button.className = className;
     button.setAttribute('aria-label', label);
     button.title = label;
-    button.innerHTML = icon;
+    if (icon) button.innerHTML = icon; else button.textContent = '×';
     return button;
   }
   var icons = document.getElementById('topbarIcons');
@@ -308,14 +308,82 @@
     });
   }
 
-  // Contain wide data tables on every page, including older pages without a table wrapper.
-  document.querySelectorAll('.content table').forEach(function (table) {
-    if (table.closest('.table-wrap')) return;
-    var wrap = document.createElement('div');
-    wrap.className = 'table-wrap';
-    table.parentNode.insertBefore(wrap, table);
-    wrap.appendChild(table);
+  // Flash messages each get a close button. A success also leaves the page flow as a toast that goes
+  // away by itself (held while hovered or focused); errors and notices stay until closed.
+  var toastStack = null;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function dismissFlash(flash) {
+    if (flash.classList.contains('is-leaving')) return;
+    flash.classList.add('is-leaving');
+    setTimeout(function () { flash.remove(); }, reduceMotion ? 0 : 200);
+  }
+  document.querySelectorAll('[data-flash]').forEach(function (flash) {
+    var close = iconButton('flash-close', closeIcon, 'بستن پیام');
+    close.addEventListener('click', function () { dismissFlash(flash); });
+    flash.appendChild(close);
+    if (flash.dataset.flash !== 'success') return;
+    if (!toastStack) {
+      toastStack = document.createElement('div');
+      toastStack.className = 'toast-stack';
+      toastStack.setAttribute('role', 'status');
+      toastStack.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toastStack);
+    }
+    flash.classList.add('toast');
+    // Moved in a moment later, so the live region already exists and the message is read out.
+    setTimeout(function () { toastStack.appendChild(flash); }, 60);
+    var timer = null, left = 6000, started = 0;
+    var run = function () { started = Date.now(); timer = setTimeout(function () { dismissFlash(flash); }, left); };
+    var hold = function () { if (timer === null) return; clearTimeout(timer); timer = null; left = Math.max(1500, left - (Date.now() - started)); };
+    flash.addEventListener('mouseenter', hold);
+    flash.addEventListener('focusin', hold);
+    flash.addEventListener('mouseleave', function () { if (timer === null && !flash.contains(document.activeElement)) run(); });
+    flash.addEventListener('focusout', function (event) { if (timer === null && !flash.contains(event.relatedTarget)) run(); });
+    run();
   });
+
+  // Tables marked data-cards become one card per row on phones (panel.css): every cell carries its
+  // column's heading as a label, and its content is wrapped so label and value sit side by side.
+  function cardTable(table) {
+    if (table.classList.contains('has-cards')) return;
+    var rows = Array.from(table.rows);
+    var head = table.tHead ? table.tHead.rows[0] : rows.find(function (row) { return row.querySelector('th'); });
+    if (!head) return;
+    var labels = [];
+    Array.from(head.cells).forEach(function (cell) {
+      for (var i = 0; i < (cell.colSpan || 1); i++) labels.push(cell.textContent.trim());
+    });
+    head.classList.add('cards-head');
+    rows.forEach(function (row) {
+      if (row === head || row.parentNode === table.tHead) return;
+      var column = 0;
+      Array.from(row.cells).forEach(function (cell) {
+        if ((cell.colSpan || 1) === 1 && labels[column]) cell.setAttribute('data-label', labels[column]);
+        if (cell.colSpan === 1 && cell.tagName === 'TD') {
+          var value = document.createElement('span');
+          value.className = 'cell-value';
+          while (cell.firstChild) value.appendChild(cell.firstChild);
+          cell.appendChild(value);
+        }
+        column += cell.colSpan || 1;
+      });
+    });
+    table.classList.add('has-cards');
+  }
+
+  // Contain wide data tables on every page, including older pages without a table wrapper, and those
+  // a lazily loaded part brings in later (assets/js/lazy-parts.js).
+  function dressTables(root) {
+    root.querySelectorAll('table').forEach(function (table) {
+      if (!table.closest('.content')) return;
+      if (table.hasAttribute('data-cards')) cardTable(table);
+      if (table.closest('.table-wrap')) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      table.parentNode.insertBefore(wrap, table);
+      wrap.appendChild(table);
+    });
+  }
   function labelScrollableTables() {
     document.querySelectorAll('.content .table-wrap').forEach(function (wrap) {
       var hint = wrap.previousElementSibling;
@@ -337,7 +405,12 @@
       }
     });
   }
+  dressTables(document);
   labelScrollableTables();
+  document.addEventListener('lazy-part:inserted', function (event) {
+    dressTables(event.target);
+    labelScrollableTables();
+  });
   var resizeFrame;
   window.addEventListener('resize', function () { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(labelScrollableTables); });
   if (document.fonts) document.fonts.ready.then(labelScrollableTables);

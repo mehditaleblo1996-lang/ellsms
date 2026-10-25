@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/../app/bootstrap.php';
 require_once __DIR__ . '/../app/Reporting/GradualScheduleView.php';
+require_once __DIR__ . '/../app/views/panel-icons.php'; // the lazily loaded parts' empty states run before header.php
 $me = require_login();
 $pageTitle = 'گزارش ارسال';
 $active = 'reports';
@@ -214,7 +215,7 @@ if (lazy_part_begin('gateway')) {
 <div class="card">
 <h2>پیام‌های عادی / API / زمان‌بندی (ارسال مستقیم از درگاه)</h2>
 <p class="hint">پیام‌هایی که مستقیم از درگاه پیامک ارسال شده‌اند. تعداد: <?= to_persian_digits(number_format((int)($G['total'] ?? 0))) ?></p>
-<div class="table-wrap"><table>
+<div class="table-wrap"><table data-cards>
 <tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>نوع</th><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
 <?php foreach($gwRows as $r): $cs=(string)$r['canonical_status']; $gc=(string)($r['content'] ?? ''); ?>
 <tr>
@@ -231,7 +232,7 @@ if (lazy_part_begin('gateway')) {
 <?php if($canHide): $isHidden = isset($hiddenAttempts[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('attempt', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
 </tr>
 <?php endforeach; ?>
-<?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?($canHide?11:10):9 ?>" class="empty">پیامی با این فیلترها از درگاه ارسال نشده است.</td></tr><?php endif; ?>
+<?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?($canHide?11:10):9 ?>" class="empty-cell"><?= panel_empty_state('پیامی با این فیلترها از درگاه ارسال نشده', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr><?php endif; ?>
 </table></div>
 <?= pager_links($gwPage, pager_pages((int)($G['total'] ?? 0), $per), $pagerQuery, 'gw_page', (int)($G['total'] ?? 0), 'gateway') ?>
 </div>
@@ -257,7 +258,7 @@ if (lazy_part_begin('bulk')) {
 <div class="card">
   <h2>ارسال‌های حجیم / نظیر به نظیر</h2>
   <p class="hint">هر Job فقط یک ردیف نمایش داده می‌شود؛ حتی اگر ۸۵۰هزار گیرنده داشته باشد. برای دیدن تک‌تک شماره‌ها «جزئیات» را بزنید.</p>
-  <div class="table-wrap"><table>
+  <div class="table-wrap"><table data-cards>
     <tr><th>Job</th><th>نوع</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>عنوان</th><th>خط</th><th>کل</th><th>ارسال‌شده</th><th>ناموفق</th><th>باقی‌مانده</th><th>وضعیت</th><th>تنظیم تدریجی</th><th>تاریخ</th><th></th></tr>
     <?php foreach($bulkJobs as $j): $remaining=max(0,(int)$j['total_rows']-(int)$j['sent_rows']-(int)$j['failed_rows']); ?>
       <tr>
@@ -280,7 +281,7 @@ if (lazy_part_begin('bulk')) {
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if(!$bulkJobs): ?><tr><td colspan="13" class="empty">ارسال حجیمی در این بازه وجود ندارد.</td></tr><?php endif; ?>
+    <?php if(!$bulkJobs): ?><tr><td colspan="13" class="empty-cell"><?= panel_empty_state('ارسال حجیمی در این بازه وجود ندارد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'users') ?></td></tr><?php endif; ?>
   </table></div>
 </div>
 <?php
@@ -306,7 +307,7 @@ if (lazy_part_begin('schedules')) {
 <?= lazy_part_tab_count('schedules', '(' . to_persian_digits(number_format($scheduleCount)) . ')') ?>
 <div class="card">
   <h2>زمان‌بندی‌ها</h2>
-  <div class="table-wrap"><table>
+  <div class="table-wrap"><table data-cards>
     <tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>عنوان</th><th>زمان اجرا</th><th>تکرار</th><th>خط</th><th>گیرندگان</th><th>متن</th><th>وضعیت</th><th>تعداد اجرا</th><th>آخرین اجرا</th><th>آخرین نتیجه</th></tr>
     <?php foreach($schedules as $s): $sd=json_decode((string)$s['destinations'],true) ?: []; ?>
       <tr>
@@ -324,7 +325,7 @@ if (lazy_part_begin('schedules')) {
         <td class="msg-preview" title="<?= e((string)$s['last_result']) ?>"><?= e(mb_strimwidth((string)$s['last_result'],0,45,'…')) ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if(!$schedules): ?><tr><td colspan="12" class="empty">زمان‌بندی‌ای در این بازه وجود ندارد.</td></tr><?php endif; ?>
+    <?php if(!$schedules): ?><tr><td colspan="12" class="empty-cell"><?= panel_empty_state('زمان‌بندی‌ای در این بازه وجود ندارد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'clock') ?></td></tr><?php endif; ?>
   </table></div>
   <div style="margin-top:10px"><a class="btn btn-sm" href="/schedules.php">مشاهده زمان‌بندی‌ها و مراحل تدریجی</a></div>
 </div>
@@ -354,7 +355,7 @@ if (lazy_part_begin('direct')) {
 <?= lazy_part_tab_count('direct', '(' . to_persian_digits(number_format((int)($D['total'] ?? 0))) . ')') ?>
 <div class="card">
 <h2>پیام‌های عادی / API</h2>
-<div class="table-wrap"><table>
+<div class="table-wrap"><table data-cards>
 <tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
 <?php foreach($rows as $r): $cs=(string)$r['canonical_status']; ?>
 <tr>
@@ -370,7 +371,7 @@ if (lazy_part_begin('direct')) {
 <?php if($canHide): $isHidden = isset($hiddenOutbound[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('outbound', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
 </tr>
 <?php endforeach; ?>
-<?php if(!$rows): ?><tr><td colspan="<?= is_admin()?($canHide?10:9):8 ?>" class="empty">هیچ پیام عادی/API با این فیلترها یافت نشد.</td></tr><?php endif; ?>
+<?php if(!$rows): ?><tr><td colspan="<?= is_admin()?($canHide?10:9):8 ?>" class="empty-cell"><?= panel_empty_state('هیچ پیام عادی/API با این فیلترها یافت نشد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr><?php endif; ?>
 </table></div>
 <?= pager_links($directPage, pager_pages((int)($D['total'] ?? 0), $per), $pagerQuery, 'direct_page', (int)($D['total'] ?? 0), 'direct') ?>
 </div>
@@ -382,7 +383,7 @@ $users = is_admin() ? backend_list_users_summary() : [];
 $qs = fn(array $extra=[]) => http_build_query(array_filter(array_merge($_GET,$extra), static fn($v)=>$v!==null && $v!==''));
 require __DIR__ . '/../app/views/header.php';
 ?>
-<?= lazy_part_placeholder('summary', 110) ?>
+<?= lazy_part_placeholder('summary', 110, shape: 'stats') ?>
 
 <div class="card" style="margin-top:22px">
 <form method="get" class="toolbar">
@@ -421,19 +422,19 @@ require __DIR__ . '/../app/views/header.php';
 </nav>
 
 <section class="tab-panel" data-panel="gateway" role="tabpanel">
-<?= lazy_part_placeholder('gateway', 320) ?>
+<?= lazy_part_placeholder('gateway', 320, shape: 'table') ?>
 </section>
 
 <section class="tab-panel" data-panel="bulk" role="tabpanel">
-<?= lazy_part_placeholder('bulk', 320) ?>
+<?= lazy_part_placeholder('bulk', 320, shape: 'table') ?>
 </section>
 
 <section class="tab-panel" data-panel="schedules" role="tabpanel">
-<?= lazy_part_placeholder('schedules', 320) ?>
+<?= lazy_part_placeholder('schedules', 320, shape: 'table') ?>
 </section>
 
 <section class="tab-panel" data-panel="direct" role="tabpanel">
-<?= lazy_part_placeholder('direct', 320) ?>
+<?= lazy_part_placeholder('direct', 320, shape: 'table') ?>
 </section>
 
 </div>

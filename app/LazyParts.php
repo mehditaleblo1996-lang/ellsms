@@ -47,11 +47,34 @@ function lazy_part_requested(): bool {
     return (string)($_GET[LAZY_PART_PARAM] ?? '') !== '';
 }
 
-/** The empty box the shell prints where part $name goes; $minHeight keeps the layout from jumping. */
-function lazy_part_placeholder(string $name, int $minHeight = 120, string $label = 'در حال بارگذاری…'): string {
-    return '<div class="lazy-part" data-lazy-part="' . e($name) . '" aria-busy="true" style="min-height:' . $minHeight . 'px">'
-        . '<div class="lazy-part-status"><span class="lazy-spinner" aria-hidden="true"></span>' . e($label) . '</div>'
+/**
+ * The box the shell prints where part $name goes: a grey skeleton shaped like what will arrive
+ * ($shape: 'stats', 'chart', 'table', 'list' or 'block'), so the page keeps its layout while it loads.
+ * $minHeight keeps the layout from jumping; the label is read out to screen readers.
+ */
+function lazy_part_placeholder(string $name, int $minHeight = 120, string $label = 'در حال بارگذاری…', string $shape = 'block'): string {
+    return '<div class="lazy-part lazy-part-' . e(lazy_part_shape($shape)) . '" data-lazy-part="' . e($name) . '" aria-busy="true" style="min-height:' . $minHeight . 'px">'
+        . lazy_part_skeleton($shape, $label)
         . '</div>';
+}
+
+function lazy_part_shape(string $shape): string {
+    return in_array($shape, ['stats', 'chart', 'table', 'list', 'block'], true) ? $shape : 'block';
+}
+
+/** Pure: the skeleton markup for lazy_part_placeholder() — decorative, with a screen-reader label. */
+function lazy_part_skeleton(string $shape, string $label = 'در حال بارگذاری…'): string {
+    $bar = static fn(string $class = ''): string => '<span class="skel' . ($class !== '' ? ' ' . $class : '') . '"></span>';
+    $inner = match (lazy_part_shape($shape)) {
+        'stats' => str_repeat('<span class="skel-card">' . $bar('skel-line is-short') . $bar('skel-line is-big') . '</span>', 4),
+        'chart' => $bar('skel-line is-title') . '<span class="skel-bars">'
+            . implode('', array_map(static fn(int $h): string => '<span class="skel" style="height:' . $h . '%"></span>', [45, 70, 55, 90, 35, 65, 50]))
+            . '</span>',
+        'table' => $bar('skel-line is-title') . $bar('skel-row is-head') . str_repeat($bar('skel-row'), 5),
+        'list'  => $bar('skel-line is-title') . str_repeat('<span class="skel-item">' . $bar('skel-line is-half') . $bar('skel-line') . '</span>', 3),
+        default => $bar('skel-line is-title') . $bar('skel-line') . $bar('skel-line') . $bar('skel-line is-half'),
+    };
+    return '<span class="sr-only lazy-part-label">' . e($label) . '</span><div class="skel-wrap" aria-hidden="true">' . $inner . '</div>';
 }
 
 /**
@@ -61,9 +84,9 @@ function lazy_part_placeholder(string $name, int $minHeight = 120, string $label
  * while the tab is hidden. The page can ask for an immediate refresh by dispatching
  * `lazy-part:refresh` on the box; every new content fires `lazy-part:loaded` on it.
  */
-function lazy_part_live_placeholder(string $name, int $seconds, int $minHeight = 120, string $label = 'در حال بارگذاری…'): string {
-    return '<div class="lazy-part" data-lazy-part="' . e($name) . '" data-lazy-poll="' . max(1, $seconds) . '" aria-busy="true" aria-live="off" style="min-height:' . $minHeight . 'px">'
-        . '<div class="lazy-part-status"><span class="lazy-spinner" aria-hidden="true"></span>' . e($label) . '</div>'
+function lazy_part_live_placeholder(string $name, int $seconds, int $minHeight = 120, string $label = 'در حال بارگذاری…', string $shape = 'block'): string {
+    return '<div class="lazy-part lazy-part-' . e(lazy_part_shape($shape)) . '" data-lazy-part="' . e($name) . '" data-lazy-poll="' . max(1, $seconds) . '" aria-busy="true" aria-live="off" style="min-height:' . $minHeight . 'px">'
+        . lazy_part_skeleton($shape, $label)
         . '</div>';
 }
 

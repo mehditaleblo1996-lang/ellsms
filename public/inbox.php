@@ -72,7 +72,7 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 
   <div class="table-wrap">
-  <table>
+  <table data-cards>
     <tr><th>#</th><th>فرستنده</th><th>گیرنده (خط شما)</th><th>متن پیام</th><th>زمان دریافت</th></tr>
     <?php foreach ($rows as $m): ?>
       <tr>
@@ -84,11 +84,10 @@ require __DIR__ . '/../app/views/header.php';
       </tr>
     <?php endforeach; ?>
     <?php if (!$rows && !$hasSenderScope): ?>
-      <tr><td colspan="5" class="empty">
-        هنوز هیچ خط ارسالی به شما تخصیص داده نشده — صندوق دریافت فقط پیامک‌های خطوط تخصیص‌یافته را نشان می‌دهد. از مدیر بخواهید یک شماره از صفحه‌ی «شماره‌ها» به شما تخصیص دهد.</td></tr>
+      <tr><td colspan="5" class="empty-cell"><?= panel_empty_state('هنوز هیچ خط ارسالی به شما تخصیص داده نشده', 'صندوق دریافت فقط پیامک‌های خطوط تخصیص‌یافته را نشان می‌دهد. از مدیر بخواهید یک شماره از صفحه‌ی «شماره‌ها» به شما تخصیص دهد.', null, 'phone') ?></td></tr>
     <?php elseif (!$rows): ?>
-      <tr><td colspan="5" class="empty">
-        در این بازه‌ی زمانی پیامک دریافتی‌ای وجود ندارد. پیامک‌های دریافتیِ خط‌های شما به‌طور خودکار (از طریق آدرس <code class="kbd">/mo</code>) اینجا نمایش داده می‌شوند — نیازی به تنظیم چیزی اینجا نیست.
+      <tr><td colspan="5" class="empty-cell"><?= panel_empty_state('در این بازه پیامک دریافتی‌ای وجود ندارد', '', null, 'inbox') ?>
+        <p class="hint" style="text-align:center;margin:0"> پیامک‌های دریافتیِ خط‌های شما به‌طور خودکار (از طریق آدرس <code class="kbd">/mo</code>) اینجا نمایش داده می‌شوند — نیازی به تنظیم چیزی اینجا نیست.</p>
       </td></tr>
     <?php endif; ?>
   </table>
