@@ -45,6 +45,27 @@ components:
       schema: { type: string }
 
   schemas:
+    OtpTemplate:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        content: { type: string, description: "fixed text with {name} placeholders" }
+        variables: { type: array, items: { type: string } }
+        status: { type: string, enum: [pending, approved, rejected, disabled] }
+        review_note: { type: string, nullable: true, description: "the admin's reason when rejected" }
+        created_at: { type: string }
+    OtpMessage:
+      type: object
+      properties:
+        id: { type: integer }
+        template_id: { type: integer }
+        destination: { type: string }
+        originator: { type: string, nullable: true, description: "the shared line it was sent from" }
+        status: { type: string, enum: [sending, sent, failed] }
+        parts: { type: integer }
+        error: { type: string, nullable: true }
+        created_at: { type: string }
     WebEngageResult:
       type: object
       required: [status]
@@ -515,6 +536,59 @@ paths:
         "422": { $ref: '#/components/responses/ValidationFailed' }
         "429": { description: The same number was called too recently }
         "502": { description: ZarinCall refused the call }
+
+  /otp:
+    post:
+      summary: Send a one-time code with an approved template from a shared platform line (scope otp:send) — see docs/shared-otp.md
+      description: >
+        The sender is never chosen by the caller: `originator`/`sender` are rejected (422), like the
+        pricing fields. Only an approved template can send; each value is 1–30 characters on one line,
+        without a link. Charged to the key owner's wallet at the shared line's OTP tariff.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_id, destination, parameters]
+              properties:
+                template_id: { type: integer }
+                destination: { type: string }
+                parameters:
+                  description: "{name: value} for every {name} in the template, or a list in the template's variable order"
+                  oneOf:
+                    - type: object
+                      additionalProperties: { type: string, maxLength: 30 }
+                    - type: array
+                      items: { type: string, maxLength: 30 }
+                client_message_id: { type: string }
+      responses:
+        "201": { description: Sent, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/OtpMessage' } } } } } }
+        "402": { description: Not sent (insufficient credit, gateway refused, quota) }
+        "409": { $ref: '#/components/responses/IdempotencyConflict' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+        "429": { description: A code was sent to the same number too recently (Retry-After) }
+        "503": { description: Shared OTP is not enabled on this deployment }
+
+  /otp/templates:
+    get:
+      summary: The organization's OTP templates and their review status (scope otp:send)
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, approved, rejected, disabled] }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/OtpTemplate' } } } } } } }
+        "503": { description: Shared OTP is not enabled on this deployment }
+
+  /otp/{id}:
+    get:
+      summary: One shared OTP send's outcome (scope otp:send)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/OtpMessage' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
 
   /webengage/sms:
     post:

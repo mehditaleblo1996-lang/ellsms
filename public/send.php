@@ -107,7 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // A schedule is a send that happens later, so it is blocked in support mode exactly like
             // an immediate one (docs/admin-impersonation.md).
         } else {
-            $repeat = in_array($_POST['repeat'] ?? 'none', ['none','daily','weekly','monthly'], true) ? $_POST['repeat'] : 'none';
+            $repeat = in_array($_POST['repeat'] ?? 'none', ['none','daily','weekly','monthly'], true) ? ($_POST['repeat'] ?? 'none') : 'none';
             $slot = entitlement_with_resource_slot((int)($me['organization_id'] ?? 0), Limits::ACTIVE_SCHEDULES, static function (PDO $db) use ($me, $originator, $dests, $content, $runAt, $repeat) {
                 $db->prepare('INSERT INTO ellsms_schedule (user_id, organization_id, originator, destinations, content, run_at, repeat_type)
                               VALUES (?,?,?,?,?,?,?)')

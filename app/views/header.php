@@ -51,6 +51,10 @@ $navOrg = current_organization();
 if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
     $integrationNav['api_keys'] = ['/api-keys.php', 'کلیدهای API', '🔑'];
 }
+// Shared OTP templates (app/SharedOtp.php), once the service is on; admins manage it under their own menu.
+if ($me['role'] !== 'admin' && shared_otp_configured()) {
+    $integrationNav['otp_templates'] = ['/otp-templates.php', 'کد تایید اشتراکی', '🔐'];
+}
 // WooCommerce plugin, SDKs and their guide — for whoever can see API keys (they are what the tools use).
 if ($me['role'] === 'admin' || ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW))) {
     $integrationNav['integrations'] = ['/integrations.php', 'افزونه ووکامرس و SDK', '🧩'];
@@ -116,6 +120,7 @@ $adminNav = [
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
     'voice_settings'        => ['/voice-settings.php',        'سرویس پیام صوتی',     '🔊'],
+    'shared_otp'            => ['/otp-templates.php',         'کد تایید اشتراکی',    '🔐'],
     'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
     'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
@@ -135,7 +140,7 @@ $adminNavGroups = menu_group_items($adminNav, [
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
     'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
-    'admin_sending'  => ['کنترل ارسال',          ['prohibited_words', 'queue_cancellation', 'bulk_archive']],
+    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
 ]);

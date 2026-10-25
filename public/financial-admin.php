@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$tab = in_array($_GET['tab'] ?? 'invoices', ['invoices','payments','wallet'], true) ? $_GET['tab'] : 'invoices';
+$tab = in_array($_GET['tab'] ?? 'invoices', ['invoices','payments','wallet'], true) ? ($_GET['tab'] ?? 'invoices') : 'invoices';
 $perPage = 30;
 $filterStatus = trim((string)($_GET['status'] ?? ''));
 $filterOrg = (int)($_GET['organization_id'] ?? 0);

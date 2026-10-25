@@ -38,6 +38,7 @@ require_once __DIR__ . '/../../app/Api/Handlers/Webhooks.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Preview.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Voice.php';
 require_once __DIR__ . '/../../app/Api/Handlers/WebEngage.php';
+require_once __DIR__ . '/../../app/Api/Handlers/SharedOtp.php';
 
 Logger::setCliMirror(false); // pure JSON stdout even if this ever runs under `php -S` for testing (Phase 11 precedent)
 
@@ -93,6 +94,11 @@ $router->map('POST',  '/api/v1/voice/messages',              'api_handle_voice_m
 $router->map('GET',   '/api/v1/voice/messages/{id}',         'api_handle_voice_messages_get', ApiScopes::VOICE_READ);
 $router->map('POST',  '/api/v1/voice/messages/{id}/cancel',  'api_handle_voice_messages_cancel', ApiScopes::VOICE_SEND);
 $router->map('POST',  '/api/v1/voice/otp',                   'api_handle_voice_otp', ApiScopes::VOICE_SEND);
+// Shared OTP: approved templates sent from the platform's shared lines (app/Api/Handlers/SharedOtp.php).
+// /otp/templates is declared before /otp/{id} so the literal path wins.
+$router->map('POST',  '/api/v1/otp',                         'api_handle_shared_otp_send', ApiScopes::OTP_SEND);
+$router->map('GET',   '/api/v1/otp/templates',               'api_handle_shared_otp_templates', ApiScopes::OTP_SEND);
+$router->map('GET',   '/api/v1/otp/{id}',                    'api_handle_shared_otp_get', ApiScopes::OTP_SEND);
 // WebEngage SMS service provider endpoint (app/Api/Handlers/WebEngage.php, docs/webengage.md).
 $router->map('POST',  WEBENGAGE_API_PATH,                    'api_handle_webengage_sms', ApiScopes::MESSAGES_SEND);
 

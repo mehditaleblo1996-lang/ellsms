@@ -296,7 +296,7 @@ function user_send_policy_is_send_request(): bool {
     if ($method !== 'POST') return false;
     if (in_array((string)($_POST['do'] ?? ''), ['preview','estimate'], true)) return false;
     if (in_array($path, ['/send.php','/new-send.php','/p2p-send.php','/smart-send.php'], true)) return true;
-    return (bool)preg_match('#^/api/v1/(messages|bulk-jobs)(?:/|$)#', $path);
+    return (bool)preg_match('#^/api/v1/(messages|bulk-jobs|otp)(?:/|$)#', $path);
 }
 
 function user_send_policy_request_allowed(int $userId): bool {
