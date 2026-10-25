@@ -18,6 +18,7 @@ final class SharedOtpHttpTest extends TestCase
     private array $userIds = [];
     private int $adminId;
     private int $customerId;
+    private int $orgId;
     private array $savedSettings = [];
 
     protected function setUp(): void
@@ -26,6 +27,8 @@ final class SharedOtpHttpTest extends TestCase
         IntegrationTestCase::ensureSchemaLoaded();
         $this->adminId = $this->makeUser(true);
         $this->customerId = $this->makeUser(false);
+        // The page needs the messages.send permission, which an organization member holds.
+        $this->orgId = (int)create_organization($this->customerId, 'OTP HTTP Org ' . bin2hex(random_bytes(3)))['organization_id'];
         foreach (['shared_otp_enabled', 'shared_otp_lines', 'shared_otp_min_interval_seconds'] as $key) {
             $this->savedSettings[$key] = setting_fresh($key);
         }
@@ -64,6 +67,11 @@ final class SharedOtpHttpTest extends TestCase
                 set_setting($key, $value);
             }
         }
+        foreach (['ellsms_wallet_transactions', 'ellsms_wallet_reservations', 'ellsms_wallet_accounts'] as $t) {
+            db()->prepare("DELETE FROM {$t} WHERE user_id = ?")->execute([$this->customerId]);
+        }
+        db()->prepare('DELETE FROM ellsms_organization_memberships WHERE organization_id = ?')->execute([$this->orgId]);
+        db()->prepare('DELETE FROM ellsms_organizations WHERE id = ?')->execute([$this->orgId]);
         foreach ($this->userIds as $id) {
             db()->prepare('DELETE FROM ellsms_otp_templates WHERE user_id = ?')->execute([$id]);
             db()->prepare('DELETE FROM ellsms_notifications WHERE user_id = ?')->execute([$id]);
