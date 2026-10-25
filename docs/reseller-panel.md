@@ -151,7 +151,9 @@ A ticket from a reseller's customer is assigned to the nearest reseller above it
 (`ellsms_tickets.assignee_user_id`) unless that reseller turned «تیکت‌های مشتریانم به خودم برسد» off.
 The reseller (or its staff) answers it on `/reseller/tickets`, changes its status, or hands it to
 platform support (escalate: assignee NULL). Platform admins still see every ticket. Assigned tickets
-notify the reseller in its panel instead of the platform's Telegram.
+notify the reseller in its panel instead of the platform's Telegram. The customer is told in its
+panel and by SMS when the ticket is filed (`ticket.created`) and whenever support — the reseller or a
+platform admin — answers it (`ticket.answered`); both events' channels are set on `/settings.php`.
 
 An announcement (`ellsms_reseller_announcements`) goes to the direct customers or the whole
 sub-tree, optionally between two dates. A new active one is sent as a panel notification at once and
