@@ -122,6 +122,16 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
       </label>
     <?php endforeach; ?>
   </div>
+  <?php if (is_admin() && ($hiddenMethods = manual_payment_hidden_reasons()) !== []): ?>
+  <div class="flash flash-info no-print">
+    <?php if (isset($hiddenMethods['*'])): ?><?= e($hiddenMethods['*']) ?>
+    <?php else: ?>این روش‌ها به کاربران نمایش داده نمی‌شوند:
+      <?php foreach ($hiddenMethods as $hm => $why): ?><strong><?= e(MANUAL_PAYMENT_METHODS[$hm]) ?></strong> (<?= e($why) ?>)<?= $hm !== array_key_last($hiddenMethods) ? '، ' : '' ?><?php endforeach; ?>.
+      <a href="/admin/billing/manual-payments?tab=settings">تعریف کارت‌ها و حساب‌ها و فعال‌سازی روش‌ها</a>
+    <?php endif; ?>
+    <div class="hint">این پیام فقط برای مدیر نمایش داده می‌شود.</div>
+  </div>
+  <?php endif; ?>
   <hr class="pay-sep">
 
   <p class="hint">اعتبار فعلی شما: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> ریال. به مبلغ خرید <?= to_persian_digits((string)$taxPercent) ?>٪ ارزش افزوده اضافه می‌شود.</p>

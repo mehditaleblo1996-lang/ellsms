@@ -155,10 +155,14 @@ function manual_payment_destination_label(array $destination): string {
    Configuration: accepted methods and destinations (owner 0 = the platform, else a reseller)
    ========================================================================== */
 
-/** @return array<string,bool> method => enabled, for every manual method */
+/**
+ * @return array<string,bool> method => enabled, for every manual method. A method the platform
+ * (owner 0) never saved counts as enabled — it is still offered only once it has somewhere to be paid
+ * into (manual_payment_owner_accepts()); a reseller's are off until it turns them on.
+ */
 function manual_payment_methods_enabled(int $ownerId): array {
-    $out = array_fill_keys(array_keys(MANUAL_PAYMENT_METHODS), false);
-    if (!manual_payments_available()) return $out;
+    $out = array_fill_keys(array_keys(MANUAL_PAYMENT_METHODS), $ownerId === 0);
+    if (!manual_payments_available()) return array_fill_keys(array_keys(MANUAL_PAYMENT_METHODS), false);
     $st = db()->prepare('SELECT method, enabled FROM ellsms_payment_method_settings WHERE owner_user_id = ?');
     $st->execute([$ownerId]);
     foreach ($st->fetchAll() as $row) {
@@ -300,6 +304,24 @@ function manual_payment_options_for(int $userId): array {
             'collector'    => $collector,
             'destinations' => $kind !== null ? manual_payment_destinations($collector, $kind, true) : [],
         ];
+    }
+    return $out;
+}
+
+/**
+ * For a platform admin on the buy-credit page: why each manual method is not offered there, as
+ * method => Persian reason (empty when every method shows, or when nothing can be fixed).
+ */
+function manual_payment_hidden_reasons(): array {
+    if (!manual_payments_available()) return ['*' => manual_payment_error_message('not_migrated')];
+    $enabled = manual_payment_methods_enabled(0);
+    $out = [];
+    foreach (MANUAL_PAYMENT_METHODS as $method => $label) {
+        if (!$enabled[$method]) {
+            $out[$method] = 'غیرفعال است';
+        } elseif (!manual_payment_owner_accepts(0, $method, $enabled)) {
+            $out[$method] = MANUAL_PAYMENT_DESTINATION_KIND[$method] === 'card' ? 'هنوز کارت فعالی تعریف نشده' : 'هنوز حساب بانکی فعالی تعریف نشده';
+        }
     }
     return $out;
 }

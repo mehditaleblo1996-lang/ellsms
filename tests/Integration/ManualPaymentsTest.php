@@ -59,7 +59,12 @@ final class ManualPaymentsTest extends IntegrationTestCase
     public function testMethodsAreOfferedOnlyWhenEnabledAndPayable(): void
     {
         $customer = $this->makeUser();
+        // Out of the box the platform's methods are on, but only cash has nothing to configure.
+        $this->assertSame(['cash'], array_keys(manual_payment_options_for($customer)));
+        $this->assertSame(['card', 'account', 'cheque'], array_keys(manual_payment_hidden_reasons()));
+        manual_payment_methods_save(0, [], 1);
         $this->assertSame([], manual_payment_options_for($customer));
+        $this->assertSame('غیرفعال است', manual_payment_hidden_reasons()['cash']);
 
         manual_payment_methods_save(0, ['card', 'cash', 'cheque'], 1);
         // card and cheque need somewhere to pay into; cash does not.
