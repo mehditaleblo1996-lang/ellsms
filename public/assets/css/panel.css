@@ -276,6 +276,49 @@
 /* Column headers stay in view inside a table box that scrolls on its own. */
 .panel .table-wrap thead th { position: sticky; top: 0; z-index: 1; }
 
+/* Flash messages: a close button on each; successes leave as toasts (assets/js/panel.js). */
+.panel [data-flash] { display: flex; align-items: flex-start; gap: 10px; }
+.panel .flash-text { flex: 1; min-width: 0; }
+.panel .flash-close {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px; width: 32px; height: 32px; margin: -4px -6px -4px 0;
+  padding: 0; border: 0; border-radius: 8px; background: transparent; color: inherit; opacity: .75; cursor: pointer;
+}
+.panel .flash-close:hover { opacity: 1; background: rgb(0 0 0 / 6%); }
+.panel .flash-close .ui-icon { width: 18px; height: 18px; }
+.panel .flash.is-leaving { opacity: 0; transform: translateY(-4px); transition: opacity 200ms, transform 200ms; }
+.toast-stack { position: fixed; top: 84px; inset-inline-end: 24px; z-index: 70; display: grid; gap: 10px; width: min(380px, calc(100vw - 24px)); pointer-events: none; }
+.panel .toast-stack .flash { margin: 0; pointer-events: auto; border: 1px solid #bfe6cf; box-shadow: 0 12px 30px rgb(24 35 69 / 14%); animation: toast-in 220ms var(--panel-ease); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+
+/* Empty lists and tables (panel_empty_state()). */
+.panel .empty-cell { padding: 0 !important; }
+.panel .empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 36px 16px; color: var(--muted); text-align: center; }
+.panel .empty-state-icon { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; margin-bottom: 4px; border-radius: 16px; color: var(--indigo); background: #eeebff; }
+.panel .empty-state-icon .ui-icon { width: 28px; height: 28px; }
+.panel .empty-state-title { color: var(--ink); font-size: 15px; }
+.panel .empty-state-text { max-width: 440px; margin: 0; font-size: 13px; line-height: 1.9; }
+.panel .empty-state .btn { margin-top: 6px; }
+
+/* Lazily loaded parts wait as a grey skeleton of what is coming (app/LazyParts.php). */
+.panel .lazy-part:not(.lazy-part-ready) { display: block; margin: 0 0 20px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); box-shadow: var(--panel-shadow); }
+.panel .lazy-part.lazy-part-stats:not(.lazy-part-ready) { padding: 0; border: 0; background: none; box-shadow: none; }
+.panel .lazy-part.lazy-part-failed { display: flex; align-items: center; justify-content: center; }
+.panel .skel-wrap { display: grid; gap: 12px; }
+.panel .skel { display: block; border-radius: 8px; background: linear-gradient(90deg, #eef0f6 0%, #f6f7fb 40%, #eef0f6 80%) 0 0 / 300% 100%; animation: skel-shine 1.4s ease-in-out infinite; }
+@keyframes skel-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.panel .skel-line { height: 12px; }
+.panel .skel-line.is-title { width: 34%; height: 18px; margin-bottom: 6px; }
+.panel .skel-line.is-half { width: 55%; }
+.panel .skel-line.is-short { width: 40%; }
+.panel .skel-line.is-big { width: 55%; height: 30px; }
+.panel .skel-row { height: 40px; border-radius: 6px; }
+.panel .skel-row.is-head { height: 34px; opacity: .7; }
+.panel .lazy-part-stats .skel-wrap { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+.panel .skel-card { display: grid; gap: 14px; padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.panel .skel-bars { display: flex; align-items: flex-end; gap: clamp(8px, 2vw, 28px); height: 160px; padding-inline-start: 52px; }
+.panel .skel-bars .skel { flex: 1; border-radius: 6px 6px 0 0; }
+.panel .skel-item { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+
 @media (min-width: 1101px) and (max-width: 1320px) {
   .panel #topbarToday, .panel .topbar-clock-icon { display: none; }
   .panel .topbar-time { padding-inline-start: 0; border: 0; }
@@ -299,6 +342,26 @@
   .panel .grid-3, .panel .grid-2 { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 600px) {
+  .toast-stack { top: auto; bottom: 16px; inset-inline: 12px; width: auto; }
+  .panel .lazy-part-stats .skel-wrap { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .panel .skel-bars { padding-inline-start: 40px; gap: 6px; }
+
+  /* Tables marked data-cards: one card per row, each cell labelled by its column (assets/js/panel.js). */
+  .panel table.has-cards, .panel table.has-cards tbody { display: block; min-width: 0 !important; width: 100%; table-layout: auto !important; }
+  .panel table.has-cards thead, .panel table.has-cards tr.cards-head { display: none; }
+  .panel table.has-cards tr { display: block; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .panel table.has-cards tr:last-child { border-bottom: 0; }
+  .panel table.has-cards tbody tr:hover { background: none; }
+  .panel table.has-cards td { display: grid; grid-template-columns: minmax(84px, 36%) minmax(0, 1fr); align-items: baseline; gap: 10px; width: auto !important; padding: 6px 0; border: 0; white-space: normal; overflow: visible; text-align: start; }
+  .panel table.has-cards td::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 600; }
+  .panel table.has-cards td:not([data-label]) { grid-template-columns: minmax(0, 1fr); }
+  .panel table.has-cards td:not([data-label])::before { content: none; }
+  .panel table.has-cards td.empty-cell { display: block; }
+  .panel table.has-cards .cell-value { min-width: 0; overflow-wrap: anywhere; }
+  /* Number cells read left to right, but the card row itself stays right to left. */
+  .panel table.has-cards td:is(.ltr, .msisdn, .num) { direction: rtl; text-align: start; }
+  .panel table.has-cards td:is(.ltr, .msisdn, .num) .cell-value { direction: ltr; text-align: right; }
+  .panel table.has-cards .cell-value form { margin: 0; }
   /* The credit box takes a row of its own under the menu button and the icons. */
   .panel .topbar-row { flex-wrap: wrap; gap: 8px 6px; min-height: 0; padding: 10px 12px; }
   .panel .topbar-actions { gap: 6px; margin-inline-start: auto; }

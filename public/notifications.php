@@ -41,7 +41,7 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <?php if (!$rows): ?>
-    <p class="empty">هنوز اعلانی ندارید.</p>
+    <?= panel_empty_state('هنوز اعلانی ندارید', 'اعلان‌های سیستمی، تیکت‌ها و احراز هویت اینجا نمایش داده می‌شوند.', null, 'bell') ?>
   <?php else: ?>
     <div style="display:flex;flex-direction:column;gap:10px">
       <?php foreach ($rows as $row): ?>
