@@ -11,5 +11,5 @@ echo json_encode([
     'ok' => true,
     'credit' => $credit,
     'credit_text' => to_persian_digits(number_format($credit)),
-    'level' => $me['role'] === 'admin' ? '' : profile_credit_level_for($credit, $organization ? (int)$organization['organization_id'] : 0),
+    'level' => profile_credit_level_for($credit, $organization ? (int)$organization['organization_id'] : 0),
 ], JSON_UNESCAPED_UNICODE);

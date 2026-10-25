@@ -135,9 +135,7 @@ try {
 } catch (Throwable) {
     $notificationPreview = [];
 }
-$creditLevel = $me['role'] !== 'admin'
-    ? profile_credit_level_for((int)$me['credit'], $navOrg ? (int)$navOrg['organization_id'] : 0)
-    : '';
+$creditLevel = profile_credit_level_for((int)$me['credit'], $navOrg ? (int)$navOrg['organization_id'] : 0);
 $supportHref = isset($nav['tickets']) ? $nav['tickets'][0] : null;
 $nowTehran = new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran'));
 $todayLabel = JALALI_WEEKDAYS[((int)$nowTehran->format('w') + 1) % 7] . ' ' . jdate_long($nowTehran->format('Y-m-d'));
@@ -198,20 +196,18 @@ $userLabel = $me['full_name'] ?: $me['username'];
           <span></span><span></span><span></span>
         </button>
         <div class="topbar-status">
-          <?php if ($me['role'] !== 'admin'): ?>
-            <div class="topbar-credit<?= $creditLevel !== '' ? ' is-' . $creditLevel : '' ?>" id="topbarCredit" title="<?= $creditLevel === 'low' ? 'اعتبار شما کم است' : 'اعتبار باقی‌مانده' ?>">
-              <span class="topbar-credit-icon" aria-hidden="true"><?= panel_icon('wallet') ?></span>
-              <span class="topbar-credit-amount">
-                <span class="sr-only">اعتبار باقی‌مانده:</span>
-                <strong id="topbarCreditValue"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> <small>ریال</small>
-                <span class="sr-only" id="topbarCreditLow"<?= $creditLevel === 'low' ? '' : ' hidden' ?>>(اعتبار کم است)</span>
-              </span>
-              <button type="button" class="topbar-mini" id="topbarCreditRefresh" title="به‌روزرسانی اعتبار" aria-label="به‌روزرسانی اعتبار" hidden><?= panel_icon('refresh') ?></button>
-              <?php if (isset($nav['buy_credit'])): ?>
-                <a class="topbar-mini topbar-mini-primary" href="<?= e($nav['buy_credit'][0]) ?>" title="خرید اعتبار" aria-label="خرید اعتبار"><?= panel_icon('plus') ?></a>
-              <?php endif; ?>
-            </div>
-          <?php endif; ?>
+          <div class="topbar-credit<?= $creditLevel !== '' ? ' is-' . $creditLevel : '' ?>" id="topbarCredit" title="<?= $creditLevel === 'low' ? 'اعتبار شما کم است' : 'اعتبار باقی‌مانده' ?>">
+            <span class="topbar-credit-icon" aria-hidden="true"><?= panel_icon('wallet') ?></span>
+            <span class="topbar-credit-amount">
+              <span class="sr-only">اعتبار باقی‌مانده:</span>
+              <strong id="topbarCreditValue"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> <small>ریال</small>
+              <span class="sr-only" id="topbarCreditLow"<?= $creditLevel === 'low' ? '' : ' hidden' ?>>(اعتبار کم است)</span>
+            </span>
+            <button type="button" class="topbar-mini" id="topbarCreditRefresh" title="به‌روزرسانی اعتبار" aria-label="به‌روزرسانی اعتبار" hidden><?= panel_icon('refresh') ?></button>
+            <?php if (isset($nav['buy_credit'])): ?>
+              <a class="topbar-mini topbar-mini-primary" href="<?= e($nav['buy_credit'][0]) ?>" title="خرید اعتبار" aria-label="خرید اعتبار"><?= panel_icon('plus') ?></a>
+            <?php endif; ?>
+          </div>
           <div class="topbar-clock" id="topbarClock" data-now="<?= $nowTehran->getTimestamp() * 1000 ?>">
             <span class="topbar-clock-icon" aria-hidden="true"><?= panel_icon('calendar') ?></span>
             <span id="topbarToday"><?= e($todayLabel) ?></span>
