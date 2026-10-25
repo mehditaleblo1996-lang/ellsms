@@ -557,6 +557,24 @@ function profile_notifications_get(int $organizationId): array {
     }
 }
 
+/**
+ * Pure: how the panel's credit box colours a balance. Below the organization's own low-credit
+ * threshold is 'low', below twice that is 'warn'; with no threshold set only an empty (or negative)
+ * balance is flagged.
+ */
+function profile_credit_level(int $credit, int $threshold): string {
+    if ($credit <= 0 || ($threshold > 0 && $credit < $threshold)) return 'low';
+    if ($threshold > 0 && $credit < $threshold * 2) return 'warn';
+    return '';
+}
+
+/** profile_credit_level() for the organization in use, by its saved low-credit alert threshold. */
+function profile_credit_level_for(int $credit, int $organizationId): string {
+    $prefs = profile_notifications_get($organizationId);
+    $threshold = (int)$prefs['low_credit_alert_enabled'] === 1 ? (int)$prefs['low_credit_threshold'] : 0;
+    return profile_credit_level($credit, $threshold);
+}
+
 function profile_notifications_save(int $organizationId, array $input, int $actorUserId): array {
     if ($organizationId <= 0) {
         return ['ok' => false, 'reason' => 'invalid_organization'];

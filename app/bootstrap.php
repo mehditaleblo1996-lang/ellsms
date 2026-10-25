@@ -747,6 +747,16 @@ function redirect(string $to): never {
     exit;
 }
 
+/**
+ * A posted "go back to this page" value, accepted only as a same-site absolute path (no scheme, no
+ * host, no "//", no backslash or control characters), so it can never become an open redirect.
+ */
+function local_return_path(string $candidate): ?string {
+    $candidate = trim($candidate);
+    if ($candidate === '' || !str_starts_with($candidate, '/') || str_starts_with($candidate, '//')) return null;
+    return preg_match('#^/[A-Za-z0-9_\-/.]*(\?[A-Za-z0-9_\-=&%.]*)?$#', $candidate) === 1 ? $candidate : null;
+}
+
 /* ---------- SMS helpers ---------- */
 
 /** Normalize a phone number to international digits (98…) */

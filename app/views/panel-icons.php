@@ -32,6 +32,14 @@ function panel_icon(string $name): string {
         'check' => '<path d="m5 12 4 4L20 5"/>',
         'speaker' => '<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>',
         'mic' => '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/>',
+        'refresh' => '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
+        'plus' => '<path d="M12 5v14M5 12h14"/>',
+        'bookmark' => '<path d="M6 3h12v18l-6-4-6 4V3Z"/>',
+        'lock' => '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2"/>',
+        'calendar' => '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+        'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
+        'headset' => '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3" y="14" width="4" height="6" rx="1.5"/><rect x="17" y="14" width="4" height="6" rx="1.5"/><path d="M19 20c0 1.5-1.5 2-3 2h-3"/>',
+        'more' => '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
     ];
     $names = [
         'dashboard'=>'grid', 'notifications'=>'bell', 'guide'=>'book', 'onboarding'=>'check',

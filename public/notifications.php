@@ -10,7 +10,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = (string)($_POST['do'] ?? '');
     if ($do === 'read') notification_mark_read((int)$me['id'], (int)($_POST['id'] ?? 0));
     if ($do === 'read_all') notification_mark_all_read((int)$me['id']);
-    redirect('/notifications.php');
+    // The topbar's notification preview posts here too and goes back to the page it was opened on.
+    $back = (string)($_POST['back'] ?? '');
+    redirect(local_return_path($back) ?? '/notifications.php');
 }
 
 $per = 50;
