@@ -39,10 +39,24 @@ function ticket_notify_telegram(string $text): void {
 }
 
 /**
+ * Tell the ticket's owner about it (panel + SMS, per the event's channel settings in
+ * public/settings.php). The text never carries the subject or the reply body and stays within one
+ * Persian SMS (70 characters): the conversation itself stays in the panel.
+ * notification_dispatch_user() already logs and swallows any failure.
+ */
+function ticket_notify_owner(int $ownerUserId, ?int $organizationId, string $event, int $ticketId): void {
+    [$title, $body] = $event === 'ticket.created'
+        ? ["تیکت #{$ticketId} شما ثبت شد", 'به‌زودی پاسخ داده می‌شود.']
+        : ["تیکت #{$ticketId} شما پاسخ داده شد", 'برای مشاهده به پنل مراجعه کنید.'];
+    notification_dispatch_user($ownerUserId, $organizationId, $event, $title, $body, '/tickets.php?id=' . $ticketId, 'info');
+}
+
+/**
  * Create a ticket and its opening message in one transaction, then fire
- * the "ticket created" Telegram notification (best-effort, after the
- * transaction commits — a notify failure must never roll back a saved
- * ticket). Returns the new ticket id.
+ * the "ticket created" notifications (best-effort, after the transaction
+ * commits — a notify failure must never roll back a saved ticket): the
+ * owner gets a confirmation, and platform support gets the new ticket
+ * on Telegram. Returns the new ticket id.
  */
 function ticket_create(int $userId, string $username, string $subject, string $body, ?int $organizationId = null): int {
     $ticketId = db_transaction(function (PDO $db) use ($userId, $subject, $body, $organizationId): int {
@@ -59,6 +73,7 @@ function ticket_create(int $userId, string $username, string $subject, string $b
     ticket_notify_telegram(
         "🎫 تیکت جدید #{$ticketId} از {$username}\nموضوع: {$subject}\n" . mb_strimwidth($body, 0, 500, '…')
     );
+    ticket_notify_owner($userId, $organizationId, 'ticket.created', $ticketId);
 
     return $ticketId;
 }
@@ -67,8 +82,8 @@ function ticket_create(int $userId, string $username, string $subject, string $b
  * Add a reply to an existing ticket and update its status per the
  * lifecycle rules: a user reply always moves the ticket to 'open'
  * (including reopening a 'closed' ticket); an admin reply moves it to
- * 'answered'. Only a user reply (not an admin one) fires a Telegram
- * notification — admins are already reading the panel when they reply.
+ * 'answered'. A user reply notifies platform support (Telegram); an
+ * admin reply notifies the ticket's owner (panel + SMS, see ticket_notify_owner()).
  */
 function ticket_add_reply(int $ticketId, int $userId, string $username, string $body, bool $isAdmin): void {
     $db = db();
@@ -78,7 +93,14 @@ function ticket_add_reply(int $ticketId, int $userId, string $username, string $
     $newStatus = $isAdmin ? 'answered' : 'open';
     $db->prepare('UPDATE ellsms_tickets SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')->execute([$newStatus, $ticketId]);
 
-    if (!$isAdmin) {
+    if ($isAdmin) {
+        $ticket = ticket_find($ticketId);
+        // An admin answering their own ticket doesn't need to be told about it.
+        if ($ticket && (int)$ticket['user_id'] !== $userId) {
+            $organizationId = $ticket['organization_id'] !== null ? (int)$ticket['organization_id'] : null;
+            ticket_notify_owner((int)$ticket['user_id'], $organizationId, 'ticket.answered', $ticketId);
+        }
+    } else {
         ticket_notify_telegram(
             "💬 پاسخ جدید روی تیکت #{$ticketId} از {$username}:\n" . mb_strimwidth($body, 0, 500, '…')
         );

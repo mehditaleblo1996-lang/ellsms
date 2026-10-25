@@ -21,6 +21,8 @@ const NOTIFICATION_EVENTS = [
     'import.ready'                  => 'آماده‌شدن واردسازی',
     'import.failed'                 => 'خطای واردسازی',
     'gateway.failed'                => 'خطای درگاه پیامک',
+    'ticket.created'                => 'ثبت تیکت (به کاربر)',
+    'ticket.answered'               => 'پاسخ تیکت (به کاربر)',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];
@@ -39,6 +41,7 @@ function notification_channel_default(string $event, string $channel): bool {
         return in_array($event, [
             'registration.new', 'registration.approved', 'registration.rejected',
             'registration.account_created', 'kyc.approved', 'kyc.rejected', 'kyc.needs_correction',
+            'ticket.created', 'ticket.answered',
         ], true);
     }
     return false;
