@@ -25,6 +25,8 @@ const NOTIFICATION_EVENTS = [
     'reseller.ticket'               => 'تیکت مشتریان نماینده',
     'reseller.package'              => 'بسته‌ی نماینده',
     'reseller.registration'         => 'ثبت‌نام از لینک نماینده',
+    'ticket.created'                => 'ثبت تیکت (به کاربر)',
+    'ticket.answered'               => 'پاسخ تیکت (به کاربر)',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];
@@ -43,6 +45,7 @@ function notification_channel_default(string $event, string $channel): bool {
         return in_array($event, [
             'registration.new', 'registration.approved', 'registration.rejected',
             'registration.account_created', 'kyc.approved', 'kyc.rejected', 'kyc.needs_correction',
+            'ticket.created', 'ticket.answered',
         ], true);
     }
     return false;
