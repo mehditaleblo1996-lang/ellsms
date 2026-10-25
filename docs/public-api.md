@@ -84,6 +84,7 @@ create a key at all** — these are two separate, deliberately independent layer
 | `webhooks:write` | `POST /webhooks`, `PATCH`, `DELETE`, rotate-secret, test |
 | `voice:send` | `POST /voice/messages`, `POST /voice/messages/{id}/cancel`, `POST /voice/otp`, `POST /voice/tts` |
 | `voice:read` | `GET /voice/files`, `GET /voice/messages/{id}` |
+| `otp:send` | `POST /otp`, `GET /otp/templates`, `GET /otp/{id}` |
 
 An unrecognized scope string is rejected outright at key-creation time — never silently dropped, and
 never accepted as a partial match. A request against an endpoint the key wasn't granted returns
@@ -364,6 +365,24 @@ release the rest — is in `docs/voice-messages.md`. Voice files are uploaded in
 - `POST /voice/messages/{id}/cancel` — only while `scheduled`; the reservation is released (`409` otherwise)
 - `POST /voice/otp` — `{"destination": "0912…", "code": "48213", "voice_file_id": 7}` (the file is an optional announcement played first)
   → `201`; `429` when the same number was called within the configured interval. The code is never stored.
+
+### Shared OTP — scope `otp:send`
+One-time codes from the platform's own shared lines, for customers without a sender line of their own
+(the counterpart of Negar's predefined messages). The customer registers a template on
+**/otp-templates.php** (fixed text with `{name}` placeholders), a platform admin approves it, and the
+API then takes only the values — never a sender: `originator`/`sender` are rejected with `422`. Available
+while the admin has the service switched on with at least one shared line (otherwise `503
+service_unavailable`). Full behaviour: `docs/shared-otp.md`.
+- `POST /otp` — `{"template_id": 12, "destination": "0912…", "parameters": {"code": "4821"}, "client_message_id": "…"}`
+  (`parameters` may also be a list in the template's variable order) → `201`
+  `{"id", "template_id", "destination", "originator", "status": "sent", "parts", "error", "created_at"}`.
+  Every variable is required and nothing else is accepted; each value is 1–30 characters on one line,
+  without a link. `422` for a template that is missing or not approved, `429` (with `Retry-After`) when
+  the same number got a code within the configured interval, `402` when the send itself failed (credit,
+  quota, gateway). Charged to the key owner's wallet at the shared line's OTP tariff. The rendered text
+  is never stored or returned.
+- `GET /otp/templates?status=` — the organization's templates: `[{"id", "title", "content", "variables", "status", "review_note", "created_at"}]`
+- `GET /otp/{id}` — one send, the same shape as `POST /otp` answers
 
 ### WebEngage — scope `messages:send`
 `POST /webengage/sms` is the SMS Service Provider endpoint WebEngage calls. It accepts WebEngage's own

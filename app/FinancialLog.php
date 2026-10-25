@@ -140,6 +140,7 @@ function financial_log_reference_labels(): array {
         'regional_bulk'     => 'ارسال منطقه‌ای',
         'voice_message'     => 'پیام صوتی',
         'voice_tts'         => 'ساخت فایل صوتی',
+        'shared_otp'        => 'کد تایید اشتراکی',
         'reseller_package'  => 'بسته‌ی نماینده',
     ];
 }

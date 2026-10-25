@@ -42,7 +42,7 @@ function panel_icon(string $name): string {
         'autoreply'=>'message', 'reports'=>'chart', 'reports_bulk'=>'chart', 'inbox'=>'inbox',
         'contacts'=>'users', 'blacklist'=>'ban', 'line_optouts'=>'ban', 'tickets'=>'help',
         'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe',
-        'api_keys'=>'key', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',
+        'api_keys'=>'key', 'otp_templates'=>'key', 'shared_otp'=>'key', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',
         'number_forwards'=>'send', 'billing'=>'wallet', 'subaccounts'=>'users', 'menu_roles'=>'shield',
         'reseller_profits'=>'chart', 'user_send_policies'=>'shield', 'registration_requests'=>'user',
         'kyc_review'=>'shield', 'kyc_gates'=>'key', 'analytics'=>'chart', 'logs'=>'receipt',

@@ -126,6 +126,8 @@ require_once __DIR__ . '/RemoteDb/Sync.php';
 // Voice messages through ZarinCall (docs/voice-messages.md).
 require_once __DIR__ . '/Voice/ZarinCall.php';
 require_once __DIR__ . '/VoiceMessages.php';
+// Shared OTP — approved templates sent from the platform's shared lines (docs/shared-otp.md).
+require_once __DIR__ . '/SharedOtp.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';

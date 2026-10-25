@@ -48,6 +48,7 @@ function menu_catalog(): array {
         'voice_files'   => ['فایل‌های صوتی',         '🎙', '/voice-files.php',   ['voice-files.php']],
         'regional_bulk' => ['ارسال منطقه‌ای',        '🗺️', '/regional-bulk.php', ['regional-bulk.php']],
         'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
+        'otp_templates' => ['کد تایید اشتراکی',      '🔐', '/otp-templates.php', ['otp-templates.php']],
         // A reseller's panel (app/ResellerPanel.php) is its sub-account menu: closing it closes the panel.
         'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php',
                                                                                 'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-tickets.php',
@@ -74,7 +75,7 @@ function menu_groups(): array {
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'inbox', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
         'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
-        'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
+        'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'otp_templates', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
         'account'      => ['حساب و پشتیبانی',   ['reseller_panel', 'subaccounts', 'tickets']],
     ];
 }
@@ -242,6 +243,7 @@ function menu_key_for_api_path(string $path): ?string {
         str_starts_with($path, '/api/v1/bulk-jobs') => 'send',
         str_starts_with($path, '/api/v1/contacts')  => 'contacts',
         str_starts_with($path, '/api/v1/voice')     => 'voice',
+        str_starts_with($path, '/api/v1/otp')       => 'otp_templates',
         str_starts_with($path, '/api/v1/webhooks')  => 'webhooks',
         default => null,
     };

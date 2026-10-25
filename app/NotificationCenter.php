@@ -25,6 +25,7 @@ const NOTIFICATION_EVENTS = [
     'reseller.ticket'               => 'تیکت مشتریان نماینده',
     'reseller.package'              => 'بسته‌ی نماینده',
     'reseller.registration'         => 'ثبت‌نام از لینک نماینده',
+    'shared_otp.template_reviewed'  => 'بررسی قالب کد تایید',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];
