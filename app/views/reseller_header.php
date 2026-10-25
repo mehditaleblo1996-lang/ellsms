@@ -38,6 +38,9 @@ $badges = [
 $brand = current_brand();
 $resellerOwner = reseller_owner_user($ctx['reseller_id']);
 $notificationUnread = notification_unread_count((int)$me['id']);
+$nowTehran = new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran'));
+$todayLabel = JALALI_WEEKDAYS[((int)$nowTehran->format('w') + 1) % 7] . ' ' . jdate_long($nowTehran->format('Y-m-d'));
+$userLabel = $me['full_name'] ?: $me['username'];
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -88,28 +91,52 @@ $notificationUnread = notification_unread_count((int)$me['id']);
 
   <div class="main">
     <header class="topbar">
-      <button class="menu-toggle" type="button" id="menuToggle" aria-label="باز کردن منو" aria-controls="sidebar" aria-expanded="false">
-        <span></span><span></span><span></span>
-      </button>
-      <div class="topbar-heading"><span class="topbar-eyebrow">پنل نمایندگی</span><h1 class="page-title"><?= e($pageTitle ?? '') ?></h1></div>
-      <div class="topbar-right">
-        <span class="credit-pill" title="اعتبار نماینده">
-          اعتبار نمایندگی: <strong class="ltr"><?= to_persian_digits(number_format((int)wallet_balance($ctx['reseller_id'])['available'])) ?></strong> ریال
-        </span>
-        <a class="icon-button notification-button" href="/notifications.php" title="اعلان‌ها" aria-label="اعلان‌ها<?= $notificationUnread > 0 ? '، ' . to_persian_digits((string)$notificationUnread) . ' خوانده‌نشده' : '' ?>">
-          <?= panel_icon('bell') ?><?php if ($notificationUnread > 0): ?> <strong><?= to_persian_digits((string)min(99, $notificationUnread)) ?></strong><?php endif; ?>
-        </a>
-        <a class="user-chip" href="/profile.php" title="حساب کاربری و رمز عبور">
-          <span class="user-avatar" aria-hidden="true"><?= e(mb_substr($me['full_name'] ?: $me['username'], 0, 1)) ?></span><span class="user-name"><?= e($me['full_name'] ?: $me['username']) ?></span>
-        </a>
-        <form method="post" action="/logout.php" style="display:inline">
-          <?= csrf_field() ?>
-          <button type="submit" class="icon-button logout-button" title="خروج از حساب" aria-label="خروج از حساب"><?= panel_icon('logout') ?></button>
-        </form>
+      <div class="topbar-row">
+        <button class="menu-toggle" type="button" id="menuToggle" aria-label="باز کردن منو" aria-controls="sidebar" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="topbar-status">
+          <div class="topbar-credit" title="اعتبار نمایندگی">
+            <span class="topbar-credit-icon" aria-hidden="true"><?= panel_icon('wallet') ?></span>
+            <span class="topbar-credit-amount">
+              <span class="sr-only">اعتبار نمایندگی:</span>
+              <strong><?= to_persian_digits(number_format((int)wallet_balance($ctx['reseller_id'])['available'])) ?></strong> <small>ریال</small>
+            </span>
+          </div>
+          <div class="topbar-clock" id="topbarClock" data-now="<?= $nowTehran->getTimestamp() * 1000 ?>">
+            <span class="topbar-clock-icon" aria-hidden="true"><?= panel_icon('calendar') ?></span>
+            <span id="topbarToday"><?= e($todayLabel) ?></span>
+            <time class="topbar-time" id="topbarTime"><?= to_persian_digits($nowTehran->format('H:i:s')) ?></time>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <a class="icon-button notification-button" href="/notifications.php" title="اعلان‌ها" aria-label="اعلان‌ها<?= $notificationUnread > 0 ? '، ' . to_persian_digits((string)$notificationUnread) . ' خوانده‌نشده' : '' ?>">
+            <?= panel_icon('bell') ?><?php if ($notificationUnread > 0): ?><strong><?= to_persian_digits((string)min(99, $notificationUnread)) ?></strong><?php endif; ?>
+          </a>
+          <details class="topbar-menu topbar-user" id="userMenu">
+            <summary class="user-chip" title="حساب کاربری" aria-label="حساب کاربری: <?= e($userLabel) ?>">
+              <span class="user-avatar" aria-hidden="true"><?= e(mb_substr($userLabel, 0, 1)) ?></span><span class="user-name"><?= e($userLabel) ?></span><span class="user-chevron" aria-hidden="true"><?= panel_icon('chevron-down') ?></span>
+            </summary>
+            <div class="topbar-pop topbar-pop-user">
+              <dl class="topbar-user-info">
+                <div><dt>نام کاربری</dt><dd class="ltr"><?= e($me['username']) ?></dd></div>
+                <div><dt>ایمیل</dt><dd class="ltr"><?= e((string)($me['email'] ?? '') !== '' ? (string)$me['email'] : '—') ?></dd></div>
+              </dl>
+              <a class="topbar-pop-item" href="/profile.php"><?= panel_icon('user') ?><span>پروفایل کاربری</span></a>
+              <a class="topbar-pop-item" href="/profile.php#security"><?= panel_icon('lock') ?><span>تغییر کلمه‌ی عبور</span></a>
+              <a class="topbar-pop-item" href="/account/security/"><?= panel_icon('shield') ?><span>امنیت حساب و MFA</span></a>
+              <form method="post" action="/logout.php">
+                <?= csrf_field() ?>
+                <button type="submit" class="topbar-logout"><?= panel_icon('logout') ?><span>خروج از حساب</span></button>
+              </form>
+            </div>
+          </details>
+        </div>
       </div>
     </header>
 
     <main id="main" tabindex="-1" class="content content-<?= e($active ?? 'reseller') ?>">
+      <h1 class="page-title"><?= e($pageTitle ?? '') ?></h1>
       <?php $impersonationBanner = is_impersonating() ? impersonation_banner_context() : null; ?>
       <?php if ($impersonationBanner): ?>
         <div class="flash flash-error" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between">
