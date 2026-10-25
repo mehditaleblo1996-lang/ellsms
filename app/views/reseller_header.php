@@ -16,6 +16,7 @@ $resellerNav = [
     'reseller_tariffs'       => ['/reseller/tariffs',       'تعرفه‌ها',              'tariffs.manage'],
     'reseller_package_admin' => ['/reseller/packages',      'بسته‌ها و کدهای تخفیف', 'packages.manage'],
     'reseller_finance'       => ['/reseller/finance',       'مالی و سود',            'finance.view'],
+    'reseller_payments'      => ['/reseller/payments',      'پرداخت‌های مشتریان',    'payments.manage'],
     'reseller_staff'         => ['/reseller/staff',         'کارمندان',              'owner'],
     'reseller_settings'      => ['/reseller/settings',      'برند، دامنه و ثبت‌نام', 'owner'],
 ];
@@ -26,12 +27,13 @@ $resellerNav = array_filter($resellerNav, static fn(array $item): bool => $item[
 $resellerGroups = menu_group_items($resellerNav, [
     'r_general'   => ['نمایندگی',      ['reseller_dashboard']],
     'r_customers' => ['مشتریان',       ['reseller_customers', 'reseller_registrations', 'reseller_tickets', 'reseller_announcements']],
-    'r_sales'     => ['فروش و قیمت',   ['reseller_tariffs', 'reseller_package_admin', 'reseller_finance']],
+    'r_sales'     => ['فروش و قیمت',   ['reseller_tariffs', 'reseller_package_admin', 'reseller_finance', 'reseller_payments']],
     'r_settings'  => ['تنظیمات',       ['reseller_staff', 'reseller_settings', 'reseller_back']],
 ]);
 $badges = [
     'reseller_tickets'       => reseller_ticket_count($ctx['reseller_id'], 'open'),
     'reseller_registrations' => reseller_registration_count($ctx['reseller_id']),
+    'reseller_payments'      => manual_payments_pending_count($ctx['reseller_id']),
 ];
 $brand = current_brand();
 $resellerOwner = reseller_owner_user($ctx['reseller_id']);

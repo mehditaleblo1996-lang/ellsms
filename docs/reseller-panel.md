@@ -30,6 +30,7 @@ panel of its own with its own sidebar:
 | Named tariffs | `/reseller/tariffs` | `tariffs.manage` |
 | Packages and codes | `/reseller/packages` | `packages.manage` |
 | Finance and profit | `/reseller/finance` | `finance.view` |
+| Customers' manual payments (card-to-card, deposit, cash, cheque) and its cards/accounts — [`manual-payments.md`](manual-payments.md) | `/reseller/payments` | `payments.manage` |
 | Staff | `/reseller/staff` | the reseller only |
 | Brand, host and sign-up | `/reseller/settings` | the reseller only |
 

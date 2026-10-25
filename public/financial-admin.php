@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'payment_missing' => 'رکورد پرداخت مرتبط پیدا نشد.',
             'payment_state_invalid' => 'وضعیت پرداخت اجازه تأیید دستی را نمی‌دهد.',
             'payment_race' => 'وضعیت پرداخت همزمان تغییر کرد؛ صفحه را تازه کنید.',
+            'manual_review_required' => 'این فاکتور با پرداخت دستی (کارت به کارت، واریز، نقدی یا چک) ثبت شده؛ آن را در «پرداخت‌های دستی» تأیید یا رد کنید.',
         ];
         flash($result['ok'] ? 'success' : 'error', $result['ok']
             ? 'پرداخت فاکتور تأیید شد و اثر مالی آن نیز اعمال شد.'
@@ -43,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'invoice_not_found' => 'فاکتور یافت نشد.',
             'invoice_not_issued' => 'فقط فاکتور پرداخت‌نشده را می‌توان فعال یا غیرفعال کرد.',
             'active_payment' => 'برای این فاکتور یک پرداخت فعال در درگاه وجود دارد و فعلاً قابل غیرفعال‌سازی نیست.',
+            'manual_review_required' => 'پرداخت دستی این فاکتور در انتظار بررسی است؛ آن را در «پرداخت‌های دستی» تأیید یا رد کنید.',
         ];
         flash($result['ok'] ? ($state === 'approved' ? 'success' : 'info') : 'error', $result['ok']
             ? ($state === 'approved' ? 'فاکتور روی «پرداخت‌نشده / قابل پرداخت» قرار گرفت.' : 'فاکتور برای کاربر غیرفعال شد.')
@@ -84,12 +86,23 @@ $total = (int)$countSt->fetchColumn();
 $st = db()->prepare('SELECT * FROM '.$table.$whereSql.' ORDER BY id DESC LIMIT '.$perPage.' OFFSET '.$offset); $st->execute($params); $rows = $st->fetchAll();
 
 $invoiceStatusFa=['issued'=>'پرداخت‌نشده','paid'=>'پرداخت‌شده','cancelled'=>'لغوشده','expired'=>'منقضی','refunded'=>'بازگشت‌داده‌شده'];
+$rowManuals = $tab !== 'wallet' ? manual_payments_for_payments(array_column($rows, $tab === 'invoices' ? 'payment_id' : 'id')) : [];
+$rowGateways = [];
+if ($tab === 'invoices' && $rows) {
+    $gwSt = db()->prepare('SELECT id, gateway FROM ellsms_payments WHERE id IN (' . implode(',', array_fill(0, count($rows), '?')) . ')');
+    $gwSt->execute(array_map('intval', array_column($rows, 'payment_id')));
+    foreach ($gwSt->fetchAll() as $gw) $rowGateways[(int)$gw['id']] = (string)$gw['gateway'];
+}
+$manualPending = manual_payments_pending_count(0);
 $paymentStatusFa=['pending'=>'در انتظار','verification_failed'=>'در حال بررسی مجدد','paid'=>'موفق','failed'=>'ناموفق'];
 $purposeFa=['credit'=>'خرید اعتبار','subscription'=>'اشتراک'];
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
   <h2>گزارش مالی</h2>
+  <?php if (manual_payments_available()): ?>
+  <p><a class="btn btn-sm <?= $manualPending > 0 ? 'btn-primary' : '' ?>" href="/admin/billing/manual-payments">پرداخت‌های دستی در انتظار بررسی: <?= to_persian_digits((string)$manualPending) ?></a></p>
+  <?php endif; ?>
   <div class="toolbar" style="margin-bottom:14px">
     <a class="btn btn-sm <?= $tab==='invoices'?'btn-primary':'' ?>" href="?tab=invoices">فاکتورها</a>
     <a class="btn btn-sm <?= $tab==='payments'?'btn-primary':'' ?>" href="?tab=payments">پرداخت‌ها</a>
@@ -103,24 +116,26 @@ require __DIR__ . '/../app/views/header.php';
       <label>وضعیت<select name="status"><option value="">همه</option><?php foreach(($tab==='invoices'?$invoiceStatusFa:$paymentStatusFa) as $k=>$v): ?><option value="<?= e($k) ?>" <?= $filterStatus===$k?'selected':'' ?>><?= e($v) ?></option><?php endforeach; ?></select></label>
       <label>نوع<select name="purpose"><option value="">همه</option><option value="credit" <?= $filterPurpose==='credit'?'selected':'' ?>>خرید اعتبار</option><option value="subscription" <?= $filterPurpose==='subscription'?'selected':'' ?>>اشتراک</option></select></label>
     <?php endif; ?>
-    <?php if ($tab==='payments'): ?><label>درگاه<select name="gateway"><option value="">همه</option><option value="zarinpal" <?= $filterGateway==='zarinpal'?'selected':'' ?>>زرین‌پال</option><option value="fake" <?= $filterGateway==='fake'?'selected':'' ?>>آزمایشی</option></select></label><?php endif; ?>
+    <?php if ($tab==='payments'): ?><label>درگاه / روش<select name="gateway"><option value="">همه</option><option value="zarinpal" <?= $filterGateway==='zarinpal'?'selected':'' ?>>زرین‌پال</option><option value="fake" <?= $filterGateway==='fake'?'selected':'' ?>>آزمایشی</option><?php foreach (MANUAL_PAYMENT_METHODS as $mk => $mv): ?><option value="<?= e($mk) ?>" <?= $filterGateway===$mk?'selected':'' ?>><?= e($mv) ?></option><?php endforeach; ?></select></label><?php endif; ?>
     <button class="btn btn-sm">فیلتر</button>
   </form>
 
   <div class="table-wrap">
   <?php if ($tab==='invoices'): ?>
     <table>
-      <tr><th>شماره</th><th>سازمان</th><th>نوع</th><th>مبلغ پایه</th><th>ارزش افزوده</th><th>مبلغ نهایی</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr>
-      <?php foreach($rows as $r): $adminState=invoice_admin_state($r); ?>
+      <tr><th>شماره</th><th>سازمان</th><th>نوع</th><th>روش پرداخت</th><th>مبلغ پایه</th><th>ارزش افزوده</th><th>مبلغ نهایی</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr>
+      <?php foreach($rows as $r): $adminState=invoice_admin_state($r); $rowManual=$rowManuals[(int)$r['payment_id']]??null; ?>
       <tr>
         <td class="num ltr"><?= e($r['invoice_number']) ?></td>
         <td class="num"><?= (int)($r['organization_id']??0) ?: '—' ?></td>
         <td><?= e($purposeFa[$r['purpose']]??$r['purpose']) ?></td>
+        <td><?= e(manual_payment_method_label($rowGateways[(int)$r['payment_id']] ?? 'zarinpal')) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$r['subtotal_amount'])) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$r['tax_amount'])) ?> <span class="hint">(۱۰٪)</span></td>
         <td class="num"><strong><?= to_persian_digits(number_format((int)$r['total_amount'])) ?></strong></td>
         <td>
-          <?php if ($r['status']==='paid'): ?><span class="badge badge-ok">پرداخت‌شده</span>
+          <?php if ($rowManual !== null && in_array($rowManual['review_state'], ['pending','rejected'], true)): [$ml,$mb]=manual_payment_invoice_status($r,$rowManual); ?><span class="badge badge-<?= $mb ?>"><?= e($ml) ?></span>
+          <?php elseif ($r['status']==='paid'): ?><span class="badge badge-ok">پرداخت‌شده</span>
           <?php elseif ($r['status']==='issued' && $adminState==='disabled'): ?><span class="badge badge-off">غیرفعال</span>
           <?php elseif ($r['status']==='issued'): ?><span class="badge badge-pending">پرداخت‌نشده</span>
           <?php else: ?><span class="badge badge-off"><?= e($invoiceStatusFa[$r['status']]??$r['status']) ?></span><?php endif; ?>
@@ -128,7 +143,9 @@ require __DIR__ . '/../app/views/header.php';
         </td>
         <td class="num"><?= jdate($r['created_at']) ?></td>
         <td><div class="toolbar">
-          <?php if ($r['status']==='issued'): ?>
+          <?php if ($rowManual !== null && $rowManual['review_state']==='pending'): ?>
+            <?php if ((int)$rowManual['collector_user_id']===0): ?><a class="btn btn-sm btn-primary" href="/admin/billing/manual-payments">بررسی</a><?php else: ?><span class="hint">بررسی با نماینده</span><?php endif; ?>
+          <?php elseif ($r['status']==='issued'): ?>
             <?php if ($adminState==='disabled'): ?>
               <form method="post"><input type="hidden" name="do" value="invoice_approve"><input type="hidden" name="invoice_id" value="<?= (int)$r['id'] ?>"><?= csrf_field() ?><button class="btn btn-sm btn-primary">پرداخت‌نشده / فعال</button></form>
             <?php else: ?>
@@ -144,7 +161,7 @@ require __DIR__ . '/../app/views/header.php';
     </table>
   <?php elseif ($tab==='payments'): ?>
     <table><tr><th>#</th><th>سازمان</th><th>نوع</th><th>درگاه</th><th>مبلغ</th><th>وضعیت</th><th>مرجع</th><th>تاریخ</th></tr>
-      <?php foreach($rows as $r): ?><tr><td>#<?= (int)$r['id'] ?></td><td><?= (int)($r['organization_id']??0) ?: '—' ?></td><td><?= e($purposeFa[$r['purpose']??'credit']??($r['purpose']??'credit')) ?></td><td><?= e($r['gateway']??'zarinpal') ?></td><td class="num"><?= to_persian_digits(number_format((int)$r['amount_rial'])) ?></td><td><?= e($paymentStatusFa[$r['status']]??$r['status']) ?></td><td class="ltr"><?= e((string)($r['ref_id']?:'—')) ?></td><td><?= jdate($r['created_at']) ?></td></tr><?php endforeach; ?>
+      <?php foreach($rows as $r): ?><tr><td>#<?= (int)$r['id'] ?></td><td><?= (int)($r['organization_id']??0) ?: '—' ?></td><td><?= e($purposeFa[$r['purpose']??'credit']??($r['purpose']??'credit')) ?></td><td><?= e(manual_payment_method_label((string)($r['gateway']??'zarinpal'))) ?></td><td class="num"><?= to_persian_digits(number_format((int)$r['amount_rial'])) ?></td><td><?php $pm=$rowManuals[(int)$r['id']]??null; ?><?= e($pm !== null && $pm['review_state'] !== 'approved' ? MANUAL_PAYMENT_REVIEW_STATES[$pm['review_state']] : ($paymentStatusFa[$r['status']]??$r['status'])) ?></td><td class="ltr"><?= e((string)($r['ref_id']?:'—')) ?></td><td><?= jdate($r['created_at']) ?></td></tr><?php endforeach; ?>
     </table>
   <?php else: ?>
     <table><tr><th>کاربر</th><th>نوع</th><th>مبلغ</th><th>مانده</th><th>مرجع</th><th>تاریخ</th></tr>

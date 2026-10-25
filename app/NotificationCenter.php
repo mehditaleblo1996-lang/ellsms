@@ -13,6 +13,7 @@ const NOTIFICATION_EVENTS = [
     'kyc.needs_correction'          => 'اصلاح احراز هویت',
     'payment.success'               => 'پرداخت موفق',
     'payment.failed'                => 'پرداخت ناموفق',
+    'payment.manual_submitted'      => 'پرداخت دستی برای بررسی',
     'credit.low'                    => 'اعتبار کم',
     'subscription.expiring'         => 'یادآوری تمدید اشتراک',
     'bulk.completed'                => 'پایان ارسال انبوه',

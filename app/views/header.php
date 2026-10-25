@@ -126,6 +126,7 @@ $adminNav = [
     'guide_admin'           => ['/guide-admin.php',           'راهنمای استفاده',     '📘'],
     'billing_admin'         => ['/billing-admin.php',         'مدیریت اشتراک‌ها',    '📦'],
     'financial_admin'       => ['/financial-admin.php',       'گزارش مالی',          '🧾'],
+    'manual_payments'       => ['/manual-payments.php',       'پرداخت‌های دستی',     '💵'],
     'settings'              => ['/settings.php',              'تنظیمات',             '⚙'],
 ];
 // Admin-only groups, shown under the customer groups (menu_groups()).
@@ -133,7 +134,7 @@ $adminNavGroups = menu_group_items($adminNav, [
     'admin_users'    => ['کاربران و نمایندگان', ['users', 'registration_requests', 'menu_roles', 'reseller_profits', 'user_send_policies']],
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
     'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
-    'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin']],
+    'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
     'admin_sending'  => ['کنترل ارسال',          ['prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],

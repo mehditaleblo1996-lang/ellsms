@@ -84,6 +84,9 @@ require_once __DIR__ . '/Financial.php';
 // payment_gateway_verify() are now the intended call surface everywhere a payment is created or
 // verified, including cron/payments-reconcile.php and the test suite.
 require_once __DIR__ . '/Payment/PaymentGateway.php';
+// Manual payment methods (card-to-card, bank deposit, cash, cheque) reviewed by an admin or the
+// customer's reseller before crediting — docs/manual-payments.md.
+require_once __DIR__ . '/ManualPayments.php';
 // SMS pricing — admin-managed operators/providers/routes/prices and the one resolution pipeline
 // every send and every preview prices through (docs/sms-pricing.md). Loaded before the estimator
 // because the estimator composes it; it in turn only needs setting()/db()/Logger/Metrics, all above.

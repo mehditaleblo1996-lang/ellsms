@@ -46,8 +46,10 @@ foreach ($argv ?? [] as $arg) {
 $db = db();
 $candidates = $db->prepare(
     "SELECT * FROM ellsms_payments
-     WHERE status = 'verification_failed'
-        OR (status = 'pending' AND created_at <= DATE_SUB(NOW(), INTERVAL ? MINUTE))
+     WHERE (status = 'verification_failed'
+        OR (status = 'pending' AND created_at <= DATE_SUB(NOW(), INTERVAL ? MINUTE)))
+       -- card-to-card / deposit / cash / cheque wait for their review (app/ManualPayments.php), not a gateway
+       AND gateway NOT IN ('" . implode("','", array_keys(MANUAL_PAYMENT_METHODS)) . "')
      ORDER BY id"
 );
 $candidates->execute([$staleMinutes]);
