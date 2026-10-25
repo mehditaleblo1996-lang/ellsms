@@ -52,6 +52,23 @@ final class DashboardTest extends IntegrationTestCase
         self::assertSame(5, array_sum($days));
 
         self::assertSame(1, dashboard_queued_count([$owner]), 'six rows, four settled, one pending counted by the job counters');
+
+        $breakdown = dashboard_daily_breakdown([$owner], 7);
+        self::assertSame(
+            ['sent' => 4, 'delivered' => 2, 'failed' => 2, 'pending' => 1],
+            end($breakdown),
+            'today: expired + failed at send are failures, the one still "sent" waits for its report'
+        );
+    }
+
+    public function testYesterdayIsCountedOnlyUpToThisTimeOfDay(): void
+    {
+        $owner = $this->makeUser();
+        $job = $this->makeJob($owner, 'done', 2);
+        $this->item($job, 'sent', 'delivered', gmdate('Y-m-d H:i:s', time() - 86400 - 1)); // yesterday, before now
+        $this->item($job, 'sent', 'delivered', gmdate('Y-m-d H:i:s', time() - 86400 + 600)); // yesterday, after now
+
+        self::assertSame(['sent' => 1, 'delivered' => 1, 'failed' => 0], dashboard_yesterday_counts_so_far([$owner]));
     }
 
     private function makeJob(int $userId, string $status, int $total): int
