@@ -144,7 +144,7 @@ final class LazyReportPartsHttpTest extends TestCase
         $session = $this->sessionFor($this->adminId);
         $pages = [
             '/index.php'        => ['today', 'chart', 'recent', 'jobs'],
-            '/reports-v2.php'   => ['summary', 'gateway', 'bulk', 'schedules', 'direct'],
+            '/reports-v2.php'   => ['summary', 'list'],
             '/reports-bulk.php' => ['summary', 'breakdown', 'rows'],
             '/analytics.php'    => ['traffic', 'cost'],
         ];
@@ -195,11 +195,11 @@ final class LazyReportPartsHttpTest extends TestCase
 
     public function testPagerLinksInsideAPartPointAtThePageNotThePart(): void
     {
-        $r = $this->request('/reports-v2.php?' . $this->dayQuery() . '&per_page=25&_part=gateway', $this->sessionFor($this->adminId));
+        $r = $this->request('/reports-v2.php?' . $this->dayQuery() . '&per_page=25&_part=list', $this->sessionFor($this->adminId));
         $this->assertSame(200, $r['code']);
-        $this->assertStringContainsString('gw_page=2', $r['body'], 'no second page for 26 direct sends at 25 per page');
+        $this->assertStringContainsString('page=2', $r['body'], 'no second page for 30 sends at 25 per page');
+        $this->assertStringContainsString('cursor=', $r['body']);
         $this->assertStringNotContainsString('_part', $r['body']);
-        $this->assertStringContainsString('data-lazy-tab-count="gateway"', $r['body']);
     }
 
     public function testAPartWithoutASessionRedirectsToLoginInsteadOfAnsweringAsThePart(): void
