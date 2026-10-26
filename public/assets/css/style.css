@@ -1682,3 +1682,8 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .pay-submit { min-width: 200px; }
 .pay-details th { width: 180px; }
 @media (max-width: 560px) { .pay-method-box { width: 96px; } .pay-submit { width: 100%; } }
+
+/* Proof-of-work CAPTCHA (app/Captcha.php): full field width, the panel's font and brand color. */
+.captcha-box { margin: 4px 0 12px; }
+.captcha-box altcha-widget { display: block; --altcha-max-width: 100%; --altcha-border-radius: 10px; --altcha-color-primary: var(--a-brand, var(--indigo)); }
+.auth-captcha-note, .captcha-noscript { display: block; font-size: .85rem; line-height: 1.7; opacity: .8; }

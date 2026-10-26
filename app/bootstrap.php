@@ -29,6 +29,7 @@ require_once __DIR__ . '/Backend/messages.php';
 require_once __DIR__ . '/Backend/ApiClient.php';
 require_once __DIR__ . '/authorization.php';
 require_once __DIR__ . '/rate_limit.php';
+require_once __DIR__ . '/Captcha.php';
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/jobqueue.php';
 require_once __DIR__ . '/MessageClass.php';

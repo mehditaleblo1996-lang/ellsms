@@ -27,43 +27,9 @@ $error = null;
 $errorField = null; // the input the error is about, so it can point at it (aria-describedby)
 $created = false;
 
-/**
- * Lightweight, self-hosted registration CAPTCHA used only after the normal rate limit trips.
- * The answer lives server-side in the session, expires quickly, and is single-use. No external
- * CAPTCHA provider/keys are needed and no sensitive registration fields are stored in the session.
- */
-function registration_captcha_issue(): void {
-    $a = random_int(2, 9);
-    $b = random_int(1, 9);
-    $op = random_int(0, 1) === 1 ? '+' : '-';
-    if ($op === '-' && $b > $a) [$a, $b] = [$b, $a];
-    $answer = $op === '+' ? $a + $b : $a - $b;
-
-    $_SESSION['registration_captcha'] = [
-        'question' => $a . ' ' . $op . ' ' . $b,
-        'answer' => (string)$answer,
-        'expires_at' => time() + 300,
-    ];
-}
-
-function registration_captcha_required(): bool {
-    $captcha = $_SESSION['registration_captcha'] ?? null;
-    if (!is_array($captcha)) return false;
-    if ((int)($captcha['expires_at'] ?? 0) < time()) {
-        unset($_SESSION['registration_captcha']);
-        return false;
-    }
-    return true;
-}
-
-function registration_captcha_verify(string $answer): bool {
-    if (!registration_captcha_required()) return false;
-    $captcha = $_SESSION['registration_captcha'];
-    $answer = trim(from_persian_digits($answer));
-    $ok = hash_equals((string)$captcha['answer'], $answer);
-    if ($ok) unset($_SESSION['registration_captcha']);
-    return $ok;
-}
+// Once the normal sign-up rate limit trips, a solved proof-of-work CAPTCHA (app/Captcha.php) lets
+// a person through instead of a hard block; each solution is single-use, so a bot pays per try.
+$showCaptcha = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$signupOpen) {
     csrf_check();
@@ -76,19 +42,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$signupOpen) {
         usleep(300000);
         $created = true;
     } else {
-        $captchaWasRequired = registration_captcha_required();
         $captchaPassed = false;
 
-        if ($captchaWasRequired) {
-            $captchaPassed = registration_captcha_verify((string)($_POST['captcha_answer'] ?? ''));
+        if (trim((string)($_POST[CAPTCHA_FIELD] ?? '')) !== '') {
+            $captchaPassed = captcha_verify_request();
             if (!$captchaPassed) {
                 Logger::warning('registration.captcha_failed', ['ip' => client_ip()]);
                 if (function_exists('audit_mongo_event')) {
                     audit_mongo_event('registration.captcha_failed', [], true);
                 }
-                registration_captcha_issue();
-                $error = 'پاسخ کپچا درست نیست. لطفاً دوباره تلاش کنید.';
-                $errorField = 'captcha_answer';
+                $showCaptcha = true;
+                $error = 'تأیید «ربات نیستم» معتبر نبود یا منقضی شده است. لطفاً دوباره تأیید کنید.';
+                $errorField = 'captcha';
             } else {
                 Logger::info('registration.captcha_passed', ['ip' => client_ip()]);
                 if (function_exists('audit_mongo_event')) {
@@ -109,13 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$signupOpen) {
                 $rateAllowed = $ipOk && $mobileOk;
 
                 if (!$rateAllowed) {
-                    registration_captcha_issue();
+                    $showCaptcha = true;
                     Logger::warning('registration.captcha_required', ['ip' => client_ip()]);
                     if (function_exists('audit_mongo_event')) {
                         audit_mongo_event('registration.captcha_required', [], true);
                     }
-                    $error = 'برای ادامه، لطفاً کپچای زیر را حل کنید.';
-                    $errorField = 'captcha_answer';
+                    $error = 'برای ادامه، لطفاً تأیید «ربات نیستم» را در پایین فرم کامل کنید.';
+                    $errorField = 'captcha';
                 }
             }
 
@@ -160,9 +125,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$signupOpen) {
     }
 }
 
-$showCaptcha = registration_captcha_required();
-$captchaQuestion = $showCaptcha ? (string)($_SESSION['registration_captcha']['question'] ?? '') : '';
-
 /** aria-invalid + aria-describedby for the input the current error is about; '' for every other input. */
 function reg_error_attrs(string $field, ?string $errorField): string {
     return $field === $errorField ? ' aria-invalid="true" aria-describedby="formError"' : '';
@@ -176,6 +138,7 @@ function reg_error_attrs(string $field, ?string $errorField): string {
 <title>ثبت‌نام — <?= e($signupBrand) ?></title>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
+<?php if ($showCaptcha) echo captcha_head(); ?>
 </head>
 <body class="login-body">
   <main class="login-card" style="max-width:680px;width:min(680px,calc(100% - 30px))">
@@ -260,12 +223,10 @@ function reg_error_attrs(string $field, ?string $errorField): string {
         </div>
 
         <?php if ($showCaptcha): ?>
-          <div class="card" style="margin:16px 0;padding:16px;border:1px solid rgba(255,255,255,.12)">
+          <div class="card" id="captcha" style="margin:16px 0;padding:16px;border:1px solid rgba(255,255,255,.12)"<?= reg_error_attrs('captcha', $errorField) ?>>
             <strong>تأیید انسان بودن</strong>
-            <label for="captchaAnswer" class="hint" style="display:block;margin:6px 0 12px">برای ادامه، حاصل این عبارت را وارد کنید:
-              <span class="ltr" style="display:block;font-size:1.4rem;font-weight:700;letter-spacing:2px;margin-top:10px;color:var(--ink)"><?= e($captchaQuestion) ?> = ?</span>
-            </label>
-            <input type="text" id="captchaAnswer" name="captcha_answer" inputmode="numeric" autocomplete="off" maxlength="3" placeholder="پاسخ" required<?= reg_error_attrs('captcha_answer', $errorField) ?>>
+            <p class="hint" style="margin:6px 0 12px">به‌خاطر درخواست‌های زیاد از این شبکه، برای ادامه تأیید کنید که ربات نیستید.</p>
+            <?= captcha_widget() ?>
           </div>
         <?php endif; ?>
 

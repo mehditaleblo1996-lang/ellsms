@@ -10,9 +10,21 @@ $error = null;
 // default, signs in only the reseller, its staff and its own customers.
 $brand = current_brand();
 $hostBrand = reseller_brand_for_host();
+
+// After CAPTCHA_AFTER_FAILURES (3) wrong passwords from this IP or for this username, every further
+// attempt needs the proof-of-work CAPTCHA (app/Captcha.php). Counted server-side, so dropping the
+// session cookie does not reset it.
+$loginFailureBuckets = static function (string $username): array {
+    $buckets = [rate_limit_bucket('login_fail', 'ip', client_ip())];
+    if ($username !== '') $buckets[] = rate_limit_bucket('login_fail', 'username', mb_strtolower($username));
+    return $buckets;
+};
+$showCaptcha = captcha_required_for($loginFailureBuckets(''));
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $username = trim($_POST['username'] ?? '');
+    $showCaptcha = captcha_required_for($loginFailureBuckets($username));
 
     $loginMax    = rate_limit_config('RATE_LIMIT_LOGIN_MAX', 10);
     $loginWindow = rate_limit_config('RATE_LIMIT_LOGIN_WINDOW_SECONDS', 900);
@@ -22,11 +34,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!$ipOk || !$usernameOk) {
         Logger::warning('auth.login.rate_limited', ['username' => $username, 'ip' => client_ip()]);
         $error = 'تعداد تلاش‌های ورود بیش از حد مجاز بود. لطفاً چند دقیقه دیگر دوباره تلاش کنید.';
+    } elseif ($showCaptcha && !captcha_verify_request()) {
+        // Checked before the password, so without a solved CAPTCHA a guess reveals nothing.
+        $error = 'برای ادامه، تأیید «ربات نیستم» را کامل کنید و دوباره وارد شوید.';
     } else {
         $u = backend_find_user_for_login($username);
         if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password_and_upgrade((int)$u['id'], $_POST['password'] ?? '', $u['password'])) {
             usleep(400000);
             Logger::warning('auth.login.failed', ['username' => $username]);
+            captcha_record_failure($loginFailureBuckets($username));
+            $showCaptcha = $showCaptcha || captcha_required_for($loginFailureBuckets($username));
             $error = 'نام کاربری یا رمز عبور اشتباه است، یا حساب غیرفعال شده است.';
         } else {
             $m = db()->prepare('SELECT panel_access, twofa_enabled FROM ellsms_meta WHERE user_id = ?');
@@ -95,6 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/login.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/login-slider.css')) ?>">
+<?php if ($showCaptcha) echo captcha_head(); ?>
 <script>document.documentElement.classList.add('js');</script>
 <?= brand_color_style($brand) ?>
 </head>
@@ -138,6 +156,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               <button type="button" class="auth-reveal" id="authReveal" aria-controls="authPassword" aria-pressed="false" hidden>نمایش</button>
             </div>
           </div>
+          <?php if ($showCaptcha): ?>
+          <div class="auth-field">
+            <span class="auth-captcha-note">به‌خاطر چند تلاش ناموفق، برای ادامه تأیید کنید که ربات نیستید.</span>
+            <?= captcha_widget() ?>
+          </div>
+          <?php endif; ?>
           <button type="submit" class="auth-submit">ورود</button>
         </form>
 

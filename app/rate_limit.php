@@ -58,6 +58,29 @@ function rate_limit_hit(string $bucket, int $maxAttempts, int $windowSeconds): b
 }
 
 /**
+ * Hits for $bucket over the trailing $windowSeconds, without recording one. For counters that
+ * only some outcomes feed (e.g. failed logins, app/Captcha.php). Fails open (0), like
+ * rate_limit_hit().
+ */
+function rate_limit_count(string $bucket, int $windowSeconds): int {
+    try {
+        $st = db()->prepare(
+            'SELECT COUNT(*) c FROM ellsms_rate_limits WHERE bucket = ? AND created_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)'
+        );
+        $st->execute([$bucket, $windowSeconds]);
+        return (int)$st->fetch()['c'];
+    } catch (Throwable $e) {
+        Logger::error('rate_limit.count_failed', ['bucket' => $bucket, 'exception' => $e]);
+        return 0;
+    }
+}
+
+/** Record one hit for $bucket without a limit check (the counting half is rate_limit_count()). */
+function rate_limit_record(string $bucket, int $windowSeconds): void {
+    rate_limit_hit($bucket, PHP_INT_MAX, $windowSeconds);
+}
+
+/**
  * Best-effort real client IP. Honors a reverse proxy's X-Forwarded-For ONLY when the direct
  * connecting peer is a configured trusted proxy (`TRUSTED_PROXY_IPS`, app/bootstrap.php, Phase 10)
  * — otherwise this is trivially spoofable: any client can set X-Forwarded-For to a fresh value on

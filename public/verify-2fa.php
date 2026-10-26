@@ -33,6 +33,9 @@ if ($method === 'choose' && !($smsEnabled && $totpEnabled)) {
 }
 
 $error = null;
+// Wrong codes for this pending login; after CAPTCHA_AFTER_FAILURES (3) each try needs the CAPTCHA.
+$codeFailureBuckets = [rate_limit_bucket('2fa_fail', 'user', (string)$u['id'])];
+$showCaptcha = captcha_required_for($codeFailureBuckets);
 
 /** Send an SMS challenge after password verification, with the normal resend limits. */
 $sendSmsChallenge = static function (bool $respectCooldown = true) use ($u, &$error): bool {
@@ -112,6 +115,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$verifyOk) {
             Logger::warning('auth.2fa.verify_rate_limited', ['user_id' => $u['id'], 'method' => $method]);
             $error = 'تعداد تلاش‌های مجاز بیش از حد بود. کمی بعد دوباره تلاش کنید.';
+        } elseif ($showCaptcha && !captcha_verify_request()) {
+            $error = 'برای ادامه، تأیید «ربات نیستم» را کامل کنید و دوباره کد را بفرستید.';
         } else {
             $code = (string)($_POST['code'] ?? '');
             $verified = $method === 'totp'
@@ -130,6 +135,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             usleep(400000);
             Logger::warning($method === 'totp' ? 'auth.totp.failed' : 'auth.2fa.failed', ['user_id' => $u['id']]);
+            captcha_record_failure($codeFailureBuckets);
+            $showCaptcha = $showCaptcha || captcha_required_for($codeFailureBuckets);
             $error = $method === 'totp'
                 ? 'کد Google Authenticator درست نیست یا قبلاً استفاده شده است. کد جدید برنامه را وارد کنید.'
                 : 'کد وارد‌شده درست نیست یا منقضی شده است.';
@@ -144,6 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <title>تأیید ورود — داتیس رایان گستر ایرانیان</title>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
+<?php if ($showCaptcha) echo captcha_head(); ?>
 </head>
 <body class="login-body">
   <main class="login-card" style="max-width:430px">
@@ -171,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <label>کد ۶ رقمی
           <input type="text" name="code" required autofocus inputmode="numeric" maxlength="6" autocomplete="one-time-code" class="ltr" style="text-align:center;letter-spacing:.3em;font-size:20px">
         </label>
+        <?php if ($showCaptcha) echo captcha_widget(); ?>
         <button type="submit" class="btn btn-primary btn-block">تأیید و ورود</button>
       </form>
 

@@ -105,6 +105,8 @@ final class CleanUrlRoutingTest extends TestCase
             'mo.php', 'delivery.php',
             // The Prometheus scrape endpoint: scraped at /metrics, never linked as metrics.php.
             'metrics.php',
+            // JSON fetched by the CAPTCHA widget at /captcha/challenge, never a page.
+            'captcha-challenge.php',
         ];
 
         $missing = [];
