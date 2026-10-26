@@ -149,7 +149,6 @@ final class PublicApiHttpTest extends TestCase
         $this->assertNotFalse($raw, 'curl request failed: ' . curl_error($ch));
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        curl_close($ch);
         $rawHeaders = substr($raw, 0, $headerSize);
         $respBody = substr($raw, $headerSize);
         $respHeaders = [];
@@ -304,7 +303,6 @@ final class PublicApiHttpTest extends TestCase
         ]);
         $raw = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         $this->assertSame(415, $code);
     }
 
@@ -491,7 +489,6 @@ final class PublicApiHttpTest extends TestCase
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5]);
         $body = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         proc_terminate($proc);
         proc_close($proc);
 

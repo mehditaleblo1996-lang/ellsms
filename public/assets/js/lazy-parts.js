@@ -24,6 +24,7 @@
   function showError(box, name) {
     box.setAttribute('aria-busy', 'false');
     box.innerHTML = '';
+    box.classList.add('lazy-part-failed');
     var status = document.createElement('div');
     status.className = 'lazy-part-status lazy-part-error';
     status.textContent = 'بارگذاری این بخش انجام نشد. ';
@@ -76,8 +77,10 @@
     var hasContent = live && box.classList.contains('lazy-part-ready');
     var gen = box.__lazyGen = (box.__lazyGen || 0) + 1;
     if (!hasContent) {
+      // Back to the skeleton the page printed (it is already there on the first load).
       box.setAttribute('aria-busy', 'true');
-      box.innerHTML = '<div class="lazy-part-status"><span class="lazy-spinner" aria-hidden="true"></span>در حال بارگذاری…</div>';
+      box.classList.remove('lazy-part-failed');
+      if (box.__skeleton !== undefined && box.innerHTML !== box.__skeleton) box.innerHTML = box.__skeleton;
     }
     fetch(partUrl(name), { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'lazy-part' } })
       .then(function (response) {
@@ -103,12 +106,15 @@
           box.classList.add('lazy-part-ready');
           box.classList.remove('lazy-part-stale');
           box.dispatchEvent(new CustomEvent('lazy-part:loaded', { bubbles: true }));
+          box.dispatchEvent(new CustomEvent('lazy-part:inserted', { bubbles: true }));
           schedule(box, name, gen);
           return;
         }
         var parent = box.parentNode;
         while (holder.firstChild) parent.insertBefore(holder.firstChild, box);
         parent.removeChild(box);
+        // New tables and messages for assets/js/panel.js to dress (scroll hints, mobile cards).
+        parent.dispatchEvent(new CustomEvent('lazy-part:inserted', { bubbles: true }));
       })
       .catch(function () {
         if (box.__lazyGen !== gen) return;
@@ -121,6 +127,7 @@
 
   document.querySelectorAll('[data-lazy-part]').forEach(function (box) {
     var name = box.getAttribute('data-lazy-part');
+    box.__skeleton = box.innerHTML;
     if (box.hasAttribute('data-lazy-poll')) {
       box.addEventListener('lazy-part:refresh', function () { load(box, name); });
     }

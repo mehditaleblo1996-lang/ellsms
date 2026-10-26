@@ -27,6 +27,7 @@ $nav += [
     'tickets'    => ['/tickets.php',     'پشتیبانی',        '🎫'],
     'buy_credit' => ['/buy-credit.php',  'خرید اعتبار',      '💳'],
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
+    'financial_log' => ['/financial-log.php', 'تاریخچه مالی', '📒'],
 ];
 // Operator reports (public/operator-reports.php) open with the send report's menu; by route is admin-only.
 if ($me['role'] === 'admin' || menu_access_allows($me, 'reports')) {
@@ -57,6 +58,10 @@ $integrationNav = [];
 $navOrg = current_organization();
 if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
     $integrationNav['api_keys'] = ['/api-keys.php', 'کلیدهای API', '🔑'];
+}
+// Shared OTP templates (app/SharedOtp.php), once the service is on; admins manage it under their own menu.
+if ($me['role'] !== 'admin' && shared_otp_configured()) {
+    $integrationNav['otp_templates'] = ['/otp-templates.php', 'کد تایید اشتراکی', '🔐'];
 }
 // WooCommerce plugin, SDKs and their guide — for whoever can see API keys (they are what the tools use).
 if ($me['role'] === 'admin' || ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW))) {
@@ -123,6 +128,7 @@ $adminNav = [
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
     'voice_settings'        => ['/voice-settings.php',        'سرویس پیام صوتی',     '🔊'],
+    'shared_otp'            => ['/otp-templates.php',         'کد تایید اشتراکی',    '🔐'],
     'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
     'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
@@ -133,6 +139,7 @@ $adminNav = [
     'guide_admin'           => ['/guide-admin.php',           'راهنمای استفاده',     '📘'],
     'billing_admin'         => ['/billing-admin.php',         'مدیریت اشتراک‌ها',    '📦'],
     'financial_admin'       => ['/financial-admin.php',       'گزارش مالی',          '🧾'],
+    'manual_payments'       => ['/manual-payments.php',       'پرداخت‌های دستی',     '💵'],
     'settings'              => ['/settings.php',              'تنظیمات',             '⚙'],
 ];
 // Admin-only groups, shown under the customer groups (menu_groups()).
@@ -140,8 +147,8 @@ $adminNavGroups = menu_group_items($adminNav, [
     'admin_users'    => ['کاربران و نمایندگان', ['users', 'registration_requests', 'menu_roles', 'reseller_profits', 'user_send_policies']],
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
     'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
-    'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin']],
-    'admin_sending'  => ['کنترل ارسال',          ['prohibited_words', 'queue_cancellation', 'bulk_archive']],
+    'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
+    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
 ]);
@@ -149,6 +156,16 @@ $sidebarGroups = $me['role'] === 'admin' ? $navGroups + $adminNavGroups : $navGr
 // On a reseller's own host the panel carries the reseller's brand (app/ResellerPanel.php).
 $brand = current_brand();
 $notificationUnread = notification_unread_count((int)$me['id']);
+try {
+    $notificationPreview = notification_list((int)$me['id'], 0, 5);
+} catch (Throwable) {
+    $notificationPreview = [];
+}
+$creditLevel = profile_credit_level_for((int)$me['credit'], $navOrg ? (int)$navOrg['organization_id'] : 0);
+$supportHref = isset($nav['tickets']) ? $nav['tickets'][0] : null;
+$nowTehran = new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran'));
+$todayLabel = JALALI_WEEKDAYS[((int)$nowTehran->format('w') + 1) % 7] . ' ' . jdate_long($nowTehran->format('Y-m-d'));
+$userLabel = $me['full_name'] ?: $me['username'];
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>
@@ -202,32 +219,122 @@ $notificationUnread = notification_unread_count((int)$me['id']);
   </aside>
 
   <div class="main">
-    <header class="topbar">
-      <button class="menu-toggle" type="button" id="menuToggle" aria-label="باز کردن منو" aria-controls="sidebar" aria-expanded="false">
-        <span></span><span></span><span></span>
-      </button>
-      <div class="topbar-heading"><span class="topbar-eyebrow">پنل هوشمند پیامک</span><h1 class="page-title"><?= e($pageTitle ?? '') ?></h1></div>
-      <div class="topbar-right">
-        <?php if ($me['role'] !== 'admin'): ?>
-          <span class="credit-pill" title="اعتبار باقی‌مانده">
-            اعتبار: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> ریال
-          </span>
-        <?php endif; ?>
-        <a class="icon-button notification-button" href="/notifications.php" title="اعلان‌ها" aria-label="اعلان‌ها<?= $notificationUnread > 0 ? '، ' . to_persian_digits((string)$notificationUnread) . ' خوانده‌نشده' : '' ?>">
-          <?= panel_icon('bell') ?><?php if ($notificationUnread > 0): ?> <strong><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></strong><?php endif; ?>
-        </a>
-        <a class="icon-button" id="accountSecurityShortcut" href="/account/security/" title="امنیت حساب و MFA" aria-label="امنیت حساب و MFA"><?= panel_icon('shield') ?></a>
-        <a class="user-chip" href="/profile.php" title="حساب کاربری و رمز عبور">
-          <span class="user-avatar" aria-hidden="true"><?= e(mb_substr($me['full_name'] ?: $me['username'], 0, 1)) ?></span><span class="user-name"><?= e($me['full_name'] ?: $me['username']) ?></span>
-        </a>
-        <form method="post" action="/logout.php" style="display:inline">
-          <?= csrf_field() ?>
-          <button type="submit" class="icon-button logout-button" title="خروج از حساب" aria-label="خروج از حساب"><?= panel_icon('logout') ?></button>
-        </form>
+    <header class="topbar" data-scope="<?= (int)$me['id'] ?>">
+      <div class="topbar-row">
+        <button class="menu-toggle" type="button" id="menuToggle" aria-label="باز کردن منو" aria-controls="sidebar" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="topbar-status">
+          <div class="topbar-credit<?= $creditLevel !== '' ? ' is-' . $creditLevel : '' ?>" id="topbarCredit" title="<?= $creditLevel === 'low' ? 'اعتبار شما کم است' : 'اعتبار باقی‌مانده' ?>">
+            <span class="topbar-credit-icon" aria-hidden="true"><?= panel_icon('wallet') ?></span>
+            <span class="topbar-credit-amount">
+              <span class="sr-only">اعتبار باقی‌مانده:</span>
+              <strong id="topbarCreditValue"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> <small>ریال</small>
+              <span class="sr-only" id="topbarCreditLow"<?= $creditLevel === 'low' ? '' : ' hidden' ?>>(اعتبار کم است)</span>
+            </span>
+            <button type="button" class="topbar-mini" id="topbarCreditRefresh" title="به‌روزرسانی اعتبار" aria-label="به‌روزرسانی اعتبار" hidden><?= panel_icon('refresh') ?></button>
+            <?php if (isset($nav['buy_credit'])): ?>
+              <a class="topbar-mini topbar-mini-primary" href="<?= e($nav['buy_credit'][0]) ?>" title="خرید اعتبار" aria-label="خرید اعتبار"><?= panel_icon('plus') ?></a>
+            <?php endif; ?>
+          </div>
+          <div class="topbar-clock" id="topbarClock" data-now="<?= $nowTehran->getTimestamp() * 1000 ?>">
+            <span class="topbar-clock-icon" aria-hidden="true"><?= panel_icon('calendar') ?></span>
+            <span id="topbarToday"><?= e($todayLabel) ?></span>
+            <time class="topbar-time" id="topbarTime"><?= to_persian_digits($nowTehran->format('H:i:s')) ?></time>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <details class="topbar-menu" id="bookmarksMenu" hidden>
+            <summary class="icon-button" title="نشانک‌ها" aria-label="نشانک‌ها"><?= panel_icon('bookmark') ?></summary>
+            <div class="topbar-pop">
+              <div class="topbar-pop-head">
+                <strong>نشانک‌ها</strong>
+                <button type="button" class="btn btn-sm btn-ghost" id="bookmarkToggle" aria-pressed="false">نشانک کردن این صفحه</button>
+              </div>
+              <ul class="topbar-pop-list" id="bookmarkList"></ul>
+              <p class="topbar-pop-empty" id="bookmarkEmpty">هنوز نشانکی ندارید. صفحه‌هایی را که زیاد سر می‌زنید نشانک کنید تا از اینجا سریع بازشان کنید.</p>
+            </div>
+          </details>
+
+          <?php if ($supportHref !== null): ?>
+            <a class="icon-button" href="<?= e($supportHref) ?>" title="پشتیبانی" aria-label="پشتیبانی"><?= panel_icon('headset') ?></a>
+          <?php endif; ?>
+
+          <details class="topbar-menu" id="notificationsMenu">
+            <summary class="icon-button notification-button" title="اعلان‌ها" aria-label="اعلان‌ها<?= $notificationUnread > 0 ? '، ' . to_persian_digits((string)$notificationUnread) . ' خوانده‌نشده' : '' ?>">
+              <?= panel_icon('bell') ?><?php if ($notificationUnread > 0): ?><strong><?= to_persian_digits((string)min(99,$notificationUnread)) ?><?= $notificationUnread > 99 ? '+' : '' ?></strong><?php endif; ?>
+            </summary>
+            <div class="topbar-pop topbar-pop-wide">
+              <div class="topbar-pop-head">
+                <strong>اعلان‌ها</strong>
+                <?php if ($notificationUnread > 0): ?>
+                  <form method="post" action="/notifications.php">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="do" value="read_all">
+                    <input type="hidden" name="back" value="<?= e((string)($_SERVER['REQUEST_URI'] ?? '')) ?>">
+                    <button type="submit" class="btn btn-sm btn-ghost">خواندن همه</button>
+                  </form>
+                <?php endif; ?>
+              </div>
+              <?php if ($notificationPreview): ?>
+                <ul class="topbar-pop-list">
+                  <?php foreach ($notificationPreview as $note): ?>
+                    <li>
+                      <a class="topbar-note<?= $note['read_at'] ? '' : ' is-unread' ?>" href="<?= e((string)$note['action_url'] !== '' ? (string)$note['action_url'] : '/notifications.php') ?>">
+                        <strong><?= e($note['title']) ?></strong>
+                        <?php if ((string)$note['body'] !== ''): ?><span class="topbar-note-body"><?= e(mb_strimwidth((string)$note['body'], 0, 110, '…')) ?></span><?php endif; ?>
+                        <span class="topbar-note-time"><?= jdate_from_utc((string)$note['created_at']) ?></span>
+                      </a>
+                    </li>
+                  <?php endforeach; ?>
+                </ul>
+              <?php else: ?>
+                <p class="topbar-pop-empty">هنوز اعلانی ندارید.</p>
+              <?php endif; ?>
+              <a class="topbar-pop-foot" href="/notifications.php">مشاهده‌ی همه‌ی اعلان‌ها ←</a>
+            </div>
+          </details>
+
+          <details class="topbar-menu topbar-user" id="userMenu">
+            <summary class="user-chip" title="حساب کاربری" aria-label="حساب کاربری: <?= e($userLabel) ?>">
+              <span class="user-avatar" aria-hidden="true"><?= e(mb_substr($userLabel, 0, 1)) ?></span><span class="user-name"><?= e($userLabel) ?></span><span class="user-chevron" aria-hidden="true"><?= panel_icon('chevron-down') ?></span>
+            </summary>
+            <div class="topbar-pop topbar-pop-user">
+              <dl class="topbar-user-info">
+                <div><dt>نام کاربری</dt><dd class="ltr"><?= e($me['username']) ?></dd></div>
+                <div><dt>ایمیل</dt><dd class="ltr"><?= e((string)($me['email'] ?? '') !== '' ? (string)$me['email'] : '—') ?></dd></div>
+              </dl>
+              <a class="topbar-pop-item" href="/profile.php"><?= panel_icon('user') ?><span>پروفایل کاربری</span></a>
+              <a class="topbar-pop-item" href="/profile.php#security"><?= panel_icon('lock') ?><span>تغییر کلمه‌ی عبور</span></a>
+              <a class="topbar-pop-item" id="accountSecurityShortcut" href="/account/security/"><?= panel_icon('shield') ?><span>امنیت حساب و MFA</span></a>
+              <?php if ($navOrg): ?>
+                <a class="topbar-pop-item" href="/profile.php#alerts"><?= panel_icon('bell') ?><span>هشدار اعتبار کم</span></a>
+              <?php endif; ?>
+              <form method="post" action="/logout.php">
+                <?= csrf_field() ?>
+                <button type="submit" class="topbar-logout"><?= panel_icon('logout') ?><span>خروج از حساب</span></button>
+              </form>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="page-tabs" id="pageTabs" hidden>
+        <ul class="page-tabs-list" id="pageTabsList" aria-label="صفحه‌های باز"></ul>
+        <details class="topbar-menu page-tabs-more">
+          <summary class="icon-button" title="مدیریت تب‌ها" aria-label="مدیریت تب‌ها"><?= panel_icon('more') ?></summary>
+          <div class="topbar-pop">
+            <button type="button" class="topbar-pop-item" data-tabs-close="others"><?= panel_icon('close') ?><span>بستن سایر تب‌ها</span></button>
+            <button type="button" class="topbar-pop-item" data-tabs-close="all"><?= panel_icon('close') ?><span>بستن همه‌ی تب‌ها</span></button>
+          </div>
+        </details>
+        <template id="topbarIcons"><span data-icon="refresh"><?= panel_icon('refresh') ?></span><span data-icon="close"><?= panel_icon('close') ?></span></template>
       </div>
     </header>
 
     <main id="main" tabindex="-1" class="content content-<?= e($active ?? 'page') ?>">
+      <h1 class="page-title"><?= e($pageTitle ?? '') ?></h1>
       <?php
       $impersonationBanner = is_impersonating() ? impersonation_banner_context() : null;
       ?>
@@ -247,5 +354,5 @@ $notificationUnread = notification_unread_count((int)$me['id']);
         </div>
       <?php endif; ?>
       <?php foreach (flashes() as $f): ?>
-        <div class="flash flash-<?= e($f['type']) ?>"><?= e($f['msg']) ?></div>
+        <div class="flash flash-<?= e($f['type']) ?>" data-flash="<?= e($f['type']) ?>"><span class="flash-text"><?= e($f['msg']) ?></span></div>
       <?php endforeach; ?>

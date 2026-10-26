@@ -119,7 +119,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="10" class="empty">هنوز هیچ زمان‌بندی دوره‌ای ثبت نشده است.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="10" class="empty-cell"><?= panel_empty_state('هنوز هیچ زمان‌بندی‌ای ثبت نشده', 'هنگام ارسال پیامک، زمان ارسال یا تکرار آن را انتخاب کنید.', ['/send.php', 'زمان‌بندی جدید'], 'clock') ?></td></tr><?php endif; ?>
   </table>
   </div>
 </div>

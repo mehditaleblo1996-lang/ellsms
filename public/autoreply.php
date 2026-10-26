@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $originator = normalize_originator($_POST['originator'] ?? '');
         $ownerUserId = is_admin() && !empty($_POST['user_id']) ? (int)$_POST['user_id'] : (int)$me['id'];
         $keyword = trim($_POST['keyword'] ?? '');
-        $matchType = in_array($_POST['match_type'] ?? 'exact', ['exact','starts_with','contains'], true) ? $_POST['match_type'] : 'exact';
+        $matchType = in_array($_POST['match_type'] ?? 'exact', ['exact','starts_with','contains'], true) ? ($_POST['match_type'] ?? 'exact') : 'exact';
         $reply = trim($_POST['reply_content'] ?? '');
 
         if (!$originator) {

@@ -26,10 +26,25 @@ final class ApiKeysTest extends TestCase
         $this->assertSame($secret, $parsed['secret']);
     }
 
+    public function testFormatUsesDatisBrandAndParseStillAcceptsLegacyEllsmsKeys(): void
+    {
+        $secret = \api_key_generate_secret();
+        $this->assertStringStartsWith('datis_live_abcdef123456_', \api_key_format('live', 'abcdef123456', $secret));
+
+        // Keys issued before the rebrand must keep authenticating.
+        $legacy = \api_key_parse('ellsms_test_abcdef123456_' . $secret);
+        $this->assertNotNull($legacy);
+        $this->assertSame('test', $legacy['environment']);
+        $this->assertSame('abcdef123456', $legacy['prefix']);
+        $this->assertSame($secret, $legacy['secret']);
+    }
+
     public function testParseRejectsMalformedInput(): void
     {
         $this->assertNull(\api_key_parse('not-a-key-at-all'));
         $this->assertNull(\api_key_parse('ellsms_live_short_x'));
+        $this->assertNull(\api_key_parse('datis_production_abcdef123456_' . str_repeat('x', 40)));
+        $this->assertNull(\api_key_parse('acme_live_abcdef123456_' . str_repeat('x', 40)));
         $this->assertNull(\api_key_parse('ellsms_production_abcdef123456_' . str_repeat('x', 40)));
         $this->assertNull(\api_key_parse(''));
         $this->assertNull(\api_key_parse('Bearer ellsms_live_abcdef123456_' . str_repeat('x', 40)));

@@ -107,7 +107,7 @@ final class Ellsms_WC_Settings
         $notice = self::handle_post();
         $settings = Ellsms_WC_Plugin::settings();
         $key = (string)$settings['api_key'];
-        $keyHint = $key !== '' ? 'ذخیره شده (…' . esc_html(substr($key, -4)) . ') — برای تغییر، کلید جدید را وارد کنید' : 'ellsms_live_…';
+        $keyHint = $key !== '' ? 'ذخیره شده (…' . esc_html(substr($key, -4)) . ') — برای تغییر، کلید جدید را وارد کنید' : 'datis_live_…';
         ?>
         <div class="wrap" dir="rtl">
             <h1>پیامک ELLSMS برای ووکامرس</h1>

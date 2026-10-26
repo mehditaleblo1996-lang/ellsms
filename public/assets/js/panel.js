@@ -95,14 +95,295 @@
     });
   }
 
-  // Contain wide data tables on every page, including older pages without a table wrapper.
-  document.querySelectorAll('.content table').forEach(function (table) {
-    if (table.closest('.table-wrap')) return;
-    var wrap = document.createElement('div');
-    wrap.className = 'table-wrap';
-    table.parentNode.insertBefore(wrap, table);
-    wrap.appendChild(table);
+  // Topbar dropdowns are <details> and open without script; here only one stays open at a time, and a
+  // click elsewhere or Escape closes it.
+  var menus = Array.from(document.querySelectorAll('.topbar-menu'));
+  function closeMenus(except) {
+    menus.forEach(function (menu) { if (menu !== except) menu.open = false; });
+  }
+  menus.forEach(function (menu) {
+    menu.addEventListener('toggle', function () { if (menu.open) closeMenus(menu); });
   });
+  document.addEventListener('click', function (event) {
+    if (!event.target.closest('.topbar-menu')) closeMenus(null);
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape') return;
+    var open = menus.filter(function (menu) { return menu.open; })[0];
+    if (!open) return;
+    open.open = false;
+    open.querySelector('summary').focus();
+  });
+
+  // Date and live clock, in Tehran time, kept to the server's clock rather than the device's.
+  var clock = document.getElementById('topbarClock');
+  if (clock && window.Intl) {
+    var clockOffset = Number(clock.dataset.now) - Date.now();
+    var todayEl = document.getElementById('topbarToday');
+    var timeEl = document.getElementById('topbarTime');
+    var dayKey = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tehran' });
+    var dayLabel = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Tehran' });
+    var timeLabel = new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Tehran' });
+    var shownDay = dayKey.format(new Date(Date.now() + clockOffset));
+    (function tick() {
+      var now = new Date(Date.now() + clockOffset);
+      timeEl.textContent = timeLabel.format(now);
+      // The server wrote today's date; it is rewritten only once the day turns over.
+      if (dayKey.format(now) !== shownDay) { shownDay = dayKey.format(now); todayEl.textContent = dayLabel.format(now); }
+      setTimeout(tick, 1000 - (now.getTime() % 1000));
+    })();
+  }
+
+  // Credit refresh without reloading the page.
+  var creditBox = document.getElementById('topbarCredit');
+  var creditRefresh = document.getElementById('topbarCreditRefresh');
+  if (creditBox && creditRefresh && window.fetch) {
+    creditRefresh.hidden = false;
+    creditRefresh.addEventListener('click', function () {
+      if (creditRefresh.classList.contains('is-spinning')) return;
+      creditRefresh.classList.add('is-spinning');
+      creditRefresh.setAttribute('aria-busy', 'true');
+      fetch('/credit-status.php', { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+        .then(function (response) { return response.ok ? response.json() : Promise.reject(response.status); })
+        .then(function (data) {
+          if (!data || !data.ok) return Promise.reject('bad');
+          document.getElementById('topbarCreditValue').textContent = data.credit_text;
+          creditBox.classList.remove('is-low', 'is-warn');
+          if (data.level) creditBox.classList.add('is-' + data.level);
+          document.getElementById('topbarCreditLow').hidden = data.level !== 'low';
+          creditBox.title = data.level === 'low' ? 'اعتبار شما کم است' : 'اعتبار باقی‌مانده';
+          creditRefresh.title = 'به‌روزرسانی اعتبار';
+        })
+        .catch(function () { creditRefresh.title = 'به‌روزرسانی نشد؛ دوباره تلاش کنید'; })
+        .then(function () {
+          creditRefresh.classList.remove('is-spinning');
+          creditRefresh.removeAttribute('aria-busy');
+        });
+    });
+  }
+
+  // Bookmarks and open-page tabs live in this browser only, one list per account (a support session
+  // looking at a customer's panel gets its own).
+  var topbar = document.querySelector('.topbar');
+  var scope = topbar ? topbar.dataset.scope : '';
+  var here = location.pathname + location.search;
+  var titleEl = document.querySelector('.content > .page-title');
+  var hereTitle = (titleEl && titleEl.textContent.trim()) || document.title.split('—')[0].trim();
+  function loadList(key) {
+    var list;
+    try { list = JSON.parse(localStorage.getItem(key + scope) || '[]'); } catch (_) { list = []; }
+    return Array.isArray(list) ? list.filter(function (item) {
+      return item && typeof item.url === 'string' && /^\/(?!\/)/.test(item.url) && typeof item.title === 'string';
+    }) : [];
+  }
+  function saveList(key, list) {
+    try { localStorage.setItem(key + scope, JSON.stringify(list)); } catch (_) {}
+  }
+  function iconButton(className, icon, label) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = className;
+    button.setAttribute('aria-label', label);
+    button.title = label;
+    if (icon) button.innerHTML = icon; else button.textContent = '×';
+    return button;
+  }
+  var icons = document.getElementById('topbarIcons');
+  function icon(name) {
+    var el = icons && icons.content.querySelector('[data-icon="' + name + '"]');
+    return el ? el.innerHTML : '';
+  }
+  var closeIcon = icon('close');
+
+  var bookmarksMenu = document.getElementById('bookmarksMenu');
+  if (bookmarksMenu && hereTitle) {
+    var BOOKMARKS = 'ellsms.bookmarks.', MAX_BOOKMARKS = 20;
+    var bookmarkList = document.getElementById('bookmarkList');
+    var bookmarkEmpty = document.getElementById('bookmarkEmpty');
+    var bookmarkToggle = document.getElementById('bookmarkToggle');
+    var renderBookmarks = function () {
+      var list = loadList(BOOKMARKS);
+      var marked = list.some(function (item) { return item.url === here; });
+      bookmarksMenu.classList.toggle('is-marked', marked);
+      bookmarkToggle.textContent = marked ? 'حذف نشانک این صفحه' : 'نشانک کردن این صفحه';
+      bookmarkToggle.setAttribute('aria-pressed', String(marked));
+      bookmarkToggle.disabled = !marked && list.length >= MAX_BOOKMARKS;
+      bookmarkList.replaceChildren();
+      list.forEach(function (item) {
+        var li = document.createElement('li');
+        li.className = 'bookmark-item';
+        var link = document.createElement('a');
+        link.href = item.url;
+        link.textContent = item.title;
+        if (item.url === here) link.setAttribute('aria-current', 'page');
+        var remove = iconButton('page-tab-btn', closeIcon, 'حذف نشانک «' + item.title + '»');
+        remove.addEventListener('click', function () {
+          saveList(BOOKMARKS, loadList(BOOKMARKS).filter(function (b) { return b.url !== item.url; }));
+          renderBookmarks();
+        });
+        li.append(link, remove);
+        bookmarkList.appendChild(li);
+      });
+      bookmarkEmpty.hidden = list.length > 0;
+    };
+    bookmarkToggle.addEventListener('click', function () {
+      var list = loadList(BOOKMARKS);
+      var without = list.filter(function (item) { return item.url !== here; });
+      saveList(BOOKMARKS, without.length < list.length ? without : list.concat([{ url: here, title: hereTitle }]).slice(0, MAX_BOOKMARKS));
+      renderBookmarks();
+    });
+    bookmarksMenu.hidden = false;
+    renderBookmarks();
+    window.addEventListener('storage', function (event) {
+      if (event.key === BOOKMARKS + scope) renderBookmarks();
+    });
+  }
+
+  var tabsBar = document.getElementById('pageTabs');
+  if (tabsBar && hereTitle) {
+    var TABS = 'ellsms.pageTabs.', MAX_TABS = 10;
+    var tabsList = document.getElementById('pageTabsList');
+    // One tab per page: a page opened again with other filters or another record reuses its tab.
+    var isHere = function (tab) { return tab.url.split('?')[0] === location.pathname; };
+    var goTo = function (list, index) {
+      var next = list[Math.min(index, list.length - 1)];
+      location.href = next ? next.url : '/index.php';
+    };
+    var closeTab = function (url) {
+      var list = loadList(TABS);
+      var index = list.findIndex(function (tab) { return tab.url === url; });
+      if (index === -1) return;
+      var wasHere = isHere(list[index]);
+      list.splice(index, 1);
+      saveList(TABS, list);
+      if (wasHere) goTo(list, index); else renderTabs();
+    };
+    var renderTabs = function () {
+      tabsList.replaceChildren();
+      loadList(TABS).forEach(function (tab) {
+        var active = isHere(tab);
+        var li = document.createElement('li');
+        li.className = 'page-tab' + (active ? ' is-active' : '');
+        var link = document.createElement('a');
+        link.className = 'page-tab-link';
+        link.href = tab.url;
+        link.textContent = tab.title;
+        link.title = tab.title;
+        if (active) link.setAttribute('aria-current', 'page');
+        li.appendChild(link);
+        if (active) {
+          var reload = iconButton('page-tab-btn', icon('refresh'), 'بارگذاری دوباره‌ی «' + tab.title + '»');
+          reload.addEventListener('click', function () { location.reload(); });
+          li.appendChild(reload);
+        }
+        var close = iconButton('page-tab-btn', closeIcon, 'بستن تب «' + tab.title + '»');
+        close.addEventListener('click', function () { closeTab(tab.url); });
+        li.appendChild(close);
+        tabsList.appendChild(li);
+        if (active) requestAnimationFrame(function () { li.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
+      });
+    };
+    // This page joins the tabs (or refreshes its title); past the limit the oldest other tab goes.
+    var tabs = loadList(TABS);
+    var current = tabs.find(isHere);
+    if (current) { current.url = here; current.title = hereTitle; } else tabs.push({ url: here, title: hereTitle });
+    while (tabs.length > MAX_TABS) tabs.splice(tabs.findIndex(function (tab) { return !isHere(tab); }), 1);
+    saveList(TABS, tabs);
+    tabsBar.querySelectorAll('[data-tabs-close]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        closeMenus(null);
+        if (button.dataset.tabsClose === 'others') {
+          saveList(TABS, loadList(TABS).filter(isHere));
+          renderTabs();
+        } else {
+          saveList(TABS, []);
+          location.href = '/index.php';
+        }
+      });
+    });
+    tabsBar.hidden = false;
+    renderTabs();
+    window.addEventListener('storage', function (event) {
+      if (event.key === TABS + scope) renderTabs();
+    });
+  }
+
+  // Flash messages each get a close button. A success also leaves the page flow as a toast that goes
+  // away by itself (held while hovered or focused); errors and notices stay until closed.
+  var toastStack = null;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function dismissFlash(flash) {
+    if (flash.classList.contains('is-leaving')) return;
+    flash.classList.add('is-leaving');
+    setTimeout(function () { flash.remove(); }, reduceMotion ? 0 : 200);
+  }
+  document.querySelectorAll('[data-flash]').forEach(function (flash) {
+    var close = iconButton('flash-close', closeIcon, 'بستن پیام');
+    close.addEventListener('click', function () { dismissFlash(flash); });
+    flash.appendChild(close);
+    if (flash.dataset.flash !== 'success') return;
+    if (!toastStack) {
+      toastStack = document.createElement('div');
+      toastStack.className = 'toast-stack';
+      toastStack.setAttribute('role', 'status');
+      toastStack.setAttribute('aria-live', 'polite');
+      document.body.appendChild(toastStack);
+    }
+    flash.classList.add('toast');
+    // Moved in a moment later, so the live region already exists and the message is read out.
+    setTimeout(function () { toastStack.appendChild(flash); }, 60);
+    var timer = null, left = 6000, started = 0;
+    var run = function () { started = Date.now(); timer = setTimeout(function () { dismissFlash(flash); }, left); };
+    var hold = function () { if (timer === null) return; clearTimeout(timer); timer = null; left = Math.max(1500, left - (Date.now() - started)); };
+    flash.addEventListener('mouseenter', hold);
+    flash.addEventListener('focusin', hold);
+    flash.addEventListener('mouseleave', function () { if (timer === null && !flash.contains(document.activeElement)) run(); });
+    flash.addEventListener('focusout', function (event) { if (timer === null && !flash.contains(event.relatedTarget)) run(); });
+    run();
+  });
+
+  // Tables marked data-cards become one card per row on phones (panel.css): every cell carries its
+  // column's heading as a label, and its content is wrapped so label and value sit side by side.
+  function cardTable(table) {
+    if (table.classList.contains('has-cards')) return;
+    var rows = Array.from(table.rows);
+    var head = table.tHead ? table.tHead.rows[0] : rows.find(function (row) { return row.querySelector('th'); });
+    if (!head) return;
+    var labels = [];
+    Array.from(head.cells).forEach(function (cell) {
+      for (var i = 0; i < (cell.colSpan || 1); i++) labels.push(cell.textContent.trim());
+    });
+    head.classList.add('cards-head');
+    rows.forEach(function (row) {
+      if (row === head || row.parentNode === table.tHead) return;
+      var column = 0;
+      Array.from(row.cells).forEach(function (cell) {
+        if ((cell.colSpan || 1) === 1 && labels[column]) cell.setAttribute('data-label', labels[column]);
+        if (cell.colSpan === 1 && cell.tagName === 'TD') {
+          var value = document.createElement('span');
+          value.className = 'cell-value';
+          while (cell.firstChild) value.appendChild(cell.firstChild);
+          cell.appendChild(value);
+        }
+        column += cell.colSpan || 1;
+      });
+    });
+    table.classList.add('has-cards');
+  }
+
+  // Contain wide data tables on every page, including older pages without a table wrapper, and those
+  // a lazily loaded part brings in later (assets/js/lazy-parts.js).
+  function dressTables(root) {
+    root.querySelectorAll('table').forEach(function (table) {
+      if (!table.closest('.content')) return;
+      if (table.hasAttribute('data-cards')) cardTable(table);
+      if (table.closest('.table-wrap')) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'table-wrap';
+      table.parentNode.insertBefore(wrap, table);
+      wrap.appendChild(table);
+    });
+  }
   function labelScrollableTables() {
     document.querySelectorAll('.content .table-wrap').forEach(function (wrap) {
       var hint = wrap.previousElementSibling;
@@ -124,7 +405,12 @@
       }
     });
   }
+  dressTables(document);
   labelScrollableTables();
+  document.addEventListener('lazy-part:inserted', function (event) {
+    dressTables(event.target);
+    labelScrollableTables();
+  });
   var resizeFrame;
   window.addEventListener('resize', function () { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(labelScrollableTables); });
   if (document.fonts) document.fonts.ready.then(labelScrollableTables);

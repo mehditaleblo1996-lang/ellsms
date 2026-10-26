@@ -275,7 +275,12 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     if (!$destinations)          return [false, 'شماره مقصد معتبری وارد نشده است.', 0, 0, 0, false, []];
     if (trim($content) === '')   return [false, 'متن پیام خالی است.', 0, 0, 0, false, []];
 
-    if (user_has_no_send_line($user)) {
+    // A shared-OTP send (app/SharedOtp.php) is granted exactly one platform line for this call; the
+    // customer needs no line of their own for it, and the line never becomes theirs anywhere else.
+    $grantedLine = shared_otp_granted_line();
+    $viaSharedOtp = $grantedLine !== null && normalize_originator($originator) === $grantedLine;
+
+    if (!$viaSharedOtp && user_has_no_send_line($user)) {
         Logger::warning('sms.send.rejected_no_assigned_line', ['user_id' => $user['id'] ?? null]);
         return [false, NO_ASSIGNED_LINE_MESSAGE, 0, count($destinations), 0, false, []];
     }
@@ -289,7 +294,12 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     // so it's also where permissions that changed AFTER creation (e.g. a
     // number reassigned, panel access revoked) are caught before a
     // background job silently keeps sending on stale authorization.
-    if (!can_use_originator($user, $originator)) {
+    // The granted shared line skips only the line-ownership half of can_use_originator(); the user's
+    // own send policy (IP allowlist, rate limit) still applies.
+    $originatorAllowed = $viaSharedOtp
+        ? user_send_policy_request_allowed((int)($user['id'] ?? 0))
+        : can_use_originator($user, $originator);
+    if (!$originatorAllowed) {
         Logger::warning('sms.send.rejected_unauthorized_originator', [
             'user_id'    => $user['id'] ?? null,
             'originator' => $originator,

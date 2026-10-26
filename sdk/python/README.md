@@ -8,7 +8,7 @@ A step-by-step guide in Persian is in `integrations/GUIDE.fa.md`. It is also on 
 ```python
 from ellsms import Client, EllsmsError, verify_webhook
 
-sms = Client("ellsms_live_…", "https://panel.example.com")
+sms = Client("datis_live_…", "https://panel.example.com")
 sms.send_message(["09121234567"], "Hello", client_message_id="order-1001-shipped")
 ```
 

@@ -7,6 +7,9 @@ node_modules/
 composer.phar
 storage/kyc/*
 !storage/kyc/.gitkeep
+# Customers' payment receipts and cheque images (app/ManualPayments.php): personal financial data.
+storage/payment-receipts/*
+!storage/payment-receipts/.gitkeep
 storage/benchmarks/*
 !storage/benchmarks/.gitkeep
 # Generated report exports hold real message content (recipients, message bodies).

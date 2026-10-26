@@ -16,8 +16,10 @@ use PHPUnit\Framework\TestCase;
  */
 final class HiddenMessagesHttpTest extends TestCase
 {
-    /** The report's message list: its lazily loaded "direct" part (app/LazyParts.php). */
-    private const DIRECT_PART = '/reports.php?_part=direct';
+    /** The report's message list: its lazily loaded "list" part (app/LazyParts.php). */
+    private const DIRECT_PART = '/reports.php?_part=list';
+    /** One message's detail drawer, where the remove / restore button is. */
+    private const DETAIL_PART = '/reports.php?_part=detail&m=L';
 
     private $serverProc = null;
     private int $port;
@@ -111,7 +113,8 @@ final class HiddenMessagesHttpTest extends TestCase
         $adminPage = $this->request('GET', self::DIRECT_PART, $admin)['body'];
         $this->assertStringContainsString('HIDDEN-MESSAGE-TEXT', $adminPage, 'an admin still sees it');
         $this->assertStringContainsString('حذف‌شده برای کاربر', $adminPage);
-        $this->assertStringContainsString('بازگردانی', $adminPage);
+        $this->assertStringContainsString('بازگردانی', $this->request('GET', self::DETAIL_PART . $this->messageId, $admin)['body']);
+        $this->assertStringContainsString('پیام پیدا نشد', $this->request('GET', self::DETAIL_PART . $this->messageId, $customer)['body'], 'the customer cannot open it either');
 
         $this->request('POST', '/reports.php', $admin, [
             '_csrf' => $csrf, 'hidden_message_do' => 'restore', 'source' => 'outbound', 'id' => (string)$this->messageId,
@@ -131,6 +134,7 @@ final class HiddenMessagesHttpTest extends TestCase
 
         $this->assertFalse(hidden_messages_is_hidden('outbound', $this->messageId));
         $this->assertStringNotContainsString('hidden_message_do', $this->request('GET', self::DIRECT_PART, $customer)['body'], 'no remove button is rendered for a customer');
+        $this->assertStringNotContainsString('hidden_message_do', $this->request('GET', self::DETAIL_PART . $this->messageId, $customer)['body']);
     }
 
     private function makeCommittedUser(bool $isAdmin): int
@@ -173,7 +177,6 @@ final class HiddenMessagesHttpTest extends TestCase
         $raw = (string)curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-        curl_close($ch);
         return ['code' => $code, 'headers' => substr($raw, 0, $headerSize), 'body' => substr($raw, $headerSize)];
     }
 }

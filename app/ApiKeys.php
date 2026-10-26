@@ -8,8 +8,10 @@
  * "caller already checked require_permission()" convention app/wallet.php and app/rbac.php's own
  * mutators already use — this file does not re-check organization RBAC itself.
  *
- * Key format: "ellsms_{environment}_{prefix}_{secret}" — e.g.
- * "ellsms_live_a1b2c3d4e5f6_kQ3f...". `prefix` (12 hex chars, DB-indexed, NOT secret) is how
+ * Key format: "datis_{environment}_{prefix}_{secret}" — e.g.
+ * "datis_live_a1b2c3d4e5f6_kQ3f...". Keys issued before the Datis Rayan rebrand carry the legacy
+ * "ellsms_" brand segment instead; api_key_parse() accepts both so those integrations keep working
+ * (the brand segment is cosmetic: lookup is by `prefix`, proof is the secret). `prefix` (12 hex chars, DB-indexed, NOT secret) is how
  * api_key_authenticate() finds the CANDIDATE row in O(1) before ever touching the secret; `secret`
  * (32 raw random bytes, base64url, ~256 bits of entropy) is what actually proves possession.
  * Splitting them this way avoids the alternative of scanning/hashing every active key on every
@@ -50,16 +52,16 @@ function api_key_hash(string $secret): string {
 }
 
 function api_key_format(string $environment, string $prefix, string $secret): string {
-    return "ellsms_{$environment}_{$prefix}_{$secret}";
+    return "datis_{$environment}_{$prefix}_{$secret}";
 }
 
 /**
- * Parses a raw "Authorization: Bearer ellsms_live_<prefix>_<secret>" value. Returns
+ * Parses a raw "Authorization: Bearer datis_live_<prefix>_<secret>" value (or a legacy "ellsms_" one). Returns
  * [environment, prefix, secret] or null for anything that doesn't match the expected shape —
  * malformed input is never partially trusted (Invariant D: fail closed).
  */
 function api_key_parse(string $raw): ?array {
-    if (!preg_match('/^ellsms_(live|test)_([0-9a-f]{12})_([A-Za-z0-9_-]{20,80})$/', trim($raw), $m)) {
+    if (!preg_match('/^(?:datis|ellsms)_(live|test)_([0-9a-f]{12})_([A-Za-z0-9_-]{20,80})$/', trim($raw), $m)) {
         return null;
     }
     return ['environment' => $m[1], 'prefix' => $m[2], 'secret' => $m[3]];

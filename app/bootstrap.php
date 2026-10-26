@@ -84,6 +84,9 @@ require_once __DIR__ . '/Financial.php';
 // payment_gateway_verify() are now the intended call surface everywhere a payment is created or
 // verified, including cron/payments-reconcile.php and the test suite.
 require_once __DIR__ . '/Payment/PaymentGateway.php';
+// Manual payment methods (card-to-card, bank deposit, cash, cheque) reviewed by an admin or the
+// customer's reseller before crediting — docs/manual-payments.md.
+require_once __DIR__ . '/ManualPayments.php';
 // SMS pricing — admin-managed operators/providers/routes/prices and the one resolution pipeline
 // every send and every preview prices through (docs/sms-pricing.md). Loaded before the estimator
 // because the estimator composes it; it in turn only needs setting()/db()/Logger/Metrics, all above.
@@ -126,6 +129,8 @@ require_once __DIR__ . '/RemoteDb/Sync.php';
 // Voice messages through ZarinCall (docs/voice-messages.md).
 require_once __DIR__ . '/Voice/ZarinCall.php';
 require_once __DIR__ . '/VoiceMessages.php';
+// Shared OTP — approved templates sent from the platform's shared lines (docs/shared-otp.md).
+require_once __DIR__ . '/SharedOtp.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';
@@ -308,13 +313,13 @@ function db(): PDO {
         // self-signed cert on an internal network; set BACKEND_DB_SSL_VERIFY=1 to require a real,
         // trusted certificate instead (pair with BACKEND_DB_SSL_CA if it's not in the system store).
         if ((env('BACKEND_DB_SSL_VERIFY', '0') ?? '0') === '1') {
-            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            $options[Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = true;
             $sslCa = env('BACKEND_DB_SSL_CA', '');
             if ($sslCa !== '') {
-                $options[PDO::MYSQL_ATTR_SSL_CA] = $sslCa;
+                $options[Pdo\Mysql::ATTR_SSL_CA] = $sslCa;
             }
         } else {
-            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+            $options[Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT] = false;
         }
         $pdo = new PDO($dsn, $user, $pass, $options);
     }
@@ -755,6 +760,16 @@ function e(?string $s): string {
 function redirect(string $to): never {
     header('Location: ' . $to);
     exit;
+}
+
+/**
+ * A posted "go back to this page" value, accepted only as a same-site absolute path (no scheme, no
+ * host, no "//", no backslash or control characters), so it can never become an open redirect.
+ */
+function local_return_path(string $candidate): ?string {
+    $candidate = trim($candidate);
+    if ($candidate === '' || !str_starts_with($candidate, '/') || str_starts_with($candidate, '//')) return null;
+    return preg_match('#^/[A-Za-z0-9_\-/.]*(\?[A-Za-z0-9_\-=&%.]*)?$#', $candidate) === 1 ? $candidate : null;
 }
 
 /* ---------- SMS helpers ---------- */

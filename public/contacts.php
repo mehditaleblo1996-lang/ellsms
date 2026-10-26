@@ -335,7 +335,7 @@ require __DIR__ . '/../app/views/header.php';
     <?php endforeach; ?>
   </p>
   <div class="table-wrap">
-  <table>
+  <table data-cards>
     <tr>
       <th>نام</th><?php if ($hasDetails): ?><th>نام خانوادگی</th><?php endif; ?><th>موبایل</th>
       <?php if ($hasDetails): ?><th>تلفن</th><th>جنسیت</th><th>تاریخ تولد</th><th>تاریخ مناسبت</th><th>ایمیل</th><th>آدرس</th><?php endif; ?>
@@ -366,7 +366,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= $hasDetails ? 12 : 5 ?>" class="empty">هنوز مخاطبی وجود ندارد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= $hasDetails ? 12 : 5 ?>" class="empty-cell"><?= panel_empty_state('هنوز مخاطبی وجود ندارد', 'مخاطب‌ها را یکی‌یکی، از فایل اکسل یا به‌صورت متنی اضافه کنید.', ['#add', 'افزودن مخاطب'], 'users') ?></td></tr><?php endif; ?>
   </table>
   </div>
 

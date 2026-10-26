@@ -1,4 +1,8 @@
-FROM php:8.2-apache
+# PHP 8.5.12 is the 21 Oct 2026 security release. The tag is pinned to the exact patch version so a
+# rebuild can never quietly fall back to a cached older image; bump it when a new PHP security release
+# ships (https://www.php.net/releases/). The -bookworm variant is deliberate: Microsoft's ODBC repo and
+# the wkhtmltox .deb below are both built for Debian 12 (bookworm).
+FROM php:8.5.12-apache-bookworm
 
 # pcntl is needed by cron/worker.php for graceful SIGTERM/SIGINT handling.
 # ext-mongodb backs the dedicated MongoDB audit trail. qrencode renders TOTP provisioning QR codes
@@ -20,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #     Microsoft's own Debian 12 repository. ACCEPT_EULA is Microsoft's licence prompt for that driver.
 # Set INSTALL_SQLSRV=0 to build without SQL Server support (e.g. a non-amd64 host).
 ARG INSTALL_SQLSRV=1
-ARG SQLSRV_VERSION=5.12.0
+ARG SQLSRV_VERSION=5.13.3
 RUN apt-get update && apt-get install -y --no-install-recommends libpq-dev curl ca-certificates $PHPIZE_DEPS \
  && docker-php-ext-install pdo_pgsql \
  && if [ "$INSTALL_SQLSRV" = "1" ]; then \

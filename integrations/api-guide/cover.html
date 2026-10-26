@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>راهنمای API پیامک داتیس رایان گستر ایرانیان</title>
+<link rel="stylesheet" href="guide.css">
+<style>
+  @page { size: A4; margin: 0; }
+  body { width: 210mm; height: 297mm; position: relative; overflow: hidden;
+         background: radial-gradient(ellipse at 85% 70%, #eef1ff 0, #fff 55%) #fff; }
+  .strip { position: absolute; top: 0; left: 0; right: 0; height: 4mm;
+           background: linear-gradient(90deg, var(--blue), var(--indigo)); }
+  .logo { position: absolute; top: 40mm; left: 50%; transform: translateX(-50%);
+          width: 112mm; padding: 11mm 12mm; background: #fff; border-radius: 7mm;
+          box-shadow: 0 6mm 16mm rgba(13, 42, 92, .10), 0 0 0 1px #eceaf8; }
+  .logo img { display: block; width: 100%; }
+  .main { position: absolute; top: 140mm; left: 0; right: 0; text-align: center; }
+  .tag { display: inline-block; font-size: 9pt; font-weight: 700; color: var(--indigo);
+         background: var(--tint); border-radius: 12pt; padding: 2pt 12pt; }
+  h1 { margin: 9mm 0 6mm; font-size: 32pt; font-weight: 800; color: var(--ink); line-height: 1.3; }
+  h1 span { color: var(--indigo); }
+  .sub { font-size: 11.5pt; color: var(--muted); line-height: 2; text-align: center; margin: 0; }
+  .band { position: absolute; bottom: 0; left: 0; right: 0; height: 49mm;
+          background: linear-gradient(90deg, var(--blue), var(--indigo));
+          display: flex; align-items: center; justify-content: space-around; padding: 0 18mm; color: #fff; }
+  .band div { text-align: center; }
+  .band small { display: block; font-size: 8.5pt; opacity: .8; margin-bottom: 4pt; }
+  .band b { font-size: 11pt; font-weight: 800; }
+  .band code { font-family: var(--mono); font-size: 10pt; font-weight: 700; direction: ltr; unicode-bidi: isolate;
+               background: rgba(255, 255, 255, .16); border-radius: 4pt; padding: 2pt 7pt; }
+</style>
+</head>
+<body>
+  <div class="strip"></div>
+  <div class="logo"><img src="logo.svg" alt="داتیس رایان گستر ایرانیان"></div>
+  <div class="main">
+    <div class="tag">مستندات توسعه‌دهندگان</div>
+    <h1>راهنمای <span>API</span> پیامک</h1>
+    <p class="sub">ارسال پیامک، پیگیری وضعیت، مدیریت مخاطبین و دریافت رویدادها<br>
+      از طریق <span class="ltr">REST API</span> پنل هوشمند پیامک داتیس رایان گستر ایرانیان</p>
+  </div>
+  <div class="band">
+    <div><small>نسخه‌ی API</small><code>v1</code></div>
+    <div><small>آدرس پایه</small><code>datisrayan.com/api/v1</code></div>
+    <div><small>تاریخ انتشار</small><b>آبان ۱۴۰۵</b></div>
+  </div>
+</body>
+</html>

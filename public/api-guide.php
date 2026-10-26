@@ -1,6 +1,6 @@
 <?php
 /**
- * The API guide PDF (integrations/ELLSMS-API-Guide.pdf) for any signed-in user — /developers/api-guide.
+ * The API guide PDF (integrations/DatisRayan-API-Guide.pdf) for any signed-in user — /developers/api-guide.
  *
  * Login is the only gate, deliberately lower than integrations.php's API_KEYS_VIEW: the guide is how a
  * member learns what the API is before anyone grants them a key, and it carries no secret, only the

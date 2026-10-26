@@ -14,7 +14,7 @@
 3. دسترسی‌ها را انتخاب کنید:
    - برای افزونه‌ی ووکامرس: `messages:send` و `balance:read`
    - برای SDK: هر دسترسی‌ای که برنامه‌تان لازم دارد (جدول پایین)
-4. کلید **فقط همین یک بار** نمایش داده می‌شود. آن را کپی کنید و جای امنی نگه دارید. کلید با `ellsms_live_` شروع می‌شود.
+4. کلید **فقط همین یک بار** نمایش داده می‌شود. آن را کپی کنید و جای امنی نگه دارید. کلید با `datis_live_` شروع می‌شود.
 
 | دسترسی | کاربرد |
 |---|---|
@@ -214,11 +214,11 @@ if ($event === null) { http_response_code(401); exit; }
 ```
 
 ```js
-const ok = verifyWebhook(secret, req.headers['x-ellsms-timestamp'], rawBody, req.headers['x-ellsms-signature']);
+const ok = verifyWebhook(secret, req.headers['x-datis-timestamp'], rawBody, req.headers['x-datis-signature']);
 ```
 
 ```python
-ok = verify_webhook(secret, headers["X-ELLSMS-Timestamp"], raw_body, headers["X-ELLSMS-Signature"])
+ok = verify_webhook(secret, headers["X-Datis-Timestamp"], raw_body, headers["X-Datis-Signature"])
 ```
 
 ### کدهای خطای رایج

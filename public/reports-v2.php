@@ -1,8 +1,14 @@
 <?php
+/**
+ * «لیست پیام‌های ارسالی» — every sent message in one list, whatever sent it (direct, API, scheduled,
+ * autoreply, p2p, smart, gradual), one row per recipient, with a detail drawer per message.
+ * The data and its merging live in app/Reports/SentMessages.php; this page only renders.
+ */
 require_once __DIR__ . '/../app/bootstrap.php';
-require_once __DIR__ . '/../app/Reporting/GradualScheduleView.php';
+require_once __DIR__ . '/../app/Reports/SentMessages.php';
+require_once __DIR__ . '/../app/views/panel-icons.php'; // the lazily loaded parts' empty states run before header.php
 $me = require_login();
-$pageTitle = 'گزارش ارسال';
+$pageTitle = 'لیست پیام‌های ارسالی';
 $active = 'reports';
 
 if (!is_admin()) {
@@ -23,7 +29,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['do'] ?? '') === 'e
     if ((int)$open->fetchColumn() >= REPORT_EXPORT_MAX_OPEN_PER_USER) {
         flash('error', 'چند خروجی شما هنوز در حال آماده‌سازی است؛ پس از آماده شدن آن‌ها دوباره درخواست کنید.');
     } else {
-        $exportFilters = report_export_filters_from_request($me, $_GET, is_admin());
+        // The export knows the statuses pending/sent/delivered/failed; «در صف» is its «pending».
+        $exportQuery = $_GET;
+        $exportQuery['status'] = ['queued' => 'pending'][$_GET['status'] ?? ''] ?? ($_GET['status'] ?? '');
+        $exportFilters = report_export_filters_from_request($me, $exportQuery, is_admin());
         $exportId = report_export_queue((int)($me['organization_id'] ?? 0), (int)$me['id'], $exportFilters,
             'ellsms-report-' . $exportFilters['from'] . '-to-' . $exportFilters['to'] . '.csv');
         audit((int)$me['id'], 'report_export_request', 'export_id=' . $exportId);
@@ -32,409 +41,188 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['do'] ?? '') === 'e
     redirect('/messages/reports/exports');
 }
 
-function report_v2_local_time(?string $value): string {
-    if ($value === null || trim($value) === '') return '';
-    try {
-        $utc = new DateTimeImmutable($value, new DateTimeZone('UTC'));
-        return $utc->setTimezone(new DateTimeZone('Asia/Tehran'))->format('Y-m-d H:i:s');
-    } catch (Throwable) {
-        return $value;
-    }
-}
-function report_v2_jdate(?string $value): string {
-    $v = report_v2_local_time($value);
-    return $v === '' ? '' : jdate($v);
-}
-function report_v2_status_label(string $s): string {
-    return ['sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','failed'=>'ناموفق','pending'=>'در انتظار'][$s] ?? $s;
-}
-function report_v2_status_class(string $s): string {
-    return ['sent'=>'success','delivered'=>'success','failed'=>'error','pending'=>'pending'][$s] ?? 'pending';
-}
-
-$from   = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-29 day'));
-$to     = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
-// sent_at / created_at are UTC timestamps; the picked days are Tehran days.
-[$fromUtc, $toUtcExclusive] = local_day_range_to_utc($from, $to);
-$status = trim((string)($_GET['status'] ?? ''));
-$dest   = trim((string)($_GET['dest'] ?? ''));
-$sender = trim((string)($_GET['sender'] ?? ''));
-$text   = trim((string)($_GET['q'] ?? ''));
-$userId = is_admin() ? (int)($_GET['user_id'] ?? 0) : 0;
-$per = (int)($_GET['per_page'] ?? 50);
-if (!in_array($per, [25,50,100,200], true)) $per = 50;
-
-$destDigits = preg_replace('/\D/', '', $dest) ?? '';
-$senderDigits = preg_replace('/\D/', '', $sender) ?? '';
-$memberIds = [];
-if (!is_admin()) {
-    $orgId = (int)($me['organization_id'] ?? 0);
-    $memberIds = $orgId > 0 ? organization_member_user_ids($orgId) : [];
-    if (!$memberIds) $memberIds = [(int)$me['id']];
-}
-
-/*
- * Every section below is a lazily loaded part (app/LazyParts.php): the page itself answers with the
- * filters at once, and the summary cards and each tab's table load in parallel from ?_part=. The
- * WHERE clauses are built up front (no queries); each part runs only its own queries.
- */
-
-/* ---------------- Detailed direct/API messages ---------------- */
-$dw = ['m.sent_at >= ?', 'm.sent_at < ?'];
-$dp = [$fromUtc, $toUtcExclusive];
-if (is_admin() && $userId > 0) {
-    $dw[] = 'm.sender_user_id = ?'; $dp[] = $userId;
-} elseif (!is_admin()) {
-    $ph = implode(',', array_fill(0, count($memberIds), '?'));
-    $dw[] = "m.sender_user_id IN ($ph)"; array_push($dp, ...$memberIds);
-}
-if ($destDigits !== '') { $dw[]='m.destination LIKE ?'; $dp[]='%'.$destDigits.'%'; }
-if ($senderDigits !== '') { $dw[]='m.originator LIKE ?'; $dp[]='%'.$senderDigits.'%'; }
-if ($text !== '') { $dw[]='m.content LIKE ?'; $dp[]='%'.$text.'%'; }
-$directCanonical = "CASE WHEN m.status='delivered' THEN 'delivered' WHEN m.status IN ('send_failed','failed') THEN 'failed' WHEN m.status='sent' THEN 'sent' ELSE 'pending' END";
-if (in_array($status, ['pending','sent','delivered','failed'], true)) { $dw[]="$directCanonical = ?"; $dp[]=$status; }
-$DW = implode(' AND ', $dw) . hidden_messages_exclude_sql('outbound', 'm.id', $hideRemoved);
-
-/* ---------------- Bulk jobs: aggregate only, never fetch 850k rows ---------------- */
-$bw = ['bj.created_at >= ?', 'bj.created_at < ?'];
-$bp = [$fromUtc, $toUtcExclusive];
-if (is_admin() && $userId > 0) {
-    $bw[]='bj.user_id = ?'; $bp[]=$userId;
-} elseif (!is_admin()) {
-    $orgId = (int)($me['organization_id'] ?? 0);
-    if ($orgId > 0) { $bw[]='bj.organization_id = ?'; $bp[]=$orgId; }
-    else { $bw[]='bj.user_id = ?'; $bp[]=(int)$me['id']; }
-}
-if ($senderDigits !== '') { $bw[]='bj.originator LIKE ?'; $bp[]='%'.$senderDigits.'%'; }
-$BW = implode(' AND ', $bw) . hidden_messages_exclude_sql('bulk_job', 'bj.id', $hideRemoved);
-
-/* ---------------- Direct/API/scheduled sends that went straight to a gateway ----------------
- * With SMS_GATEWAY_TRANSPORT=1 these never reach the backend's outbound_message; the only record is
- * the accepted ellsms_message_attempts row (backend_record_gateway_send()). Bulk items are excluded:
- * they are reported through their own job above. */
-$gwReport = backend_message_attempts_have_report_columns();
-$gwCanonical = "CASE WHEN a.delivery_status='delivered' THEN 'delivered' WHEN a.delivery_status IN ('failed','rejected','expired') THEN 'failed' ELSE 'sent' END";
-$gw = ["a.status = 'accepted'", "a.reference_type IN ('direct_send','schedule')", 'a.attempted_at >= ?', 'a.attempted_at < ?'];
-$gp = [$fromUtc, $toUtcExclusive];
-if (is_admin() && $userId > 0) {
-    $gw[] = 'a.user_id = ?'; $gp[] = $userId;
-} elseif (!is_admin()) {
-    $ph = implode(',', array_fill(0, count($memberIds), '?'));
-    $gw[] = "a.user_id IN ($ph)"; array_push($gp, ...$memberIds);
-}
-if ($destDigits !== '') { $gw[] = 'a.destination LIKE ?'; $gp[] = '%' . $destDigits . '%'; }
-// Rows written before the report columns existed have no sender/text, so these two filters can only
-// match newer rows -- and are skipped entirely on an install without the columns.
-if ($senderDigits !== '') { $gw[] = $gwReport ? 'a.originator LIKE ?' : '0=1'; if ($gwReport) $gp[] = '%' . $senderDigits . '%'; }
-if ($text !== '') { $gw[] = $gwReport ? 'a.content LIKE ?' : '0=1'; if ($gwReport) $gp[] = '%' . $text . '%'; }
-if ($status === 'pending') { $gw[] = '0=1'; }
-elseif (in_array($status, ['sent','delivered','failed'], true)) { $gw[] = "$gwCanonical = ?"; $gp[] = $status; }
-$GW = implode(' AND ', $gw) . hidden_messages_exclude_sql('attempt', 'a.id', $hideRemoved);
-
-/* ---------------- Schedule definitions: complete overview ---------------- */
-$sw = ['s.run_at >= ?', 's.run_at < DATE_ADD(?, INTERVAL 1 DAY)'];
-$sp = [$from, $to];
-if (is_admin() && $userId > 0) {
-    $sw[]='s.user_id=?'; $sp[]=$userId;
-} elseif (!is_admin()) {
-    $ph = implode(',', array_fill(0, count($memberIds), '?'));
-    $sw[]="s.user_id IN ($ph)"; array_push($sp, ...$memberIds);
-}
-if ($senderDigits !== '') { $sw[]='s.originator LIKE ?'; $sp[]='%'.$senderDigits.'%'; }
-if ($text !== '') { $sw[]='s.content LIKE ?'; $sp[]='%'.$text.'%'; }
-$SW = implode(' AND ', $sw);
-
-$canHide = is_admin() && hidden_messages_available();
-$bulkStatusFa = ['pending'=>'در صف','processing'=>'در حال ارسال','done'=>'انجام‌شده','cancelled'=>'لغوشده','staged'=>'منتظر تأیید'];
-$scheduleStatusFa = ['active'=>'فعال','processing'=>'در حال ارسال','done'=>'انجام‌شده','cancelled'=>'لغوشده'];
-$repeatFa = ['none'=>'یک‌بار','daily'=>'روزانه','weekly'=>'هفتگی','monthly'=>'ماهانه'];
-// The filters every pagination link keeps (each list moves only its own page parameter).
-$pagerQuery = array_filter(array_diff_key($_GET, ['before_time' => 1, 'before_id' => 1, LAZY_PART_PARAM => 1]), static fn($v) => is_scalar($v) && $v !== '');
+$isAdmin = is_admin();
+$today = (new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d');
+$f = sent_report_filters($_GET, $isAdmin, $today);
+$scope = dashboard_scope_user_ids($me);
+$showUser = $isAdmin || ($scope !== null && count($scope) > 1);
+$statuses = sent_report_statuses();
+$canHide = $isAdmin && hidden_messages_available();
+// The filters every link keeps — only these, so paging parameters (this page's cursor, or an old
+// bookmark's before_id / gw_page) never ride along into a filter link or the export.
+$filterKeys = ['user_id', 'ref', 'sender', 'dest', 'q', 'type', 'status', 'from_y', 'from_m', 'from_d', 'to_y', 'to_m', 'to_d', 'from_time', 'to_time', 'per_page'];
+$filterQuery = array_filter(array_intersect_key($_GET, array_flip($filterKeys)), static fn($v) => is_scalar($v) && $v !== '');
 
 if (lazy_part_begin('summary')) {
-    $ds = db()->prepare("SELECT COUNT(*) total, SUM(($directCanonical) IN ('sent','delivered')) ok_count, SUM(($directCanonical)='failed') failed_count FROM outbound_message m WHERE $DW");
-    $ds->execute($dp); $D = $ds->fetch() ?: [];
-
-    $bulkSummarySt = db()->prepare("SELECT COALESCE(SUM(bj.total_rows),0) total,
-                                          COALESCE(SUM(bj.sent_rows),0) sent_rows,
-                                          COALESCE(SUM(bj.failed_rows),0) failed_rows
-                                   FROM ellsms_bulk_jobs bj WHERE $BW");
-    $bulkSummarySt->execute($bp);
-    $B = $bulkSummarySt->fetch() ?: [];
-
-    $gs = db()->prepare("SELECT COUNT(*) total, SUM(($gwCanonical) IN ('sent','delivered')) ok_count, SUM(($gwCanonical)='failed') failed_count FROM ellsms_message_attempts a WHERE $GW");
-    $gs->execute($gp); $G = $gs->fetch() ?: [];
-
-    $scheduleCountSt = db()->prepare("SELECT COUNT(*) FROM ellsms_schedule s WHERE $SW");
-    $scheduleCountSt->execute($sp);
-    $scheduleCount = (int)$scheduleCountSt->fetchColumn();
-
-    $S = [
-        'total'=>(int)($D['total']??0)+(int)($B['total']??0)+(int)($G['total']??0),
-        'ok'=>(int)($D['ok_count']??0)+(int)($B['sent_rows']??0)+(int)($G['ok_count']??0),
-        'failed'=>(int)($D['failed_count']??0)+(int)($B['failed_rows']??0)+(int)($G['failed_count']??0),
-        'scheduled'=>$scheduleCount,
+    $s = sent_report_summary($f, $scope, $hideRemoved);
+    $cards = [
+        ''          => ['کل پیام‌ها', 'stat-accent'],
+        'delivered' => ['تحویل‌شده', ''],
+        'sent'      => ['منتظر گزارش تحویل', ''],
+        'failed'    => ['ناموفق', ''],
+        'queued'    => ['در صف ارسال', ''],
     ];
-
+    if ($s['cancelled'] > 0) $cards['cancelled'] = ['لغوشده', ''];
     ?>
-<div class="grid grid-4">
-  <div class="stat"><div class="stat-label">تعداد کل پیام‌ها</div><div class="stat-value"><?= to_persian_digits(number_format($S['total'])) ?></div></div>
-  <div class="stat"><div class="stat-label">ارسال‌شده</div><div class="stat-value"><?= to_persian_digits(number_format($S['ok'])) ?></div></div>
-  <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format($S['failed'])) ?></div></div>
-  <div class="stat"><div class="stat-label">زمان‌بندی‌ها</div><div class="stat-value"><?= to_persian_digits(number_format($S['scheduled'])) ?></div></div>
+<div class="report-stats">
+  <?php foreach ($cards as $key => [$label, $class]): $value = $key === '' ? $s['total'] : $s[$key]; $isOn = $f['status'] === $key; ?>
+    <a class="stat <?= $class ?><?= $isOn ? ' is-on' : '' ?>" href="?<?= e(http_build_query(array_merge($filterQuery, ['status' => $key]))) ?>"<?= $isOn ? ' aria-current="true"' : '' ?>>
+      <div class="stat-label"><?= e($label) ?></div>
+      <div class="stat-value"><?= to_persian_digits(number_format($value)) ?></div>
+      <?php if ($key !== '' && $s['total'] > 0): ?><div class="stat-meta"><?= to_persian_digits((string)round($value / $s['total'] * 100)) ?>٪</div><?php endif; ?>
+    </a>
+  <?php endforeach; ?>
 </div>
-
 <?php
     exit;
 }
 
-if (lazy_part_begin('gateway')) {
-    $gs = db()->prepare("SELECT COUNT(*) total, SUM(($gwCanonical) IN ('sent','delivered')) ok_count, SUM(($gwCanonical)='failed') failed_count FROM ellsms_message_attempts a WHERE $GW");
-    $gs->execute($gp); $G = $gs->fetch() ?: [];
-
-    [$gwPage, $gwOffset] = pager_offset((int)($G['total'] ?? 0), $per, 'gw_page');
-    $gwSelect = $gwReport ? 'a.originator, a.content' : 'NULL originator, NULL content';
-    $gwRowsSt = db()->prepare("SELECT a.id, a.user_id, a.reference_type,
-                                      a.destination, $gwSelect, a.attempted_at, a.delivered_at, $gwCanonical canonical_status
-                               FROM ellsms_message_attempts a
-                               WHERE $GW
-                               ORDER BY a.attempted_at DESC, a.id DESC
-                               LIMIT {$per} OFFSET {$gwOffset}");
-    $gwRowsSt->execute($gp);
-    $gwRows = $gwRowsSt->fetchAll();
-    $gwUsernames = backend_usernames_by_ids(array_column($gwRows, 'user_id'));
-    foreach ($gwRows as &$gr) {
-        $gr['username'] = $gwUsernames[(int)$gr['user_id']] ?? ('#' . $gr['user_id']);
+if (lazy_part_begin('list')) {
+    $cursor = (string)($_GET['cursor'] ?? '');
+    $page = max(1, (int)($_GET['page'] ?? 1));
+    $result = sent_report_page($f, $scope, $hideRemoved, $cursor !== '' ? $cursor : null);
+    $rows = $result['rows'];
+    $offset = ($page - 1) * $f['per_page'];
+    $hidden = [];
+    if ($canHide) {
+        foreach (['bulk' => 'bulk_job', 'attempt' => 'attempt', 'legacy' => 'outbound'] as $source => $hiddenSource) {
+            $ids = array_map(static fn(array $r): int => $source === 'bulk' ? (int)$r['job_id'] : (int)$r['id'], array_filter($rows, static fn(array $r): bool => $r['source'] === $source));
+            $hidden[$source] = hidden_messages_lookup($hiddenSource, $ids);
+        }
     }
-    unset($gr);
-
-    $hiddenAttempts = is_admin() ? hidden_messages_lookup('attempt', array_column($gwRows, 'id')) : [];
     ?>
-<?= lazy_part_tab_count('gateway', '(' . to_persian_digits(number_format((int)($G['total'] ?? 0))) . ')') ?>
-<div class="card">
-<h2>پیام‌های عادی / API / زمان‌بندی (ارسال مستقیم از درگاه)</h2>
-<p class="hint">پیام‌هایی که مستقیم از درگاه پیامک ارسال شده‌اند. تعداد: <?= to_persian_digits(number_format((int)($G['total'] ?? 0))) ?></p>
-<div class="table-wrap"><table>
-<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>نوع</th><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
-<?php foreach($gwRows as $r): $cs=(string)$r['canonical_status']; $gc=(string)($r['content'] ?? ''); ?>
-<tr>
-<td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
-<?php if(is_admin()): ?><td><?= e((string)$r['username']) ?></td><?php endif; ?>
-<td><?= $r['reference_type'] === 'schedule' ? 'زمان‌بندی' : 'عادی / API' ?></td>
-<td class="msisdn"><?= $r['originator'] !== null ? e((string)$r['originator']) : '—' ?></td>
-<td class="msisdn"><?= e((string)$r['destination']) ?></td>
-<td class="msg-preview" title="<?= e($gc) ?>"><?= $gc !== '' ? e(mb_strimwidth($gc,0,60,'…')) : '—' ?></td>
-<td class="num"><?= $gc !== '' ? to_persian_digits((string)sms_parts($gc)) : '—' ?></td>
-<td><span class="badge badge-<?= e(report_v2_status_class($cs)) ?>"><?= e(report_v2_status_label($cs)) ?></span></td>
-<td class="num"><?= report_v2_jdate((string)$r['attempted_at']) ?></td>
-<td class="num"><?= !empty($r['delivered_at']) ? report_v2_jdate((string)$r['delivered_at']) : '—' ?></td>
-<?php if($canHide): $isHidden = isset($hiddenAttempts[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('attempt', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
-</tr>
-<?php endforeach; ?>
-<?php if(!$gwRows): ?><tr><td colspan="<?= is_admin()?($canHide?11:10):9 ?>" class="empty">پیامی با این فیلترها از درگاه ارسال نشده است.</td></tr><?php endif; ?>
-</table></div>
-<?= pager_links($gwPage, pager_pages((int)($G['total'] ?? 0), $per), $pagerQuery, 'gw_page', (int)($G['total'] ?? 0), 'gateway') ?>
-</div>
-<?php
-    exit;
-}
-
-if (lazy_part_begin('bulk')) {
-    $bulkRowsSt = db()->prepare("SELECT bj.id,bj.user_id,bj.type,bj.title,bj.originator,bj.status,bj.total_rows,bj.sent_rows,bj.failed_rows,
-                                       bj.throttle_count,bj.throttle_minutes,bj.last_throttle_at,bj.created_at,
-                                       COALESCE(u.username, CONCAT('#',bj.user_id)) username
-                                FROM ellsms_bulk_jobs bj
-                                LEFT JOIN user_ u ON u.id=bj.user_id
-                                WHERE $BW
-                                ORDER BY bj.id DESC
-                                LIMIT 50");
-    $bulkRowsSt->execute($bp);
-    $bulkJobs = $bulkRowsSt->fetchAll();
-
-    $hiddenJobs     = is_admin() ? hidden_messages_lookup('bulk_job', array_column($bulkJobs, 'id')) : [];
-    ?>
-<?= lazy_part_tab_count('bulk', '(' . to_persian_digits((string)count($bulkJobs)) . (count($bulkJobs) >= 50 ? '+' : '') . ')') ?>
-<div class="card">
-  <h2>ارسال‌های حجیم / نظیر به نظیر</h2>
-  <p class="hint">هر Job فقط یک ردیف نمایش داده می‌شود؛ حتی اگر ۸۵۰هزار گیرنده داشته باشد. برای دیدن تک‌تک شماره‌ها «جزئیات» را بزنید.</p>
-  <div class="table-wrap"><table>
-    <tr><th>Job</th><th>نوع</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>عنوان</th><th>خط</th><th>کل</th><th>ارسال‌شده</th><th>ناموفق</th><th>باقی‌مانده</th><th>وضعیت</th><th>تنظیم تدریجی</th><th>تاریخ</th><th></th></tr>
-    <?php foreach($bulkJobs as $j): $remaining=max(0,(int)$j['total_rows']-(int)$j['sent_rows']-(int)$j['failed_rows']); ?>
-      <tr>
-        <td class="num">#<?= to_persian_digits((string)$j['id']) ?></td>
-        <td><?= e(report_bulk_type_label($j)) ?></td>
-        <?php if(is_admin()): ?><td><?= e((string)$j['username']) ?></td><?php endif; ?>
-        <td><?= e((string)$j['title']) ?></td>
-        <td class="msisdn"><?= e((string)$j['originator']) ?></td>
-        <td class="num"><?= to_persian_digits(number_format((int)$j['total_rows'])) ?></td>
-        <td class="num"><?= to_persian_digits(number_format((int)$j['sent_rows'])) ?></td>
-        <td class="num"><?= to_persian_digits(number_format((int)$j['failed_rows'])) ?></td>
-        <td class="num"><?= to_persian_digits(number_format($remaining)) ?></td>
-        <td><span class="badge badge-<?= e((string)$j['status']) ?>"><?= e($bulkStatusFa[(string)$j['status']] ?? (string)$j['status']) ?></span></td>
-        <td class="num"><?php if(!empty($j['throttle_count'])): ?><?= to_persian_digits(number_format((int)$j['throttle_count'])) ?> هر <?= to_persian_digits((string)(int)$j['throttle_minutes']) ?> دقیقه<?php else: ?>—<?php endif; ?></td>
-        <td class="num"><?= report_v2_jdate((string)$j['created_at']) ?></td>
-        <td style="white-space:nowrap">
-          <?php if (isset($hiddenJobs[(int)$j['id']])): ?><?= hidden_messages_badge() ?><?php endif; ?>
-          <a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a>
-          <?php if ($canHide): ?><?= hidden_messages_admin_button('bulk_job', (int)$j['id'], isset($hiddenJobs[(int)$j['id']])) ?><?php endif; ?>
-        </td>
+<div class="card report-list">
+  <div class="table-wrap"><table data-cards class="report-table">
+    <thead><tr>
+      <th>ردیف</th><th>شناسه</th><th>فرستنده</th><?php if ($showUser): ?><th>نام کاربری</th><?php endif; ?><th>اپراتور</th>
+      <th>گیرنده</th><th>محتوا</th><th>فرمت</th><th>تعداد پیام</th><th>نوع درخواست</th><th>زمان درخواست</th><th>زمان تحویل</th><th>وضعیت</th><th><span class="sr-only">جزئیات</span></th>
+    </tr></thead>
+    <tbody>
+    <?php foreach ($rows as $n => $r):
+        $isHidden = $canHide && isset($hidden[$r['source']][$r['source'] === 'bulk' ? (int)$r['job_id'] : (int)$r['id']]); ?>
+      <tr data-detail="<?= e($r['ref']) ?>" tabindex="0" class="is-clickable<?= $isHidden ? ' is-hidden-row' : '' ?>">
+        <td class="num"><?= to_persian_digits((string)($offset + $n + 1)) ?></td>
+        <td class="ltr report-ref"><?= e($r['ref']) ?></td>
+        <td class="msisdn"><?= e((string)$r['originator']) ?: '—' ?></td>
+        <?php if ($showUser): ?><td><?= e($r['username']) ?></td><?php endif; ?>
+        <td><?= operator_label($r['operator_code'], $r['operator_name'], 18) ?></td>
+        <td class="msisdn"><?= e($r['destination_display']) ?></td>
+        <td class="msg-preview" dir="auto"><?= (string)$r['content'] !== '' ? e(mb_strimwidth((string)$r['content'], 0, 48, '…')) : '—' ?><?= $isHidden ? ' ' . hidden_messages_badge() : '' ?></td>
+        <td class="ltr"><?= e($r['format']) ?></td>
+        <td class="num"><?= to_persian_digits((string)$r['parts']) ?></td>
+        <td><?= e($r['type_label']) ?></td>
+        <td class="num"><?= sent_report_datetime($r['requested_at']) ?></td>
+        <td class="num"><?= !empty($r['delivered_at']) ? sent_report_datetime($r['delivered_at']) : '—' ?></td>
+        <td><span class="badge badge-<?= e(sent_report_status_class($r['report_status'])) ?>"><?= e($r['status_label']) ?></span></td>
+        <td><button type="button" class="icon-button report-eye" data-detail="<?= e($r['ref']) ?>" aria-label="جزئیات پیام <?= e($r['ref']) ?>" title="جزئیات"><?= panel_icon('eye') ?></button></td>
       </tr>
     <?php endforeach; ?>
-    <?php if(!$bulkJobs): ?><tr><td colspan="13" class="empty">ارسال حجیمی در این بازه وجود ندارد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?>
+      <tr><td colspan="<?= $showUser ? 14 : 13 ?>" class="empty-cell"><?= panel_empty_state('پیامی با این فیلترها پیدا نشد', 'بازه‌ی تاریخ را بزرگ‌تر کنید یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr>
+    <?php endif; ?>
+    </tbody>
   </table></div>
+  <?php if ($page > 1 || $result['next'] !== null): ?>
+  <nav class="report-pager" aria-label="صفحه‌های فهرست">
+    <span class="hint">صفحه‌ی <?= to_persian_digits((string)$page) ?> · ردیف <?= to_persian_digits((string)($offset + 1)) ?> تا <?= to_persian_digits((string)($offset + count($rows))) ?></span>
+    <span class="report-pager-links">
+      <?php if ($page > 1): ?><a class="btn btn-sm btn-ghost" href="?<?= e(http_build_query($filterQuery)) ?>">→ جدیدترین‌ها</a><?php endif; ?>
+      <?php if ($result['next'] !== null): ?><a class="btn btn-sm" href="?<?= e(http_build_query(array_merge($filterQuery, ['cursor' => $result['next'], 'page' => $page + 1]))) ?>">قدیمی‌ترها ←</a><?php endif; ?>
+    </span>
+  </nav>
+  <?php endif; ?>
 </div>
 <?php
     exit;
 }
 
-if (lazy_part_begin('schedules')) {
-    $scheduleCountSt = db()->prepare("SELECT COUNT(*) FROM ellsms_schedule s WHERE $SW");
-    $scheduleCountSt->execute($sp);
-    $scheduleCount = (int)$scheduleCountSt->fetchColumn();
-
-    $scheduleSt = db()->prepare("SELECT s.id,s.user_id,s.title,s.originator,s.destinations,s.content,s.run_at,s.repeat_type,s.status,s.run_count,s.last_run_at,s.last_result,
-                                        COALESCE(u.username, CONCAT('#',s.user_id)) username
-                                 FROM ellsms_schedule s
-                                 LEFT JOIN user_ u ON u.id=s.user_id
-                                 WHERE $SW
-                                 ORDER BY s.run_at DESC,s.id DESC
-                                 LIMIT 100");
-    $scheduleSt->execute($sp);
-    $schedules = $scheduleSt->fetchAll();
-
-    ?>
-<?= lazy_part_tab_count('schedules', '(' . to_persian_digits(number_format($scheduleCount)) . ')') ?>
-<div class="card">
-  <h2>زمان‌بندی‌ها</h2>
-  <div class="table-wrap"><table>
-    <tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>عنوان</th><th>زمان اجرا</th><th>تکرار</th><th>خط</th><th>گیرندگان</th><th>متن</th><th>وضعیت</th><th>تعداد اجرا</th><th>آخرین اجرا</th><th>آخرین نتیجه</th></tr>
-    <?php foreach($schedules as $s): $sd=json_decode((string)$s['destinations'],true) ?: []; ?>
-      <tr>
-        <td class="num">#<?= to_persian_digits((string)$s['id']) ?></td>
-        <?php if(is_admin()): ?><td><?= e((string)$s['username']) ?></td><?php endif; ?>
-        <td><?= e((string)$s['title']) ?></td>
-        <td class="num"><?= jdate((string)$s['run_at']) ?></td>
-        <td><?= e($repeatFa[(string)$s['repeat_type']] ?? (string)$s['repeat_type']) ?></td>
-        <td class="msisdn"><?= e((string)$s['originator']) ?></td>
-        <td class="num"><?= to_persian_digits(number_format(count($sd))) ?></td>
-        <td class="msg-preview" title="<?= e((string)$s['content']) ?>"><?= e(mb_strimwidth((string)$s['content'],0,60,'…')) ?></td>
-        <td><span class="badge badge-<?= e((string)$s['status']) ?>"><?= e($scheduleStatusFa[(string)$s['status']] ?? (string)$s['status']) ?></span></td>
-        <td class="num"><?= to_persian_digits((string)(int)$s['run_count']) ?></td>
-        <td class="num"><?= !empty($s['last_run_at']) ? jdate((string)$s['last_run_at']) : '—' ?></td>
-        <td class="msg-preview" title="<?= e((string)$s['last_result']) ?>"><?= e(mb_strimwidth((string)$s['last_result'],0,45,'…')) ?></td>
-      </tr>
-    <?php endforeach; ?>
-    <?php if(!$schedules): ?><tr><td colspan="12" class="empty">زمان‌بندی‌ای در این بازه وجود ندارد.</td></tr><?php endif; ?>
-  </table></div>
-  <div style="margin-top:10px"><a class="btn btn-sm" href="/schedules.php">مشاهده زمان‌بندی‌ها و مراحل تدریجی</a></div>
-</div>
-<?php
+if (lazy_part_begin('detail')) {
+    $m = sent_report_find((string)($_GET['m'] ?? ''), $scope, $hideRemoved, $isAdmin);
+    require __DIR__ . '/../app/views/sent_message_detail.php';
     exit;
 }
 
-if (lazy_part_begin('direct')) {
-    $ds = db()->prepare("SELECT COUNT(*) total, SUM(($directCanonical) IN ('sent','delivered')) ok_count, SUM(($directCanonical)='failed') failed_count FROM outbound_message m WHERE $DW");
-    $ds->execute($dp); $D = $ds->fetch() ?: [];
-
-    /* ---------------- Numbered pages for direct details ($D['total'] is the filtered count) ---------------- */
-    [$directPage, $directOffset] = pager_offset((int)($D['total'] ?? 0), $per, 'direct_page');
-    $directSql = "SELECT m.id,m.sent_at sort_time,m.sent_at,m.delivered_at,m.sender_user_id user_id,
-                         COALESCE(u.username, CONCAT('#',m.sender_user_id)) username,m.originator,m.destination,m.content,$directCanonical canonical_status
-                  FROM outbound_message m
-                  LEFT JOIN user_ u ON u.id=m.sender_user_id
-                  WHERE $DW
-                  ORDER BY m.sent_at DESC,m.id DESC
-                  LIMIT {$per} OFFSET {$directOffset}";
-    $directSt = db()->prepare($directSql);
-    $directSt->execute($dp);
-    $rows = $directSt->fetchAll();
-
-    $hiddenOutbound = is_admin() ? hidden_messages_lookup('outbound', array_column($rows, 'id')) : [];
-    ?>
-<?= lazy_part_tab_count('direct', '(' . to_persian_digits(number_format((int)($D['total'] ?? 0))) . ')') ?>
-<div class="card">
-<h2>پیام‌های عادی / API</h2>
-<div class="table-wrap"><table>
-<tr><th>#</th><?php if(is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن پیام</th><th>پارت</th><th>وضعیت</th><th>زمان ارسال</th><th>زمان تحویل</th><?php if($canHide): ?><th></th><?php endif; ?></tr>
-<?php foreach($rows as $r): $cs=(string)$r['canonical_status']; ?>
-<tr>
-<td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
-<?php if(is_admin()): ?><td><?= e((string)$r['username']) ?></td><?php endif; ?>
-<td class="msisdn"><?= e((string)$r['originator']) ?></td>
-<td class="msisdn"><?= e((string)$r['destination']) ?></td>
-<td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,60,'…')) ?></td>
-<td class="num"><?= to_persian_digits((string)sms_parts((string)$r['content'])) ?></td>
-<td><span class="badge badge-<?= e(report_v2_status_class($cs)) ?>"><?= e(report_v2_status_label($cs)) ?></span></td>
-<td class="num"><?= report_v2_jdate((string)$r['sent_at']) ?></td>
-<td class="num"><?= !empty($r['delivered_at']) ? report_v2_jdate((string)$r['delivered_at']) : '—' ?></td>
-<?php if($canHide): $isHidden = isset($hiddenOutbound[(int)$r['id']]); ?><td style="white-space:nowrap"><?= $isHidden ? hidden_messages_badge() . ' ' : '' ?><?= hidden_messages_admin_button('outbound', (int)$r['id'], $isHidden) ?></td><?php endif; ?>
-</tr>
-<?php endforeach; ?>
-<?php if(!$rows): ?><tr><td colspan="<?= is_admin()?($canHide?10:9):8 ?>" class="empty">هیچ پیام عادی/API با این فیلترها یافت نشد.</td></tr><?php endif; ?>
-</table></div>
-<?= pager_links($directPage, pager_pages((int)($D['total'] ?? 0), $per), $pagerQuery, 'direct_page', (int)($D['total'] ?? 0), 'direct') ?>
-</div>
-<?php
-    exit;
+$users = $isAdmin ? backend_list_users_summary() : [];
+// The export reads its window from the URL like the list does; the dates on screen (today by
+// default, or a content search's narrowed window) go into it explicitly so the file matches.
+$exportQuery = $filterQuery;
+foreach (['from' => $f['from'], 'to' => $f['to']] as $name => $ymd) {
+    [$jy, $jm, $jd] = gregorian_to_jalali(...array_map('intval', explode('-', $ymd)));
+    [$exportQuery["{$name}_y"], $exportQuery["{$name}_m"], $exportQuery["{$name}_d"]] = [$jy, $jm, $jd];
 }
-
-$users = is_admin() ? backend_list_users_summary() : [];
-$qs = fn(array $extra=[]) => http_build_query(array_filter(array_merge($_GET,$extra), static fn($v)=>$v!==null && $v!==''));
+$extraStyles = ['/assets/css/reports.css'];
 require __DIR__ . '/../app/views/header.php';
 ?>
-<?= lazy_part_placeholder('summary', 110) ?>
+<div class="report-head">
+  <p class="hint">همه‌ی پیام‌های ارسالی — عادی، API، زمان‌بندی‌شده، منشی و ارسال‌های حجیم — در یک فهرست؛ برای دیدن گزارش کامل هر پیام روی ردیف آن بزنید.</p>
+  <div class="report-head-links">
+    <a class="btn btn-sm btn-ghost" href="/reports-bulk.php">خلاصه‌ی ارسال‌های حجیم</a>
+    <a class="btn btn-sm btn-ghost" href="/schedules.php">زمان‌بندی‌ها</a>
+    <a class="btn btn-sm btn-ghost" href="/messages/reports/exports">خروجی‌های قبلی</a>
+  </div>
+</div>
 
-<div class="card" style="margin-top:22px">
-<form method="get" class="toolbar">
-  <label>از تاریخ <?= jalali_date_select('from',$from) ?></label>
-  <label>تا تاریخ <?= jalali_date_select('to',$to) ?></label>
-  <label>وضعیت پیام <select name="status"><option value="">همه</option><?php foreach(['sent','delivered','failed','pending'] as $s): ?><option value="<?= $s ?>" <?= $status===$s?'selected':'' ?>><?= e(report_v2_status_label($s)) ?></option><?php endforeach; ?></select></label>
-  <?php if(is_admin()): ?><label>کاربر <select name="user_id"><option value="0">همه‌ی کاربران</option><?php foreach($users as $u): ?><option value="<?= (int)$u['id'] ?>" <?= $userId===(int)$u['id']?'selected':'' ?>><?= e($u['username']) ?></option><?php endforeach; ?></select></label><?php endif; ?>
-  <label>شماره فرستنده <input type="text" name="sender" value="<?= e($sender) ?>" placeholder="مثلاً 500045" class="ltr"></label>
-  <label>شماره گیرنده <input type="text" name="dest" value="<?= e($dest) ?>" placeholder="9891…" class="ltr"></label>
-  <label>شامل متن <input type="text" name="q" value="<?= e($text) ?>"></label>
-  <label>تعداد در صفحه <select name="per_page"><?php foreach([25,50,100,200] as $n): ?><option value="<?= $n ?>" <?= $per===$n?'selected':'' ?>><?= to_persian_digits((string)$n) ?></option><?php endforeach; ?></select></label>
-  <button class="btn btn-primary">اعمال فیلتر</button>
+<form method="get" class="card report-filters" aria-label="فیلتر پیام‌ها">
+  <div class="report-filter-grid">
+    <?php if ($isAdmin): ?>
+    <label>نام مشتری
+      <select name="user_id">
+        <option value="0">همه</option>
+        <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"<?= $f['user_id'] === (int)$u['id'] ? ' selected' : '' ?>><?= e($u['username']) ?></option><?php endforeach; ?>
+      </select>
+    </label>
+    <?php endif; ?>
+    <label>شناسه پیام
+      <input type="text" name="ref" value="<?= e($f['ref']) ?>" class="ltr" placeholder="B12 یا شناسه‌ی سرویس‌دهنده" autocomplete="off">
+    </label>
+    <label>فرستنده
+      <input type="text" name="sender" value="<?= e($f['sender']) ?>" class="ltr" inputmode="numeric" placeholder="500045…" autocomplete="off">
+    </label>
+    <label>گیرنده
+      <input type="text" name="dest" value="<?= e($f['dest']) ?>" class="ltr" inputmode="numeric" placeholder="98912…" autocomplete="off">
+    </label>
+    <label class="report-filter-wide">متن پیام
+      <input type="text" name="q" value="<?= e($f['q']) ?>" placeholder="بخشی از متن پیام">
+      <span class="hint">جست‌وجوی متن حداکثر در بازه‌ی <?= to_persian_digits((string)SENT_REPORT_TEXT_SEARCH_MAX_DAYS) ?> روزه انجام می‌شود.</span>
+    </label>
+    <label>نوع درخواست
+      <select name="type">
+        <option value="">همه</option>
+        <?php foreach (sent_report_types() as $key => $label): ?><option value="<?= e($key) ?>"<?= $f['type'] === $key ? ' selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?>
+      </select>
+    </label>
+    <label>وضعیت
+      <select name="status">
+        <option value="">همه</option>
+        <?php foreach ($statuses as $key => $label): ?><option value="<?= e($key) ?>"<?= $f['status'] === $key ? ' selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?>
+      </select>
+    </label>
+    <label>از تاریخ <?= jalali_date_select('from', $f['from']) ?></label>
+    <label>از ساعت <input type="time" name="from_time" value="<?= e($f['from_time']) ?>" class="ltr"></label>
+    <label>تا تاریخ <?= jalali_date_select('to', $f['to']) ?></label>
+    <label>تا ساعت <input type="time" name="to_time" value="<?= e($f['to_time']) ?>" class="ltr"></label>
+    <label>تعداد در صفحه
+      <select name="per_page"><?php foreach (SENT_REPORT_PER_PAGE as $n): ?><option value="<?= $n ?>"<?= $f['per_page'] === $n ? ' selected' : '' ?>><?= to_persian_digits((string)$n) ?></option><?php endforeach; ?></select>
+    </label>
+  </div>
+  <?php if ($f['notice'] !== ''): ?><p class="flash flash-info report-notice"><?= e($f['notice']) ?></p><?php endif; ?>
+  <div class="report-actions">
+    <button class="btn btn-primary"><?= panel_icon('search') ?> جستجو</button>
+    <a class="btn btn-ghost" href="/reports.php">پاک کردن فیلترها</a>
+    <button class="btn" form="reportExportForm"><?= panel_icon('download') ?> دانلود</button>
+  </div>
 </form>
-<form method="post" action="?<?= e(http_build_query(array_diff_key($_GET, array_flip(['before_time', 'before_id', 'gw_page', 'direct_page', 'per_page'])))) ?>" class="toolbar" style="margin-top:10px">
+<form method="post" action="?<?= e(http_build_query($exportQuery)) ?>" id="reportExportForm" hidden>
   <?= csrf_field() ?>
   <input type="hidden" name="do" value="export">
-  <button class="btn btn-sm">⬇ دریافت خروجی CSV همین گزارش</button>
-  <a class="btn btn-sm btn-ghost" href="/messages/reports/exports">خروجی‌های قبلی</a>
-  <span class="hint">همه‌ی پیام‌های این بازه با فیلترهای بالا (مستقیم، درگاه و انبوه) در پس‌زمینه آماده می‌شود.</span>
 </form>
-</div>
 
-<?php
-/*
- * One table at a time (same tabs as the users page, assets/js/forms.js): the stats, filters and CSV
- * export above apply to every tab. Pagination links carry the tab as #fragment, because the open tab
- * is otherwise remembered per query string and a "next page" link changes the query string.
- */
-?>
-<div class="tabs" data-tabs="reports" style="margin-top:18px">
-<nav class="tabs-nav" role="tablist" aria-label="بخش‌های گزارش ارسال">
-  <button type="button" role="tab" data-tab="gateway">ارسال مستقیم از درگاه<span class="tab-count"></span></button>
-  <button type="button" role="tab" data-tab="bulk">ارسال‌های حجیم<span class="tab-count"></span></button>
-  <button type="button" role="tab" data-tab="schedules">زمان‌بندی‌ها<span class="tab-count"></span></button>
-  <button type="button" role="tab" data-tab="direct">پیام‌های عادی / API<span class="tab-count"></span></button>
-</nav>
+<?= lazy_part_placeholder('summary', 110, shape: 'stats') ?>
+<?= lazy_part_placeholder('list', 420, shape: 'table') ?>
 
-<section class="tab-panel" data-panel="gateway" role="tabpanel">
-<?= lazy_part_placeholder('gateway', 320) ?>
-</section>
-
-<section class="tab-panel" data-panel="bulk" role="tabpanel">
-<?= lazy_part_placeholder('bulk', 320) ?>
-</section>
-
-<section class="tab-panel" data-panel="schedules" role="tabpanel">
-<?= lazy_part_placeholder('schedules', 320) ?>
-</section>
-
-<section class="tab-panel" data-panel="direct" role="tabpanel">
-<?= lazy_part_placeholder('direct', 320) ?>
-</section>
-
-</div>
+<dialog class="report-drawer" id="reportDrawer" aria-label="جزئیات پیام">
+  <div class="report-drawer-bar"><button type="button" class="icon-button" data-drawer-close aria-label="بستن"><?= panel_icon('close') ?></button></div>
+  <div class="report-drawer-body"></div>
+</dialog>
+<script src="<?= e(asset_url('/assets/js/report-detail.js')) ?>" defer></script>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

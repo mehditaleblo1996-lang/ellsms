@@ -29,7 +29,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         ticket_add_reply($ticketId, $actorId, $me['username'], $body, true);
         audit($actorId, 'reseller.ticket_reply', "reseller=#{$resellerId} ticket=#{$ticketId}");
-        notification_insert_panel((int)$ticket['user_id'], null, 'reseller.ticket', 'پاسخ پشتیبانی به تیکت #' . $ticketId, mb_strimwidth($body, 0, 300, '…'), '/tickets.php?id=' . $ticketId, 'info');
         flash('success', 'پاسخ ثبت شد.');
     } elseif ($do === 'status') {
         ticket_set_status($ticketId, (string)($_POST['status'] ?? ''));

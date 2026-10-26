@@ -381,7 +381,7 @@ final class DeliveryReportingTest extends IntegrationTestCase
         $items = report_bulk_items($jobId, $orgId);
         $ids = array_map(static fn(array $i): string => (string)$i['provider_message_id'], $items);
 
-        $this->assertSame([self::LONG_PROVIDER_ID, '4473621976262727361'], $ids);
+        $this->assertSame(['4473621976262727361', self::LONG_PROVIDER_ID], $ids);
         $this->assertCount(2, array_unique($ids), 'each recipient must keep its own provider reference');
     }
 

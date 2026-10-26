@@ -27,8 +27,8 @@ declare(strict_types=1);
  */
 function menu_catalog(): array {
     return [
-        'new_send'      => ['پنل جدید ارسال',       '🆕', '/new-send.php',      ['new-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
-        'send'          => ['ارسال پیامک',          '➤',  '/send.php',          ['send.php', 'send-queue.php']],
+        'new_send'      => ['پنل جدید ارسال',       '🆕', '/new-send.php',      ['new-send.php', 'send-estimate.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
+        'send'          => ['ارسال پیامک',          '➤',  '/send.php',          ['send.php', 'send-queue.php', 'send-estimate.php']],
         'p2p'           => ['نظیر به نظیر',         '⇄',  '/p2p-send.php',      ['p2p-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
         'smart'         => ['پیامک هوشمند',         '✦',  '/smart-send.php',    ['smart-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
         'schedules'     => ['زمان‌بندی‌شده',         '◷',  '/schedules.php',     ['schedules.php']],
@@ -42,14 +42,16 @@ function menu_catalog(): array {
         'tickets'       => ['پشتیبانی',             '🎫', '/tickets.php',       ['tickets.php']],
         'buy_credit'    => ['خرید اعتبار',          '💳', '/buy-credit.php',    ['buy-credit.php', 'packages.php']],
         'invoices'      => ['فاکتورها',             '🧾', '/invoices.php',      ['invoices.php']],
+        'financial_log' => ['تاریخچه مالی',         '📒', '/financial-log.php', ['financial-log.php']],
         'bale'          => ['پیام‌رسان بله',         '💬', '/bale-messages.php', ['bale-messages.php']],
         'voice'         => ['پیام صوتی',            '🔊', '/voice.php',         ['voice.php']],
         'voice_files'   => ['فایل‌های صوتی',         '🎙', '/voice-files.php',   ['voice-files.php']],
         'regional_bulk' => ['ارسال منطقه‌ای',        '🗺️', '/regional-bulk.php', ['regional-bulk.php']],
         'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
+        'otp_templates' => ['کد تایید اشتراکی',      '🔐', '/otp-templates.php', ['otp-templates.php']],
         // A reseller's panel (app/ResellerPanel.php) is its sub-account menu: closing it closes the panel.
         'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php',
-                                                                                'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-tickets.php',
+                                                                                'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-payments.php', 'reseller-tickets.php',
                                                                                 'reseller-announcements.php', 'reseller-registrations.php', 'reseller-staff.php', 'reseller-settings.php']],
         'api_keys'      => ['کلیدهای API',          '🔑', '/api-keys.php',      ['api-keys.php']],
         'integrations'  => ['افزونه ووکامرس و SDK', '🧩', '/integrations.php',  ['integrations.php']],
@@ -72,8 +74,8 @@ function menu_groups(): array {
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'inbox', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
-        'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'billing']],
-        'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
+        'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
+        'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'otp_templates', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
         'account'      => ['حساب و پشتیبانی',   ['reseller_panel', 'subaccounts', 'tickets']],
     ];
 }
@@ -241,6 +243,7 @@ function menu_key_for_api_path(string $path): ?string {
         str_starts_with($path, '/api/v1/bulk-jobs') => 'send',
         str_starts_with($path, '/api/v1/contacts')  => 'contacts',
         str_starts_with($path, '/api/v1/voice')     => 'voice',
+        str_starts_with($path, '/api/v1/otp')       => 'otp_templates',
         str_starts_with($path, '/api/v1/webhooks')  => 'webhooks',
         default => null,
     };

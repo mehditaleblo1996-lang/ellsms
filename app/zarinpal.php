@@ -72,7 +72,6 @@ function zarinpal_call(string $path, array $payload): ?array {
         CURLOPT_TIMEOUT        => 20,
     ]);
     $body = curl_exec($ch);
-    curl_close($ch);
     if ($body === false) return null;
     $decoded = json_decode($body, true);
     return is_array($decoded) ? $decoded : null;

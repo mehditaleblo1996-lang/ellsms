@@ -19,7 +19,7 @@ function invoice_admin_set_state(int $invoiceId, string $state, int $adminUserId
     if (mb_strlen($note) > 500) return ['ok' => false, 'reason' => 'note_too_long'];
 
     return db_transaction(function (PDO $db) use ($invoiceId, $state, $adminUserId, $note): array {
-        $st = $db->prepare('SELECT i.id,i.status,i.admin_state,i.invoice_number,i.payment_id,p.status AS payment_status,p.authority
+        $st = $db->prepare('SELECT i.id,i.status,i.admin_state,i.invoice_number,i.payment_id,p.status AS payment_status,p.authority,p.gateway
                             FROM ellsms_invoices i LEFT JOIN ellsms_payments p ON p.id=i.payment_id
                             WHERE i.id=? FOR UPDATE');
         $st->execute([$invoiceId]);
@@ -28,6 +28,11 @@ function invoice_admin_set_state(int $invoiceId, string $state, int $adminUserId
         if (($invoice['status'] ?? '') !== 'issued') return ['ok' => false, 'reason' => 'invoice_not_issued'];
         if ($state === 'disabled' && ($invoice['payment_status'] ?? '') === 'pending' && trim((string)($invoice['authority'] ?? '')) !== '') {
             return ['ok' => false, 'reason' => 'active_payment'];
+        }
+        // A manual payment (card-to-card, deposit, cash, cheque) waiting for its review is decided by
+        // that review (app/ManualPayments.php), not by disabling its invoice underneath it.
+        if ($state === 'disabled' && ($invoice['payment_status'] ?? '') === 'pending' && manual_payment_is_manual_gateway($invoice['gateway'] ?? null)) {
+            return ['ok' => false, 'reason' => 'manual_review_required'];
         }
         $current = invoice_admin_state($invoice);
         if ($current === $state) return ['ok' => true, 'reason' => 'unchanged', 'invoice_number' => $invoice['invoice_number']];
@@ -60,6 +65,9 @@ function invoice_admin_mark_paid(int $invoiceId, int $adminUserId, string $note)
     $pst->execute([(int)$invoice['payment_id']]);
     $payment = $pst->fetch();
     if (!$payment) return ['ok' => false, 'reason' => 'payment_missing'];
+    // A manual payment is approved through its own review, which checks who received the money
+    // (the platform or a reseller) and credits from the right place (app/ManualPayments.php).
+    if (manual_payment_is_manual_gateway($payment['gateway'] ?? null)) return ['ok' => false, 'reason' => 'manual_review_required'];
     if (($payment['status'] ?? '') === 'paid') {
         db_transaction(function (PDO $db) use ($invoiceId): void { billing_invoice_mark_paid($db, $invoiceId); });
         return ['ok' => true, 'reason' => 'already_paid'];

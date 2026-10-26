@@ -91,7 +91,6 @@ final class WebEngageHttpTest extends TestCase
         $raw = curl_exec($ch);
         $this->assertNotFalse($raw, curl_error($ch));
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
         return [$code, json_decode((string)$raw, true)];
     }
 
@@ -149,7 +148,6 @@ final class WebEngageHttpTest extends TestCase
         $ch = curl_init('http://127.0.0.1:' . self::$port . '/api/v1/me');
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10]);
         $body = json_decode((string)curl_exec($ch), true);
-        curl_close($ch);
         $this->assertSame('unauthenticated', $body['error']['code'] ?? null);
     }
 }

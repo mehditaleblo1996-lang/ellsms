@@ -1,7 +1,7 @@
 """ELLSMS public API v1 client for Python 3.8+ (standard library only).
 
     from ellsms import Client
-    sms = Client("ellsms_live_…", "https://panel.example.com")
+    sms = Client("datis_live_…", "https://panel.example.com")
     sms.send_message(["09121234567"], "سلام")
 
 Every method returns the "data" part of the answer and raises EllsmsError on any error.
