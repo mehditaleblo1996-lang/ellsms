@@ -11,7 +11,7 @@ if (!is_admin()) {
  * Three views of the same report (app/Reports/OperatorReport.php), each its own sidebar entry:
  *   all    — every message in the range: operator share, encoding, status
  *   number — the status table for one sender line
- *   route  — the status table for one route (admins only: routes are platform configuration)
+ *   route  — the status table for one provider, over all its routes (admins only: providers are platform configuration)
  * A customer sees only the two summary columns of the status table (مجموع ارسال‌شده / تحویل گرفته‌شده).
  */
 $admin = is_admin();
@@ -19,7 +19,7 @@ $view = (string)($_GET['view'] ?? 'all');
 if (!in_array($view, ['all', 'number', 'route'], true) || ($view === 'route' && !$admin)) $view = 'all';
 [$pageTitle, $active] = match ($view) {
     'number' => ['گزارش اپراتورها بر اساس شماره', 'operator_reports_number'],
-    'route'  => ['گزارش اپراتورها بر اساس مسیر', 'operator_reports_route'],
+    'route'  => ['گزارش اپراتورها بر اساس تأمین‌کننده', 'operator_reports_route'],
     default  => ['گزارش اپراتورها', 'operator_reports'],
 };
 
@@ -28,10 +28,20 @@ $to   = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
 $userId = $admin ? (int)($_GET['user_id'] ?? 0) : 0;
 $senderRaw = $view === 'number' ? trim((string)($_GET['sender'] ?? '')) : '';
 $sender = $senderRaw !== '' ? normalize_originator($senderRaw) : null;
-$routeId = $view === 'route' ? (int)($_GET['route_id'] ?? 0) : 0;
+$providerId = $view === 'route' ? (int)($_GET['provider_id'] ?? 0) : 0;
+$routeIds = null;
+if ($providerId > 0) {
+    try {
+        $st = db()->prepare('SELECT id FROM ellsms_sms_routes WHERE provider_id = ?');
+        $st->execute([$providerId]);
+        $routeIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    } catch (Throwable) {
+        $routeIds = [];
+    }
+}
 
 if (lazy_part_begin('report')) {
-    $counts = operator_report_counts(operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeId, hidden_messages_apply_to_viewer(), $asOf);
+    $counts = operator_report_counts(operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeIds, hidden_messages_apply_to_viewer(), $asOf);
     $operators = operator_report_operator_order($counts);
     $statusByOp = [];
     $derivedByOp = [];
@@ -107,7 +117,7 @@ if (lazy_part_begin('report')) {
 
     $statusTitle = match ($view) {
         'number' => 'وضعیت پیام‌های ارسالی' . ($sender !== null ? ' از شماره‌ی ' . $sender : '') . ' به تفکیک اپراتور',
-        'route'  => 'وضعیت پیام‌های ارسالی' . ($routeId > 0 ? ' از این مسیر' : '') . ' به تفکیک اپراتور',
+        'route'  => 'وضعیت پیام‌های ارسالی' . ($providerId > 0 ? ' از این تأمین‌کننده' : '') . ' به تفکیک اپراتور',
         default  => 'وضعیت پیام‌های ارسالی به تفکیک اپراتور',
     };
     ?>
@@ -185,13 +195,12 @@ if (lazy_part_begin('report')) {
 }
 
 $users = $admin ? backend_list_users_summary() : [];
-$routes = [];
+$providers = [];
 if ($view === 'route') {
     try {
-        $routes = db()->query("SELECT r.id, r.name, p.name provider FROM ellsms_sms_routes r JOIN ellsms_sms_providers p ON p.id = r.provider_id
-                               ORDER BY r.status = 'active' DESC, p.name, r.name")->fetchAll();
+        $providers = db()->query('SELECT id, name FROM ellsms_sms_providers ORDER BY name')->fetchAll();
     } catch (Throwable) {
-        // pricing catalog not migrated: no routes to pick
+        // pricing catalog not migrated: no providers to pick
     }
 }
 $myLines = (!$admin && $view === 'number') ? array_values(array_filter(allowed_originators($me), static fn($n) => $n !== '*')) : [];
@@ -202,7 +211,7 @@ require __DIR__ . '/../app/views/header.php';
   <?php foreach (array_filter([
       'all'    => ['گزارش اپراتورها', true],
       'number' => ['بر اساس شماره', true],
-      'route'  => ['بر اساس مسیر', $admin],
+      'route'  => ['بر اساس تأمین‌کننده', $admin],
   ], static fn(array $v): bool => $v[1]) as $key => [$label]): ?>
     <?php if ($key === $view): ?><span class="btn btn-primary" aria-current="page"><?= e($label) ?></span>
     <?php else: ?><a class="btn btn-ghost" href="/operator-reports.php?<?= e(http_build_query(array_filter(['view' => $key === 'all' ? null : $key, 'user_id' => $userId ?: null]))) ?>"><?= e($label) ?></a><?php endif; ?>
@@ -226,9 +235,9 @@ require __DIR__ . '/../app/views/header.php';
       </label>
     <?php endif; ?>
     <?php if ($view === 'route'): ?>
-      <label>مسیر
-        <select name="route_id"><option value="0">همه‌ی مسیرها</option>
-          <?php foreach ($routes as $r): ?><option value="<?= (int)$r['id'] ?>" <?= $routeId === (int)$r['id'] ? 'selected' : '' ?>><?= e($r['provider'] . ' — ' . $r['name']) ?></option><?php endforeach; ?>
+      <label>تأمین‌کننده
+        <select name="provider_id"><option value="0">همه‌ی تأمین‌کننده‌ها</option>
+          <?php foreach ($providers as $pr): ?><option value="<?= (int)$pr['id'] ?>" <?= $providerId === (int)$pr['id'] ? 'selected' : '' ?>><?= e($pr['name']) ?></option><?php endforeach; ?>
         </select>
       </label>
     <?php endif; ?>
@@ -237,7 +246,7 @@ require __DIR__ . '/../app/views/header.php';
     <button class="btn btn-primary">جست‌وجو</button>
   </form>
   <?php if ($view === 'number' && $sender === null): ?><p class="hint">شماره‌ای انتخاب نشده؛ همه‌ی شماره‌ها نمایش داده می‌شوند.</p><?php endif; ?>
-  <?php if ($view === 'route'): ?><p class="hint">ارسال‌های قدیمی از طریق API بک‌اند مسیر ندارند؛ با انتخاب یک مسیر در این گزارش حساب نمی‌شوند.</p><?php endif; ?>
+  <?php if ($view === 'route'): ?><p class="hint">ارسال‌های قدیمی از طریق API بک‌اند مسیر ندارند؛ با انتخاب یک تأمین‌کننده در این گزارش حساب نمی‌شوند.</p><?php endif; ?>
 </div>
 
 <?= lazy_part_placeholder('report', 420, 'در حال آماده‌سازی گزارش…') ?>

@@ -107,6 +107,14 @@ function operator_report_scope(array $me, bool $admin, int $adminUserId): array 
         : ['members' => array_map('intval', $members), 'bulk_org' => 0, 'bulk_user' => (int)$me['id']];
 }
 
+/** SQL narrowing $col to $routeIds (null = no filter, [] = no rows), its values appended to $p. */
+function operator_report_route_filter(string $col, ?array $routeIds, array &$p): string {
+    if ($routeIds === null) return '';
+    if ($routeIds === []) return ' AND 1=0';
+    array_push($p, ...array_map('intval', $routeIds));
+    return " AND {$col} IN (" . implode(',', array_fill(0, count($routeIds), '?')) . ')';
+}
+
 /**
  * Message counts for the report: operator name => encoding => status => count, over the Tehran days
  * $from..$to (Y-m-d).
@@ -116,13 +124,14 @@ function operator_report_scope(array $me, bool $admin, int $adminUserId): array 
  * live from the message tables. $asOf receives when the newest built day in the range was built (UTC),
  * or null when nothing came from the summary.
  *
- * $sender narrows to one sender line (normalized digits); $routeId to one route — legacy backend
- * sends have no route, so a route filter leaves them out.
+ * $sender narrows to one sender line (normalized digits); $routeIds to those routes (a provider's
+ * routes; null = no filter, [] = nothing) — legacy backend sends have no route, so a route filter
+ * leaves them out.
  *
  * @param array{members:?list<int>,bulk_org:int,bulk_user:int} $scope
  * @return array<string,array<string,array<string,int>>>
  */
-function operator_report_counts(array $scope, string $from, string $to, ?string $sender, int $routeId, bool $hideRemoved, ?string &$asOf = null): array {
+function operator_report_counts(array $scope, string $from, string $to, ?string $sender, ?array $routeIds, bool $hideRemoved, ?string &$asOf = null): array {
     $asOf = null;
     $built = [];
     if (operator_report_summary_available()) {
@@ -146,7 +155,7 @@ function operator_report_counts(array $scope, string $from, string $to, ?string 
         }
         $w .= " AND ((source = 'bulk' AND {$bulkCond}) OR (source <> 'bulk' AND {$otherCond}))";
         if ($sender !== null) { $w .= ' AND sender = ?'; $p[] = $sender; }
-        if ($routeId > 0) { $w .= ' AND route_id = ?'; $p[] = $routeId; }
+        $w .= operator_report_route_filter('route_id', $routeIds, $p);
         if ($hideRemoved) $w .= ' AND hidden = 0';
         $st = db()->prepare("SELECT operator name, encoding enc, status st, SUM(message_count) c FROM ellsms_operator_report_daily
                              WHERE {$w} GROUP BY operator, encoding, status");
@@ -157,7 +166,7 @@ function operator_report_counts(array $scope, string $from, string $to, ?string 
     // Days not in the summary, counted live one contiguous span at a time.
     foreach (operator_report_unbuilt_spans($from, $to, array_keys($built)) as [$spanFrom, $spanTo]) {
         [$fromUtc, $toUtcExclusive] = local_day_range_to_utc($spanFrom, $spanTo);
-        array_push($rows, ...operator_report_raw_rows($fromUtc, $toUtcExclusive, $scope, $sender, $routeId, $hideRemoved, false));
+        array_push($rows, ...operator_report_raw_rows($fromUtc, $toUtcExclusive, $scope, $sender, $routeIds, $hideRemoved, false));
     }
 
     return operator_report_fold($rows, operator_report_operator_names());
@@ -209,7 +218,7 @@ function operator_report_summary_available(): bool {
  * @param array{members:?list<int>,bulk_org:int,bulk_user:int}|null $scope
  * @return list<array<string,mixed>>
  */
-function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?array $scope, ?string $sender, int $routeId, bool $hideRemoved, bool $withDimensions): array {
+function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?array $scope, ?string $sender, ?array $routeIds, bool $hideRemoved, bool $withDimensions): array {
     $encodingSql = static fn(string $col): string =>
         "CASE WHEN {$col} IS NULL OR {$col} = '' THEN 'na' WHEN CHAR_LENGTH({$col}) <> LENGTH({$col}) THEN 'fa' ELSE 'en' END";
     $deliverySql = static fn(string $col): string =>
@@ -242,7 +251,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
     if ($scope !== null && $scope['bulk_org'] > 0) { $w .= ' AND bj.organization_id = ?'; $p[] = $scope['bulk_org']; }
     elseif ($scope !== null && $scope['bulk_user'] > 0) { $w .= ' AND bj.user_id = ?'; $p[] = $scope['bulk_user']; }
     if ($sender !== null) { $w .= ' AND bj.originator = ?'; $p[] = $sender; }
-    if ($routeId > 0) { $w .= ' AND bi.route_id = ?'; $p[] = $routeId; }
+    $w .= operator_report_route_filter('bi.route_id', $routeIds, $p);
     $w .= $exclude('bulk_job', 'bj.id');
     [$sel, $grp] = $dims('bulk', 'bj.user_id', 'COALESCE(bj.organization_id, 0)', 'bj.originator', 'COALESCE(bi.route_id, 0)', $hiddenSql('bulk_job', 'bj.id'));
     $st = db()->prepare("SELECT STRAIGHT_JOIN {$sel}COALESCE(bi.operator_id, 0) op, CASE WHEN bi.operator_id IS NULL THEN LEFT(bi.mobile, 8) ELSE '' END pfx,
@@ -259,7 +268,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         $w = "a.status = 'accepted' AND a.reference_type IN ('direct_send','schedule') AND a.attempted_at >= ? AND a.attempted_at < ?"
             . $memberIn('a.user_id', $p);
         if ($sender !== null) { $w .= ' AND a.originator = ?'; $p[] = $sender; }
-        if ($routeId > 0) { $w .= ' AND a.route_id = ?'; $p[] = $routeId; }
+        $w .= operator_report_route_filter('a.route_id', $routeIds, $p);
         $w .= $exclude('attempt', 'a.id');
         $enc = $reportCols ? $encodingSql('a.content') : "'na'";
         [$sel, $grp] = $dims('gateway', 'a.user_id', 'COALESCE(a.organization_id, 0)', $reportCols ? "COALESCE(a.originator, '')" : "''", 'COALESCE(a.route_id, 0)', $hiddenSql('attempt', 'a.id'));
@@ -271,7 +280,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
     }
 
     /* Legacy backend sends (no route, no recorded operator). */
-    $ids = $routeId === 0 ? operator_report_legacy_id_bounds($fromUtc, $toUtcExclusive) : null;
+    $ids = $routeIds === null ? operator_report_legacy_id_bounds($fromUtc, $toUtcExclusive) : null;
     if ($ids !== null) {
         $p = [$ids[0], $ids[1], $fromUtc, $toUtcExclusive];
         $w = 'm.id >= ? AND m.id < ? AND m.sent_at >= ? AND m.sent_at < ?' . $memberIn('m.sender_user_id', $p);
@@ -332,7 +341,7 @@ function operator_report_legacy_id_bounds(string $fromUtc, string $toUtcExclusiv
 function operator_report_rebuild_day(string $day): array {
     $started = microtime(true);
     [$fromUtc, $toUtcExclusive] = local_day_range_to_utc($day, $day);
-    $raw = operator_report_raw_rows($fromUtc, $toUtcExclusive, null, null, 0, false, true);
+    $raw = operator_report_raw_rows($fromUtc, $toUtcExclusive, null, null, null, false, true);
     $names = operator_report_operator_names();
     $byPrefix = [];
     $groups = [];

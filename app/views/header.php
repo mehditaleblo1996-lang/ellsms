@@ -29,12 +29,12 @@ $nav += [
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
     'financial_log' => ['/financial-log.php', 'تاریخچه مالی', '📒'],
 ];
-// Operator reports (public/operator-reports.php) open with the send report's menu; by route is admin-only.
+// Operator reports (public/operator-reports.php) open with the send report's menu; by provider is admin-only.
 if ($me['role'] === 'admin' || menu_access_allows($me, 'reports')) {
     $nav['operator_reports'] = ['/operator-reports.php', 'گزارش اپراتورها', '≣'];
     $nav['operator_reports_number'] = ['/operator-reports.php?view=number', 'گزارش اپراتورها بر اساس شماره', '≣'];
     if ($me['role'] === 'admin') {
-        $nav['operator_reports_route'] = ['/operator-reports.php?view=route', 'گزارش اپراتورها بر اساس مسیر', '≣'];
+        $nav['operator_reports_route'] = ['/operator-reports.php?view=route', 'گزارش اپراتورها بر اساس تأمین‌کننده', '≣'];
     }
 }
 // #42 — the Bale channel's message record, shown once the channel is set up (admins always, to set it up).

@@ -215,15 +215,15 @@ final class OperatorReportHttpTest extends TestCase
         $this->assertStringContainsString('<td class="num op-key">' . self::n(3) . '</td>', $r['body'], 'line 5000 sent 3');
         $this->assertStringNotContainsString('سهم هر اپراتور', $r['body'], 'the number view shows only the status table');
 
-        // An unknown route: nothing, and legacy sends (no route) are left out too.
-        $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'route', 'route_id' => 987654, 'user_id' => $this->customerId, '_part' => 'report']), $session);
+        // An unknown provider: nothing, and legacy sends (no route) are left out too.
+        $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'route', 'provider_id' => 987654, 'user_id' => $this->customerId, '_part' => 'report']), $session);
         $this->assertSame(200, $r['code']);
         $this->assertStringContainsString('<td class="num op-key">' . self::n(0) . '</td><td class="num">' . self::n(0) . '</td><td class="num op-key">' . self::n(0) . '</td>', $r['body']);
 
         // A customer asking for the route view gets the general report.
         $r = $this->request('/operator-reports.php?view=route', $this->sessionFor($this->customerId));
         $this->assertSame(200, $r['code']);
-        $this->assertStringNotContainsString('name="route_id"', $r['body']);
+        $this->assertStringNotContainsString('name="provider_id"', $r['body']);
     }
 
     public function testABuiltDayIsReadFromTheSummaryWithTheSameNumbers(): void
