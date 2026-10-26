@@ -1,0 +1,45 @@
+/* گزارش اپراتورها (public/operator-reports.php) — built only from the panel's own tokens (style.css). */
+
+.op-views { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.op-report-card { margin-top: 18px; }
+.op-sub { margin: var(--sp-5, 20px) 0 var(--sp-2, 8px); font-size: var(--fs-base); font-weight: 700; }
+
+/* Share card: chart beside its table, stacked on narrow screens. */
+.op-split { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1.4fr); gap: 24px; align-items: center; }
+@media (max-width: 900px) { .op-split { grid-template-columns: 1fr; } }
+
+/* Donut chart (operator_report_donut()). */
+.op-donut { margin: 0; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.op-donut-title { font-size: var(--fs-sm, 14px); font-weight: 700; color: var(--ink); text-align: center; }
+.op-donut-body { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; }
+.op-donut-ring { --size: 180px; width: var(--size); height: var(--size); border-radius: 50%; display: grid; place-items: center; flex: none; }
+.op-donut-sm .op-donut-ring { --size: 104px; }
+.op-donut-hole { width: 62%; height: 62%; border-radius: 50%; background: var(--card); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
+.op-donut-hole strong { font-family: var(--font-num); font-size: var(--fs-lg, 18px); color: var(--ink); }
+.op-donut-sm .op-donut-hole strong { font-size: var(--fs-xs, 12px); }
+.op-donut-hole small { font-size: var(--fs-xs, 12px); color: var(--muted); }
+.op-donut-sm .op-donut-hole small { display: none; }
+.op-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-xs, 12px); min-width: 120px; }
+.op-legend li { display: flex; align-items: center; gap: 8px; }
+.op-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.op-legend-label { color: var(--ink); }
+.op-legend-value { margin-inline-start: auto; color: var(--muted); font-family: var(--font-num); }
+
+.op-donut-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; margin: 6px 0 18px; }
+.op-donut-grid .op-donut { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--canvas); }
+
+/* Tables. */
+.op-table td.num, .op-table th { text-align: center; }
+.op-table td:first-child, .op-table th:first-child { text-align: right; }
+.op-table tr.op-total td { font-weight: 700; background: var(--tint); }
+
+/* The two summary columns a customer sees (مجموع ارسال‌شده / تحویل گرفته‌شده). */
+.op-table th.op-key { background: var(--warn); color: #fff; }
+.op-table td.op-key { background: var(--warn-bg); color: var(--warn); font-weight: 700; }
+.op-table tr.op-total td.op-key { background: #f8e3c4; }
+.op-key-chip { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--warn); vertical-align: middle; margin-inline-end: 4px; }
+.op-note { margin-top: 10px; }
+
+.op-detail { border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; background: var(--card); }
+.op-detail summary { cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
+.op-detail .table-wrap { padding: 0 10px 10px; }

@@ -152,6 +152,7 @@ if (PHP_SAPI !== 'cli') {
                 '/regional-bulk.php' => '/messages/regional',
                 '/aimed-bulk.php' => '/messages/aimed',
                 '/reports-bulk.php' => '/messages/reports/bulk',
+                '/operator-reports.php' => '/messages/reports/operators',
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
             ];
