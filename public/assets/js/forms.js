@@ -148,6 +148,11 @@
     if (!exists(initial)) initial = buttons[0].getAttribute('data-tab');
     root.classList.add('is-ready');
     show(initial, false);
+    // A link to another tab of the page already open (the topbar's «تغییر کلمه‌ی عبور» on the profile).
+    window.addEventListener('hashchange', function () {
+      var id = location.hash.slice(1);
+      if (exists(id)) show(id, false);
+    });
   }
 
   // 4. Fill down: the source's value (or an empty cell, to clear) goes into every target of its key.

@@ -253,6 +253,12 @@ final class ResellerPanelTest extends IntegrationTestCase
         [$tickets] = ticket_list_for_assignee($reseller, '', 1, 10);
         $this->assertSame([$ticketId], array_map('intval', array_column($tickets, 'id')));
 
+        // The customer hears about its own ticket being filed and answered; its own reply doesn't echo back.
+        ticket_add_reply($ticketId, $customer, 'c', 'پیگیری', false);
+        ticket_add_reply($ticketId, $reseller, 'r', 'پاسخ', true);
+        $events = array_values(array_filter(array_column(notification_list($customer), 'event_key'), fn($e) => str_starts_with($e, 'ticket.')));
+        $this->assertSame(['ticket.answered', 'ticket.created'], $events);
+
         $this->assertTrue(reseller_settings_save($reseller, ['tickets_to_reseller' => false], $reseller)['ok']);
         $this->assertNull(reseller_ticket_assignee($customer));
         $this->assertNull(reseller_ticket_assignee($reseller), 'a top-level reseller asks platform support');

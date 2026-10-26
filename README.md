@@ -78,6 +78,17 @@ send, and its delivery status goes back to WebEngage as a DSN once the gateway's
 arrives. Each organization turns it on and enters WebEngage's DSN token on **/integrations.php**.
 See [`docs/webengage.md`](docs/webengage.md).
 
+## Shared OTP (کد تایید اشتراکی)
+
+Customers without a sender line of their own can send one-time codes from the platform's shared lines,
+the way Negar's predefined messages worked. The customer registers a template — fixed text with `{name}`
+placeholders, e.g. `کد ورود شما به فروشگاه نمونه: {code}` — on **/otp-templates.php**; a platform admin
+approves it there, and the customer then calls `POST /api/v1/otp` (scope `otp:send`) with only
+`template_id`, `destination` and the values. They never name a sender: the admin picks the shared lines
+(same page), and the send goes through `dispatch_message()` like any other, charged to the customer at
+the line's OTP tariff. Any edit sends the template back to review; values are short, single-line and
+link-free so the variables can't carry an ad. See [`docs/shared-otp.md`](docs/shared-otp.md).
+
 ## Delivery-based billing (ارسال بر اساس تحویل)
 
 An admin can switch it on per user (**Users → user → ارسال بر اساس تحویل**) and set a refund percentage

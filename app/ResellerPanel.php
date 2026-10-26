@@ -36,11 +36,14 @@ const RESELLER_STAFF_PERMISSIONS = [
     'announcements.manage' => 'اطلاعیه‌ها',
     'registrations.manage' => 'درخواست‌های ثبت‌نام',
     'finance.view'         => 'گزارش مالی',
+    'payments.manage'      => 'بررسی پرداخت‌های مشتریان، کارت‌ها و حساب‌ها',
 ];
 
 /** Pages a staff account may open outside its reseller panel. */
 const RESELLER_STAFF_ALLOWED_PAGES = [
     'logout.php', 'profile.php', 'notifications.php', 'verify-2fa.php', 'brand-logo.php', 'index.php',
+    // A customer's receipt or cheque image, opened from /reseller/payments (it checks payments.manage itself).
+    'payment-receipt.php',
 ];
 
 const RESELLER_BRAND_LOGO_MAX_BYTES = 524288;

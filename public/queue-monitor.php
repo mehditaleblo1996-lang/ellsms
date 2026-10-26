@@ -177,7 +177,7 @@ require __DIR__ . '/../app/views/header.php';
 
 <div id="qmStatus" role="status" aria-live="polite"></div>
 
-<?= lazy_part_live_placeholder('live', QUEUE_MONITOR_POLL_SECONDS, 420) ?>
+<?= lazy_part_live_placeholder('live', QUEUE_MONITOR_POLL_SECONDS, 420, shape: 'table') ?>
 
 <div class="modal-overlay" id="qmPurgeOverlay" role="dialog" aria-modal="true" aria-labelledby="qmPurgeTitle">
   <div class="modal-dialog"><div class="card" style="border:2px solid var(--err)">

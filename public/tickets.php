@@ -168,7 +168,7 @@ if ($ticketId) {
             <td class="num"><?= jdate($t['updated_at']) ?></td>
           </tr>
         <?php endforeach; ?>
-        <?php if (!$tickets): ?><tr><td colspan="<?= is_admin() ? 5 : 4 ?>" class="empty">هیچ تیکتی یافت نشد.</td></tr><?php endif; ?>
+        <?php if (!$tickets): ?><tr><td colspan="<?= is_admin() ? 5 : 4 ?>" class="empty-cell"><?= panel_empty_state('هیچ تیکتی یافت نشد', 'سؤال یا مشکلی دارید؟ از فرم «ثبت تیکت جدید» برای پشتیبانی بنویسید.', null, 'help') ?></td></tr><?php endif; ?>
       </table>
       </div>
 

@@ -10,7 +10,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = (string)($_POST['do'] ?? '');
     if ($do === 'read') notification_mark_read((int)$me['id'], (int)($_POST['id'] ?? 0));
     if ($do === 'read_all') notification_mark_all_read((int)$me['id']);
-    redirect('/notifications.php');
+    // The topbar's notification preview posts here too and goes back to the page it was opened on.
+    $back = (string)($_POST['back'] ?? '');
+    redirect(local_return_path($back) ?? '/notifications.php');
 }
 
 $per = 50;
@@ -39,7 +41,7 @@ require __DIR__ . '/../app/views/header.php';
 
 <div class="card">
   <?php if (!$rows): ?>
-    <p class="empty">هنوز اعلانی ندارید.</p>
+    <?= panel_empty_state('هنوز اعلانی ندارید', 'اعلان‌های سیستمی، تیکت‌ها و احراز هویت اینجا نمایش داده می‌شوند.', null, 'bell') ?>
   <?php else: ?>
     <div style="display:flex;flex-direction:column;gap:10px">
       <?php foreach ($rows as $row): ?>

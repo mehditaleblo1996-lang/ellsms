@@ -95,7 +95,9 @@ if (PHP_SAPI !== 'cli') {
                 '/billing.php' => '/billing',
                 '/buy-credit.php' => '/billing/credit',
                 '/invoices.php' => '/billing/invoices',
+                '/payment-receipt.php' => '/billing/receipt',
                 '/financial-log.php' => '/billing/history',
+                '/credit-status.php' => '/billing/credit/status',
                 '/api-keys.php' => '/developers/api-keys',
                 '/webhooks.php' => '/developers/webhooks',
                 '/number-forwards.php' => '/developers/line-forwarding',
@@ -116,6 +118,7 @@ if (PHP_SAPI !== 'cli') {
                 '/sms-gateway-clone.php' => '/admin/sms/gateways/clone',
                 '/billing-admin.php' => '/admin/billing/plans',
                 '/financial-admin.php' => '/admin/billing/finance',
+                '/manual-payments.php' => '/admin/billing/manual-payments',
                 '/guide-admin.php' => '/admin/content/guide',
                 '/slides.php' => '/admin/content/slides',
                 '/settings.php' => '/admin/settings',
@@ -128,6 +131,7 @@ if (PHP_SAPI !== 'cli') {
                 '/reseller-tariffs.php' => '/reseller/tariffs',
                 '/reseller-packages.php' => '/reseller/packages',
                 '/reseller-finance.php' => '/reseller/finance',
+                '/reseller-payments.php' => '/reseller/payments',
                 '/reseller-tickets.php' => '/reseller/tickets',
                 '/reseller-announcements.php' => '/reseller/announcements',
                 '/reseller-registrations.php' => '/reseller/registrations',
@@ -155,6 +159,7 @@ if (PHP_SAPI !== 'cli') {
                 '/reports-bulk.php' => '/messages/reports/bulk',
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
+                '/otp-templates.php' => '/integrations/otp',
             ];
 
             foreach (headers_list() as $headerLine) {

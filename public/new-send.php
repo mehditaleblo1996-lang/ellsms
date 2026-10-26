@@ -39,7 +39,7 @@ $campaigns = $cst->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    $mode       = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? $_POST['mode'] : 'direct';
+    $mode       = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? ($_POST['mode'] ?? 'direct') : 'direct';
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     $content    = trim($_POST['content'] ?? '');
     $notes      = trim($_POST['notes'] ?? '');
@@ -174,7 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $gDate = jalali_request_to_gregorian('send_date');
         $time  = time_post('send_time');
         $runAt = ($gDate && $time) ? "{$gDate} {$time}:00" : null;
-        $repeat = in_array($_POST['repeat'] ?? 'none', ['none', 'daily', 'weekly', 'monthly'], true) ? $_POST['repeat'] : 'none';
+        $repeat = in_array($_POST['repeat'] ?? 'none', ['none', 'daily', 'weekly', 'monthly'], true) ? ($_POST['repeat'] ?? 'none') : 'none';
 
         if (!$runAt || $runAt <= date('Y-m-d H:i:s')) {
             flash('error', 'زمان ارسال باید در آینده باشد.');

@@ -79,6 +79,12 @@ html {
   width: 8%;
 }
 
+/* Without the admin's user column the first column is the recipient's number, which needs room. */
+.content-dashboard .dash-recent:not(.has-user) th:first-child,
+.content-dashboard .dash-recent:not(.has-user) td:first-child {
+  width: 15%;
+}
+
 .content-dashboard .table-wrap th:last-child,
 .content-dashboard .table-wrap td:last-child {
   width: 18%;

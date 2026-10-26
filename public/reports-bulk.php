@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../app/bootstrap.php';
 require_once __DIR__ . '/../app/Backend/report_dimension_summary.php';
 require_once __DIR__ . '/../app/Reports/MessageDetail.php';
+require_once __DIR__ . '/../app/views/panel-icons.php'; // the lazily loaded parts' empty states run before header.php
 $me = require_login();
 $pageTitle = 'گزارش ارسال حجیم';
 $active = 'reports_bulk';
@@ -181,7 +182,7 @@ if (lazy_part_begin('rows')) {
     $userNames = is_admin() ? backend_usernames_by_ids(array_column($rows, 'user_id')) : [];
 
     ?>
-  <div class="table-wrap"><table>
+  <div class="table-wrap"><table data-cards>
     <tr><th>#</th><th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>مرجع اپراتور</th><th>استعلام</th><th>زمان ثبت</th><th>آخرین استعلام</th></tr>
     <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
       <tr>
@@ -198,7 +199,7 @@ if (lazy_part_begin('rows')) {
         <td class="num"><?= !empty($r['delivery_checked_at']) ? bulk_report_jdate((string)$r['delivery_checked_at']) : '—' ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= is_admin()?11:10 ?>" class="empty">هیچ پیام حجیمی با این فیلترها یافت نشد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= is_admin()?11:10 ?>" class="empty-cell"><?= panel_empty_state('هیچ پیام حجیمی با این فیلترها یافت نشد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr><?php endif; ?>
   </table></div>
 
   <?= pager_links($page, pager_pages($cnt, $per), array_filter(array_diff_key($_GET, ['before_bulk_id' => 1, 'after_bulk_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $cnt) ?>
@@ -216,7 +217,7 @@ require __DIR__ . '/../app/views/header.php';
   <span class="btn btn-primary">گزارش ارسال حجیم</span>
 </div>
 
-<?= lazy_part_placeholder('summary', 110) ?>
+<?= lazy_part_placeholder('summary', 110, shape: 'stats') ?>
 <?php if ($dest === '' && $text === '' && $userId === 0): ?><?= lazy_part_placeholder('breakdown', 60, 'در حال بارگذاری تفکیک…') ?><?php endif; ?>
 
 <div class="card" style="margin-top:22px">
@@ -246,6 +247,6 @@ require __DIR__ . '/../app/views/header.php';
     <button class="btn btn-primary">اعمال فیلتر</button>
   </form>
 
-  <?= lazy_part_placeholder('rows', 360) ?>
+  <?= lazy_part_placeholder('rows', 360, shape: 'table') ?>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
