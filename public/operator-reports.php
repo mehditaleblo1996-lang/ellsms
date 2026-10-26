@@ -25,14 +25,13 @@ if (!in_array($view, ['all', 'number', 'route'], true) || ($view === 'route' && 
 
 $from = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-29 day'));
 $to   = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
-[$fromUtc, $toUtcExclusive] = local_day_range_to_utc($from, $to);
 $userId = $admin ? (int)($_GET['user_id'] ?? 0) : 0;
 $senderRaw = $view === 'number' ? trim((string)($_GET['sender'] ?? '')) : '';
 $sender = $senderRaw !== '' ? normalize_originator($senderRaw) : null;
 $routeId = $view === 'route' ? (int)($_GET['route_id'] ?? 0) : 0;
 
 if (lazy_part_begin('report')) {
-    $counts = operator_report_counts(operator_report_scope($me, $admin, $userId), $fromUtc, $toUtcExclusive, $sender, $routeId, hidden_messages_apply_to_viewer());
+    $counts = operator_report_counts(operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeId, hidden_messages_apply_to_viewer(), $asOf);
     $operators = operator_report_operator_order($counts);
     $statusByOp = [];
     $derivedByOp = [];
@@ -47,6 +46,11 @@ if (lazy_part_begin('report')) {
     foreach (array_values($operators) as $i => $op) $opColor[$op] = OPERATOR_REPORT_PALETTE[$i % count(OPERATOR_REPORT_PALETTE)];
     $withData = array_values(array_filter($operators, static fn(string $op): bool => array_sum($statusByOp[$op]) > 0));
     $opCell = static fn(string $op): string => $op === OPERATOR_REPORT_UNKNOWN ? e('نامشخص') : operator_label($op, $op);
+
+    // Counts come from the daily summary the worker refreshes every few minutes (app/Reports/OperatorReport.php).
+    if ($asOf !== null): ?>
+<p class="hint op-asof">آمار هر چند دقیقه به‌روز می‌شود؛ آخرین به‌روزرسانی: <span class="num"><?= jdate_from_utc($asOf) ?></span></p>
+<?php endif;
 
     if ($view === 'all'):
         // Messages that went out, per encoding, per operator (in queue / cancelled never reached it).

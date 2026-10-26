@@ -6,6 +6,8 @@ namespace Tests\Integration;
 
 use PHPUnit\Framework\TestCase;
 
+require_once dirname(__DIR__, 2) . '/app/Reports/OperatorReport.php';
+
 /**
  * Operator reports (public/operator-reports.php, app/Reports/OperatorReport.php) over REAL HTTP: the
  * counts per operator / encoding / status from all three sources, the derived «مجموع ارسال‌شده» and
@@ -82,6 +84,8 @@ final class OperatorReportHttpTest extends TestCase
         @rmdir($this->sessionDir);
 
         $db = db();
+        $db->prepare('DELETE FROM ellsms_operator_report_daily WHERE period_date = ?')->execute([self::DAY_UTC]);
+        $db->prepare('DELETE FROM ellsms_operator_report_days WHERE period_date = ?')->execute([self::DAY_UTC]);
         $db->prepare('DELETE FROM ellsms_bulk_items WHERE job_id = ?')->execute([$this->jobId]);
         $db->prepare('DELETE FROM ellsms_bulk_jobs WHERE id = ?')->execute([$this->jobId]);
         foreach ($this->attemptIds as $id) {
@@ -220,6 +224,49 @@ final class OperatorReportHttpTest extends TestCase
         $r = $this->request('/operator-reports.php?view=route', $this->sessionFor($this->customerId));
         $this->assertSame(200, $r['code']);
         $this->assertStringNotContainsString('name="route_id"', $r['body']);
+    }
+
+    public function testABuiltDayIsReadFromTheSummaryWithTheSameNumbers(): void
+    {
+        $admin = $this->sessionFor($this->adminId);
+        $customer = $this->sessionFor($this->customerId);
+        $adminQuery = '/operator-reports.php?' . $this->dayQuery(['user_id' => $this->customerId, '_part' => 'report']);
+        $customerQuery = '/operator-reports.php?' . $this->dayQuery(['_part' => 'report']);
+        $liveAdmin = $this->request($adminQuery, $admin)['body'];
+        $liveCustomer = $this->request($customerQuery, $customer)['body'];
+        $this->assertStringNotContainsString('آخرین به‌روزرسانی', $liveAdmin, 'nothing is built yet: counted live');
+
+        $built = operator_report_rebuild_day(self::DAY_UTC);
+        $this->assertGreaterThanOrEqual(10, $built['messages']);
+
+        // A message added after the build is not counted until the day is rebuilt: proof the page now
+        // reads the summary, not the message tables.
+        db()->prepare("INSERT INTO ellsms_bulk_items (job_id, mobile, content, status, delivery_status, created_at) VALUES (?, '989121119999', 'late', 'sent', 'delivered', ?)")
+            ->execute([$this->jobId, self::DAY_UTC . ' 09:00:00']);
+        $fromSummary = $this->request($adminQuery, $admin)['body'];
+        $this->assertStringContainsString('آخرین به‌روزرسانی', $fromSummary);
+        $strip = static fn(string $html): string => trim((string)preg_replace('~<p class="hint op-asof">.*?</p>~s', '', $html));
+        $this->assertSame($strip($liveAdmin), $strip($fromSummary), 'summary and live counts differ (admin)');
+        $this->assertSame($strip($liveCustomer), $strip($this->request($customerQuery, $customer)['body']), 'summary and live counts differ (customer)');
+
+        // Filters work on the summary too: line 5000 sent 3; an unknown route nothing.
+        $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'number', 'sender' => '5000', 'user_id' => $this->customerId, '_part' => 'report']), $admin);
+        $this->assertStringContainsString('<td class="num op-key">' . self::n(3) . '</td>', $r['body']);
+
+        operator_report_rebuild_day(self::DAY_UTC);
+        $this->assertStringContainsString(
+            '<tr class="op-total"><td>جمع کل</td><td class="num op-key">' . self::n(9) . '</td><td class="num op-key">' . self::n(7) . '</td></tr>',
+            $this->request($customerQuery, $customer)['body'],
+            'the rebuilt day counts the late message'
+        );
+    }
+
+    public function testLegacyIdBoundsCoverTheRowsSentInTheRange(): void
+    {
+        [$fromUtc, $toUtc] = local_day_range_to_utc(self::DAY_UTC, self::DAY_UTC);
+        $bounds = operator_report_legacy_id_bounds($fromUtc, $toUtc);
+        $this->assertNotNull($bounds);
+        $this->assertTrue($bounds[0] <= $this->outboundId && $this->outboundId < $bounds[1]);
     }
 
     private function sessionFor(int $userId): string

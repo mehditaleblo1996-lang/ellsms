@@ -43,3 +43,4 @@
 .op-detail { border: 1px solid var(--line); border-radius: 10px; margin-top: 10px; background: var(--card); }
 .op-detail summary { cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .op-detail .table-wrap { padding: 0 10px 10px; }
+.op-asof { margin: 14px 4px 0; }

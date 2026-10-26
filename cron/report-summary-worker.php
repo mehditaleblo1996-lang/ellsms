@@ -13,6 +13,7 @@ require_once __DIR__ . '/../app/backend.php';
 require_once __DIR__ . '/../app/Backend/report_summary_cache.php';
 require_once __DIR__ . '/../app/Backend/report_dimension_summary.php';
 require_once __DIR__ . '/../app/Reports/SendDimensionLog.php';
+require_once __DIR__ . '/../app/Reports/OperatorReport.php';
 
 $once = in_array('--once', $argv ?? [], true);
 $interval = max(10, (int)(env('REPORT_SUMMARY_WORKER_INTERVAL_SECONDS', '60') ?? '60'));
@@ -24,6 +25,9 @@ $dimMaxRows = max($dimChunkRows, (int)(env('REPORT_DIMENSION_SUMMARY_MAX_ROWS_PE
 $dimRebuildEvery = max(300, (int)(env('REPORT_DIMENSION_SUMMARY_FULL_REBUILD_SECONDS', '3600') ?? '3600'));
 $sendLogChunkRows = max(100, min(50000, (int)(env('SEND_DIMENSION_LOG_CHUNK_ROWS', '5000') ?? '5000')));
 $sendLogMaxRows = max($sendLogChunkRows, (int)(env('SEND_DIMENSION_LOG_MAX_ROWS_PER_PASS', '50000') ?? '50000'));
+$opReportBudget = max(5, (int)(env('OPERATOR_REPORT_PASS_SECONDS', '40') ?? '40'));
+$opReportBackfillDays = max(2, (int)(env('OPERATOR_REPORT_BACKFILL_DAYS', '400') ?? '400'));
+$opReportFresh = max(60, (int)(env('OPERATOR_REPORT_FRESH_SECONDS', '300') ?? '300'));
 
 $shuttingDown = false;
 $shutdownReason = null;
@@ -125,6 +129,26 @@ do {
             'elapsed_ms' => (int)round((microtime(true) - $sendLogStarted) * 1000),
         ]);
         Metrics::increment('reports.send_dimension_log_worker.pass.failed', 1);
+    }
+
+    // Operator reports' daily summary (app/Reports/OperatorReport.php): rebuilds the days whose numbers
+    // may have moved — today every few minutes, older days less often — within a time budget.
+    $opStarted = microtime(true);
+    try {
+        $opStats = Metrics::time(
+            'reports.operator_report_worker.pass',
+            fn() => operator_report_worker_pass($opReportBudget, $opReportBackfillDays, $opReportFresh)
+        );
+        Logger::info('reports.operator_report_worker.pass_completed', $opStats + [
+            'elapsed_ms' => (int)round((microtime(true) - $opStarted) * 1000),
+        ]);
+        Metrics::gauge('reports.operator_report_worker.due_days', (int)($opStats['due'] ?? 0));
+    } catch (Throwable $t) {
+        Logger::critical('reports.operator_report_worker.pass_failed', [
+            'exception' => $t,
+            'elapsed_ms' => (int)round((microtime(true) - $opStarted) * 1000),
+        ]);
+        Metrics::increment('reports.operator_report_worker.pass.failed', 1);
     }
 
     if ($once || $shuttingDown) break;
