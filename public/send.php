@@ -160,6 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$extraStyles = ['/assets/css/sms-composer.css'];
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'send.direct';
 require __DIR__ . '/../app/views/impersonation_notice.php';
@@ -185,31 +186,53 @@ if (isset($costPreview) && $costPreview) {
     require __DIR__ . '/../app/views/cost_preview.php';
 }
 ?>
-<div class="card">
-  <form method="post">
-    <?= csrf_field() ?>
+<?php require_once __DIR__ . '/../app/views/sms_composer.php'; ?>
+<form method="post" data-composer data-composer-estimate="/send-estimate.php" data-composer-live-max="<?= live_cost_max_recipients() ?>">
+<?= csrf_field() ?>
+<div class="composer-layout">
+<div class="composer-main">
+
+  <section class="card" aria-labelledby="stepMessage">
+    <div class="composer-step-head">
+      <span class="composer-step-num" aria-hidden="true">۱</span>
+      <div><h2 id="stepMessage">متن پیام</h2><p class="hint">پیش‌نمایش و تعداد بخش‌ها همزمان با نوشتن به‌روز می‌شوند.</p></div>
+    </div>
+    <label>خط ارسال‌کننده (originator)
+      <?php if ($myNumbers): ?>
+        <select name="originator">
+          <?php $pickedOriginator = (string)($_POST['originator'] ?? $me['originator']); ?>
+          <?php foreach ($myNumbers as $n): ?>
+            <option value="<?= e($n['number']) ?>" <?= (string)$n['number'] === $pickedOriginator ? 'selected' : '' ?>>
+              <?= e($n['number']) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      <?php elseif (($me['role'] ?? null) === 'admin'): ?>
+        <input type="text" name="originator" class="msisdn" value="<?= e(user_default_send_originator($me)) ?>">
+        <div class="hint">خطی که گیرنده می‌بیند، مثلاً ۵۰۰۰۴۳۵۸۰۰.</div>
+      <?php else: ?>
+        <div class="flash flash-error"><?= e(NO_ASSIGNED_LINE_MESSAGE) ?></div>
+      <?php endif; ?>
+    </label>
+
+    <label>متن پیام
+      <textarea name="content" id="content" required rows="6" dir="auto" placeholder="مثلاً: مشتری گرامی، سفارش شما ارسال شد."><?= e($_POST['content'] ?? '') ?></textarea>
+    </label>
+    <?= composer_meter_html() ?>
+  </section>
+
+  <section class="card" aria-labelledby="stepRecipients">
+    <div class="composer-step-head">
+      <span class="composer-step-num" aria-hidden="true">۲</span>
+      <div><h2 id="stepRecipients">گیرندگان</h2><p class="hint">شماره‌های ۰۹… به‌طور خودکار به ۹۸… تبدیل می‌شوند. موارد تکراری حذف می‌شوند.</p></div>
+    </div>
+    <?php if ($groups || $categories): ?>
     <div class="form-row">
-      <label>خط ارسال‌کننده (originator)
-        <?php if ($myNumbers): ?>
-          <select name="originator">
-            <?php foreach ($myNumbers as $n): ?>
-              <option value="<?= e($n['number']) ?>" <?= $n['number'] === (string)$me['originator'] ? 'selected' : '' ?>>
-                <?= e($n['number']) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-        <?php elseif (($me['role'] ?? null) === 'admin'): ?>
-          <input type="text" name="originator" class="msisdn" value="<?= e(user_default_send_originator($me)) ?>">
-          <div class="hint">خطی که گیرنده می‌بیند، مثلاً ۵۰۰۰۴۳۵۸۰۰.</div>
-        <?php else: ?>
-          <div class="flash flash-error"><?= e(NO_ASSIGNED_LINE_MESSAGE) ?></div>
-        <?php endif; ?>
-      </label>
       <?php if ($groups): ?>
       <label>افزودن یک گروه مخاطب من
         <select name="group">
           <option value="">— هیچ‌کدام —</option>
-          <?php foreach ($groups as $g): ?><option value="<?= e($g) ?>"><?= e($g) ?></option><?php endforeach; ?>
+          <?php foreach ($groups as $g): ?><option value="<?= e($g) ?>"<?= (string)($_POST['group'] ?? '') === (string)$g ? ' selected' : '' ?>><?= e($g) ?></option><?php endforeach; ?>
         </select>
         <div class="hint">همه‌ی شماره‌های گروه به فهرست زیر افزوده می‌شوند.</div>
       </label>
@@ -219,69 +242,64 @@ if (isset($costPreview) && $costPreview) {
         <select name="category">
           <option value="">— هیچ‌کدام —</option>
           <?php foreach ($categories as $c): ?>
-            <option value="<?= $c['id'] ?>"><?= e($c['name']) ?> (<?= to_persian_digits((string)$c['c']) ?>)</option>
+            <option value="<?= $c['id'] ?>"<?= (string)($_POST['category'] ?? '') === (string)$c['id'] ? ' selected' : '' ?>><?= e($c['name']) ?> (<?= to_persian_digits((string)$c['c']) ?>)</option>
           <?php endforeach; ?>
         </select>
         <div class="hint">دسته‌های شماره را مدیر از «دسته‌های شماره» بارگذاری می‌کند.</div>
       </label>
       <?php endif; ?>
     </div>
+    <?php endif; ?>
 
     <label>شماره‌های مقصد
-      <textarea name="destinations" placeholder="989121234567&#10;989351234567 — هر شماره در یک خط، یا جدا‌شده با ویرگول / فاصله"><?= e($_POST['destinations'] ?? '') ?></textarea>
-      <div class="hint">شماره‌های ۰۹… به‌طور خودکار به ۹۸… تبدیل می‌شوند. موارد تکراری حذف می‌شوند.</div>
+      <textarea name="destinations" class="ltr" rows="6" placeholder="989121234567&#10;989351234567 — هر شماره در یک خط، یا جدا‌شده با ویرگول / فاصله"><?= e($_POST['destinations'] ?? '') ?></textarea>
     </label>
+    <?= composer_dest_stats_html() ?>
+  </section>
 
-    <label>متن پیام
-      <textarea name="content" id="content" required oninput="counter()"><?= e($_POST['content'] ?? '') ?></textarea>
-      <div class="hint" id="cnt">۰ نویسه · ۰ بخش</div>
-    </label>
-
-    <div class="form-row">
-      <label>زمان ارسال
-        <select name="mode" id="mode" onchange="document.getElementById('when').style.display=this.value==='later'?'grid':'none'">
-          <option value="now">ارسال فوری</option>
-          <option value="later">زمان‌بندی برای بعداً</option>
-        </select>
-      </label>
+  <section class="card" aria-labelledby="stepWhen">
+    <div class="composer-step-head">
+      <span class="composer-step-num" aria-hidden="true">۳</span>
+      <div><h2 id="stepWhen">زمان ارسال</h2></div>
     </div>
-
-    <div class="form-row" id="when" style="display:none">
-      <label>تاریخ ارسال
-        <?= jalali_date_select('send_date') ?>
-      </label>
-      <label>ساعت ارسال
-        <?= time_select('send_time') ?>
-      </label>
-      <label>تکرار
-        <select name="repeat">
-          <option value="none">فقط یک‌بار</option>
-          <option value="daily">هر روز</option>
-          <option value="weekly">هر هفته</option>
-          <option value="monthly">هر ماه</option>
-        </select>
-      </label>
+    <?php $postedSendMode = ($_POST['mode'] ?? 'now') === 'later' ? 'later' : 'now'; ?>
+    <div class="composer-modes composer-modes-2" role="radiogroup" aria-label="زمان ارسال">
+      <label class="composer-mode"><input type="radio" name="mode" value="now"<?= $postedSendMode === 'now' ? ' checked' : '' ?>><strong>ارسال فوری</strong><span>بلافاصله پس از تأیید</span></label>
+      <label class="composer-mode"><input type="radio" name="mode" value="later"<?= $postedSendMode === 'later' ? ' checked' : '' ?>><strong>زمان‌بندی برای بعداً</strong><span>در تاریخ و ساعت دلخواه، با تکرار</span></label>
     </div>
-
-    <div class="toolbar">
-      <button class="btn btn-primary" name="do" value="preview">محاسبه‌ی هزینه و ادامه</button>
-      <button class="btn" name="do" value="confirm">ارسال بدون پیش‌نمایش</button>
+    <div class="composer-mode-panel" id="when"<?= $postedSendMode === 'later' ? '' : ' hidden' ?>>
+      <div class="form-row">
+        <label>تاریخ ارسال
+          <?= jalali_date_select('send_date') ?>
+        </label>
+        <label>ساعت ارسال
+          <?= time_select('send_time') ?>
+        </label>
+        <label>تکرار
+          <select name="repeat">
+            <option value="none">فقط یک‌بار</option>
+            <option value="daily">هر روز</option>
+            <option value="weekly">هر هفته</option>
+            <option value="monthly">هر ماه</option>
+          </select>
+        </label>
+      </div>
     </div>
-    <div class="hint">«محاسبه‌ی هزینه» چیزی ارسال نمی‌کند و از اعتبار شما کسر نمی‌شود — فقط تعداد پیامک و هزینه‌ی تقریبی را نشان می‌دهد.</div>
-  </form>
+  </section>
 </div>
 
+<?= composer_side_html(
+    '<button class="btn btn-primary btn-block" name="do" value="preview">محاسبه‌ی هزینه و ادامه</button>'
+  . '<button class="btn btn-block" name="do" value="confirm">ارسال بدون پیش‌نمایش</button>'
+  . '<p class="hint">«محاسبه‌ی هزینه» چیزی ارسال نمی‌کند و از اعتبار شما کسر نمی‌شود — فقط تعداد پیامک و هزینه‌ی تقریبی را نشان می‌دهد.</p>'
+) ?>
+</div>
+</form>
+
+<script src="<?= e(asset_url('/assets/js/sms-composer.js')) ?>"></script>
 <script>
-function counter() {
-  const v = document.getElementById('content').value;
-  const uni = /[^\x20-\x7E\r\n]/.test(v);
-  const len = [...v].length;
-  let parts = 0;
-  if (len > 0) parts = uni ? (len <= 70 ? 1 : Math.ceil(len / 67)) : (len <= 160 ? 1 : Math.ceil(len / 153));
-  const fa = n => String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
-  document.getElementById('cnt').textContent =
-    fa(len) + ' نویسه · ' + fa(parts) + ' بخش' + (uni ? ' · یونیکد (فارسی)' : '');
-}
-counter();
+document.querySelectorAll('input[name=mode]').forEach(function (r) {
+  r.addEventListener('change', function () { document.getElementById('when').hidden = r.value !== 'later' || !r.checked; });
+});
 </script>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

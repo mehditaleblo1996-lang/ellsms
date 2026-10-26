@@ -68,6 +68,9 @@ final class CleanUrlRoutingTest extends TestCase
             // and is deliberately not given a public canonical GET route.
             'send-queue.php',
             'import-cancel.php',
+            // POST-only JSON endpoint behind the send composer's live cost (app/LiveCostEstimate.php);
+            // fetched by script, never navigated to.
+            'send-estimate.php',
             // Pure implementation file for reports.php's own stable route (`require`d directly, no
             // wrapping) -- reports.php already owns the canonical /messages/reports URL.
             'reports-v2.php',
@@ -99,7 +102,7 @@ final class CleanUrlRoutingTest extends TestCase
     {
         $prepend = (string)file_get_contents(dirname(__DIR__, 2) . '/app/Support/AuditPrepend.php');
         $exempt = [
-            'health.php', 'health-ready.php', 'zarinpal-callback.php', 'send-queue.php', 'import-cancel.php',
+            'health.php', 'health-ready.php', 'zarinpal-callback.php', 'send-queue.php', 'import-cancel.php', 'send-estimate.php',
             'reports-v2.php', 'telegram-webhook.php',
             // SMS provider push callbacks (/mo, /delivery): called by the provider, never linked.
             'mo.php', 'delivery.php',

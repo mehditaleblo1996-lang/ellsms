@@ -27,8 +27,8 @@ declare(strict_types=1);
  */
 function menu_catalog(): array {
     return [
-        'new_send'      => ['پنل جدید ارسال',       '🆕', '/new-send.php',      ['new-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
-        'send'          => ['ارسال پیامک',          '➤',  '/send.php',          ['send.php', 'send-queue.php']],
+        'new_send'      => ['پنل جدید ارسال',       '🆕', '/new-send.php',      ['new-send.php', 'send-estimate.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
+        'send'          => ['ارسال پیامک',          '➤',  '/send.php',          ['send.php', 'send-queue.php', 'send-estimate.php']],
         'p2p'           => ['نظیر به نظیر',         '⇄',  '/p2p-send.php',      ['p2p-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
         'smart'         => ['پیامک هوشمند',         '✦',  '/smart-send.php',    ['smart-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
         'schedules'     => ['زمان‌بندی‌شده',         '◷',  '/schedules.php',     ['schedules.php']],

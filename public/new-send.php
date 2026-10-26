@@ -212,6 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+$extraStyles = ['/assets/css/sms-composer.css'];
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'send.direct';
 require __DIR__ . '/../app/views/impersonation_notice.php';
@@ -238,14 +239,23 @@ if (isset($costPreview) && $costPreview) {
     require __DIR__ . '/../app/views/cost_preview.php';
 }
 ?>
-<form method="post" id="newSendForm">
+<?php
+require_once __DIR__ . '/../app/views/sms_composer.php';
+$postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? ($_POST['mode'] ?? 'direct') : 'direct';
+?>
+<form method="post" id="newSendForm" data-composer data-composer-estimate="/send-estimate.php" data-composer-live-max="<?= live_cost_max_recipients() ?>">
 <?= csrf_field() ?>
 <input type="hidden" name="mode" id="modeField" value="direct">
-<div class="grid grid-3">
+<div class="composer-layout">
+<div class="composer-main">
 
-  <div class="card">
-    <h2>مشخصات پیامک</h2>
+  <section class="card" aria-labelledby="stepMessage">
+    <div class="composer-step-head">
+      <span class="composer-step-num" aria-hidden="true">۱</span>
+      <div><h2 id="stepMessage">متن پیام</h2><p class="hint">خط ارسال را انتخاب کنید و پیام را بنویسید؛ پیش‌نمایش و تعداد بخش‌ها همزمان به‌روز می‌شوند.</p></div>
+    </div>
 
+    <div class="form-row">
       <?php if ($campaigns): ?>
       <label>بارگذاری کمپین ذخیره‌شده
         <select id="campaignSelect">
@@ -261,7 +271,7 @@ if (isset($costPreview) && $costPreview) {
         <?php if ($myNumbers): ?>
           <select name="originator" id="originatorSelect">
             <?php foreach ($myNumbers as $n): $isService = isset($serviceLines[(string)$n['number']]); ?>
-              <option value="<?= e($n['number']) ?>" data-service="<?= $isService ? '1' : '0' ?>"><?= e($n['number']) ?><?= $isService ? ' — خدماتی' : '' ?></option>
+              <option value="<?= e($n['number']) ?>" data-service="<?= $isService ? '1' : '0' ?>"<?= (string)($_POST['originator'] ?? '') === (string)$n['number'] ? ' selected' : '' ?>><?= e($n['number']) ?><?= $isService ? ' — خدماتی' : '' ?></option>
             <?php endforeach; ?>
           </select>
         <?php elseif (($me['role'] ?? null) === 'admin'): ?>
@@ -270,128 +280,115 @@ if (isset($costPreview) && $costPreview) {
           <div class="flash flash-error"><?= e(NO_ASSIGNED_LINE_MESSAGE) ?></div>
         <?php endif; ?>
       </label>
+    </div>
+    <?php if ($serviceLines): ?>
+      <p class="hint composer-line-hint" id="serviceLineHint" hidden>
+        این خط خدماتی است: ارسال از آن با لیست سیاه بررسی نمی‌شود (لغو عضویت «۱۱» همچنان رعایت می‌شود).
+      </p>
+    <?php endif; ?>
 
-      <div class="hint" id="counterHint" style="margin-bottom:10px">۰ نویسه · ۰ بخش</div>
+    <label>متن پیام *
+      <textarea name="content" id="contentField" required rows="6" dir="auto" placeholder="مثلاً: مشتری گرامی، سفارش شما ارسال شد."><?= e($_POST['content'] ?? '') ?></textarea>
+    </label>
+    <?= composer_meter_html() ?>
 
-      <label>متن پیام *
-        <textarea name="content" id="contentField" required oninput="onContentInput()"><?= e($_POST['content'] ?? '') ?></textarea>
-      </label>
-
-      <div class="toolbar" style="margin-bottom:12px">
-        <button type="button" class="btn btn-sm" onclick="togglePreview()">👁 پیش‌نمایش</button>
-        <button type="button" class="btn btn-sm" onclick="toggleEmoji()">🙂 شکلک</button>
-        <label style="display:inline-flex;align-items:center;gap:6px;font-weight:500;font-size:13px;margin:0">
-          <input type="checkbox" id="digitConvert" onchange="onContentInput()" style="width:auto;margin:0">
-          تبدیل ارقام فارسی به لاتین
-        </label>
-      </div>
-
-      <div id="emojiBox" style="display:none;margin-bottom:12px" class="card">
-        <?php foreach (['😀','😁','😊','👍','🙏','🎉','❤️','✅','⏰','📌','🔥','⭐'] as $em): ?>
-          <button type="button" class="btn btn-sm" style="margin:2px" onclick="insertAtCursor('<?= $em ?>')"><?= $em ?></button>
-        <?php endforeach; ?>
-      </div>
-
-      <div id="previewBox" style="display:none;margin-bottom:12px" class="card">
-        <div class="hint">پیش‌نمایش پیام:</div>
-        <div id="previewText" style="white-space:pre-wrap"></div>
-      </div>
-
-      <label>توضیحات <input type="text" name="notes" placeholder="یادداشت داخلی برای این ارسال"></label>
-
-      <label style="display:flex;align-items:center;gap:8px">
-        <input type="checkbox" name="use_blacklist" value="1" style="width:auto;margin:0">
-        فقط ارسال به لیست سفید (رد کردن شماره‌های لیست سیاه)
-        <a href="/blacklist.php" class="hint" style="margin-inline-start:auto">مدیریت لیست سیاه</a>
-      </label>
-      <?php if ($serviceLines): ?>
-        <div class="hint" id="serviceLineHint" style="display:none;margin-top:-6px">
-          این خط خدماتی است: ارسال از آن با لیست سیاه بررسی نمی‌شود (لغو عضویت «۱۱» همچنان رعایت می‌شود).
-        </div>
-      <?php endif; ?>
-
-      <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
-        <input type="checkbox" name="save_campaign" value="1" id="saveCampaignChk" onchange="document.getElementById('campaignNameField').style.display=this.checked?'block':'none'" style="width:auto;margin:0">
-        ذخیره به عنوان کمپین
-      </label>
-      <div id="campaignNameField" style="display:none">
-        <label>نام کمپین <input type="text" name="campaign_name" placeholder="مثلاً یادآوری ماهانه"></label>
-      </div>
-
-      <div class="grid grid-2" style="margin-top:14px">
-        <label>گیرندگان سریع (اختیاری)
-          <input type="text" id="quickRecipients" class="ltr" placeholder="0912…">
-        </label>
-        <div style="align-self:end">
-          <button type="button" class="btn btn-block" onclick="quickSend()">ارسال سریع</button>
-        </div>
-      </div>
-  </div>
-
-  <div class="card">
-    <h2>گیرندگان</h2>
-    <div class="toolbar">
-      <button type="button" class="btn btn-sm" id="tabManual" onclick="setTab('manual')">⌨ دستی</button>
-      <button type="button" class="btn btn-sm" id="tabUpload" onclick="setTab('upload')">⬆ آپلود فایل</button>
-      <button type="button" class="btn btn-sm" id="tabClip" onclick="setTab('clip')">📋 کلیپ بورد</button>
+    <div class="composer-tools">
+      <button type="button" class="btn btn-sm btn-ghost" id="emojiToggle" aria-expanded="false" aria-controls="emojiBox">🙂 شکلک</button>
+      <label class="check"><input type="checkbox" id="digitConvert"> تبدیل ارقام فارسی به لاتین</label>
+    </div>
+    <div id="emojiBox" class="composer-emoji" hidden>
+      <?php foreach (['😀','😁','😊','👍','🙏','🎉','❤️','✅','⏰','📌','🔥','⭐'] as $em): ?>
+        <button type="button" class="btn btn-sm btn-ghost" data-emoji="<?= $em ?>" aria-label="درج <?= $em ?>"><?= $em ?></button>
+      <?php endforeach; ?>
     </div>
 
-    <div id="uploadAux" style="display:none;margin-bottom:12px">
-      <input type="file" id="fileInput" accept=".txt,.csv" onchange="onFilePicked(event)">
+    <label class="check composer-check">
+      <input type="checkbox" name="save_campaign" value="1" id="saveCampaignChk">
+      ذخیره‌ی این پیام به عنوان کمپین
+    </label>
+    <div id="campaignNameField" hidden>
+      <label>نام کمپین <input type="text" name="campaign_name" placeholder="مثلاً یادآوری ماهانه"></label>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="stepRecipients">
+    <div class="composer-step-head">
+      <span class="composer-step-num" aria-hidden="true">۲</span>
+      <div><h2 id="stepRecipients">گیرندگان</h2><p class="hint">شماره‌ها را وارد کنید؛ شماره‌های ۰۹… خودکار به ۹۸… تبدیل و تکراری‌ها یک‌بار شمرده می‌شوند.</p></div>
+    </div>
+
+    <div class="composer-tabs" role="group" aria-label="شیوه‌ی وارد کردن شماره‌ها">
+      <button type="button" class="btn btn-sm" id="tabManual" data-tab="manual" aria-pressed="true">⌨ دستی</button>
+      <button type="button" class="btn btn-sm" id="tabUpload" data-tab="upload" aria-pressed="false">⬆ آپلود فایل</button>
+      <button type="button" class="btn btn-sm" id="tabClip" data-tab="clip" aria-pressed="false">📋 کلیپ‌بورد</button>
+    </div>
+
+    <div id="uploadAux" class="composer-aux" hidden>
+      <input type="file" id="fileInput" accept=".txt,.csv">
       <div class="hint">فقط txt و csv — برای xlsx از «نظیر به نظیر» یا «پیامک هوشمند» استفاده کنید.</div>
     </div>
-    <div id="clipAux" style="display:none;margin-bottom:12px">
-      <button type="button" class="btn btn-sm" onclick="pasteFromClipboard()">چسباندن از کلیپ‌بورد</button>
+    <div id="clipAux" class="composer-aux" hidden>
+      <button type="button" class="btn btn-sm" id="clipPaste">چسباندن از کلیپ‌بورد</button>
     </div>
 
     <?php if ($groups || $categories): ?>
     <div class="form-row">
       <?php if ($groups): ?>
       <label>گروه مخاطبین من
-        <select name="group" form="newSendForm">
+        <select name="group">
           <option value="">— هیچ‌کدام —</option>
-          <?php foreach ($groups as $g): ?><option value="<?= e($g) ?>"><?= e($g) ?></option><?php endforeach; ?>
+          <?php foreach ($groups as $g): ?><option value="<?= e($g) ?>"<?= (string)($_POST['group'] ?? '') === (string)$g ? ' selected' : '' ?>><?= e($g) ?></option><?php endforeach; ?>
         </select>
       </label>
       <?php endif; ?>
       <?php if ($categories): ?>
       <label>دسته‌ی عمومی شماره
-        <select name="category" form="newSendForm">
+        <select name="category">
           <option value="">— هیچ‌کدام —</option>
-          <?php foreach ($categories as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['name']) ?> (<?= to_persian_digits((string)$c['c']) ?>)</option><?php endforeach; ?>
+          <?php foreach ($categories as $c): ?><option value="<?= $c['id'] ?>"<?= (string)($_POST['category'] ?? '') === (string)$c['id'] ? ' selected' : '' ?>><?= e($c['name']) ?> (<?= to_persian_digits((string)$c['c']) ?>)</option><?php endforeach; ?>
         </select>
       </label>
       <?php endif; ?>
     </div>
     <?php endif; ?>
 
-    <label>شماره‌ها (هر شماره در یک خط، یا جدا‌شده با ویرگول/فاصله)
-      <textarea name="destinations" id="destField" form="newSendForm" oninput="onDestInput()" placeholder="0912...&#10;0935..."><?= e($_POST['destinations'] ?? '') ?></textarea>
+    <label>شماره‌ها (هر شماره در یک خط، یا جداشده با ویرگول / فاصله)
+      <textarea name="destinations" id="destField" class="ltr" rows="6" placeholder="09121234567&#10;09351234567"><?= e($_POST['destinations'] ?? '') ?></textarea>
+    </label>
+    <?= composer_dest_stats_html() ?>
+
+    <label class="check composer-check">
+      <input type="checkbox" name="use_blacklist" value="1"<?= !empty($_POST['use_blacklist']) ? ' checked' : '' ?>>
+      شماره‌های لیست سیاه حذف شوند
+      <a href="/blacklist.php" class="composer-check-link">مدیریت لیست سیاه</a>
     </label>
 
-    <div class="form-row">
-      <label>شماره‌های صحیح (<span id="validCount">۰</span>)
-        <textarea id="validBox" readonly style="min-height:120px;background:var(--tint)"></textarea>
+    <div class="composer-quick">
+      <label>ارسال سریع به یک شماره (اختیاری)
+        <input type="text" id="quickRecipients" class="ltr" placeholder="0912…">
       </label>
-      <label>شماره‌های اشتباه (<span id="invalidCount">۰</span>)
-        <textarea id="invalidBox" readonly style="min-height:120px;background:var(--err-bg)"></textarea>
-      </label>
+      <button type="button" class="btn" id="quickSendButton">ارسال سریع</button>
     </div>
-  </div>
+    <p class="hint composer-line-hint">«ارسال سریع» شماره را به فهرست اضافه می‌کند و بی‌درنگ، بدون پیش‌نمایش هزینه، می‌فرستد.</p>
+  </section>
 
-  <div class="card">
-    <h2>تنظیمات ارسال</h2>
+  <section class="card" aria-labelledby="stepMode">
+    <div class="composer-step-head">
+      <span class="composer-step-num" aria-hidden="true">۳</span>
+      <div><h2 id="stepMode">زمان و شیوه‌ی ارسال</h2><p class="hint">هزینه در هر سه حالت یکسان است.</p></div>
+    </div>
 
-    <?php $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? $_POST['mode'] : 'direct'; ?>
-    <label style="display:flex;align-items:center;gap:8px">
-      <input type="radio" name="mode_ui" value="direct" <?= $postedMode === 'direct' ? 'checked' : '' ?> onchange="setMode('direct')" style="width:auto;margin:0">
-      ارسال مستقیم
-    </label>
-    <div id="directPanel" class="card" style="margin:8px 0 16px">
-      <div class="hint">پیام بلافاصله پس از ثبت فرم ارسال می‌شود.</div>
+    <div class="composer-modes" role="radiogroup" aria-label="شیوه‌ی ارسال">
+      <label class="composer-mode"><input type="radio" name="mode_ui" value="direct"<?= $postedMode === 'direct' ? ' checked' : '' ?>><strong>ارسال مستقیم</strong><span>بلافاصله پس از تأیید</span></label>
+      <label class="composer-mode"><input type="radio" name="mode_ui" value="recurring"<?= $postedMode === 'recurring' ? ' checked' : '' ?>><strong>ارسال دوره‌ای</strong><span>در تاریخ و ساعت دلخواه، با تکرار</span></label>
+      <label class="composer-mode"><input type="radio" name="mode_ui" value="gradual"<?= $postedMode === 'gradual' ? ' checked' : '' ?>><strong>ارسال تدریجی</strong><span>چند پیام در هر چند دقیقه</span></label>
+    </div>
+
+    <div id="directPanel" class="composer-mode-panel">
+      <p class="hint">پیام بلافاصله پس از ثبت فرم ارسال می‌شود.</p>
       <?php if (bale_configured()): ?>
-        <label>کانال ارسال
-          <select name="channel" form="newSendForm">
+        <label class="composer-channel">کانال ارسال
+          <select name="channel">
             <option value="sms">پیامک</option>
             <option value="bale">پیام‌رسان بله</option>
             <option value="bale_sms">بله، و پیامک برای کسانی که بله ندارند</option>
@@ -399,185 +396,129 @@ if (isset($costPreview) && $costPreview) {
         </label>
       <?php endif; ?>
     </div>
-
-    <label style="display:flex;align-items:center;gap:8px">
-      <input type="radio" name="mode_ui" value="recurring" <?= $postedMode === 'recurring' ? 'checked' : '' ?> onchange="setMode('recurring')" style="width:auto;margin:0">
-      ارسال دوره‌ای
-    </label>
-    <div id="recurringPanel" class="card" style="margin:8px 0 16px;display:none">
-      <label>تاریخ ارسال <?= jalali_date_select('send_date') ?></label>
-      <label>ساعت ارسال <?= time_select('send_time') ?></label>
-      <label>تکرار
-        <select name="repeat" form="newSendForm">
-          <option value="none">فقط یک‌بار</option>
-          <option value="daily">هر روز</option>
-          <option value="weekly">هر هفته</option>
-          <option value="monthly">هر ماه</option>
-        </select>
-      </label>
+    <div id="recurringPanel" class="composer-mode-panel" hidden>
+      <div class="form-row">
+        <label>تاریخ ارسال <?= jalali_date_select('send_date') ?></label>
+        <label>ساعت ارسال <?= time_select('send_time') ?></label>
+        <label>تکرار
+          <select name="repeat">
+            <option value="none">فقط یک‌بار</option>
+            <option value="daily">هر روز</option>
+            <option value="weekly">هر هفته</option>
+            <option value="monthly">هر ماه</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div id="gradualPanel" class="composer-mode-panel" hidden>
+      <div class="form-row">
+        <label>تعداد پیام <input type="number" name="throttle_count" value="10" min="1"></label>
+        <label>در هر (دقیقه) <input type="number" name="throttle_minutes" value="5" min="1"></label>
+      </div>
+      <p class="hint">مثال بالا: هر ۵ دقیقه، ۱۰ پیام ارسال می‌شود تا تمام شود.</p>
     </div>
 
-    <label style="display:flex;align-items:center;gap:8px">
-      <input type="radio" name="mode_ui" value="gradual" <?= $postedMode === 'gradual' ? 'checked' : '' ?> onchange="setMode('gradual')" style="width:auto;margin:0">
-      ارسال تدریجی
-    </label>
-    <div id="gradualPanel" class="card" style="margin:8px 0 16px;display:none">
-      <label>تعداد پیام <input type="number" name="throttle_count" form="newSendForm" value="10" min="1"></label>
-      <label>در هر (دقیقه) <input type="number" name="throttle_minutes" form="newSendForm" value="5" min="1"></label>
-      <div class="hint">مثال بالا: هر ۵ دقیقه، ۱۰ پیام ارسال می‌شود تا تمام شود.</div>
-    </div>
+    <label>توضیحات <input type="text" name="notes" placeholder="یادداشت داخلی برای این ارسال"></label>
+  </section>
+</div>
 
-    <button type="submit" form="newSendForm" name="do" value="preview" class="btn btn-primary btn-block">محاسبه‌ی هزینه و ادامه</button>
-    <button type="submit" form="newSendForm" name="do" value="confirm" class="btn btn-block" style="margin-top:8px">ارسال بدون پیش‌نمایش</button>
-    <div class="hint">«محاسبه‌ی هزینه» چیزی ارسال نمی‌کند و از اعتبار کسر نمی‌شود.</div>
-  </div>
+<?= composer_side_html(
+    '<button type="submit" name="do" value="preview" class="btn btn-primary btn-block">محاسبه‌ی هزینه و ادامه</button>'
+  . '<button type="submit" name="do" value="confirm" class="btn btn-block">ارسال بدون پیش‌نمایش</button>'
+  . '<p class="hint">«محاسبه‌ی هزینه» چیزی ارسال نمی‌کند و از اعتبار کسر نمی‌شود.</p>'
+) ?>
 </div>
 </form>
 
+<script src="<?= e(asset_url('/assets/js/sms-composer.js')) ?>"></script>
 <script>
-function normalizeMsisdn(raw) {
-  let n = raw.replace(/[^\d+]/g, '').trim();
-  if (!n) return null;
-  if (n[0] === '+') n = n.slice(1);
-  if (n.startsWith('00')) n = n.slice(2);
-  if (n.startsWith('09') && n.length === 11) n = '98' + n.slice(1);
-  if (n.startsWith('9') && n.length === 10) n = '98' + n;
-  return /^\d{10,15}$/.test(n) ? n : null;
-}
-function faDigits(s) { return String(s).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]); }
+(function () {
+  const refresh = () => window.smsComposerRefresh && window.smsComposerRefresh();
+  const content = document.getElementById('contentField');
+  const dest = document.getElementById('destField');
+  const show = (id, on) => { document.getElementById(id).hidden = !on; };
 
-let destTimer = null;
-function onDestInput() {
-  clearTimeout(destTimer);
-  destTimer = setTimeout(splitDest, 200);
-}
-function splitDest() {
-  const raw = document.getElementById('destField').value;
-  const parts = raw.split(/[\s,;،]+/).filter(Boolean);
-  const valid = [], invalid = [];
-  const seen = new Set();
-  parts.forEach(p => {
-    const n = normalizeMsisdn(p);
-    if (n) { if (!seen.has(n)) { seen.add(n); valid.push(n); } }
-    else invalid.push(p);
+  function insertAtCursor(text) {
+    const start = content.selectionStart, end = content.selectionEnd;
+    content.value = content.value.slice(0, start) + text + content.value.slice(end);
+    content.selectionStart = content.selectionEnd = start + text.length;
+    content.focus();
+    refresh();
+  }
+  const emojiToggle = document.getElementById('emojiToggle');
+  emojiToggle.addEventListener('click', () => {
+    const box = document.getElementById('emojiBox');
+    box.hidden = !box.hidden;
+    emojiToggle.setAttribute('aria-expanded', String(!box.hidden));
   });
-  document.getElementById('validBox').value = valid.join('\n');
-  document.getElementById('invalidBox').value = invalid.join('\n');
-  document.getElementById('validCount').textContent = faDigits(valid.length);
-  document.getElementById('invalidCount').textContent = faDigits(invalid.length);
-}
+  document.querySelectorAll('[data-emoji]').forEach(b => b.addEventListener('click', () => insertAtCursor(b.dataset.emoji)));
 
-function onContentInput() {
-  const field = document.getElementById('contentField');
-  if (document.getElementById('digitConvert').checked) {
-    const fa = '۰۱۲۳۴۵۶۷۸۹', ar = '٠١٢٣٤٥٦٧٨٩';
-    let v = field.value, pos = field.selectionStart;
-    v = v.replace(/[۰-۹٠-٩]/g, d => {
-      let i = fa.indexOf(d); if (i === -1) i = ar.indexOf(d);
-      return i === -1 ? d : String(i);
-    });
-    if (v !== field.value) { field.value = v; field.selectionStart = field.selectionEnd = pos; }
+  document.getElementById('saveCampaignChk').addEventListener('change', e => show('campaignNameField', e.target.checked));
+
+  function appendDest(text) {
+    dest.value = (dest.value ? dest.value + '\n' : '') + text;
+    refresh();
   }
-  const v = field.value;
-  const uni = /[^\x20-\x7E\r\n]/.test(v);
-  const len = [...v].length;
-  let parts = 0;
-  if (len > 0) parts = uni ? (len <= 70 ? 1 : Math.ceil(len / 67)) : (len <= 160 ? 1 : Math.ceil(len / 153));
-  document.getElementById('counterHint').textContent =
-    faDigits(len) + ' نویسه · ' + faDigits(parts) + ' بخش' + (uni ? ' · یونیکد (فارسی)' : '');
-  if (document.getElementById('previewBox').style.display !== 'none') {
-    document.getElementById('previewText').textContent = v;
+  document.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
+    const tab = b.dataset.tab;
+    show('uploadAux', tab === 'upload');
+    show('clipAux', tab === 'clip');
+    document.querySelectorAll('[data-tab]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+  document.getElementById('fileInput').addEventListener('change', ev => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => appendDest(e.target.result);
+    reader.readAsText(file, 'UTF-8');
+  });
+  document.getElementById('clipPaste').addEventListener('click', () => {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      alert('مرورگر شما از این قابلیت پشتیبانی نمی‌کند.');
+      return;
+    }
+    navigator.clipboard.readText().then(appendDest).catch(() => alert('اجازه‌ی دسترسی به کلیپ‌بورد داده نشد.'));
+  });
+
+  function setMode(mode) {
+    document.getElementById('modeField').value = mode;
+    show('directPanel', mode === 'direct');
+    show('recurringPanel', mode === 'recurring');
+    show('gradualPanel', mode === 'gradual');
   }
-}
+  document.querySelectorAll('input[name=mode_ui]').forEach(r => r.addEventListener('change', () => setMode(r.value)));
 
-function togglePreview() {
-  const box = document.getElementById('previewBox');
-  box.style.display = box.style.display === 'none' ? 'block' : 'none';
-  document.getElementById('previewText').textContent = document.getElementById('contentField').value;
-}
-function toggleEmoji() {
-  const box = document.getElementById('emojiBox');
-  box.style.display = box.style.display === 'none' ? 'block' : 'none';
-}
-function insertAtCursor(text) {
-  const field = document.getElementById('contentField');
-  const start = field.selectionStart, end = field.selectionEnd;
-  field.value = field.value.slice(0, start) + text + field.value.slice(end);
-  field.selectionStart = field.selectionEnd = start + text.length;
-  field.focus();
-  onContentInput();
-}
-
-function setTab(tab) {
-  document.getElementById('uploadAux').style.display = tab === 'upload' ? 'block' : 'none';
-  document.getElementById('clipAux').style.display = tab === 'clip' ? 'block' : 'none';
-  ['tabManual', 'tabUpload', 'tabClip'].forEach(id => document.getElementById(id).classList.remove('btn-primary'));
-  document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('btn-primary');
-}
-function onFilePicked(ev) {
-  const file = ev.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function (e) {
-    const field = document.getElementById('destField');
-    field.value = (field.value ? field.value + '\n' : '') + e.target.result;
-    onDestInput();
-  };
-  reader.readAsText(file, 'UTF-8');
-}
-function pasteFromClipboard() {
-  if (!navigator.clipboard || !navigator.clipboard.readText) {
-    alert('مرورگر شما از این قابلیت پشتیبانی نمی‌کند.');
-    return;
-  }
-  navigator.clipboard.readText().then(text => {
-    const field = document.getElementById('destField');
-    field.value = (field.value ? field.value + '\n' : '') + text;
-    onDestInput();
-  }).catch(() => alert('اجازه‌ی دسترسی به کلیپ‌بورد داده نشد.'));
-}
-
-function setMode(mode) {
-  document.getElementById('modeField').value = mode;
-  document.getElementById('directPanel').style.display = mode === 'direct' ? 'block' : 'none';
-  document.getElementById('recurringPanel').style.display = mode === 'recurring' ? 'block' : 'none';
-  document.getElementById('gradualPanel').style.display = mode === 'gradual' ? 'block' : 'none';
-}
-
-function quickSend() {
-  const q = document.getElementById('quickRecipients').value.trim();
-  if (!q) { alert('شماره گیرنده را وارد کنید.'); return; }
-  const field = document.getElementById('destField');
-  field.value = (field.value ? field.value + '\n' : '') + q;
-  setMode('direct');
-  document.querySelector('input[name=mode_ui][value=direct]').checked = true;
-  document.getElementById('newSendForm').submit();
-}
+  document.getElementById('quickSendButton').addEventListener('click', () => {
+    const q = document.getElementById('quickRecipients').value.trim();
+    if (!q) { alert('شماره گیرنده را وارد کنید.'); return; }
+    dest.value = (dest.value ? dest.value + '\n' : '') + q;
+    setMode('direct');
+    document.querySelector('input[name=mode_ui][value=direct]').checked = true;
+    document.getElementById('newSendForm').submit();
+  });
 
 <?php if ($serviceLines): ?>
-(function () {
   const sel = document.getElementById('originatorSelect');
   const hint = document.getElementById('serviceLineHint');
-  if (!sel || !hint) return;
-  const sync = () => { hint.style.display = sel.selectedOptions[0]?.dataset.service === '1' ? 'block' : 'none'; };
-  sel.addEventListener('change', sync);
-  sync();
-})();
+  if (sel && hint) {
+    const sync = () => { hint.hidden = sel.selectedOptions[0]?.dataset.service !== '1'; };
+    sel.addEventListener('change', sync);
+    sync();
+  }
 <?php endif; ?>
 
 <?php if ($campaigns): ?>
-document.getElementById('campaignSelect').addEventListener('change', function () {
-  const opt = this.selectedOptions[0];
-  if (!opt || !opt.value) return;
-  const originatorField = document.querySelector('[name=originator]');
-  if (originatorField) { originatorField.value = opt.dataset.originator; originatorField.dispatchEvent(new Event('change')); }
-  document.getElementById('contentField').value = opt.dataset.content;
-  onContentInput();
-});
+  document.getElementById('campaignSelect').addEventListener('change', function () {
+    const opt = this.selectedOptions[0];
+    if (!opt || !opt.value) return;
+    const originatorField = document.querySelector('[name=originator]');
+    if (originatorField) { originatorField.value = opt.dataset.originator; originatorField.dispatchEvent(new Event('change')); }
+    content.value = opt.dataset.content;
+    refresh();
+  });
 <?php endif; ?>
 
-setMode('<?= e($postedMode) ?>');
-splitDest();
-onContentInput();
+  setMode(<?= json_encode($postedMode) ?>);
+})();
 </script>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>
