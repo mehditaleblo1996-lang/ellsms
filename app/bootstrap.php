@@ -129,6 +129,9 @@ require_once __DIR__ . '/RemoteDb/Sync.php';
 // Voice messages through ZarinCall (docs/voice-messages.md).
 require_once __DIR__ . '/Voice/ZarinCall.php';
 require_once __DIR__ . '/VoiceMessages.php';
+// LBA (location-based) sending through LBA gateways (docs/lba.md).
+require_once __DIR__ . '/Lba/PishgamSmartSms.php';
+require_once __DIR__ . '/Lba.php';
 // Shared OTP — approved templates sent from the platform's shared lines (docs/shared-otp.md).
 require_once __DIR__ . '/SharedOtp.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
@@ -244,10 +247,13 @@ ErrorHandler::register();
  * oversight; tightening it further means migrating those inline
  * handlers to external/nonced scripts, a larger change than this step.
  */
-function send_security_headers(): void {
+function send_security_headers(array $extraImageOrigins = []): void {
     if (headers_sent() || PHP_SAPI === 'cli') {
         return;
     }
+    // A page that shows map tiles (public/lba.php) calls this again with the tile server's origin: the
+    // second Content-Security-Policy header replaces the first. Only plain https origins are accepted.
+    $extraImageOrigins = array_values(array_filter($extraImageOrigins, static fn($o): bool => is_string($o) && preg_match('#^https://[a-z0-9.-]+(:\d+)?$#i', $o) === 1));
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('X-Frame-Options: SAMEORIGIN'); // legacy fallback alongside frame-ancestors below for older browsers
@@ -255,7 +261,7 @@ function send_security_headers(): void {
         "Content-Security-Policy: default-src 'self'; " .
         "script-src 'self' 'unsafe-inline'; " .
         "style-src 'self' 'unsafe-inline'; " .
-        "img-src 'self' data:; " .
+        "img-src 'self' data:" . ($extraImageOrigins === [] ? '' : ' ' . implode(' ', $extraImageOrigins)) . "; " .
         "font-src 'self'; " .
         "object-src 'none'; " .
         "base-uri 'self'; " .

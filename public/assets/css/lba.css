@@ -1,0 +1,21 @@
+/* LBA page (public/lba.php): the polygon map and the form sections. */
+.lba-map { display: flex; flex-direction: column; gap: 8px; }
+.lba-map-view { position: relative; height: 420px; overflow: hidden; border-radius: 10px; border: 1px solid var(--border, #d9dde3);
+  background: #e9edf1; cursor: crosshair; touch-action: none; user-select: none; direction: ltr; }
+.lba-map[data-readonly] .lba-map-view { cursor: grab; height: 320px; }
+.lba-map-tiles img { position: absolute; width: 256px; height: 256px; max-width: none; pointer-events: none; }
+.lba-map-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.lba-poly { fill: rgba(37, 99, 235, .22); stroke: #2563eb; stroke-width: 2; }
+.lba-poly-draft { fill: rgba(234, 88, 12, .15); stroke: #ea580c; stroke-width: 2; stroke-dasharray: 6 4; }
+.lba-poly-point { fill: #fff; stroke: #ea580c; stroke-width: 2; }
+.lba-map-credit { position: absolute; bottom: 0; right: 0; background: rgba(255, 255, 255, .85); font-size: 11px; padding: 1px 6px; color: #333; }
+.lba-map-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.lba-map-info { font-size: 12px; }
+.lba-section { border: 1px dashed var(--border, #d9dde3); border-radius: 10px; padding: 10px 12px; margin: 10px 0; }
+.lba-section > legend { padding: 0 6px; font-weight: 600; }
+.lba-checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.lba-checks label { display: inline-flex; gap: 4px; align-items: center; }
+.lba-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.lba-cost { font-weight: 600; }
+select[multiple].lba-multi { min-height: 7.5em; min-width: 14em; }
+@media (max-width: 640px) { .lba-map-view { height: 320px; } }

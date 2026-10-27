@@ -69,6 +69,18 @@ charged and the rest is released. The admin sets the API key (stored encrypted w
 **/messages/voice/files**, or `POST /api/v1/voice/*` (scopes `voice:send` / `voice:read`). See
 [`docs/voice-messages.md`](docs/voice-messages.md).
 
+## LBA — location-based sending (ارسال پیام منطقه‌ای)
+
+Customers can send to the people in an area drawn on a map (or a list of cell towers, a city, a province
+or an airport), filtered by age, gender, device and residence, once a line of theirs has an **LBA gateway**.
+LBA gateways are their own kind, kept apart from the SMS gateways: the admin defines them on
+**/admin/lba-gateways** (token stored encrypted with `SMS_GATEWAY_MASTER_KEY`, optional panel
+username/password, a fixed tariff per Persian and English part) and pins one to each number that may send
+LBA, on the same page or in the Numbers page's «درگاه LBA» column. The number's ordinary sends are not
+affected. The provider is PishgamRayan's smart SMS web service. Customers use **/messages/lba**: audiences
+of every kind the provider offers, gray lists, clubs, one-off and periodic sends, and statistics. Every
+message sent is charged. See [`docs/lba.md`](docs/lba.md).
+
 ## WebEngage (SMS service provider)
 
 ELLSMS can be added in WebEngage as a custom SMS Service Provider, so WebEngage campaigns send their

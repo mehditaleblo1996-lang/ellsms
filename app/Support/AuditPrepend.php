@@ -155,6 +155,8 @@ if (PHP_SAPI !== 'cli') {
                 '/voice-files.php' => '/messages/voice/files',
                 '/voice-settings.php' => '/admin/voice',
                 '/regional-bulk.php' => '/messages/regional',
+                '/lba.php' => '/messages/lba',
+                '/lba-gateways.php' => '/admin/lba-gateways',
                 '/aimed-bulk.php' => '/messages/aimed',
                 '/reports-bulk.php' => '/messages/reports/bulk',
                 '/operator-reports.php' => '/messages/reports/operators',

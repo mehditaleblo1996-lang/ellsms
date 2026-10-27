@@ -54,6 +54,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // LBA (docs/lba.md): the LBA gateway this number's location-based sends go through, apart from its
+    // ordinary gateway above. Empty = the number cannot send LBA.
+    if ($do === 'lba_gateway') {
+        $lbaGatewayId = (int)($_POST['lba_gateway_id'] ?? 0);
+        $r = lba_number_set_gateway((int)($_POST['id'] ?? 0), $lbaGatewayId > 0 ? $lbaGatewayId : null, (int)$me['id']);
+        $r['ok'] ? flash('success', $lbaGatewayId > 0 ? 'درگاه LBA این شماره تنظیم شد.' : 'ارسال LBA این شماره برداشته شد.') : flash('error', $r['error']);
+    }
+
     // Service line (docs/service-lines.md): sends from it skip the do-not-contact list, like Vesal's
     // byPassBlackList. Set explicitly to the posted value rather than flipped, so a double-submitted
     // form cannot undo itself. Line opt-outs ("11") still apply.
@@ -158,6 +166,8 @@ $panelUsers = backend_panel_access_users();
 // shown with a warning, because its messages are held (retried) rather than sent another way.
 $gateways = db()->query("SELECT id, code, name, send_enabled, is_mock, default_slot FROM ellsms_sms_gateways WHERE status = 'active' ORDER BY name")->fetchAll();
 $gatewaysById = array_column($gateways, null, 'id');
+$lbaGateways = lba_gateways_list();
+$lbaGatewaysById = array_column($lbaGateways, null, 'id');
 
 // Per-line MO / delivery-report forwarding (/number-forwards.php), shown here as a status + link.
 $forwards = [];
@@ -194,7 +204,7 @@ require __DIR__ . '/../app/views/header.php';
   </form>
   <div class="table-wrap">
   <table>
-    <tr><th>شماره</th><th>برچسب</th><th>خدماتی (عبور از لیست سیاه)</th><th>تخصیص به کاربر</th><th>کاربران اشتراکی (فقط ارسال)</th><th>درگاه ارسال</th><th>ارسال به URL</th><th></th></tr>
+    <tr><th>شماره</th><th>برچسب</th><th>خدماتی (عبور از لیست سیاه)</th><th>تخصیص به کاربر</th><th>کاربران اشتراکی (فقط ارسال)</th><th>درگاه ارسال</th><th>درگاه LBA</th><th>ارسال به URL</th><th></th></tr>
     <?php foreach ($numbers as $n): ?>
       <tr>
         <td class="msisdn"><?= e($n['number']) ?></td>
@@ -279,6 +289,26 @@ require __DIR__ . '/../app/views/header.php';
           <?php endif; ?>
         </td>
         <td>
+          <?php $lbaPinned = (int)($n['lba_gateway_id'] ?? 0); ?>
+          <?php if (lba_tables_ready()): ?>
+          <form method="post" class="toolbar" style="margin:0">
+            <?= csrf_field() ?>
+            <input type="hidden" name="do" value="lba_gateway">
+            <input type="hidden" name="id" value="<?= $n['id'] ?>">
+            <select name="lba_gateway_id" onchange="this.form.submit()">
+              <option value="">— بدون LBA —</option>
+              <?php foreach ($lbaGateways as $lg): if ($lg['status'] !== 'active' && (int)$lg['id'] !== $lbaPinned) continue; ?>
+                <option value="<?= (int)$lg['id'] ?>" <?= (int)$lg['id'] === $lbaPinned ? 'selected' : '' ?>><?= e($lg['name']) ?> (<?= e($lg['code']) ?>)</option>
+              <?php endforeach; ?>
+            </select>
+            <noscript><button class="btn btn-sm">اعمال</button></noscript>
+          </form>
+          <?php if ($lbaPinned > 0 && ($lbaReason = lba_gateway_unusable_reason($lbaGatewaysById[$lbaPinned] ?? null)) !== null): ?>
+            <div class="muted" style="color:var(--danger,#b00)">⚠ <?= e($lbaReason) ?></div>
+          <?php endif; ?>
+          <?php else: ?>—<?php endif; ?>
+        </td>
+        <td>
           <?php $fw = $forwards[(string)$n['number']] ?? null; ?>
           <?php if ($fw): ?>
             <?php foreach (['mo' => 'دریافتی', 'dlr' => 'تحویل'] as $kind => $kindLabel): if ($fw[$kind . '_url'] === '') continue; ?>
@@ -298,7 +328,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$numbers): ?><tr><td colspan="8" class="empty"><?= $bypassFilter !== '' && $totalNumberCount > 0 ? 'شماره‌ای با این فیلتر نیست.' : 'هنوز شماره‌ای ثبت نشده.' ?></td></tr><?php endif; ?>
+    <?php if (!$numbers): ?><tr><td colspan="9" class="empty"><?= $bypassFilter !== '' && $totalNumberCount > 0 ? 'شماره‌ای با این فیلتر نیست.' : 'هنوز شماره‌ای ثبت نشده.' ?></td></tr><?php endif; ?>
   </table>
   </div>
   <p class="hint">وقتی کاربری حداقل یک شماره تخصیص‌یافته داشته باشد، در ارسال پیامک و منشی پیامک به‌جای نوشتن آزاد، از میان شماره‌های خودش انتخاب می‌کند.</p>
@@ -316,6 +346,10 @@ require __DIR__ . '/../app/views/header.php';
     با لیست سیاه مشتری بررسی نمی‌شود، حتی اگر گزینه‌ی «فقط ارسال به لیست سفید» زده شده باشد.
     لغو عضویتِ گیرنده از همین خط («۱۱») همچنان رعایت می‌شود. پیش‌فرض برای هر شماره‌ی جدید غیرفعال است و هر تغییر در گزارش رویدادها ثبت می‌شود.
     کارهای گروهی‌ای که پیش از تغییر، بررسی لیست سیاه‌شان تمام شده، با همان نتیجه ارسال می‌شوند.
+  </p>
+  <p class="hint">
+    <b>درگاه LBA:</b> ارسال پیام منطقه‌ای (LBA) این شماره فقط از درگاه LBA انتخاب‌شده می‌رود و ارسال عادی آن تغییری نمی‌کند.
+    شماره‌ی بدون درگاه LBA در صفحه‌ی ارسال منطقه‌ای دیده نمی‌شود. درگاه‌ها، توکن و تعرفه در <a href="/lba-gateways.php">درگاه‌های LBA</a>.
   </p>
   <p class="hint">
     <b>ارسال به URL:</b> پیامک‌های دریافتی روی هر خط و گزارش تحویل پیامک‌های ارسالی از آن را به آدرس http/https مشتری
