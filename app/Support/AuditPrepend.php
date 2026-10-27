@@ -32,6 +32,7 @@ if (PHP_SAPI !== 'cli') {
                 "style-src 'self' 'unsafe-inline'; " .
                 "img-src 'self' data:; " .
                 "font-src 'self'; " .
+                "frame-src 'self' https://www.openstreetmap.org https://www.google.com https://maps.google.com; " .
                 "object-src 'none'; " .
                 "base-uri 'self'; " .
                 "form-action 'self' " . $origin . "; " .
@@ -160,6 +161,8 @@ if (PHP_SAPI !== 'cli') {
                 '/aimed-bulk.php' => '/messages/aimed',
                 '/reports-bulk.php' => '/messages/reports/bulk',
                 '/operator-reports.php' => '/messages/reports/operators',
+                '/received-count-report.php' => '/messages/reports/received-counts',
+                '/sent-count-report.php' => '/messages/reports/sent-counts',
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
                 '/otp-templates.php' => '/integrations/otp',

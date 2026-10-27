@@ -3,6 +3,23 @@
 
 <footer class="lp-footer">
   <img src="<?= e(asset_url('/assets/img/brand/logo.svg')) ?>" alt="داتیس رایان گستر ایرانیان" class="lp-footer-logo">
+  <?php $footerPhones = contact_lines('contact_phone'); $footerAddress = contact_lines('contact_address')[0] ?? ''; ?>
+  <?php if ($footerPhones || $footerAddress !== ''): ?>
+    <ul class="lp-footer-contact">
+      <?php foreach ($footerPhones as $line): $tel = contact_tel_href($line); ?>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>
+          <?php if ($tel !== ''): ?><a class="ltr" href="<?= e($tel) ?>"><?= e($line) ?></a><?php else: ?><span class="ltr"><?= e($line) ?></span><?php endif; ?>
+        </li>
+      <?php endforeach; ?>
+      <?php if ($footerAddress !== ''): ?>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+          <a href="/contact#map"><?= e($footerAddress) ?></a>
+        </li>
+      <?php endif; ?>
+    </ul>
+  <?php endif; ?>
   <?= legal_footer_links_html() ?>
   <div class="lp-footer-badges" style="display:flex;align-items:center;justify-content:center;gap:18px;flex-wrap:wrap;margin:14px 0 10px">
     <?= legal_trust_badges_html(110) ?>

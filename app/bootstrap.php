@@ -246,6 +246,8 @@ ErrorHandler::register();
  * real, disclosed remaining debt (see docs/technical-debt.md), not an
  * oversight; tightening it further means migrating those inline
  * handlers to external/nonced scripts, a larger change than this step.
+ * frame-src admits only the office map on /contact: the OpenStreetMap
+ * embed, or (with no pin set) the Google Maps embed a visitor asks for.
  */
 function send_security_headers(array $extraImageOrigins = []): void {
     if (headers_sent() || PHP_SAPI === 'cli') {
@@ -263,6 +265,7 @@ function send_security_headers(array $extraImageOrigins = []): void {
         "style-src 'self' 'unsafe-inline'; " .
         "img-src 'self' data:" . ($extraImageOrigins === [] ? '' : ' ' . implode(' ', $extraImageOrigins)) . "; " .
         "font-src 'self'; " .
+        "frame-src 'self' https://www.openstreetmap.org https://www.google.com https://maps.google.com; " .
         "object-src 'none'; " .
         "base-uri 'self'; " .
         "form-action 'self'; " .

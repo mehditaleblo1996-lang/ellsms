@@ -69,6 +69,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_setting('contact_address',     trim($_POST['contact_address'] ?? ''));
         set_setting('contact_phone',       trim($_POST['contact_phone'] ?? ''));
         set_setting('contact_email',       trim($_POST['contact_email'] ?? ''));
+        // The office pin on the contact-page map; a value that isn't a coordinate is saved as empty
+        // (the map then searches the address instead).
+        foreach (['contact_map_lat' => 90, 'contact_map_lng' => 180] as $key => $limit) {
+            $coord = trim(from_persian_digits((string)($_POST[$key] ?? '')));
+            set_setting($key, is_numeric($coord) && abs((float)$coord) <= $limit ? $coord : '');
+        }
         set_setting('legal_company_name',  trim($_POST['legal_company_name'] ?? ''));
         set_setting('legal_registration_no', trim(from_persian_digits((string)($_POST['legal_registration_no'] ?? ''))));
         set_setting('legal_national_id',   trim(from_persian_digits((string)($_POST['legal_national_id'] ?? ''))));
@@ -316,6 +322,16 @@ require __DIR__ . '/../app/views/header.php';
       </label>
       <label>تلفن (هر خط یک شماره)
         <textarea name="contact_phone" rows="3" class="ltr"><?= e(setting('contact_phone', '')) ?></textarea>
+      </label>
+    </div>
+    <div class="form-row">
+      <label>عرض جغرافیایی دفتر (Latitude)
+        <input type="text" name="contact_map_lat" maxlength="20" class="ltr" inputmode="decimal" value="<?= e(setting('contact_map_lat', '')) ?>" placeholder="35.6997">
+        <span class="hint">برای نشان دادن دقیق دفتر روی نقشه‌ی صفحه‌ی تماس با ما: در Google Maps روی محل دفتر کلیک راست کنید و دو عدد نمایش‌داده‌شده را اینجا وارد کنید. با مختصات، نقشه‌ی OpenStreetMap با پین دفتر مستقیم نمایش داده می‌شود؛ خالی = نقشه‌ی Google فقط با کلیک بازدیدکننده باز می‌شود و نشانی اول را جست‌وجو می‌کند.</span>
+      </label>
+      <label>طول جغرافیایی دفتر (Longitude)
+        <input type="text" name="contact_map_lng" maxlength="20" class="ltr" inputmode="decimal" value="<?= e(setting('contact_map_lng', '')) ?>" placeholder="51.4144">
+        <span class="hint">با وارد کردن هر دو عدد، دکمه‌های مسیریابی «نشان» و «بلد» هم اضافه می‌شوند.</span>
       </label>
     </div>
     <div class="form-row">

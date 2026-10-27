@@ -852,6 +852,14 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   text-align: center; padding: 30px 26px 40px; color: var(--muted); font-size: 13px;
 }
 .lp-footer-logo { height: 64px; border-radius: 12px; background: #fff; padding: 8px 18px; margin-bottom: 12px; }
+.lp-footer-contact {
+  list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 26px;
+  margin: 4px 0 14px; padding: 0; font-size: 13.5px;
+}
+.lp-footer-contact li { display: inline-flex; align-items: center; gap: 7px; }
+.lp-footer-contact svg { width: 16px; height: 16px; flex: none; color: var(--lp-accent); }
+.lp-footer-contact a { color: var(--ink); text-decoration: none; }
+.lp-footer-contact a:hover { color: var(--lp-accent); }
 
 @media (max-width: 980px) {
   .lp-grid, .lp-grid-narrow { grid-template-columns: repeat(2, 1fr); }
@@ -1370,13 +1378,92 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 
 /* ---------- Contact page ---------- */
 .lp-contact-grid { display: grid; grid-template-columns: 1fr 1.3fr; gap: 22px; align-items: start; }
-.lp-contact-info h3 { font-size: 14px; font-weight: 700; margin: 18px 0 4px; }
-.lp-contact-info h3:first-child { margin-top: 0; }
-.lp-contact-info p { color: var(--muted); font-size: 14.5px; margin: 0; }
+.lp-contact-info h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 4px; }
+.lp-contact-info p { color: var(--ink); font-size: 15px; line-height: 1.9; margin: 0; }
 .lp-contact-form form { margin-top: 2px; }
+.lp-contact-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.lp-contact-list li { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0; }
+.lp-contact-list li + li { border-top: 1px solid var(--line); }
+.lp-contact-list li:first-child { padding-top: 0; }
+.lp-contact-list li:last-child { padding-bottom: 0; }
+.lp-contact-ico {
+  flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px;
+  color: var(--lp-accent); background: var(--tint); border: 1px solid var(--line);
+}
+.lp-contact-ico svg { width: 22px; height: 22px; }
+.lp-contact-list a { color: var(--ink); text-decoration: none; }
+.lp-contact-list a:hover { color: var(--lp-accent); }
+.lp-contact-phone { font-size: 20px !important; font-weight: 700; letter-spacing: .02em; }
+.lp-contact-phone a { display: inline-block; direction: ltr; }
+.lp-contact-more { display: inline-block; margin-top: 6px; font-size: 13.5px; color: var(--lp-accent) !important; }
+
+/* Office map: a drawn placeholder; the Google Maps iframe replaces it only when the visitor asks. */
+.lp-map { margin-top: 22px; padding: 0; overflow: hidden; }
+.lp-map-head {
+  display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; justify-content: space-between;
+  padding: 22px 24px 18px;
+}
+.lp-map-kicker {
+  display: inline-block; font-size: 12px; font-weight: 600; color: var(--lp-accent);
+  background: var(--tint); border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px;
+}
+.lp-map-head h3 { font-size: 19px; font-weight: 800; margin: 10px 0 4px; }
+.lp-map-address { color: var(--muted); margin: 0; font-size: 14.5px; }
+.lp-map-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.lp-map-frame {
+  position: relative; height: 380px; border-top: 1px solid var(--line);
+  background: linear-gradient(160deg, rgba(74, 50, 232, .16), rgba(46, 99, 246, .06) 60%, transparent), var(--canvas);
+}
+.lp-map-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lp-map-blocks rect { fill: rgba(255, 255, 255, .045); stroke: rgba(255, 255, 255, .06); }
+.lp-map-roads path { fill: none; stroke: rgba(255, 255, 255, .16); stroke-width: 14; stroke-linecap: round; }
+.lp-map-roads path.minor { stroke: rgba(255, 255, 255, .08); stroke-width: 6; }
+.lp-map-route { fill: none; stroke: var(--lp-accent); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 2 12; }
+.lp-map-pin {
+  position: absolute; top: 44%; left: 50%; width: 40px; height: 54px; transform: translate(-50%, -100%);
+  filter: drop-shadow(0 10px 18px rgba(74, 50, 232, .55));
+}
+.lp-map-pin svg { position: relative; width: 100%; height: 100%; fill: var(--lp-accent); }
+.lp-map-pulse {
+  position: absolute; left: 50%; bottom: -9px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%;
+  background: var(--lp-accent); opacity: .5; animation: lp-map-pulse 2.2s ease-out infinite;
+}
+@keyframes lp-map-pulse {
+  0%   { transform: scale(.6); opacity: .55; }
+  100% { transform: scale(3.4); opacity: 0; }
+}
+.lp-map-consent {
+  position: absolute; inset-inline: 16px; bottom: 18px; margin-inline: auto; max-width: 460px; text-align: center;
+  padding: 16px 18px; border-radius: 14px; border: 1px solid var(--line);
+  background: rgba(6, 8, 20, .72); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.lp-map-consent p { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.8; }
+.lp-map-consent a { color: var(--lp-accent); }
+.lp-map-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.lp-map-frame.is-live { background: #e9e5dc; }
+.lp-map-badge {
+  position: absolute; inset-inline-start: 14px; top: 14px; display: flex; align-items: center; gap: 10px;
+  max-width: calc(100% - 84px); padding: 9px 14px; border-radius: 12px; font-size: 13px; color: #f3f4fb;
+  background: rgba(6, 8, 20, .82); border: 1px solid rgba(255, 255, 255, .14);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 10px 24px rgba(0, 0, 0, .25);
+}
+.lp-map-badge a { color: #a78bfa; white-space: nowrap; }
+.lp-map-badge-dot {
+  flex: none; width: 9px; height: 9px; border-radius: 50%; background: #34d399;
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, .22);
+}
+.lp-map-frame.is-loaded .lp-map-art,
+.lp-map-frame.is-loaded .lp-map-pin,
+.lp-map-frame.is-loaded .lp-map-consent { display: none; }
+@media (prefers-reduced-motion: reduce) { .lp-map-pulse { animation: none; } }
 
 @media (max-width: 900px) {
   .lp-contact-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .lp-map-head { padding: 18px 16px 14px; }
+  .lp-map-frame { height: 340px; }
+  .lp-map-pin { top: 36%; }
 }
 
 /* ---------- Hero slider ---------- */

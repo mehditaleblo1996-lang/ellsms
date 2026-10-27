@@ -12,8 +12,8 @@
 
 require_once __DIR__ . '/bootstrap.php';
 
-const LEGAL_TERMS_VERSION = '1405-07-22';
-const LEGAL_TERMS_UPDATED_FA = '۲۲ مهر ۱۴۰۵';
+const LEGAL_TERMS_VERSION = '1405-08-05';
+const LEGAL_TERMS_UPDATED_FA = '۵ آبان ۱۴۰۵';
 
 /** Days the provider takes to pay out an approved refund; admin-editable, default 10 working days. */
 function legal_refund_processing_days(): int {
@@ -91,4 +91,111 @@ function legal_footer_links_html(): string {
          . '<a href="/refund">انصراف و بازگشت وجه</a>'
          . '<a href="/contact">تماس با ما</a>'
          . '</nav>';
+}
+
+/**
+ * The non-empty lines of a multi-line contact setting — the settings form takes one address or one
+ * phone number per line.
+ * @return list<string>
+ */
+function contact_lines(string $key): array {
+    $lines = preg_split('/\R/u', trim((string) setting($key, ''))) ?: [];
+    return array_values(array_filter(array_map('trim', $lines), static fn(string $l): bool => $l !== ''));
+}
+
+/**
+ * A tel: link for a phone number as the admin typed it: Persian digits folded, separators dropped and
+ * a leading 0 (021…, 0912…) turned into +98. '' when the text holds no digits.
+ */
+function contact_tel_href(string $phone): string {
+    $digits = preg_replace('/\D+/', '', from_persian_digits($phone)) ?? '';
+    if ($digits === '') {
+        return '';
+    }
+    if (str_starts_with($digits, '0098')) {
+        $digits = substr($digits, 4);
+    } elseif (str_starts_with($digits, '98') && strlen($digits) > 10) {
+        $digits = substr($digits, 2);
+    } elseif (str_starts_with($digits, '0')) {
+        $digits = substr($digits, 1);
+    } else {
+        return 'tel:' . $digits; // a short code or a local number: dial it exactly as written
+    }
+    return 'tel:+98' . $digits;
+}
+
+/** The exact office pin set under «تنظیمات ← تماس با ما», as [lat, lng], or null when not set. */
+function contact_map_pin(): ?array {
+    $lat = trim(from_persian_digits((string) setting('contact_map_lat', '')));
+    $lng = trim(from_persian_digits((string) setting('contact_map_lng', '')));
+    if (!is_numeric($lat) || !is_numeric($lng)) {
+        return null;
+    }
+    $lat = (float) $lat;
+    $lng = (float) $lng;
+    return ($lat >= -90 && $lat <= 90 && $lng >= -180 && $lng <= 180) ? [$lat, $lng] : null;
+}
+
+/**
+ * Where the contact-page map points: "lat,lng" when a pin is set, otherwise the first address line
+ * (map services geocode it themselves). '' when neither is entered.
+ */
+function contact_map_query(): string {
+    $pin = contact_map_pin();
+    if ($pin !== null) {
+        return $pin[0] . ',' . $pin[1];
+    }
+    return from_persian_digits(contact_lines('contact_address')[0] ?? '');
+}
+
+/**
+ * "Open in …" links for the office location, as [label, url]. Neshan and Balad only take coordinates,
+ * so they appear once a pin is set.
+ * @return list<array{0:string,1:string}>
+ */
+function contact_map_links(): array {
+    $query = contact_map_query();
+    if ($query === '') {
+        return [];
+    }
+    $links = [
+        ['Google Maps', 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($query)],
+    ];
+    $pin = contact_map_pin();
+    if ($pin !== null) {
+        [$lat, $lng] = $pin;
+        $links[] = ['نشان', 'https://neshan.org/maps/@' . $lat . ',' . $lng . ',17z,0p'];
+        $links[] = ['بلد', 'https://balad.ir/location?latitude=' . $lat . '&longitude=' . $lng . '&zoom=17'];
+        $links[] = ['Waze', 'https://waze.com/ul?ll=' . rawurlencode($lat . ',' . $lng) . '&navigate=yes'];
+    } else {
+        $links[] = ['Waze', 'https://waze.com/ul?q=' . rawurlencode($query) . '&navigate=yes'];
+    }
+    return $links;
+}
+
+/**
+ * The OpenStreetMap embed shown on the contact page with the office pin; '' while no pin is set.
+ * OpenStreetMap is used because Google's embedded maps are unreliable from Iran.
+ */
+function contact_map_osm_embed_url(): string {
+    $pin = contact_map_pin();
+    if ($pin === null) {
+        return '';
+    }
+    [$lat, $lng] = $pin;
+    $bbox = implode(',', [$lng - 0.0045, $lat - 0.0024, $lng + 0.0045, $lat + 0.0024]);
+    return 'https://www.openstreetmap.org/export/embed.html?bbox=' . rawurlencode($bbox)
+         . '&layer=mapnik&marker=' . rawurlencode($lat . ',' . $lng);
+}
+
+/** The full-screen OpenStreetMap page for the office pin; '' while no pin is set. */
+function contact_map_osm_url(): string {
+    $pin = contact_map_pin();
+    return $pin === null ? '' : 'https://www.openstreetmap.org/?mlat=' . $pin[0] . '&mlon=' . $pin[1] . '#map=17/' . $pin[0] . '/' . $pin[1];
+}
+
+/** Without a pin: the Google Maps embed the contact page loads once the visitor asks for it; '' without a query. */
+function contact_map_embed_url(): string {
+    $query = contact_map_query();
+    return $query === '' ? '' : 'https://maps.google.com/maps?q=' . rawurlencode($query) . '&hl=fa&z=17&output=embed';
 }
