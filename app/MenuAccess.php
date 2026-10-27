@@ -72,7 +72,7 @@ function menu_groups(): array {
         'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
         'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'regional_bulk', 'aimed_bulk', 'schedules', 'autoreply']],
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
-        'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'inbox', 'bale']],
+        'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'sent_count_report', 'inbox', 'received_count_report', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
         'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
         'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'otp_templates', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],

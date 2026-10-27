@@ -158,6 +158,8 @@ if (PHP_SAPI !== 'cli') {
                 '/aimed-bulk.php' => '/messages/aimed',
                 '/reports-bulk.php' => '/messages/reports/bulk',
                 '/operator-reports.php' => '/messages/reports/operators',
+                '/received-count-report.php' => '/messages/reports/received-counts',
+                '/sent-count-report.php' => '/messages/reports/sent-counts',
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
                 '/otp-templates.php' => '/integrations/otp',

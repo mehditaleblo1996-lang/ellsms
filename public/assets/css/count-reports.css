@@ -1,0 +1,37 @@
+/* Per-customer count reports (public/received-count-report.php, sent-count-report.php) and their
+   table controls (assets/js/count-reports.js) — built only from the panel's own tokens (style.css). */
+
+.cc-stats .cc-range { font-size: clamp(18px, 1.6vw, 22px); }
+.cc-stats .stat-accent .stat-meta { color: #dfe6ff; }
+
+.cc-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 14px; }
+.cc-size { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--muted); }
+.panel .cc-size select { inline-size: auto; min-inline-size: 76px; margin: 0; }
+.panel .cc-search { inline-size: min(320px, 100%); margin: 0; }
+
+.cc-table th, .cc-table td.num { text-align: center; }
+.cc-table th:nth-child(2), .cc-table th:nth-child(3), .cc-table td:nth-child(2), .cc-table td:nth-child(3) { text-align: right; }
+.cc-table td { vertical-align: middle; }
+.cc-table thead th { background: var(--indigo); color: #fff; white-space: normal; line-height: 1.6; }
+.cc-table thead th:first-child { border-start-start-radius: 10px; }
+.cc-table thead th:last-child { border-start-end-radius: 10px; }
+.cc-table td.cc-count { font-weight: 700; color: var(--ink); }
+.cc-user { display: block; font-size: 12px; color: var(--muted); }
+.cc-table tbody td:nth-child(2) a { font-weight: 600; }
+
+/* Sort buttons: the heading text with an arrow showing the current order. */
+.cc-sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cc-sort::after { content: ""; inline-size: 0; block-size: 0; border-inline: 4px solid transparent; border-block-start: 5px solid currentColor; opacity: .35; }
+th[aria-sort="ascending"] .cc-sort::after { opacity: 1; transform: rotate(180deg); }
+th[aria-sort="descending"] .cc-sort::after { opacity: 1; }
+.cc-sort:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 4px; }
+
+/* Receiving lines as chips. */
+.cc-lines { white-space: normal; }
+.cc-line { display: inline-flex; align-items: baseline; gap: 4px; margin: 2px; padding: 1px 8px; border-radius: 999px; background: var(--tint); color: var(--indigo); font-size: 12px; font-weight: 600; }
+.cc-line small { color: var(--muted); font-family: var(--font-num); }
+.cc-line-more { cursor: help; }
+
+.cc-table tfoot td { font-weight: 700; background: var(--tint); }
+.cc-table tfoot tr.cc-unowned td { font-weight: 500; background: var(--canvas); }
+.cc-note { margin: 14px 0 0; }

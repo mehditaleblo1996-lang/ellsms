@@ -49,7 +49,7 @@ function panel_icon(string $name): string {
     $names = [
         'dashboard'=>'grid', 'notifications'=>'bell', 'guide'=>'book', 'onboarding'=>'check',
         'new_send'=>'spark', 'send'=>'send', 'p2p'=>'users', 'smart'=>'spark', 'schedules'=>'clock',
-        'autoreply'=>'message', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'inbox'=>'inbox',
+        'autoreply'=>'message', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'sent_count_report'=>'chart', 'received_count_report'=>'inbox', 'inbox'=>'inbox',
         'contacts'=>'users', 'blacklist'=>'ban', 'line_optouts'=>'ban', 'tickets'=>'help',
         'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe',
         'api_keys'=>'key', 'otp_templates'=>'key', 'shared_otp'=>'key', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',

@@ -37,6 +37,11 @@ if ($me['role'] === 'admin' || menu_access_allows($me, 'reports')) {
         $nav['operator_reports_route'] = ['/operator-reports.php?view=route', 'گزارش اپراتورها بر اساس تأمین‌کننده', '≣'];
     }
 }
+// Per-customer message counts (app/Reports/CustomerMessageCounts.php): every customer at once, so admins only.
+if ($me['role'] === 'admin') {
+    $nav['received_count_report'] = ['/received-count-report.php', 'گزارش تعداد پیام‌های دریافتی', '≣'];
+    $nav['sent_count_report'] = ['/sent-count-report.php', 'گزارش تعداد پیام‌های ارسالی', '≣'];
+}
 // #42 — the Bale channel's message record, shown once the channel is set up (admins always, to set it up).
 if ($me['role'] === 'admin' || bale_configured()) {
     $nav['bale'] = ['/bale-messages.php', 'پیام‌رسان بله', '💬'];
