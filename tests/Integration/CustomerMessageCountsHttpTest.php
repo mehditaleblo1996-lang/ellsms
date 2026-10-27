@@ -185,7 +185,7 @@ final class CustomerMessageCountsHttpTest extends TestCase
     /** The row of one customer: its cells' data-v values from the name onwards, by user id. */
     private static function rowValues(string $html, int $userId): ?array
     {
-        if (!preg_match('~<tr data-search="[^"]*">((?:(?!</tr>).)*?/users\.php\?edit=' . $userId . '".*?)</tr>~s', $html, $m)) return null;
+        if (!preg_match('~<tr data-user="' . $userId . '"[^>]*>(.*?)</tr>~s', $html, $m)) return null;
         preg_match_all('~<td[^>]*data-v="([^"]*)"~', $m[1], $cells);
         return array_slice($cells[1], 1);
     }
@@ -206,6 +206,7 @@ final class CustomerMessageCountsHttpTest extends TestCase
         $this->assertMatchesRegularExpression('~<tr class="cc-unowned">.*?3000889.*?<td class="num cc-count">' . self::n(1) . '</td>~s', $body);
         $this->assertStringContainsString('<td>جمع کل</td><td></td><td></td><td class="num cc-count">' . self::n(6) . '</td>', $body);
         $this->assertStringContainsString('/inbox.php?user_id=' . $this->aliceId . '&amp;', $body);
+        $this->assertStringContainsString('<a href="/users.php?edit=' . $this->aliceId . '#personal"', $body, 'the name opens the customer\'s profile');
 
         $csv = $this->request('/received-count-report.php?' . $this->dayQuery(['export' => 1]), $session);
         $this->assertSame(200, $csv['code']);

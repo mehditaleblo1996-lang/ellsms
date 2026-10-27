@@ -94,9 +94,9 @@ if (lazy_part_begin('report')) {
     </tr></thead>
     <tbody>
     <?php foreach ($rows as $i => $r): ?>
-      <tr data-search="<?= e(mb_strtolower($r['name'] . ' ' . $r['username'] . ' ' . $r['company'] . ' ' . implode(' ', array_keys($r['lines'])))) ?>">
+      <tr data-user="<?= (int)$r['user_id'] ?>" data-search="<?= e(mb_strtolower($r['name'] . ' ' . $r['username'] . ' ' . $r['company'] . ' ' . implode(' ', array_keys($r['lines'])))) ?>">
         <td class="num" data-v="<?= $i + 1 ?>"><?= to_persian_digits((string)($i + 1)) ?></td>
-        <td data-v="<?= e($r['name']) ?>"><a href="/users.php?edit=<?= (int)$r['user_id'] ?>"><?= e($r['name'] !== '' ? $r['name'] : '#' . $r['user_id']) ?></a><?php if ($r['username'] !== '' && $r['username'] !== $r['name']): ?><span class="cc-user ltr"><?= e($r['username']) ?></span><?php endif; ?></td>
+        <?= customer_counts_name_cell($r) ?>
         <td data-v="<?= e($r['company']) ?>"><?= $r['company'] !== '' ? e($r['company']) : '<span class="muted">—</span>' ?></td>
         <td class="cc-lines"><?= $lineChips($r['lines']) ?></td>
         <td class="num cc-count" data-v="<?= (int)$r['received'] ?>"><?= operator_report_num($r['received']) ?></td>

@@ -311,12 +311,12 @@ function customer_counts_bulk(string $fromUtc, string $toUtcExclusive): array {
    ========================================================================== */
 
 /**
- * Name, username and company of each user: user id => [name, username, company]. The company is the
+ * Name, username, company and whether there is a profile to open, per user. The company is the
  * organization's registered legal name, else its name unless that is the one made up at sign-up
  * («… 's Workspace»).
  *
  * @param list<int> $userIds
- * @return array<int,array{name:string,username:string,company:string}>
+ * @return array<int,array{name:string,username:string,company:string,has_profile:bool}>
  */
 function customer_counts_identities(array $userIds): array {
     $users = backend_users_by_ids($userIds);
@@ -325,11 +325,15 @@ function customer_counts_identities(array $userIds): array {
         $u = $users[$uid] ?? null;
         $username = $u ? (string)$u['username'] : '';
         $name = $u ? trim((string)$u['first_name'] . ' ' . (string)$u['last_name']) : '';
-        $out[$uid] = ['name' => $name !== '' ? $name : $username, 'username' => $username, 'company' => ''];
+        $out[$uid] = ['name' => $name !== '' ? $name : $username, 'username' => $username, 'company' => '', 'has_profile' => false];
     }
     if ($out === []) return [];
+    // Only an account with panel access has a profile to open (users.php refuses any other).
+    $ids = array_keys($out);
+    $st = db()->prepare('SELECT user_id FROM ellsms_meta WHERE panel_access = 1 AND user_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')');
+    $st->execute($ids);
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $uid) $out[(int)$uid]['has_profile'] = true;
     try {
-        $ids = array_keys($out);
         // One organization per user: the earliest active membership, an owned one first.
         $st = db()->prepare("SELECT m.user_id, o.name, COALESCE(p.legal_name, '') legal_name
                              FROM ellsms_organization_memberships m
@@ -363,6 +367,22 @@ function customer_counts_date_query(string $from, string $to): array {
         $q += ["{$name}_y" => $jy, "{$name}_m" => $jm, "{$name}_d" => $jd];
     }
     return $q;
+}
+
+/**
+ * The «نام و نام خانوادگی» cell: the name linked to the customer's profile (the personal tab of
+ * public/users.php), with the username under it.
+ *
+ * @param array{user_id:int,name:string,username:string,has_profile:bool} $r
+ */
+function customer_counts_name_cell(array $r): string {
+    $label = e($r['name'] !== '' ? $r['name'] : '#' . $r['user_id']);
+    $html = '<td data-v="' . e($r['name']) . '">';
+    $html .= $r['has_profile']
+        ? '<a href="/users.php?edit=' . (int)$r['user_id'] . '#personal" title="پروفایل مشتری">' . $label . '</a>'
+        : '<span title="این حساب دسترسی پنل ندارد">' . $label . '</span>';
+    if ($r['username'] !== '' && $r['username'] !== $r['name']) $html .= '<span class="cc-user ltr">' . e($r['username']) . '</span>';
+    return $html . '</td>';
 }
 
 /** Pure: the company shown for an organization — its legal name, else its own name unless auto-generated. */
