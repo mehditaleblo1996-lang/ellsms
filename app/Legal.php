@@ -173,7 +173,28 @@ function contact_map_links(): array {
     return $links;
 }
 
-/** The Google Maps embed the contact page loads once the visitor asks for it; '' without a query. */
+/**
+ * The OpenStreetMap embed shown on the contact page with the office pin; '' while no pin is set.
+ * OpenStreetMap is used because Google's embedded maps are unreliable from Iran.
+ */
+function contact_map_osm_embed_url(): string {
+    $pin = contact_map_pin();
+    if ($pin === null) {
+        return '';
+    }
+    [$lat, $lng] = $pin;
+    $bbox = implode(',', [$lng - 0.0045, $lat - 0.0024, $lng + 0.0045, $lat + 0.0024]);
+    return 'https://www.openstreetmap.org/export/embed.html?bbox=' . rawurlencode($bbox)
+         . '&layer=mapnik&marker=' . rawurlencode($lat . ',' . $lng);
+}
+
+/** The full-screen OpenStreetMap page for the office pin; '' while no pin is set. */
+function contact_map_osm_url(): string {
+    $pin = contact_map_pin();
+    return $pin === null ? '' : 'https://www.openstreetmap.org/?mlat=' . $pin[0] . '&mlon=' . $pin[1] . '#map=17/' . $pin[0] . '/' . $pin[1];
+}
+
+/** Without a pin: the Google Maps embed the contact page loads once the visitor asks for it; '' without a query. */
 function contact_map_embed_url(): string {
     $query = contact_map_query();
     return $query === '' ? '' : 'https://maps.google.com/maps?q=' . rawurlencode($query) . '&hl=fa&z=17&output=embed';

@@ -40,7 +40,8 @@ $metaDescription = 'راه‌های تماس با داتیس رایان گستر
 $addresses = contact_lines('contact_address');
 $phones    = contact_lines('contact_phone');
 $email     = trim((string) setting('contact_email', ''));
-$mapEmbed  = contact_map_embed_url();
+$mapLive   = contact_map_osm_embed_url();
+$mapEmbed  = $mapLive !== '' ? $mapLive : contact_map_embed_url();
 $mapLinks  = contact_map_links();
 /** aria-invalid + aria-describedby for the input the current error is about; '' for every other input. */
 $errAttrs = static fn(string $field): string => $field === $errorField ? ' aria-invalid="true" aria-describedby="formError"' : '';
@@ -142,39 +143,50 @@ require __DIR__ . '/../app/views/public_header.php';
           </div>
         </div>
 
-        <div class="lp-map-frame" id="lpMapFrame" data-src="<?= e($mapEmbed) ?>">
-          <svg class="lp-map-art" viewBox="0 0 800 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-            <defs>
-              <radialGradient id="lpMapGlow" cx="50%" cy="50%" r="55%">
-                <stop offset="0" stop-color="#7c5cff" stop-opacity=".35"/>
-                <stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
-              </radialGradient>
-            </defs>
-            <rect width="800" height="360" fill="url(#lpMapGlow)"/>
-            <g class="lp-map-blocks">
-              <rect x="40" y="30" width="150" height="90" rx="10"/><rect x="215" y="30" width="120" height="90" rx="10"/>
-              <rect x="470" y="30" width="130" height="90" rx="10"/><rect x="625" y="30" width="150" height="90" rx="10"/>
-              <rect x="40" y="240" width="110" height="95" rx="10"/><rect x="175" y="240" width="160" height="95" rx="10"/>
-              <rect x="470" y="240" width="170" height="95" rx="10"/><rect x="665" y="240" width="110" height="95" rx="10"/>
-              <rect x="40" y="145" width="150" height="70" rx="10"/><rect x="625" y="145" width="150" height="70" rx="10"/>
-            </g>
-            <g class="lp-map-roads">
-              <path d="M0 180H800"/><path d="M400 0V360"/>
-              <path d="M0 132H800" class="minor"/><path d="M0 228H800" class="minor"/>
-              <path d="M202 0V360" class="minor"/><path d="M612 0V360" class="minor"/>
-              <path d="M0 330C180 300 260 360 400 300S640 240 800 270" class="minor"/>
-            </g>
-            <path class="lp-map-route" d="M120 330C160 260 240 220 300 205S380 190 400 180"/>
-          </svg>
-          <div class="lp-map-pin" aria-hidden="true">
-            <span class="lp-map-pulse"></span>
-            <svg viewBox="0 0 24 32"><path d="M12 0C5.4 0 0 5.3 0 11.9 0 20.8 12 32 12 32s12-11.2 12-20.1C24 5.3 18.6 0 12 0z"/><circle cx="12" cy="12" r="4.6" fill="#fff"/></svg>
+        <?php if ($mapLive !== ''): ?>
+          <div class="lp-map-frame is-live">
+            <iframe src="<?= e($mapLive) ?>" title="نقشه‌ی محل دفتر" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+            <div class="lp-map-badge">
+              <span class="lp-map-badge-dot" aria-hidden="true"></span>
+              <span>دفتر مرکزی ما اینجاست</span>
+              <a href="<?= e(contact_map_osm_url()) ?>" target="_blank" rel="noopener" aria-label="نقشه‌ی بزرگ‌تر (در پنجره‌ی جدید)">نقشه‌ی بزرگ‌تر</a>
+            </div>
           </div>
-          <div class="lp-map-consent">
-            <button type="button" class="btn btn-primary" id="lpMapLoad">نمایش نقشه‌ی تعاملی</button>
-            <p>نقشه از Google Maps بارگذاری می‌شود و با زدن این دکمه، Google نشانی IP شما را می‌بیند. <a href="/privacy#cookies">جزئیات</a></p>
+        <?php else: ?>
+          <div class="lp-map-frame" id="lpMapFrame" data-src="<?= e($mapEmbed) ?>">
+            <svg class="lp-map-art" viewBox="0 0 800 360" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <defs>
+                <radialGradient id="lpMapGlow" cx="50%" cy="50%" r="55%">
+                  <stop offset="0" stop-color="#7c5cff" stop-opacity=".35"/>
+                  <stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
+                </radialGradient>
+              </defs>
+              <rect width="800" height="360" fill="url(#lpMapGlow)"/>
+              <g class="lp-map-blocks">
+                <rect x="40" y="30" width="150" height="90" rx="10"/><rect x="215" y="30" width="120" height="90" rx="10"/>
+                <rect x="470" y="30" width="130" height="90" rx="10"/><rect x="625" y="30" width="150" height="90" rx="10"/>
+                <rect x="40" y="240" width="110" height="95" rx="10"/><rect x="175" y="240" width="160" height="95" rx="10"/>
+                <rect x="470" y="240" width="170" height="95" rx="10"/><rect x="665" y="240" width="110" height="95" rx="10"/>
+                <rect x="40" y="145" width="150" height="70" rx="10"/><rect x="625" y="145" width="150" height="70" rx="10"/>
+              </g>
+              <g class="lp-map-roads">
+                <path d="M0 180H800"/><path d="M400 0V360"/>
+                <path d="M0 132H800" class="minor"/><path d="M0 228H800" class="minor"/>
+                <path d="M202 0V360" class="minor"/><path d="M612 0V360" class="minor"/>
+                <path d="M0 330C180 300 260 360 400 300S640 240 800 270" class="minor"/>
+              </g>
+              <path class="lp-map-route" d="M120 330C160 260 240 220 300 205S380 190 400 180"/>
+            </svg>
+            <div class="lp-map-pin" aria-hidden="true">
+              <span class="lp-map-pulse"></span>
+              <svg viewBox="0 0 24 32"><path d="M12 0C5.4 0 0 5.3 0 11.9 0 20.8 12 32 12 32s12-11.2 12-20.1C24 5.3 18.6 0 12 0z"/><circle cx="12" cy="12" r="4.6" fill="#fff"/></svg>
+            </div>
+            <div class="lp-map-consent">
+              <button type="button" class="btn btn-primary" id="lpMapLoad">نمایش نقشه‌ی تعاملی</button>
+              <p>نقشه از Google Maps بارگذاری می‌شود و با زدن این دکمه، Google نشانی IP شما را می‌بیند. <a href="/privacy#cookies">جزئیات</a></p>
+            </div>
           </div>
-        </div>
+        <?php endif; ?>
       </section>
     <?php endif; ?>
   </section>

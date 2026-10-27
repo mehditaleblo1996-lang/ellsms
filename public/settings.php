@@ -327,7 +327,7 @@ require __DIR__ . '/../app/views/header.php';
     <div class="form-row">
       <label>عرض جغرافیایی دفتر (Latitude)
         <input type="text" name="contact_map_lat" maxlength="20" class="ltr" inputmode="decimal" value="<?= e(setting('contact_map_lat', '')) ?>" placeholder="35.6997">
-        <span class="hint">برای نشان دادن دقیق دفتر روی نقشه‌ی صفحه‌ی تماس با ما: در Google Maps روی محل دفتر کلیک راست کنید و دو عدد نمایش‌داده‌شده را اینجا وارد کنید. خالی = نقشه خودش نشانی اول را جست‌وجو می‌کند.</span>
+        <span class="hint">برای نشان دادن دقیق دفتر روی نقشه‌ی صفحه‌ی تماس با ما: در Google Maps روی محل دفتر کلیک راست کنید و دو عدد نمایش‌داده‌شده را اینجا وارد کنید. با مختصات، نقشه‌ی OpenStreetMap با پین دفتر مستقیم نمایش داده می‌شود؛ خالی = نقشه‌ی Google فقط با کلیک بازدیدکننده باز می‌شود و نشانی اول را جست‌وجو می‌کند.</span>
       </label>
       <label>طول جغرافیایی دفتر (Longitude)
         <input type="text" name="contact_map_lng" maxlength="20" class="ltr" inputmode="decimal" value="<?= e(setting('contact_map_lng', '')) ?>" placeholder="51.4144">
