@@ -32,6 +32,7 @@ if (PHP_SAPI !== 'cli') {
                 "style-src 'self' 'unsafe-inline'; " .
                 "img-src 'self' data:; " .
                 "font-src 'self'; " .
+                "frame-src 'self' https://www.google.com https://maps.google.com; " .
                 "object-src 'none'; " .
                 "base-uri 'self'; " .
                 "form-action 'self' " . $origin . "; " .
