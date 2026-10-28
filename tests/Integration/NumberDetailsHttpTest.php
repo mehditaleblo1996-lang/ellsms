@@ -21,6 +21,7 @@ final class NumberDetailsHttpTest extends TestCase
     private string $number;
     private int $adminId;
     private int $ownerId;
+    private string $bulkPrefix;
 
     protected function setUp(): void
     {
@@ -31,6 +32,7 @@ final class NumberDetailsHttpTest extends TestCase
         $this->number = '50008' . random_int(10000, 99999);
         db()->prepare('INSERT INTO ellsms_numbers (number, label, assigned_user_id) VALUES (?,?,?)')->execute([$this->number, 'details', $this->ownerId]);
         $this->numberId = (int)db()->lastInsertId();
+        $this->bulkPrefix = '7' . random_int(1000000, 9999999);
 
         $this->sessionDir = sys_get_temp_dir() . '/ellsms_numdet_sess_' . bin2hex(random_bytes(6));
         mkdir($this->sessionDir, 0700, true);
@@ -59,8 +61,9 @@ final class NumberDetailsHttpTest extends TestCase
         }
         foreach (glob($this->sessionDir . '/*') ?: [] as $f) { @unlink($f); }
         @rmdir($this->sessionDir);
-        db()->prepare('DELETE FROM ellsms_numbers WHERE id = ?')->execute([$this->numberId]);
+        db()->prepare('DELETE FROM ellsms_numbers WHERE id = ? OR number LIKE ?')->execute([$this->numberId, $this->bulkPrefix . '%']);
         foreach ($this->userIds as $id) {
+            db()->prepare('DELETE FROM ellsms_user_line_quota WHERE user_id = ?')->execute([$id]);
             db()->prepare('DELETE FROM ellsms_audit_log WHERE user_id = ?')->execute([$id]);
             db()->prepare('DELETE FROM ellsms_meta WHERE user_id = ?')->execute([$id]);
             db()->prepare('DELETE FROM user_ WHERE id = ?')->execute([$id]);
@@ -131,7 +134,7 @@ final class NumberDetailsHttpTest extends TestCase
         $save = $this->request('POST', $sid, '', [
             '_csrf' => $this->csrf($page['body']), 'do' => 'details', 'id' => (string)$this->numberId, 'return_id' => (string)$this->numberId,
             'label' => 'پشتیبانی', 'status' => 'blocked', 'expires_y' => '1406', 'expires_m' => '8', 'expires_d' => '6',
-            'priority' => '۷', 'bandwidth' => '3', 'bandwidth_max' => '20', 'confidential' => '1', 'pay_inbound_cost' => '0',
+            'priority' => '۷', 'bandwidth' => '3', 'confidential' => '1', 'pay_inbound_cost' => '0', 'status_reason' => 'شکایت',
         ]);
         $this->assertSame(302, $save['code']);
         $this->assertMatchesRegularExpression('#Location: /numbers\.php\?id=' . $this->numberId . '#', $save['body']);
@@ -142,18 +145,23 @@ final class NumberDetailsHttpTest extends TestCase
         $this->assertSame(7, (int)$row['priority'], 'Persian digits are accepted');
         $this->assertSame(3, (int)$row['bandwidth']);
         $this->assertSame(1, (int)$row['confidential']);
+        $this->assertSame('شکایت', $row['status_reason'], 'the block keeps its reason');
+        $this->assertNotNull($row['status_changed_at'], 'and its date');
 
-        // A bandwidth over its ceiling is refused and changes nothing.
+        // A bandwidth over the owner's ceiling is refused and changes nothing.
+        db()->prepare('INSERT INTO ellsms_user_line_quota (user_id, bandwidth_max) VALUES (?, 5)')->execute([$this->ownerId]);
         $this->request('POST', $sid, '', [
             '_csrf' => $this->csrf($page['body']), 'do' => 'details', 'id' => (string)$this->numberId, 'return_id' => (string)$this->numberId,
-            'label' => 'x', 'status' => 'active', 'no_expiry' => '1', 'priority' => '5', 'bandwidth' => '30', 'bandwidth_max' => '20',
+            'label' => 'x', 'status' => 'active', 'no_expiry' => '1', 'priority' => '5', 'bandwidth' => '6',
         ]);
         $this->assertSame('blocked', $this->row()['status']);
+        $this->assertSame(3, (int)$this->row()['bandwidth']);
 
         $this->request('POST', $sid, '', [
             '_csrf' => $this->csrf($page['body']), 'do' => 'details', 'id' => (string)$this->numberId, 'return_id' => (string)$this->numberId,
-            'label' => 'x', 'status' => 'active', 'no_expiry' => '1', 'priority' => '5', 'bandwidth' => '1', 'bandwidth_max' => '20',
+            'label' => 'x', 'status' => 'active', 'no_expiry' => '1', 'priority' => '5', 'bandwidth' => '5',
         ]);
+        $this->assertSame('', $this->row()['status_reason'], 'back to active clears the reason');
         $this->assertSame('active', $this->row()['status']);
         $this->assertNull($this->row()['expires_on'], '«بدون تاریخ انقضا» clears the date');
     }
@@ -212,5 +220,136 @@ final class NumberDetailsHttpTest extends TestCase
         $this->assertSame(403, $this->request('GET', $sid, '?id=' . $this->numberId)['code']);
         $this->request('POST', $sid, '', ['do' => 'details', 'id' => (string)$this->numberId, 'status' => 'blocked']);
         $this->assertSame('active', $this->row()['status']);
+    }
+
+    private function post(string $sid, array $fields, array $files = []): array
+    {
+        $page = $this->request('GET', $sid, '?id=' . $this->numberId);
+        $ch = curl_init("http://127.0.0.1:{$this->port}/numbers.php");
+        $body = ['_csrf' => $this->csrf($page['body'])] + $fields;
+        foreach ($files as $k => $path) $body[$k] = new \CURLFile($path, 'text/plain', basename($path));
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_HEADER => true,
+            CURLOPT_COOKIE => 'ELLSMS_SESSION=' . $sid, CURLOPT_POST => true, CURLOPT_POSTFIELDS => $files ? $body : http_build_query($body)]);
+        $out = (string)curl_exec($ch);
+        return ['code' => (int)curl_getinfo($ch, CURLINFO_HTTP_CODE), 'body' => $out];
+    }
+
+    public function testQuickActionsKeepTheReasonRenewAndRestore(): void
+    {
+        $sid = $this->session($this->adminId);
+        $id = (string)$this->numberId;
+        $list = $this->request('GET', $sid, '?q=' . $this->number)['body'];
+        $this->assertStringContainsString('class="num-menu"', $list, 'each row has an actions menu');
+        $this->assertStringContainsString('مسدود کن', $list);
+
+        $this->post($sid, ['do' => 'set_status', 'id' => $id, 'status' => 'blocked', 'reason' => 'پیامک مزاحم', 'back' => 'q=' . $this->number]);
+        $this->assertSame('blocked', $this->row()['status']);
+        $this->assertSame('پیامک مزاحم', $this->row()['status_reason']);
+        $this->assertStringContainsString('پیامک مزاحم', $this->request('GET', $sid, '?q=' . $this->number)['body'], 'the reason shows on the list');
+
+        $this->post($sid, ['do' => 'set_status', 'id' => $id, 'status' => 'deleted']);
+        $this->assertStringContainsString('بازیابی', $this->request('GET', $sid, '?q=' . $this->number)['body']);
+        $this->post($sid, ['do' => 'set_status', 'id' => $id, 'status' => 'active']);
+        $this->assertSame('active', $this->row()['status']);
+
+        // Renewal: one Jalali year past the later of today and the current expiry.
+        $this->setState('active', '2000-01-01');
+        $this->post($sid, ['do' => 'renew', 'id' => $id]);
+        $this->assertSame(number_add_jalali_year(number_today()), $this->row()['expires_on'], 'an expired line renews from today');
+        $this->setState('active', '2030-03-21');
+        $this->post($sid, ['do' => 'renew', 'id' => $id]);
+        $this->assertSame('2031-03-21', $this->row()['expires_on'], '1 Farvardin 1409 -> 1 Farvardin 1410');
+        $this->assertSame('2026-03-20', number_add_jalali_year('2025-03-20'), '30 Esfand of a leap year falls back to the 29th');
+
+        // Toggles are set, not flipped.
+        $this->post($sid, ['do' => 'confidential', 'id' => $id, 'value' => '1']);
+        $this->post($sid, ['do' => 'confidential', 'id' => $id, 'value' => '1']);
+        $this->assertSame(1, (int)$this->row()['confidential']);
+    }
+
+    public function testTheUserBandwidthCeilingLimitsAssignmentAndReactivation(): void
+    {
+        $sid = $this->session($this->adminId);
+        db()->prepare('INSERT INTO ellsms_user_line_quota (user_id, bandwidth_max) VALUES (?, 1)')->execute([$this->ownerId]);
+        $other = $this->bulkPrefix . '000';
+        db()->prepare("INSERT INTO ellsms_numbers (number, status) VALUES (?, 'reserved')")->execute([$other]);
+        $otherId = (int)db()->lastInsertId();
+
+        $this->post($sid, ['do' => 'assign', 'id' => (string)$otherId, 'user_id' => (string)$this->ownerId]);
+        $this->assertSame($this->ownerId, (int)db()->query("SELECT assigned_user_id FROM ellsms_numbers WHERE id = {$otherId}")->fetchColumn(), 'a reserved line does not count');
+        $this->post($sid, ['do' => 'set_status', 'id' => (string)$otherId, 'status' => 'active']);
+        $this->assertSame('reserved', db()->query("SELECT status FROM ellsms_numbers WHERE id = {$otherId}")->fetchColumn(), 'activating it would pass the ceiling');
+
+        $this->post($sid, ['do' => 'user_quota', 'user_id' => (string)$this->ownerId, 'bandwidth_max' => '']);
+        $this->assertNull(number_user_quota($this->ownerId), 'empty removes the ceiling');
+        $this->post($sid, ['do' => 'set_status', 'id' => (string)$otherId, 'status' => 'active']);
+        $this->assertSame('active', db()->query("SELECT status FROM ellsms_numbers WHERE id = {$otherId}")->fetchColumn());
+    }
+
+    public function testRangeAndFileAddsLeaveADownloadableReport(): void
+    {
+        $sid = $this->session($this->adminId);
+        $from = $this->bulkPrefix . '098';
+        $to = $this->bulkPrefix . '102';
+        db()->prepare('INSERT INTO ellsms_numbers (number) VALUES (?)')->execute([$this->bulkPrefix . '100']);
+
+        $r = $this->post($sid, ['do' => 'create', 'mode' => 'range', 'from' => $from, 'to' => $to, 'label' => 'بازه', 'status' => 'reserved', 'user_id' => (string)$this->ownerId]);
+        $this->assertSame(302, $r['code']);
+        $st = db()->prepare("SELECT number, label, status, assigned_user_id FROM ellsms_numbers WHERE number LIKE ? AND label = 'بازه' ORDER BY number");
+        $st->execute([$this->bulkPrefix . '%']);
+        $rows = $st->fetchAll();
+        $this->assertSame([$this->bulkPrefix . '098', $this->bulkPrefix . '099', $this->bulkPrefix . '101', $this->bulkPrefix . '102'], array_column($rows, 'number'), 'the existing one is skipped');
+        $this->assertSame('reserved', $rows[0]['status']);
+        $this->assertSame($this->ownerId, (int)$rows[0]['assigned_user_id']);
+
+        $list = $this->request('GET', $sid, '')['body'];
+        $this->assertMatchesRegularExpression('#bulk_report=(numbers-add-[0-9a-f]{16}\.csv)#', $list);
+        preg_match('#bulk_report=(numbers-add-[0-9a-f]{16}\.csv)#', $list, $m);
+        $report = $this->request('GET', $sid, '?bulk_report=' . $m[1])['body'];
+        $this->assertStringContainsString($this->bulkPrefix . '100,"قبلاً ثبت شده"', $report);
+        $this->assertSame(404, $this->request('GET', $sid, '?bulk_report=numbers-add-0000000000000000.csv')['code'], 'only this session\'s own report');
+
+        $file = tempnam(sys_get_temp_dir(), 'numadd') . '.txt';
+        file_put_contents($file, "number\n{$this->bulkPrefix}201\n{$this->bulkPrefix}201\nabc\n۷" . substr($this->bulkPrefix, 1) . "202\n");
+        $this->post($sid, ['do' => 'create', 'mode' => 'file', 'status' => 'active'], ['file' => $file]);
+        @unlink($file);
+        $st = db()->prepare('SELECT number FROM ellsms_numbers WHERE number IN (?, ?)');
+        $st->execute([$this->bulkPrefix . '201', $this->bulkPrefix . '202']);
+        $this->assertCount(2, $st->fetchAll(), 'header skipped, Persian digits read, duplicate and invalid rejected');
+
+        $this->assertFalse(number_range('5000', '50000')['ok'], 'different lengths');
+        $this->assertFalse(number_range('5000999', '5000100')['ok'], 'reversed');
+        $this->assertSame(['50000099', '50000100'], number_range('50000099', '50000100')['numbers'], 'leading zeros kept across the carry');
+    }
+
+    public function testOwnerInfoExportAndOptoutBypass(): void
+    {
+        $sid = $this->session($this->adminId);
+        $id = (string)$this->numberId;
+        $bad = $this->post($sid, ['do' => 'owner', 'id' => $id, 'owner_type' => 'real', 'first_name' => 'علی', 'last_name' => 'رضایی', 'national_id' => '123']);
+        $this->assertSame(302, $bad['code']);
+        $this->assertNull(number_owner_get($this->numberId), 'a 3-digit national id is refused');
+        $this->post($sid, ['do' => 'owner', 'id' => $id, 'owner_type' => 'real', 'first_name' => 'علی', 'last_name' => 'رضایی',
+            'national_id' => '۰۰۱۲۳۴۵۶۷۸', 'mobile' => '09121234567', 'owner_start_y' => '1404', 'owner_start_m' => '1', 'owner_start_d' => '1']);
+        $owner = number_owner_get($this->numberId);
+        $this->assertSame('0012345678', $owner['national_id']);
+        $this->assertSame('2025-03-21', $owner['start_date']);
+        $owners = $this->request('GET', $sid, '?tab=owners&oq=0012345678')['body'];
+        $this->assertStringContainsString('علی رضایی', $owners);
+        $this->assertStringContainsString($this->number, $owners);
+
+        $csv = $this->request('GET', $sid, '?export=csv&q=' . $this->number)['body'];
+        $this->assertStringContainsString('text/csv', $csv);
+        $this->assertStringContainsString($this->number . ',details', $csv);
+
+        db()->prepare('INSERT INTO ellsms_line_optouts (originator, mobile) VALUES (?, ?)')->execute([$this->number, '989121112233']);
+        $this->assertSame(['989121112233' => true], line_optout_filter($this->number, ['989121112233']));
+        $this->post($sid, ['do' => 'bypass_optouts', 'id' => $id, 'value' => '1']);
+        number_bypasses_optouts($this->number, true);
+        $this->assertSame([], line_optout_filter($this->number, ['989121112233']), 'a bypass line skips its opt-outs');
+        $this->post($sid, ['do' => 'bypass_optouts', 'id' => $id, 'value' => '0']);
+        number_bypasses_optouts($this->number, true);
+        $this->assertSame(['989121112233' => true], line_optout_filter($this->number, ['989121112233']));
+        db()->prepare('DELETE FROM ellsms_line_optouts WHERE originator = ?')->execute([$this->number]);
     }
 }

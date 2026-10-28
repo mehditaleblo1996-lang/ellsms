@@ -159,6 +159,8 @@ function line_optout_filter(string $originator, array $destinations): array {
     if ($destinations === [] || !line_optout_enabled()) return [];
     $line = normalize_originator($originator);
     if ($line === null) return [];
+    // «عبور از لیست سیاه داخلی» (/numbers.php): a line an admin marked to skip its opt-out list.
+    if (number_bypasses_optouts($line)) return [];
     $found = [];
     try {
         foreach (array_chunk(array_values(array_unique(array_map('strval', $destinations))), 1000) as $chunk) {
