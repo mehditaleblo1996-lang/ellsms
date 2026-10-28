@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/backend.php';
+require_once __DIR__ . '/../app/xlsx_reader.php';
 $me = require_login();
 $pageTitle = 'پنل جدید ارسال';
 $active = 'new_send';
@@ -36,6 +37,30 @@ $categories = $categories->fetchAll();
 $cst = db()->prepare("SELECT id, name, originator, content FROM ellsms_campaigns WHERE (organization_id = ? OR (organization_id IS NULL AND user_id = ?)) ORDER BY name");
 $cst->execute([$myOrgId, $me['id']]);
 $campaigns = $cst->fetchAll();
+
+// The browser cannot read an xlsx as text, so the upload tab posts it here and appends the
+// column-A values it gets back to the destinations box; cells with no digit (the header row of
+// /assets/samples/recipients-sample.xlsx) are dropped, normalization stays with parse_destinations().
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'extract_recipients') {
+    csrf_check();
+    header('Content-Type: application/json; charset=utf-8');
+    $file = $_FILES['file'] ?? null;
+    if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+        http_response_code(400);
+        exit(json_encode(['ok' => false, 'error' => 'بارگذاری فایل ناموفق بود.'], JSON_UNESCAPED_UNICODE));
+    }
+    try {
+        $numbers = [];
+        foreach (read_spreadsheet_rows($file['tmp_name'], (string)$file['name']) as $row) {
+            $cell = trim((string)($row[0] ?? ''));
+            if ($cell !== '' && preg_match('/\d/', $cell)) $numbers[] = $cell;
+        }
+    } catch (RuntimeException $e) {
+        http_response_code(400);
+        exit(json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE));
+    }
+    exit(json_encode(['ok' => true, 'numbers' => $numbers], JSON_UNESCAPED_UNICODE));
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -324,8 +349,8 @@ $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'grad
     </div>
 
     <div id="uploadAux" class="composer-aux" hidden>
-      <input type="file" id="fileInput" accept=".txt,.csv">
-      <div class="hint">فقط txt و csv — برای xlsx از «نظیر به نظیر» یا «پیامک هوشمند» استفاده کنید.</div>
+      <input type="file" id="fileInput" accept=".xlsx,.txt,.csv">
+      <div class="hint">xlsx، csv یا txt — در فایل اکسل شماره‌ها را در ستون اول بنویسید. <a href="/assets/samples/recipients-sample.xlsx" download>دریافت فایل نمونه‌ی اکسل</a></div>
     </div>
     <div id="clipAux" class="composer-aux" hidden>
       <button type="button" class="btn btn-sm" id="clipPaste">چسباندن از کلیپ‌بورد</button>
@@ -468,6 +493,22 @@ $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'grad
   document.getElementById('fileInput').addEventListener('change', ev => {
     const file = ev.target.files[0];
     if (!file) return;
+    if (/\.xlsx$/i.test(file.name)) {
+      const fd = new FormData();
+      fd.append('action', 'extract_recipients');
+      fd.append('_csrf', document.querySelector('#newSendForm [name=_csrf]').value);
+      fd.append('file', file);
+      fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' })
+        .then(r => r.json())
+        .then(res => {
+          if (!res.ok) { alert(res.error || 'خواندن فایل ممکن نشد.'); return; }
+          if (!res.numbers.length) { alert('شماره‌ای در ستون اول فایل پیدا نشد.'); return; }
+          appendDest(res.numbers.join('\n'));
+        })
+        .catch(() => alert('خواندن فایل ممکن نشد.'))
+        .finally(() => { ev.target.value = ''; });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = e => appendDest(e.target.result);
     reader.readAsText(file, 'UTF-8');
