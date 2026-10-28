@@ -14,7 +14,7 @@ This is Vesal's `Number.byPassBlackList` (column `bypassblacklist`): `MTSMSServi
 | | Ordinary line | Service line |
 |---|---|---|
 | Customer blacklist (`ellsms_blacklist`) | applied wherever it is today | **skipped** on every path, even with «فقط ارسال به لیست سفید» ticked |
-| Line opt-outs "11" (`ellsms_line_optouts`, docs/line-optouts.md) | applied | **still applied** — the recipient asked *this line* to stop |
+| Line opt-outs "11" (`ellsms_line_optouts`, docs/line-optouts.md) | applied | **still applied** — the recipient asked *this line* to stop (unless the line also has «عبور از لیست سیاه داخلی», docs/numbers.md) |
 | Price, route, gateway | unchanged | unchanged |
 
 Every path that filters the blacklist goes through `filter_blacklist($userId, $destinations, $originator)`

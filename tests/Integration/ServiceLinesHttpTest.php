@@ -115,7 +115,7 @@ final class ServiceLinesHttpTest extends TestCase
         $sid = $this->session($this->adminId);
         $all = $this->request('GET', $sid);
         $this->assertSame(200, $all['code']);
-        $this->assertStringContainsString('خدماتی (عبور از لیست سیاه)', $all['body']);
+        $this->assertStringContainsString('خدماتی — بدون بررسی لیست سیاه', $all['body'], 'the list filters by service line');
         $this->assertStringContainsString('5000900901', $all['body']);
         $this->assertStringContainsString('5000900902', $all['body']);
 

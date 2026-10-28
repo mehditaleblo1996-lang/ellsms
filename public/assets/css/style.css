@@ -1769,3 +1769,79 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .pay-submit { min-width: 200px; }
 .pay-details th { width: 180px; }
 @media (max-width: 560px) { .pay-method-box { width: 96px; } .pay-submit { width: 100%; } }
+
+/* Numbers list + «ویرایش شماره» (public/numbers.php): rows tinted by line status, like the legend. */
+.num-legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 var(--sp-3); }
+.num-chip { display: inline-block; border-radius: 6px; padding: 3px 12px; font-size: var(--fs-xs); font-weight: 700; border: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+.num-chip.is-current { outline: 2px solid var(--indigo); outline-offset: 1px; }
+.num-st-active      { background: #dff6f3; }
+.num-st-inactive    { background: #f3f3f5; }
+.num-st-blocked     { background: #fff6e0; }
+.num-st-deleted     { background: var(--err-bg); }
+.num-st-transferred { background: #ffe9d6; }
+.num-st-reserved    { background: #ebe9f7; }
+.num-st-expired     { background: #fbe3e3; }
+tr.num-row > td { background: inherit; }
+.num-table td, .num-table th { vertical-align: middle; }
+.num-table a.num-link { font-weight: 700; color: var(--indigo); text-decoration: none; direction: ltr; unicode-bidi: isolate; }
+.num-expired { color: var(--err); font-weight: 700; }
+.num-soon { color: var(--warn); font-weight: 700; }
+.num-kv { width: 100%; border-collapse: collapse; }
+.num-kv th, .num-kv td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: start; vertical-align: middle; }
+.num-kv th { width: 190px; color: var(--muted); font-size: var(--fs-sm); font-weight: 700; white-space: normal; }
+.num-kv tr:last-child > * { border-bottom: 0; }
+.num-kv form { margin: 0; }
+.num-kv input[type=text], .num-kv input[type=number], .num-kv select { margin: 0; }
+.num-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: var(--sp-3); }
+.num-head h2 { margin: 0; }
+@media (max-width: 760px) {
+  .num-kv, .num-kv tbody, .num-kv tr, .num-kv th, .num-kv td { display: block; width: 100%; }
+  .num-kv th { border-bottom: 0; padding-bottom: 2px; }
+}
+.num-status-note { font-size: var(--fs-2xs); color: var(--muted); font-weight: 400; margin-top: 2px; line-height: var(--lh-snug); }
+.num-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+.num-tools .ui-icon, .num-add .btn .ui-icon, .num-report .ui-icon, .num-head h2 .ui-icon { width: 16px; height: 16px; vertical-align: -3px; }
+.num-head h2 .num-chip { margin-inline-start: 8px; vertical-align: middle; }
+
+/* Row actions: an edit icon and a «…» menu of small icon forms. */
+.num-ops { white-space: nowrap; }
+.num-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; list-style: none; vertical-align: middle; }
+.num-icon-btn:hover, .num-menu[open] > .num-icon-btn { border-color: var(--indigo); color: var(--indigo); background: var(--tint); }
+.num-icon-btn .ui-icon { width: 18px; height: 18px; }
+.num-menu { display: inline-block; margin-inline-start: 4px; }
+.num-menu > summary::-webkit-details-marker { display: none; }
+.num-menu-panel { position: fixed; z-index: 60; width: 270px; max-height: 70vh; overflow: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(11, 16, 35, .16); padding: 6px; }
+.num-act { display: block; margin: 0; }
+.num-act button, a.num-act { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink); font: inherit; font-size: var(--fs-sm); text-align: start; cursor: pointer; text-decoration: none; }
+.num-act button:hover, a.num-act:hover { background: var(--tint); color: var(--indigo); }
+.num-act .ui-icon { width: 18px; height: 18px; flex: none; }
+.num-act.is-danger button { color: var(--err); }
+.num-act.is-danger button:hover { background: var(--err-bg); }
+.num-act-reason { display: flex; align-items: center; gap: 4px; padding: 2px 0; }
+.num-act-reason input { flex: 1 1 0; min-width: 0; margin: 0; padding: 6px 8px; font-size: var(--fs-xs); }
+.num-act-reason button { width: auto; flex: none; }
+/* The same actions as a toolbar on the edit page. */
+.num-actbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 var(--sp-4); }
+.num-actbar .num-act button { width: auto; border: 1px solid var(--line); background: var(--card); padding: 7px 12px; }
+.num-actbar .num-act-reason { border: 1px solid var(--line); border-radius: 8px; padding: 2px 2px 2px 8px; }
+.num-actbar .num-act-reason button { border: 0; }
+.num-actbar .num-act-reason input { width: 150px; border: 0; }
+
+/* «افزودن شماره»: method tabs; only the chosen method's fields show (with JS). */
+.num-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: var(--sp-3); }
+.num-tabs label { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; cursor: pointer; font-weight: 700; font-size: var(--fs-sm); color: var(--muted); }
+.num-tabs label:has(input:checked) { border-color: var(--indigo); color: var(--indigo); background: var(--tint); }
+.num-tabs input { position: absolute; opacity: 0; pointer-events: none; }
+.num-tabs .ui-icon { width: 16px; height: 16px; }
+.num-add[data-mode="single"] [data-mode]:not([data-mode="single"]),
+.num-add[data-mode="range"] [data-mode]:not([data-mode="range"]),
+.num-add[data-mode="file"] [data-mode]:not([data-mode="file"]) { display: none; }
+.num-add a.hint { display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; color: var(--indigo); text-decoration: none; }
+.num-report { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: var(--sp-3); padding: 12px 14px; border: 1px dashed var(--line); border-radius: 10px; }
+
+/* Owner info: only the chosen person type's fields show (with JS). */
+.num-owner-type { display: flex; gap: 18px; margin-bottom: var(--sp-3); }
+.num-owner-type label { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-weight: 700; }
+.num-owner[data-owner-type="real"] [data-for="legal"], .num-owner[data-owner-type="legal"] [data-for="real"] { display: none; }
+.num-owner .field .jdate { display: flex; width: 100%; margin-top: var(--sp-1); }
+.num-table td:has(> .num-status-note) { min-width: 170px; }
