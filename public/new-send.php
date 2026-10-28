@@ -183,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($mode === 'direct') {
         // #42 — the Bale channel is offered only while it is configured; 'sms' is the unchanged path.
-        $channel = in_array($_POST['channel'] ?? 'sms', MESSAGE_CHANNELS, true) ? (string)$_POST['channel'] : 'sms';
+        $channel = in_array($_POST['channel'] ?? '', MESSAGE_CHANNELS, true) ? (string)$_POST['channel'] : 'sms';
         [$ok, $info] = dispatch_with_channel($me, $originator, $dests, $content, $channel);
         flash($ok ? 'success' : 'error', $info . $blockedNote);
         audit((int)$me['id'], 'new_send.direct', count($dests) . ' dest, ok=' . (int)$ok);
@@ -251,7 +251,8 @@ if (!empty($costPricingFailure)) {
 if (isset($costPreview) && $costPreview) {
     $previewFormFields = '';
     foreach (['originator', 'destinations', 'content', 'notes', 'group', 'category', 'mode',
-              'repeat', 'throttle_count', 'throttle_minutes', 'use_blacklist'] as $field) {
+              'repeat', 'throttle_count', 'throttle_minutes', 'use_blacklist', 'channel',
+              'save_campaign', 'campaign_name'] as $field) {
         if (isset($_POST[$field])) {
             $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)$_POST[$field]) . '">';
         }
