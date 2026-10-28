@@ -11,7 +11,7 @@
  * refusal server-side (sms_pricing_price_messages() returns ok=false), so this card is an
  * explanation, never the enforcement.
  */
-$f = $costPricingFailure['pricing_failure'] ?? ['priced_count' => 0, 'unpriced_count' => 0, 'reasons' => []];
+$pricingFailure = $costPricingFailure['pricing_failure'] ?? ['priced_count' => 0, 'unpriced_count' => 0, 'reasons' => []];
 $r = $costPricingFailure['recipients'] ?? [];
 ?>
 <div class="modal-overlay is-open" id="sendUnpricedOverlay" role="dialog" aria-modal="true" aria-labelledby="sendUnpricedTitle">
@@ -23,17 +23,17 @@ $r = $costPricingFailure['recipients'] ?? [];
   <table>
     <tr><th>گیرندگان واردشده</th><td class="num"><?= to_persian_digits(number_format((int)($r['input_count'] ?? 0))) ?></td></tr>
     <tr><th>گیرندگان قابل ارسال</th><td class="num"><?= to_persian_digits(number_format((int)($r['eligible_count'] ?? 0))) ?></td></tr>
-    <tr><th>دارای تعرفه</th><td class="num"><?= to_persian_digits(number_format((int)$f['priced_count'])) ?></td></tr>
-    <tr><th><strong>بدون تعرفه</strong></th><td class="num" style="color:#c0392b"><strong><?= to_persian_digits(number_format((int)$f['unpriced_count'])) ?></strong></td></tr>
+    <tr><th>دارای تعرفه</th><td class="num"><?= to_persian_digits(number_format((int)$pricingFailure['priced_count'])) ?></td></tr>
+    <tr><th><strong>بدون تعرفه</strong></th><td class="num" style="color:#c0392b"><strong><?= to_persian_digits(number_format((int)$pricingFailure['unpriced_count'])) ?></strong></td></tr>
   </table>
   </div>
 
-  <?php if ($f['reasons']): ?>
+  <?php if ($pricingFailure['reasons']): ?>
     <h3 style="margin-top:14px">دلیل</h3>
     <div class="table-wrap">
     <table>
       <tr><th>دلیل</th><th>تعداد گیرنده</th><th>کد</th></tr>
-      <?php foreach ($f['reasons'] as $reason => $count): ?>
+      <?php foreach ($pricingFailure['reasons'] as $reason => $count): ?>
         <tr>
           <td><?= e(cost_pricing_reason_message((string)$reason)) ?></td>
           <td class="num"><?= to_persian_digits(number_format((int)$count)) ?></td>

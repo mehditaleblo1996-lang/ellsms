@@ -148,6 +148,6 @@ $userLabel = $me['full_name'] ?: $me['username'];
           </form>
         </div>
       <?php endif; ?>
-      <?php foreach (flashes() as $f): ?>
-        <div class="flash flash-<?= e($f['type']) ?>" data-flash="<?= e($f['type']) ?>"><span class="flash-text"><?= e($f['msg']) ?></span></div>
+      <?php foreach (flashes() as $flashItem): ?>
+        <div class="flash flash-<?= e($flashItem['type']) ?>" data-flash="<?= e($flashItem['type']) ?>"><span class="flash-text"><?= e($flashItem['msg']) ?></span></div>
       <?php endforeach; ?>

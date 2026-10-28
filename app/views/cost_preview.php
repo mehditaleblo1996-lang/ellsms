@@ -20,15 +20,15 @@ $isExempt = ($cp['pricing']['price_source'] ?? '') === 'admin_exempt';
 $unitPrice = $cp['pricing']['credits_per_segment'];
 $unitMin = ($cp['pricing']['unit_price_min_millicredits'] ?? 0) / 1000;
 $unitMax = ($cp['pricing']['unit_price_max_millicredits'] ?? 0) / 1000;
-$groups = $cp['pricing']['groups'] ?? [];
+$pricingGroups = $cp['pricing']['groups'] ?? [];
 // Per-operator breakdown, shown when the recipients span more than one operator.
 $operatorBreakdown = [];
-foreach ($groups as $g) {
-    $key = (string)$g['operator'];
-    $operatorBreakdown[$key] ??= ['name' => $g['operator_name'] !== '' ? $g['operator_name'] : ($key === 'unknown' ? 'نامشخص' : $key), 'recipients' => 0, 'cost' => 0, 'unit_min' => null, 'unit_max' => null];
-    $operatorBreakdown[$key]['recipients'] += (int)$g['recipients'];
-    $operatorBreakdown[$key]['cost'] += (int)$g['cost'];
-    $unit = (int)$g['unit_price_millicredits'];
+foreach ($pricingGroups as $pricingGroup) {
+    $key = (string)$pricingGroup['operator'];
+    $operatorBreakdown[$key] ??= ['name' => $pricingGroup['operator_name'] !== '' ? $pricingGroup['operator_name'] : ($key === 'unknown' ? 'نامشخص' : $key), 'recipients' => 0, 'cost' => 0, 'unit_min' => null, 'unit_max' => null];
+    $operatorBreakdown[$key]['recipients'] += (int)$pricingGroup['recipients'];
+    $operatorBreakdown[$key]['cost'] += (int)$pricingGroup['cost'];
+    $unit = (int)$pricingGroup['unit_price_millicredits'];
     $operatorBreakdown[$key]['unit_min'] = min($operatorBreakdown[$key]['unit_min'] ?? $unit, $unit);
     $operatorBreakdown[$key]['unit_max'] = max($operatorBreakdown[$key]['unit_max'] ?? $unit, $unit);
 }
