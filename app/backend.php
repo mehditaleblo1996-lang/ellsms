@@ -280,6 +280,16 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     $grantedLine = shared_otp_granted_line();
     $viaSharedOtp = $grantedLine !== null && normalize_originator($originator) === $grantedLine;
 
+    // A suspended or expired line (app/NumberDetails.php) gets its own message rather than the
+    // generic "not allowed" below, so the sender knows to ask for it to be renewed. Only for a line
+    // that is theirs: anyone else just gets that generic refusal from can_use_originator().
+    $requestedLine = (string)normalize_originator($originator);
+    $unsendable = number_unsendable_reason($requestedLine);
+    if ($unsendable !== null && (($user['role'] ?? null) === 'admin' || $requestedLine === $grantedLine
+            || in_array($requestedLine, array_merge(allowed_originators($user), array_column(user_shared_numbers($user), 'number')), true))) {
+        Logger::warning('sms.send.rejected_unsendable_originator', ['user_id' => $user['id'] ?? null, 'originator' => $originator]);
+        return [false, "ارسال از خط {$originator} ممکن نیست: {$unsendable}.", 0, count($destinations), 0, false, []];
+    }
     if (!$viaSharedOtp && user_has_no_send_line($user)) {
         Logger::warning('sms.send.rejected_no_assigned_line', ['user_id' => $user['id'] ?? null]);
         return [false, NO_ASSIGNED_LINE_MESSAGE, 0, count($destinations), 0, false, []];

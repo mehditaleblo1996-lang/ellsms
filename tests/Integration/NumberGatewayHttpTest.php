@@ -94,9 +94,9 @@ final class NumberGatewayHttpTest extends TestCase
         return $sid;
     }
 
-    private function request(string $method, string $sid, array $post = []): array
+    private function request(string $method, string $sid, array $post = [], string $query = ''): array
     {
-        $ch = curl_init("http://127.0.0.1:{$this->port}/numbers.php");
+        $ch = curl_init("http://127.0.0.1:{$this->port}/numbers.php" . $query);
         $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_COOKIE => 'ELLSMS_SESSION=' . $sid];
         if ($method === 'POST') {
             $opts[CURLOPT_POST] = true;
@@ -117,11 +117,13 @@ final class NumberGatewayHttpTest extends TestCase
     public function testAnAdminPinsAndUnpinsAndCannotChooseAGatewayThatCannotSend(): void
     {
         $sid = $this->session($this->adminId);
-        $page = $this->request('GET', $sid);
+        // The gateway picker lives on the number's «ویرایش شماره» page; the list only filters by gateway.
+        $page = $this->request('GET', $sid, [], '?id=' . $this->numberId);
         $this->assertSame(200, $page['code']);
         $this->assertStringContainsString('درگاه ارسال', $page['body']);
-        $this->assertStringContainsString('value="' . $this->gatewayIds['on'] . '"', $page['body']);
-        $this->assertStringNotContainsString('value="' . $this->gatewayIds['off'] . '"', $page['body'], 'a gateway with sending off is not offered');
+        preg_match('#<select name="gateway_id".*?</select>#s', $page['body'], $picker);
+        $this->assertStringContainsString('value="' . $this->gatewayIds['on'] . '"', $picker[0] ?? '');
+        $this->assertStringNotContainsString('value="' . $this->gatewayIds['off'] . '"', $picker[0] ?? '', 'a gateway with sending off is not offered');
         preg_match('/name="_csrf" value="([^"]+)"/', $page['body'], $m);
 
         $this->request('POST', $sid, ['_csrf' => $m[1], 'do' => 'gateway', 'id' => (string)$this->numberId, 'gateway_id' => (string)$this->gatewayIds['on']]);
