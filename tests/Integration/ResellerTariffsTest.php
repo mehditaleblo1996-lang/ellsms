@@ -184,8 +184,11 @@ final class ResellerTariffsTest extends IntegrationTestCase
         $this->assertSame($tariff, customer_account($child)['tariff_id']);
         $this->assertSame('in_use', reseller_tariff_delete($reseller, $tariff, $reseller)['reason']);
 
-        $this->assertTrue(reseller_assign_tariff($reseller, $child, null, $reseller)['ok']);
+        // A reseller's customer cannot be left without a tariff; moving it to another frees the first.
+        $this->assertSame('tariff_required', reseller_assign_tariff($reseller, $child, null, $reseller)['reason']);
+        $second = $this->tariff($reseller, 12);
+        $this->assertTrue(reseller_assign_tariff($reseller, $child, $second, $reseller)['ok']);
         $this->assertTrue(reseller_tariff_delete($reseller, $tariff, $reseller)['ok']);
-        $this->assertSame([], reseller_tariffs_for($reseller));
+        $this->assertSame([$second], array_column(reseller_tariffs_for($reseller), 'id'));
     }
 }

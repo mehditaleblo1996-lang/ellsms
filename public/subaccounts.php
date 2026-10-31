@@ -101,13 +101,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($do === 'settings') {
         $changes = [];
-        if (isset($_POST['tariff_percent'])) {
-            $bp = customer_tariff_bp_from_input((string)$_POST['tariff_percent']);
-            if ($bp === null) {
-                flash('error', customer_error_message('invalid_tariff'));
+        if (isset($_POST['tariff_id']) && $myAccount['customer_type'] === 'reseller') {
+            $result = reseller_assign_tariff($meId, $childId, (int)$_POST['tariff_id'] ?: null, $meId);
+            if (!$result['ok']) {
+                flash('error', reseller_tariff_error_message((string)$result['reason']));
                 redirect($back);
             }
-            $changes['tariff_bp'] = $bp;
         }
         $changes['expires_on'] = jalali_request_to_gregorian('expires_on'); // left blank = no expiry
         if (isset($_POST['max_subset_limit'])) {
@@ -139,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 /* ---------------- Page data ---------------- */
-$myTariffBp   = customer_effective_tariff_bp($meId);
+$myTariffs    = $myAccount['customer_type'] === 'reseller' && reseller_panel_available() ? reseller_tariffs_for($meId) : [];
 $usedSubset   = customer_used_subset($meId);
 $allowedTypes = customer_allowed_child_types($myAccount);
 $isOrgan      = $myAccount['customer_type'] === 'organ';
@@ -202,7 +201,7 @@ require __DIR__ . '/../app/views/header.php';
   </div>
   <div class="summary-grid">
     <div class="summary-item"><div class="summary-label">اعتبار شما (ریال)</div><div class="summary-value num"><?= to_persian_digits(number_format((int)wallet_balance($meId)['available'])) ?></div></div>
-    <div class="summary-item"><div class="summary-label">تعرفه‌ی شما</div><div class="summary-value num"><?= to_persian_digits(customer_tariff_percent($myTariffBp)) ?>٪ نرخ پایه</div></div>
+    <div class="summary-item"><div class="summary-label">تعرفه‌ی شما</div><div class="summary-value"><?= e(customer_tariff_label($meId)) ?></div></div>
     <div class="summary-item"><div class="summary-label">سقف زیرمجموعه</div><div class="summary-value num"><?= to_persian_digits((string)$usedSubset) ?> از <?= to_persian_digits((string)$myAccount['max_subset_limit']) ?></div></div>
     <div class="summary-item"><div class="summary-label">انقضای حساب شما</div><div class="summary-value"><?= e($expiryText($myAccount['expires_on'])) ?></div></div>
   </div>
@@ -224,7 +223,7 @@ require __DIR__ . '/../app/views/header.php';
           <td><?= e(trim(($ident['first_name'] ?? '') . ' ' . ($ident['last_name'] ?? ''))) ?></td>
           <td><?= e(customer_type_label($acc, $myAccount)) ?></td>
           <td class="num"><?= to_persian_digits(number_format((int)($ident['credit'] ?? 0))) ?></td>
-          <td class="num"><?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp($cid))) ?>٪</td>
+          <td><?= e(customer_tariff_label($cid)) ?></td>
           <td><?= e($expiryText($acc['expires_on'])) ?></td>
           <td><span class="badge badge-<?= $block === null ? 'ok' : 'off' ?>"><?= $block === null ? 'فعال' : ($block === 'expired' ? 'منقضی' : 'غیرفعال') ?></span></td>
           <td><a class="btn btn-sm" href="/subaccounts.php?view=<?= $cid ?>">مدیریت</a></td>
@@ -252,10 +251,14 @@ require __DIR__ . '/../app/views/header.php';
         <label>شخصیت
           <select name="account_type"><option value="individual">حقیقی</option><option value="legal">حقوقی</option></select>
         </label>
-        <label>تعرفه (درصد نرخ پایه) *
-          <input type="text" name="tariff_percent" class="ltr" inputmode="decimal" required value="<?= e(customer_tariff_percent($myTariffBp)) ?>">
-          <span class="hint" style="display:block">حداقل <?= to_persian_digits(customer_tariff_percent($myTariffBp)) ?>٪ (تعرفه‌ی خودتان).</span>
+        <?php if ($myAccount['customer_type'] === 'reseller'): ?>
+        <label>تعرفه *
+          <select name="tariff_id" required><option value="">— انتخاب کنید —</option>
+            <?php foreach ($myTariffs as $t): ?><option value="<?= $t['id'] ?>"<?= $t['is_default'] ? ' selected' : '' ?>><?= e($t['title']) ?></option><?php endforeach; ?>
+          </select>
+          <span class="hint" style="display:block"><?= $myTariffs ? 'نمی‌تواند کمتر از قیمت خودتان باشد؛ اختلافش سود شماست.' : 'هنوز تعرفه‌ای ندارید؛ ابتدا در <a href="/reseller/tariffs">پنل نمایندگی ← تعرفه‌ها</a> یکی بسازید.' ?></span>
         </label>
+        <?php endif; ?>
         <label>سقف زیرمجموعه‌ی این حساب
           <input type="text" name="max_subset_limit" class="ltr" inputmode="numeric" value="0">
           <span class="hint" style="display:block">فقط برای زیرنماینده و مشتری سازمانی.</span>
@@ -326,7 +329,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="summary-grid">
     <div class="summary-item"><div class="summary-label">اعتبار آزاد (ریال)</div><div class="summary-value num"><?= to_persian_digits(number_format($view['balance']['available'])) ?></div></div>
     <div class="summary-item"><div class="summary-label">رزرو‌شده برای ارسال‌های در جریان</div><div class="summary-value num"><?= to_persian_digits(number_format($view['balance']['reserved'])) ?></div></div>
-    <div class="summary-item"><div class="summary-label">تعرفه</div><div class="summary-value num"><?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp($viewId))) ?>٪</div></div>
+    <div class="summary-item"><div class="summary-label">تعرفه</div><div class="summary-value"><?= e(customer_tariff_label($viewId)) ?></div></div>
     <div class="summary-item"><div class="summary-label">انقضا</div><div class="summary-value"><?= e($expiryText($acc['expires_on'])) ?></div></div>
   </div>
   <div class="toolbar" style="margin:var(--sp-4) 0 0">
@@ -406,11 +409,14 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="child_id" value="<?= $viewId ?>">
       <div class="form-grid">
         <?php if ($subOrgan): ?>
-          <div class="field"><div class="hint">زیرسازمان همیشه با تعرفه‌ی سازمان (<?= to_persian_digits(customer_tariff_percent($myTariffBp)) ?>٪) ارسال می‌کند.</div></div>
-        <?php else: ?>
-          <label>تعرفه (درصد نرخ پایه)
-            <input type="text" name="tariff_percent" class="ltr" inputmode="decimal" value="<?= e(customer_tariff_percent($acc['tariff_bp'])) ?>">
-            <span class="hint" style="display:block">حداقل <?= to_persian_digits(customer_tariff_percent($myTariffBp)) ?>٪. سود شما = تعرفه‌ی زیرمجموعه − تعرفه‌ی شما.</span>
+          <div class="field"><div class="hint">زیرسازمان همیشه با تعرفه‌ی سازمان ارسال می‌کند.</div></div>
+        <?php elseif ($myTariffs): ?>
+          <label>تعرفه
+            <select name="tariff_id" required>
+              <?php if ($acc['tariff_id'] === null): ?><option value="">— انتخاب کنید —</option><?php endif; ?>
+              <?php foreach ($myTariffs as $t): ?><option value="<?= $t['id'] ?>"<?= $acc['tariff_id'] === $t['id'] ? ' selected' : '' ?>><?= e($t['title']) ?></option><?php endforeach; ?>
+            </select>
+            <span class="hint" style="display:block">سود شما = قیمت زیرمجموعه − قیمت خودتان.</span>
           </label>
         <?php endif; ?>
         <label>تاریخ انقضا <?= jalali_date_select('expires_on', $acc['expires_on'], yearsAhead: 5, yearsBack: 1, allowEmpty: true) ?>

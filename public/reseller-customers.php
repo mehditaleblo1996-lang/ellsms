@@ -30,7 +30,7 @@ $tariffTitles = array_column($tariffs, 'title', 'id');
 $statusLabel = static fn(?string $block): string => $block === null ? 'فعال' : ($block === 'expired' ? 'منقضی' : 'غیرفعال');
 $tariffText = static function (array $acc) use ($tariffTitles): string {
     if ($acc['tariff_id'] !== null && isset($tariffTitles[$acc['tariff_id']])) return $tariffTitles[$acc['tariff_id']];
-    return to_persian_digits(customer_tariff_percent($acc['tariff_bp'])) . '٪';
+    return customer_tariff_label((int)$acc['user_id']);
 };
 
 if (($_GET['export'] ?? '') === 'csv') {

@@ -29,22 +29,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = reseller_brand_logo_store($resellerId, $_FILES['logo'], $actorId);
         }
     } elseif ($do === 'signup') {
-        $bpRaw = trim((string)($_POST['signup_tariff_percent'] ?? ''));
-        $bp = $bpRaw === '' ? null : customer_tariff_bp_from_input($bpRaw);
-        if ($bpRaw !== '' && $bp === null) {
-            $result = ['ok' => false, 'reason' => 'tariff_below_parent'];
-        } else {
-            $days = trim(from_persian_digits((string)($_POST['signup_expiry_days'] ?? '')));
-            $result = reseller_settings_save($resellerId, [
-                'signup_enabled'         => !empty($_POST['signup_enabled']),
-                'signup_customer_type'   => (string)($_POST['signup_customer_type'] ?? 'normal'),
-                'signup_tariff_bp'       => $bp,
-                'signup_tariff_id'       => (int)($_POST['signup_tariff_id'] ?? 0) ?: null,
-                'signup_package_id'      => (int)($_POST['signup_package_id'] ?? 0) ?: null,
-                'signup_expiry_days'     => $days === '' ? null : (int)$days,
-                'regenerate_signup_code' => !empty($_POST['regenerate']),
-            ], $actorId);
-        }
+        $days = trim(from_persian_digits((string)($_POST['signup_expiry_days'] ?? '')));
+        $result = reseller_settings_save($resellerId, [
+            'signup_enabled'         => !empty($_POST['signup_enabled']),
+            'signup_customer_type'   => (string)($_POST['signup_customer_type'] ?? 'normal'),
+            'signup_tariff_id'       => (int)($_POST['signup_tariff_id'] ?? 0) ?: null,
+            'signup_package_id'      => (int)($_POST['signup_package_id'] ?? 0) ?: null,
+            'signup_expiry_days'     => $days === '' ? null : (int)$days,
+            'regenerate_signup_code' => !empty($_POST['regenerate']),
+        ], $actorId);
     } elseif ($do === 'support') {
         $result = reseller_settings_save($resellerId, [
             'tickets_to_reseller' => !empty($_POST['tickets_to_reseller']),
@@ -106,13 +99,11 @@ require __DIR__ . '/../app/views/reseller_header.php';
           <?php endforeach; ?>
         </select>
       </label>
-      <label>درصد تعرفه <input type="text" name="signup_tariff_percent" class="ltr" inputmode="decimal" placeholder="<?= e(customer_tariff_percent(customer_effective_tariff_bp($resellerId))) ?>" value="<?= e($settings['signup_tariff_bp'] !== null ? customer_tariff_percent($settings['signup_tariff_bp']) : '') ?>">
-        <span class="hint" style="display:block">خالی = هم‌اندازه‌ی تعرفه‌ی خودتان.</span>
-      </label>
-      <label>تعرفه‌ی نام‌دار
+      <label>تعرفه‌ی مشتریان جدید
         <select name="signup_tariff_id"><option value="">— تعرفه‌ی پیش‌فرض —</option>
           <?php foreach ($tariffs as $t): ?><option value="<?= $t['id'] ?>"<?= $settings['signup_tariff_id'] === $t['id'] ? ' selected' : '' ?>><?= e($t['title']) ?></option><?php endforeach; ?>
         </select>
+        <?php if (!$tariffs): ?><span class="hint" style="display:block">هنوز تعرفه‌ای ندارید؛ ابتدا در <a href="/reseller/tariffs">تعرفه‌ها</a> یکی بسازید.</span><?php endif; ?>
       </label>
       <label>مدت اعتبار حساب (روز) <input type="text" name="signup_expiry_days" class="ltr" inputmode="numeric" value="<?= e((string)($settings['signup_expiry_days'] ?? '')) ?>">
         <span class="hint" style="display:block">خالی = بدون انقضا (یا انقضای حساب خودتان).</span>

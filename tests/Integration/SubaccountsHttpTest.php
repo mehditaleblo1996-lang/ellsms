@@ -88,6 +88,12 @@ final class SubaccountsHttpTest extends TestCase
                 $db->prepare("DELETE FROM {$table} WHERE user_id = ?")->execute([$id]);
             }
             $db->prepare('DELETE FROM ellsms_menu_roles WHERE owner_user_id = ?')->execute([$id]);
+            try {
+                $db->prepare('DELETE p FROM ellsms_reseller_tariff_prices p JOIN ellsms_reseller_tariffs t ON t.id = p.tariff_id WHERE t.owner_user_id = ?')->execute([$id]);
+                $db->prepare('DELETE FROM ellsms_reseller_tariffs WHERE owner_user_id = ?')->execute([$id]);
+            } catch (\PDOException) {
+                // reseller panel not migrated
+            }
             $orgs = $db->prepare('SELECT organization_id FROM ellsms_organization_memberships WHERE user_id = ?');
             $orgs->execute([$id]);
             foreach ($orgs->fetchAll(\PDO::FETCH_COLUMN) as $orgId) {
@@ -189,9 +195,24 @@ final class SubaccountsHttpTest extends TestCase
         $session = $this->sessionFor($reseller);
         $username = 'child_' . bin2hex(random_bytes(4));
 
+        // Without one of the reseller's tariffs nothing is created on the backend.
+        $noTariffName = 'child_' . bin2hex(random_bytes(4));
+        $this->request('POST', '/subaccounts.php', $session, [
+            '_csrf' => $this->csrfFor($session, '/subaccounts.php'), 'do' => 'create', 'customer_type' => 'normal',
+            'username' => $noTariffName, 'password' => 'secret123', 'first_name' => 'a', 'last_name' => 'b',
+            'email' => $noTariffName . '@example.com', 'mobile' => '09121234567', 'national_id' => '0012345678',
+        ]);
+        $this->assertNull(backend_find_user_id_by_username($noTariffName));
+
+        $saved = reseller_tariff_save($reseller, null, 'Retail ' . bin2hex(random_bytes(2)), '', [
+            reseller_tariff_cell_key(RESELLER_TARIFF_ALL, 'fa') => 10_000_000,
+        ], true, $reseller);
+        $this->assertTrue($saved['ok'], $saved['reason'] ?? '');
+        $tariffId = $saved['id'];
+
         $r = $this->request('POST', '/subaccounts.php', $session, [
             '_csrf' => $this->csrfFor($session, '/subaccounts.php'), 'do' => 'create',
-            'customer_type' => 'normal', 'account_type' => 'individual', 'tariff_percent' => '130', 'max_subset_limit' => '0',
+            'customer_type' => 'normal', 'account_type' => 'individual', 'tariff_id' => (string)$tariffId, 'max_subset_limit' => '0',
             'username' => $username, 'password' => 'secret123', 'first_name' => 'علی', 'last_name' => 'رضایی',
             'email' => $username . '@example.com', 'mobile' => '09121234567', 'national_id' => '0012345678', 'gender' => 'MALE',
         ]);
@@ -203,16 +224,17 @@ final class SubaccountsHttpTest extends TestCase
 
         $acc = customer_account($childId);
         $this->assertSame($reseller, $acc['parent_user_id']);
-        $this->assertSame(13000, $acc['tariff_bp']);
+        $this->assertSame(CUSTOMER_TARIFF_BASE_BP, $acc['tariff_bp']);
+        $this->assertSame($tariffId, $acc['tariff_id']);
         $meta = db()->prepare('SELECT panel_access FROM ellsms_meta WHERE user_id = ?');
         $meta->execute([$childId]);
         $this->assertSame(1, (int)$meta->fetchColumn());
         $this->assertNotNull(user_default_organization_id($childId), 'the sub-account gets its own organization');
 
-        // Below the reseller's own tariff is refused before anything is created on the backend.
+        // Another reseller's tariff is refused before anything is created on the backend.
         $refusedName = 'child_' . bin2hex(random_bytes(4));
         $this->request('POST', '/subaccounts.php', $session, [
-            '_csrf' => $this->csrfFor($session, '/subaccounts.php'), 'do' => 'create', 'customer_type' => 'normal', 'tariff_percent' => '110',
+            '_csrf' => $this->csrfFor($session, '/subaccounts.php'), 'do' => 'create', 'customer_type' => 'normal', 'tariff_id' => '999999999',
             'username' => $refusedName, 'password' => 'secret123', 'first_name' => 'a', 'last_name' => 'b',
             'email' => $refusedName . '@example.com', 'mobile' => '09121234567', 'national_id' => '0012345678',
         ]);
@@ -314,11 +336,11 @@ final class SubaccountsHttpTest extends TestCase
         $csrf = preg_match('/name="_csrf" value="([^"]+)"/', $page['body'], $m) === 1 ? $m[1] : '';
         $this->request('POST', '/users.php', $session, [
             '_csrf' => $csrf, 'do' => 'customer_save', 'id' => $reseller, 'back' => '1',
-            'customer_type' => 'reseller', 'parent_username' => '', 'tariff_percent' => '85', 'max_subset_limit' => '20',
+            'customer_type' => 'reseller', 'parent_username' => '', 'max_subset_limit' => '20',
         ]);
         $acc = customer_account($reseller);
         $this->assertSame('reseller', $acc['customer_type']);
-        $this->assertSame(8500, $acc['tariff_bp']);
+        $this->assertSame(CUSTOMER_TARIFF_BASE_BP, $acc['tariff_bp'], 'the percentage is no longer set');
         $this->assertSame(20, $acc['max_subset_limit']);
     }
 }

@@ -22,7 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $input = array_merge($_POST, ['expires_on' => jalali_request_to_gregorian('expires_on')]);
     if (!reseller_can($ctx, 'tariffs.manage')) {
-        unset($input['tariff_id']);
+        // Staff who may not choose tariffs put the customer on the default one.
+        $input['tariff_id'] = reseller_default_tariff_id($resellerId) ?? 0;
     }
     $result = customer_create_sub_account($owner, $input, $actorId);
     if ($result['ok']) {
@@ -35,7 +36,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $tariffs = reseller_tariffs_for($resellerId);
 $usedSubset = customer_used_subset($resellerId);
-$myTariffBp = customer_effective_tariff_bp($resellerId);
 $typeOptions = ['normal' => 'مشتری عادی', 'organ' => 'مشتری سازمانی', 'reseller' => 'زیرنماینده'];
 
 require __DIR__ . '/../app/views/reseller_header.php';
@@ -61,15 +61,12 @@ require __DIR__ . '/../app/views/reseller_header.php';
       <label>شخصیت
         <select name="account_type"><option value="individual">حقیقی</option><option value="legal">حقوقی</option></select>
       </label>
-      <label>تعرفه (درصد نرخ پایه) *
-        <input type="text" name="tariff_percent" class="ltr" inputmode="decimal" required value="<?= e(customer_tariff_percent($myTariffBp)) ?>">
-        <span class="hint" style="display:block">حداقل <?= to_persian_digits(customer_tariff_percent($myTariffBp)) ?>٪؛ برای خانه‌هایی که تعرفه‌ی نام‌دار قیمت ندارد.</span>
-      </label>
-      <?php if ($tariffs && reseller_can($ctx, 'tariffs.manage')): ?>
-      <label>تعرفه‌ی نام‌دار
-        <select name="tariff_id"><option value="">— فقط درصد —</option>
+      <?php if (reseller_can($ctx, 'tariffs.manage')): ?>
+      <label>تعرفه *
+        <select name="tariff_id" required><option value="">— انتخاب کنید —</option>
           <?php foreach ($tariffs as $t): ?><option value="<?= $t['id'] ?>"<?= $t['is_default'] ? ' selected' : '' ?>><?= e($t['title']) ?></option><?php endforeach; ?>
         </select>
+        <span class="hint" style="display:block"><?= $tariffs ? 'نمی‌تواند کمتر از قیمت خودتان باشد؛ اختلافش سود شماست.' : 'هنوز تعرفه‌ای ندارید؛ ابتدا در <a href="/reseller/tariffs">تعرفه‌ها</a> یکی بسازید.' ?></span>
       </label>
       <?php endif; ?>
       <label>سقف زیرمجموعه‌ی این حساب

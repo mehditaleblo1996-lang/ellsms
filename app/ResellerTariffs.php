@@ -9,10 +9,12 @@
  * How a customer under a reseller is priced (sms_pricing_price_messages() through
  * customer_chain_prices()), from the top of its chain down:
  *
- *   - the top account pays its own exact price (the admin's per-account matrix) for that cell, else
- *     the list price times its tariff percentage, exactly as before;
- *   - each account below pays its named tariff's cell, else the list price times its own tariff
- *     percentage; a sub-organization pays its parent organization's price;
+ *   - the top account pays its own exact price (the admin's per-account matrix, «تعرفه‌ی اختصاصی»)
+ *     for that cell, else the list price;
+ *   - each account below pays its named tariff's cell, else the list price; a sub-organization pays
+ *     its parent organization's price. A reseller must put every customer on one of its tariffs
+ *     (customer_create_sub_account(), reseller_assign_tariff()); the old percentage coefficient
+ *     (tariff_bp) is no longer set from the panel and stays at 100%;
  *   - never less than the reseller directly above it pays for the same message. A tariff cell is
  *     checked against the reseller's own price when it is saved, and the floor is applied again at
  *     send time, because the reseller's own price can depend on the gateway that carries the message.
@@ -394,7 +396,7 @@ function reseller_tariff_cells_from_form(array $posted): array {
 
 /**
  * Creates or updates one of $ownerId's tariffs. $cells maps reseller_tariff_cell_key() => millicredits
- * or null (empty: falls back to the 'all' row, else the customer's tariff percentage). Every price
+ * or null (empty: falls back to the 'all' row, else the list price). Every price
  * must be at least what the owner itself pays for that cell (reseller_own_prices()).
  *
  * @return array{ok:bool, reason?:string, id?:int, cell?:string}
@@ -469,6 +471,8 @@ function reseller_assign_tariff(int $parentId, int $childId, ?int $tariffId, int
     if ($tariffId !== null && reseller_tariff_owned($parentId, $tariffId) === null) return ['ok' => false, 'reason' => 'not_found'];
     $child = customer_account($childId);
     if (!$child['exists'] || $child['parent_user_id'] !== $parentId) return ['ok' => false, 'reason' => 'not_your_child'];
+    // A reseller's customer is always on one of its tariffs.
+    if ($tariffId === null && customer_account($parentId)['customer_type'] === 'reseller') return ['ok' => false, 'reason' => 'tariff_required'];
     if ($child['customer_type'] === 'organ' && customer_account($parentId)['customer_type'] === 'organ') {
         return ['ok' => false, 'reason' => 'sub_organ_tariff'];
     }
@@ -486,6 +490,31 @@ function reseller_default_tariff_id(int $ownerId): ?int {
     return null;
 }
 
+/**
+ * What an account's prices come from, for display: its named tariff's title under a reseller, its
+ * parent organization's tariff for a sub-organization, else the admin's per-account prices
+ * («تعرفه‌ی اختصاصی») or the general price list («تعرفه‌ی عمومی»).
+ */
+function customer_tariff_label(int $userId): string {
+    if ($userId <= 0 || !customer_hierarchy_available()) return 'تعرفه‌ی عمومی';
+    $account = customer_account($userId);
+    if ($account['parent_user_id'] !== null) {
+        $parent = customer_account((int)$account['parent_user_id']);
+        if ($account['customer_type'] === 'organ' && $parent['customer_type'] === 'organ') {
+            return 'تعرفه‌ی سازمان والد';
+        }
+        if ($parent['customer_type'] === 'reseller') {
+            $tariff = $account['tariff_id'] !== null ? reseller_tariff_get((int)$account['tariff_id']) : null;
+            return $tariff !== null && !$tariff['deleted'] ? $tariff['title'] : 'بدون تعرفه';
+        }
+    }
+    $owner = function_exists('customer_price_owner') ? customer_price_owner($userId) : null;
+    if ($owner !== null && gateway_prices_current($owner) !== []) {
+        return $owner === $userId ? 'تعرفه‌ی اختصاصی' : 'تعرفه‌ی اختصاصی سازمان';
+    }
+    return 'تعرفه‌ی عمومی';
+}
+
 function reseller_tariff_error_message(string $reason): string {
     return [
         'not_migrated'     => 'جدول‌های پنل نمایندگی هنوز ساخته نشده‌اند (مهاجرت 2026_10_24_reseller_panel.sql).',
@@ -499,5 +528,6 @@ function reseller_tariff_error_message(string $reason): string {
         'in_package'       => 'این تعرفه در یک بسته استفاده شده است؛ ابتدا بسته را ویرایش کنید.',
         'not_your_child'   => 'این حساب زیرمجموعه‌ی شما نیست.',
         'sub_organ_tariff' => 'زیرسازمان همیشه با تعرفه‌ی سازمان ارسال می‌کند.',
+        'tariff_required'  => 'یکی از تعرفه‌هایتان را برای این مشتری انتخاب کنید.',
     ][$reason] ?? 'عملیات تعرفه انجام نشد.';
 }

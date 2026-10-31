@@ -13,11 +13,13 @@
  *   - Every parent has a sub-account quota (max_subset_limit). A child uses its own quota + 1 of
  *     the parent's.
  *   - A parent moves credit to a child and can take it back (app/wallet.php wallet_transfer()).
- *   - A reseller sets each child's tariff, never below its own, and is paid the difference once a
- *     day (customer_profit_run()).
+ *   - The admin sets a top-level reseller's prices («تعرفه‌ی اختصاصی», app/GatewayPrices.php). A
+ *     reseller puts each child on one of its named tariffs (app/ResellerTariffs.php), never below
+ *     its own price, and is paid the difference once a day (customer_profit_run()).
  *
- * The tariff is a coefficient in basis points on the system price list (10000 = 100%). It is applied
- * in sms_pricing_price_messages(), so previews, direct sends, bulk jobs and imports all charge it.
+ * tariff_bp is a legacy coefficient in basis points on the system price list (10000 = 100%). It is
+ * no longer set from any panel and every account stays at 100%; it remains in the schema and in the
+ * pricing/profit arithmetic only so older price snapshots keep their meaning.
  *
  * Schema: db/migrations/2026_10_12_customer_hierarchy.sql. Until it is applied every account reads as
  * a normal customer with a 100% tariff and nothing here changes behavior.
@@ -499,10 +501,15 @@ function customer_create_sub_account(array $parentUser, array $input, ?int $acto
     $parent = customer_account($parentId);
     $type = (string)($input['customer_type'] ?? 'normal');
     $maxSubset = max(0, (int)from_persian_digits((string)($input['max_subset_limit'] ?? '0')));
-    $tariffBp = $type === 'organ' && $parent['customer_type'] === 'organ'
-        ? $parent['tariff_bp']
-        : (customer_tariff_bp_from_input((string)($input['tariff_percent'] ?? '')) ?? -1);
-    if ($tariffBp < 0) return ['ok' => false, 'reason' => 'invalid_tariff'];
+    // Prices come from named tariffs (app/ResellerTariffs.php); the percentage coefficient is no
+    // longer set from the panel and stays at 100% (a sub-organization keeps its parent's).
+    $tariffBp = $type === 'organ' && $parent['customer_type'] === 'organ' ? $parent['tariff_bp'] : CUSTOMER_TARIFF_BASE_BP;
+    // A reseller's customer must be put on one of the reseller's named tariffs.
+    $tariffId = (int)($input['tariff_id'] ?? 0);
+    if ($parent['customer_type'] === 'reseller' && function_exists('reseller_panel_available') && reseller_panel_available()) {
+        if (reseller_tariffs_for($parentId) === []) return ['ok' => false, 'reason' => 'no_tariffs'];
+        if ($tariffId <= 0 || reseller_tariff_owned($parentId, $tariffId) === null) return ['ok' => false, 'reason' => 'tariff_required'];
+    }
     $expiresOn = $input['expires_on'] ?? null;
     $refusal = customer_child_refusal($parent, $type, $maxSubset, $tariffBp, $expiresOn);
     if ($refusal !== null) return ['ok' => false, 'reason' => $refusal];
@@ -560,8 +567,7 @@ function customer_create_sub_account(array $parentUser, array $input, ?int $acto
         Logger::warning('customer.child_attach_failed', ['parent_id' => $parentId, 'child_id' => $childId, 'reason' => $attached['reason']]);
         return $attached;
     }
-    // A named tariff chosen at creation (app/ResellerTariffs.php).
-    $tariffId = (int)($input['tariff_id'] ?? 0);
+    // The named tariff chosen at creation (app/ResellerTariffs.php).
     if ($tariffId > 0 && function_exists('reseller_assign_tariff')) {
         reseller_assign_tariff($parentId, $childId, $tariffId, $actorId);
     }
@@ -876,6 +882,8 @@ function customer_error_message(string $reason): string {
         'children_below_tariff'  => 'برخی از زیرمجموعه‌های این حساب تعرفه‌ای کمتر از این مقدار دارند؛ ابتدا تعرفه‌ی آن‌ها را اصلاح کنید.',
         'expiry_after_parent'    => 'تاریخ انقضای زیرمجموعه نمی‌تواند بعد از تاریخ انقضای حساب خودتان باشد.',
         'invalid_tariff'         => 'تعرفه باید درصدی بین ۱۰ و ۱۰۰۰ باشد.',
+        'tariff_required'        => 'یکی از تعرفه‌هایتان را برای این مشتری انتخاب کنید.',
+        'no_tariffs'             => 'ابتدا در «تعرفه‌ها» حداقل یک تعرفه برای مشتریانتان تعریف کنید.',
         'not_your_child'         => 'این حساب زیرمجموعه‌ی شما نیست.',
         'already_attached'       => 'این حساب از قبل در ساختار نمایندگی ثبت شده است.',
         'cycle'                  => 'یک حساب نمی‌تواند زیرمجموعه‌ی خودش یا زیرمجموعه‌هایش باشد.',

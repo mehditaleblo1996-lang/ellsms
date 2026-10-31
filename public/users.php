@@ -159,17 +159,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // by username and must itself be an ELLSMS-managed account.
             $parentUsername = trim((string)($_POST['parent_username'] ?? ''));
             $parentId = $parentUsername === '' ? 0 : (int)(backend_find_user_id_by_username($parentUsername) ?? -1);
-            $tariffBp = customer_tariff_bp_from_input((string)($_POST['tariff_percent'] ?? '100'));
             if ($parentId < 0 || ($parentId > 0 && !resolve_ellsms_managed_user($parentId))) {
                 flash('error', 'حساب والد با این نام کاربری در داتیس رایان گستر ایرانیان پیدا نشد.');
-            } elseif ($tariffBp === null) {
-                flash('error', customer_error_message('invalid_tariff'));
             } else {
                 $result = customer_admin_save($id, [
                     'customer_type'    => $_POST['customer_type'] ?? 'normal',
                     'parent_user_id'   => $parentId,
                     'max_subset_limit' => (int)from_persian_digits((string)($_POST['max_subset_limit'] ?? '0')),
-                    'tariff_bp'        => $tariffBp,
+                    'tariff_bp'        => CUSTOMER_TARIFF_BASE_BP, // prices come from «تعرفه‌ی اختصاصی» / named tariffs
                     'expires_on'       => jalali_request_to_gregorian('expires_on'), // left blank = no expiry
                     'suspended'        => !empty($_POST['suspended']),
                 ], (int)$me['id']);
@@ -988,10 +985,10 @@ if ($editOrganizationId > 0) {
     </p>
   <?php else: ?>
     <p class="hint">
-      قیمت هر بخش پیامک به ریال برای همین کاربر. هر خانه‌ای که پر شود دقیقاً با همان مبلغ حساب می‌شود و درصد تعرفه‌ی حساب
-      (<?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp((int)$editUser['id']))) ?>٪) رویش اعمال نمی‌شود.
+      قیمت هر بخش پیامک به ریال برای همین کاربر. هر خانه‌ای که پر شود دقیقاً با همان مبلغ حساب می‌شود.
+      اگر این کاربر نماینده باشد، همین قیمت‌ها قیمت خرید اوست و نمی‌تواند به مشتریانش ارزان‌تر بفروشد؛ اختلاف قیمت مشتری با این قیمت سود اوست.
       سطر «پیش‌فرض همه‌ی درگاه‌ها» قیمت این کاربر برای هر درگاهی است که در آن خانه قیمت جدا ندارد.
-      عدد خاکستری قیمت پیش‌فرض همین کاربر است (تعرفه‌ی عمومی × درصد تعرفه) و تا تغییرش ندهید ذخیره نمی‌شود؛ خالی‌کردن یک خانه آن را به پیش‌فرض برمی‌گرداند.
+      عدد خاکستری قیمت پیش‌فرض همین کاربر است (تعرفه‌ی عمومی) و تا تغییرش ندهید ذخیره نمی‌شود؛ خالی‌کردن یک خانه آن را به پیش‌فرض برمی‌گرداند.
       تعرفه‌ی عمومی در «تعرفه‌ی پیامک ← تعرفه‌ی درگاه‌ها» است.
       با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تغییرات از همین لحظه برای ارسال‌های جدید اعمال می‌شود.
       <?php if ($editCustomerChildren): ?>زیرسازمان‌های این حساب هم با همین قیمت‌ها ارسال می‌کنند.<?php endif; ?>
@@ -1104,7 +1101,7 @@ if ($editOrganizationId > 0) {
   <h2>نوع مشتری و نمایندگی</h2>
   <p class="hint">
     نماینده (سطح صفر) می‌تواند مشتری عادی، سازمانی و زیرنماینده بسازد؛ زیرنماینده فقط مشتری عادی و سازمانی؛ سازمان فقط زیرسازمان، و زیرسازمان زیرمجموعه ندارد.
-    تعرفه درصدی از نرخ پایه‌ی پیامک است (۱۰۰ = نرخ پایه). سود نماینده اختلاف تعرفه‌ی زیرمجموعه با تعرفه‌ی خودش است.
+    قیمت نماینده را در زبانه‌ی «تعرفه‌ی اختصاصی» تعیین کنید؛ نماینده برای مشتریانش تعرفه می‌سازد که از قیمت خودش کمتر نیست و اختلاف آن سود نماینده است.
   </p>
   <form method="post">
     <?= csrf_field() ?>
@@ -1121,9 +1118,6 @@ if ($editOrganizationId > 0) {
       </label>
       <label>نام کاربری والد (خالی = سطح بالا)
         <input type="text" name="parent_username" class="ltr" value="<?= e((string)($editCustomerParent['username'] ?? '')) ?>">
-      </label>
-      <label>تعرفه (درصد نرخ پایه)
-        <input type="text" name="tariff_percent" class="ltr" inputmode="decimal" value="<?= e(customer_tariff_percent($editCustomer['tariff_bp'])) ?>">
       </label>
       <label>سقف زیرمجموعه
         <input type="text" name="max_subset_limit" class="ltr" inputmode="numeric" value="<?= (int)$editCustomer['max_subset_limit'] ?>">
@@ -1149,7 +1143,7 @@ if ($editOrganizationId > 0) {
             <td><?= e(trim($child['first_name'] . ' ' . $child['last_name'])) ?></td>
             <td><?= e(customer_type_label($childAccount, $editCustomer)) ?></td>
             <td class="num"><?= to_persian_digits(number_format((float)$child['credit'])) ?></td>
-            <td class="num"><?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp((int)$childId))) ?>٪</td>
+            <td><?= e(customer_tariff_label((int)$childId)) ?></td>
           </tr>
         <?php endforeach; ?>
         </tbody>
