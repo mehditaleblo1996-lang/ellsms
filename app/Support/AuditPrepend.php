@@ -129,6 +129,8 @@ if (PHP_SAPI !== 'cli') {
                 '/reseller.php' => '/reseller',
                 '/reseller-customers.php' => '/reseller/customers',
                 '/reseller-customer.php' => '/reseller/customers/view',
+                '/reseller-customer-new.php' => '/reseller/customers/new',
+                '/reseller-roles.php' => '/reseller/roles',
                 '/reseller-tariffs.php' => '/reseller/tariffs',
                 '/reseller-packages.php' => '/reseller/packages',
                 '/reseller-finance.php' => '/reseller/finance',

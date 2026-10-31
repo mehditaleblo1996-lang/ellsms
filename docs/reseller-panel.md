@@ -22,7 +22,9 @@ panel of its own with its own sidebar:
 | Page | URL | Permission |
 |---|---|---|
 | Dashboard | `/reseller` | — |
-| Customers (search, filters, CSV, create, menu roles) | `/reseller/customers` | `customers.view` / `customers.manage` |
+| Customers (search, filters, CSV) | `/reseller/customers` | `customers.view` |
+| New customer | `/reseller/customers/new` | `customers.manage` |
+| Menu roles for customers | `/reseller/roles` | `customers.manage` |
 | One customer (credit, package, tariff, expiry, quota, lines, menus, password, report, enter its panel) | `/reseller/customers/view?id=` | per tab |
 | Sign-up requests | `/reseller/registrations` | `registrations.manage` |
 | Customers' tickets | `/reseller/tickets` | `tickets.manage` |

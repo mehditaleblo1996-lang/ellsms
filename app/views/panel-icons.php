@@ -72,7 +72,7 @@ function panel_icon(string $name): string {
         'guide_admin'=>'book', 'billing_admin'=>'wallet', 'financial_admin'=>'receipt',
         'reseller_packages'=>'gift', 'reseller_dashboard'=>'grid', 'reseller_customers'=>'users', 'reseller_tariffs'=>'wallet',
         'reseller_package_admin'=>'gift', 'reseller_finance'=>'chart', 'reseller_tickets'=>'help', 'reseller_announcements'=>'megaphone',
-        'reseller_registrations'=>'user', 'reseller_staff'=>'shield', 'reseller_settings'=>'settings', 'reseller_back'=>'home', 'reseller_panel'=>'users',
+        'reseller_registrations'=>'user', 'reseller_roles'=>'key', 'reseller_staff'=>'shield', 'reseller_settings'=>'settings', 'reseller_back'=>'home', 'reseller_panel'=>'users',
     ];
     $path = $paths[$names[$name] ?? $name] ?? $paths['grid'];
     return '<svg class="ui-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $path . '</svg>';

@@ -51,7 +51,7 @@ function menu_catalog(): array {
         'lba'           => ['ارسال پیام منطقه‌ای (LBA)', '📍', '/lba.php',       ['lba.php']],
         'otp_templates' => ['کد تایید اشتراکی',      '🔐', '/otp-templates.php', ['otp-templates.php']],
         // A reseller's panel (app/ResellerPanel.php) is its sub-account menu: closing it closes the panel.
-        'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php',
+        'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php', 'reseller-customer-new.php', 'reseller-roles.php',
                                                                                 'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-payments.php', 'reseller-tickets.php',
                                                                                 'reseller-announcements.php', 'reseller-registrations.php', 'reseller-staff.php', 'reseller-settings.php']],
         'api_keys'      => ['کلیدهای API',          '🔑', '/api-keys.php',      ['api-keys.php']],
