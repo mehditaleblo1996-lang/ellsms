@@ -240,6 +240,7 @@ const KYC_FEATURE_GATES = [
     'high_volume_send'         => 'ارسال حجم بالا',
     'regional_bulk'            => 'ارسال منطقه‌ای (استان/شهر/کد پستی)',
     'aimed_bulk'               => 'ارسال با کد پستی از بانک شماره',
+    'lba'                      => 'ارسال پیام منطقه‌ای (LBA)',
 ];
 function kyc_gate_setting_key(string $gate): string { return 'kyc_gate.'.$gate; }
 function kyc_gate_required(string $gate): bool { return array_key_exists($gate,KYC_FEATURE_GATES) && setting(kyc_gate_setting_key($gate),'0')==='1'; }

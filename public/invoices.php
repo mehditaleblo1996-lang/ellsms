@@ -132,9 +132,9 @@ if ($invoiceId > 0) {
   </table></div>
 
   <table style="margin-top:14px;max-width:340px;margin-inline-start:auto">
-    <tr><th>جمع جزء</th><td class="num"><?= to_persian_digits(number_format((int)$invoice['subtotal_amount'])) ?> ریال</td></tr>
-    <?php if((int)$invoice['discount_amount']>0): ?><tr><th>تخفیف<?= $invoice['coupon_code']?' ('.e($invoice['coupon_code']).')':'' ?></th><td class="num">-<?= to_persian_digits(number_format((int)$invoice['discount_amount'])) ?> ریال</td></tr><?php endif; ?>
-    <tr><th>ارزش افزوده (۱۰٪)</th><td class="num"><?= to_persian_digits(number_format((int)$invoice['tax_amount'])) ?> ریال</td></tr>
+    <tr><th>جمع جزء</th><td><span class="num"><?= to_persian_digits(number_format((int)$invoice['subtotal_amount'])) ?></span> ریال</td></tr>
+    <?php if((int)$invoice['discount_amount']>0): ?><tr><th>تخفیف<?= $invoice['coupon_code']?' ('.e($invoice['coupon_code']).')':'' ?></th><td><span class="num">-<?= to_persian_digits(number_format((int)$invoice['discount_amount'])) ?></span> ریال</td></tr><?php endif; ?>
+    <tr><th>ارزش افزوده (۱۰٪)</th><td><span class="num"><?= to_persian_digits(number_format((int)$invoice['tax_amount'])) ?></span> ریال</td></tr>
     <tr><th><strong>مبلغ نهایی</strong></th><td class="num"><strong><?= to_persian_digits(number_format((int)$invoice['total_amount'])) ?> ریال</strong></td></tr>
   </table>
 
@@ -143,12 +143,12 @@ if ($invoiceId > 0) {
   <?php if ($manual['review_state']==='pending'): ?><div class="flash flash-info">این پرداخت ثبت شده و در انتظار بررسی است. پس از تأیید، <?= to_persian_digits(number_format((int)$manual['credits'])) ?> ریال به اعتبار شما اضافه می‌شود.</div>
   <?php elseif ($manual['review_state']==='rejected'): ?><div class="flash flash-error">این پرداخت رد شد.<?= !empty($manual['review_note']) ? ' دلیل: ' . e($manual['review_note']) : '' ?> در صورت نیاز، پرداخت را دوباره از صفحه‌ی خرید اعتبار ثبت کنید.</div><?php endif; ?>
   <table class="pay-details">
-    <tr><th>مبلغ پرداختی</th><td class="num"><?= to_persian_digits(number_format((int)$manual['amount_rial'])) ?> ریال</td></tr>
+    <tr><th>مبلغ پرداختی</th><td><span class="num"><?= to_persian_digits(number_format((int)$manual['amount_rial'])) ?></span> ریال</td></tr>
     <?php if (!empty($manual['destination_label'])): ?><tr><th>واریز به</th><td><?= e(to_persian_digits((string)$manual['destination_label'])) ?></td></tr><?php endif; ?>
     <tr><th>شماره سند / پیگیری</th><td class="ltr"><?= e((string)$manual['document_number']) ?></td></tr>
     <tr><th>تاریخ و ساعت پرداخت</th><td><?= jdate($manual['paid_at']) ?></td></tr>
     <?php if ($manual['method']==='cheque'): ?>
-      <tr><th>مبلغ چک</th><td class="num"><?= to_persian_digits(number_format((int)$manual['cheque_amount'])) ?> ریال</td></tr>
+      <tr><th>مبلغ چک</th><td><span class="num"><?= to_persian_digits(number_format((int)$manual['cheque_amount'])) ?></span> ریال</td></tr>
       <tr><th>بانک / کد شعبه</th><td><?= e(manual_payment_bank_label((string)$manual['cheque_bank'])) ?> / <span class="ltr"><?= e((string)$manual['cheque_branch_code']) ?></span></td></tr>
       <tr><th>صاحب حساب</th><td><?= e((string)$manual['cheque_owner_name']) ?> — <span class="ltr"><?= e((string)$manual['cheque_owner_national_id']) ?></span></td></tr>
       <tr><th>شبا صاحب چک</th><td class="ltr"><?= e((string)$manual['cheque_owner_sheba']) ?></td></tr>

@@ -311,7 +311,7 @@ final class ResellerPanelTest extends IntegrationTestCase
         $tariff = reseller_tariff_save($reseller, null, 'Signup', '', [reseller_tariff_cell_key(RESELLER_TARIFF_ALL, 'fa') => 15000], true, $reseller)['id'];
         $welcome = $this->package($reseller, ['credit_rial' => '50000', 'online_sale' => '']);
         $this->assertTrue(reseller_settings_save($reseller, [
-            'signup_enabled' => true, 'signup_tariff_bp' => 13000, 'signup_expiry_days' => 90, 'signup_package_id' => $welcome,
+            'signup_enabled' => true, 'signup_expiry_days' => 90, 'signup_package_id' => $welcome,
         ], $reseller)['ok']);
         $settings = reseller_settings($reseller);
         $this->assertSame($reseller, reseller_by_signup_code((string)$settings['signup_code']));
@@ -322,7 +322,7 @@ final class ResellerPanelTest extends IntegrationTestCase
         $this->assertTrue($result['ok']);
         $acc = customer_account($newUser);
         $this->assertSame($reseller, $acc['parent_user_id']);
-        $this->assertSame(13000, $acc['tariff_bp']);
+        $this->assertSame(CUSTOMER_TARIFF_BASE_BP, $acc['tariff_bp'], 'no percentage: prices come from the tariff');
         $this->assertSame($tariff, $acc['tariff_id'], 'the default tariff');
         $this->assertSame(50000, wallet_balance($newUser)['available'], 'the welcome package, paid by the reseller');
         $this->assertSame(450000, wallet_balance($reseller)['available']);

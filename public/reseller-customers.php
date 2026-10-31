@@ -1,9 +1,9 @@
 <?php
 /**
  * ELLSMS — the reseller panel's customers (app/ResellerPanel.php, app/CustomerHierarchy.php): the
- * reseller's direct customers with Negar's search filters and a CSV export, creating a customer,
- * and the menu roles the reseller gives its customers. One customer is managed on
- * reseller-customer.php.
+ * reseller's direct customers with Negar's search filters and a CSV export. A customer is created on
+ * reseller-customer-new.php, managed on reseller-customer.php, and the menu roles live on
+ * reseller-roles.php.
  */
 require_once __DIR__ . '/../app/bootstrap.php';
 [$me, $ctx] = require_reseller('customers.view');
@@ -11,38 +11,7 @@ $resellerId = $ctx['reseller_id'];
 $actorId = $ctx['actor_id'];
 $pageTitle = 'مشتریان';
 $active = 'reseller_customers';
-$owner = reseller_owner_user($resellerId);
 $account = $ctx['account'];
-
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $do = (string)($_POST['do'] ?? '');
-    if ($do === 'create') {
-        reseller_post_guard($ctx, 'customers.manage', '/reseller/customers#create');
-        $input = array_merge($_POST, ['expires_on' => jalali_request_to_gregorian('expires_on')]);
-        if (!reseller_can($ctx, 'tariffs.manage')) {
-            unset($input['tariff_id']);
-        }
-        $result = customer_create_sub_account($owner, $input, $actorId);
-        if ($result['ok']) {
-            flash('success', 'مشتری ساخته شد.');
-            redirect('/reseller/customers/view?id=' . $result['user_id']);
-        }
-        flash('error', customer_error_message((string)$result['reason']) . (!empty($result['message']) ? ' ' . $result['message'] : ''));
-        redirect('/reseller/customers#create');
-    }
-    if ($do === 'role_save' || $do === 'role_delete') {
-        reseller_post_guard($ctx, 'customers.manage', '/reseller/customers#roles');
-        $roleId = (int)($_POST['role_id'] ?? 0) ?: null;
-        if ($do === 'role_delete') {
-            flash($roleId && menu_role_delete($roleId, $resellerId, $actorId) ? 'info' : 'error', $roleId ? 'نقش حذف شد.' : 'نقش یافت نشد.');
-        } else {
-            $result = menu_role_save($roleId, (string)($_POST['role_name'] ?? ''), (array)($_POST['role_keys'] ?? []), $resellerId, $actorId);
-            flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'نقش ذخیره شد.' : menu_access_error_message((string)$result['reason']));
-        }
-        redirect('/reseller/customers#roles');
-    }
-    redirect('/reseller/customers');
-}
 
 $filters = [
     'q'          => (string)($_GET['q'] ?? ''),
@@ -61,7 +30,7 @@ $tariffTitles = array_column($tariffs, 'title', 'id');
 $statusLabel = static fn(?string $block): string => $block === null ? 'فعال' : ($block === 'expired' ? 'منقضی' : 'غیرفعال');
 $tariffText = static function (array $acc) use ($tariffTitles): string {
     if ($acc['tariff_id'] !== null && isset($tariffTitles[$acc['tariff_id']])) return $tariffTitles[$acc['tariff_id']];
-    return to_persian_digits(customer_tariff_percent($acc['tariff_bp'])) . '٪';
+    return customer_tariff_label((int)$acc['user_id']);
 };
 
 if (($_GET['export'] ?? '') === 'csv') {
@@ -90,9 +59,6 @@ $per = 25;
 $page = pager_page();
 $result = reseller_customers_search($resellerId, $filters, $page, $per);
 $pages = pager_pages($result['total'], $per);
-$allowedTypes = customer_allowed_child_types($account);
-$usedSubset = customer_used_subset($resellerId);
-$myTariffBp = customer_effective_tariff_bp($resellerId);
 $typeOptions = ['normal' => 'مشتری عادی', 'organ' => 'مشتری سازمانی', 'reseller' => 'زیرنماینده'];
 $query = array_filter($_GET, static fn($v) => is_scalar($v) && $v !== '');
 
@@ -141,7 +107,12 @@ require __DIR__ . '/../app/views/reseller_header.php';
 </div>
 
 <div class="card">
-  <h2>مشتریان شما <span class="hint">(<?= to_persian_digits(number_format($result['total'])) ?>)</span></h2>
+  <div style="display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;justify-content:space-between">
+    <h2>مشتریان شما <span class="hint">(<?= to_persian_digits(number_format($result['total'])) ?>)</span></h2>
+    <?php if (customer_allowed_child_types($account) !== [] && reseller_can($ctx, 'customers.manage')): ?>
+      <a class="btn btn-primary btn-sm" href="/reseller/customers/new">+ ساخت مشتری جدید</a>
+    <?php endif; ?>
+  </div>
   <div class="table-wrap">
     <table>
       <thead><tr><th>نام کاربری</th><th>نام</th><th>موبایل</th><th>نوع</th><th>اعتبار (ریال)</th><th>تعرفه</th><th>انقضا</th><th>وضعیت</th><th></th></tr></thead>
@@ -165,72 +136,5 @@ require __DIR__ . '/../app/views/reseller_header.php';
   </div>
   <?= pager_links(min($page, $pages), $pages, $query, 'page', $result['total']) ?>
 </div>
-
-<?php if ($allowedTypes !== [] && reseller_can($ctx, 'customers.manage')): ?>
-<div class="card" id="create">
-  <h2>ساخت مشتری جدید</h2>
-  <p class="hint">باقی‌مانده‌ی سقف زیرمجموعه: <?= to_persian_digits((string)max(0, $account['max_subset_limit'] - $usedSubset)) ?>. هر مشتری یک واحد، به‌علاوه‌ی سقف زیرمجموعه‌ای که به خودش می‌دهید، از سقف شما کم می‌کند.</p>
-  <form method="post" autocomplete="off">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="create">
-    <div class="form-grid">
-      <label>نوع حساب *
-        <select name="customer_type">
-          <?php foreach ($allowedTypes as $t): ?><option value="<?= e($t) ?>"><?= e($typeOptions[$t]) ?></option><?php endforeach; ?>
-        </select>
-      </label>
-      <label>شخصیت
-        <select name="account_type"><option value="individual">حقیقی</option><option value="legal">حقوقی</option></select>
-      </label>
-      <label>تعرفه (درصد نرخ پایه) *
-        <input type="text" name="tariff_percent" class="ltr" inputmode="decimal" required value="<?= e(customer_tariff_percent($myTariffBp)) ?>">
-        <span class="hint" style="display:block">حداقل <?= to_persian_digits(customer_tariff_percent($myTariffBp)) ?>٪؛ برای خانه‌هایی که تعرفه‌ی نام‌دار قیمت ندارد.</span>
-      </label>
-      <?php if ($tariffs && reseller_can($ctx, 'tariffs.manage')): ?>
-      <label>تعرفه‌ی نام‌دار
-        <select name="tariff_id"><option value="">— فقط درصد —</option>
-          <?php foreach ($tariffs as $t): ?><option value="<?= $t['id'] ?>"<?= $t['is_default'] ? ' selected' : '' ?>><?= e($t['title']) ?></option><?php endforeach; ?>
-        </select>
-      </label>
-      <?php endif; ?>
-      <label>سقف زیرمجموعه‌ی این حساب
-        <input type="text" name="max_subset_limit" class="ltr" inputmode="numeric" value="0">
-        <span class="hint" style="display:block">فقط برای زیرنماینده و مشتری سازمانی.</span>
-      </label>
-      <label>نام کاربری * <input type="text" name="username" class="ltr" required minlength="5"></label>
-      <label>رمز عبور * <input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
-      <label>نام * <input type="text" name="first_name" required></label>
-      <label>نام خانوادگی * <input type="text" name="last_name" required></label>
-      <label>ایمیل * <input type="email" name="email" class="ltr" required></label>
-      <label>موبایل * <input type="text" name="mobile" class="ltr" inputmode="tel" required placeholder="09xxxxxxxxx"></label>
-      <label>کد ملی * <input type="text" name="national_id" class="ltr" inputmode="numeric" required maxlength="10"></label>
-      <label>جنسیت <select name="gender"><option value="MALE">مرد</option><option value="FEMALE">زن</option></select></label>
-      <label>تاریخ انقضا <?= jalali_date_select('expires_on', null, yearsAhead: 5, yearsBack: 0, allowEmpty: true) ?>
-        <span class="hint" style="display:block">خالی = بدون انقضا.<?= $account['expires_on'] !== null ? ' نمی‌تواند بعد از ' . e(jdate($account['expires_on'], false)) . ' باشد.' : '' ?></span>
-      </label>
-    </div>
-    <div class="form-actions"><button class="btn btn-primary">ساخت مشتری</button></div>
-  </form>
-</div>
-<?php endif; ?>
-
-<?php if (reseller_can($ctx, 'customers.manage')): ?>
-<div class="card" id="roles">
-  <h2>نقش‌های دسترسی منو</h2>
-  <p class="hint">نقش، مجموعه‌ای از منوهاست که به مشتریان می‌دهید. فقط منوهایی که خودتان دارید قابل انتخاب است.</p>
-  <?php
-  $myRoles = menu_roles_for($resellerId);
-  $editRoleId = (int)($_GET['role'] ?? 0);
-  $rolesForm = [
-      'roles'     => $myRoles,
-      'editable'  => static fn(array $role): bool => $role['owner_user_id'] === $resellerId,
-      'grantable' => menu_access_effective($resellerId),
-      'edit'      => isset($myRoles[$editRoleId]) && $myRoles[$editRoleId]['owner_user_id'] === $resellerId ? $myRoles[$editRoleId] : null,
-      'hidden'    => [],
-  ];
-  require __DIR__ . '/../app/views/menu_roles_form.php';
-  ?>
-</div>
-<?php endif; ?>
 
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

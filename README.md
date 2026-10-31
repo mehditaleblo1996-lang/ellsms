@@ -69,6 +69,18 @@ charged and the rest is released. The admin sets the API key (stored encrypted w
 **/messages/voice/files**, or `POST /api/v1/voice/*` (scopes `voice:send` / `voice:read`). See
 [`docs/voice-messages.md`](docs/voice-messages.md).
 
+## LBA — location-based sending (ارسال پیام منطقه‌ای)
+
+Customers can send to the people in an area drawn on a map (or a list of cell towers, a city, a province
+or an airport), filtered by age, gender, device and residence, once a line of theirs has an **LBA gateway**.
+LBA gateways are their own kind, kept apart from the SMS gateways: the admin defines them on
+**/admin/lba-gateways** (token stored encrypted with `SMS_GATEWAY_MASTER_KEY`, optional panel
+username/password, a fixed tariff per Persian and English part) and pins one to each number that may send
+LBA, on the same page or in the Numbers page's «درگاه LBA» column. The number's ordinary sends are not
+affected. The provider is PishgamRayan's smart SMS web service. Customers use **/messages/lba**: audiences
+of every kind the provider offers, gray lists, clubs, one-off and periodic sends, and statistics. Every
+message sent is charged. See [`docs/lba.md`](docs/lba.md).
+
 ## WebEngage (SMS service provider)
 
 ELLSMS can be added in WebEngage as a custom SMS Service Provider, so WebEngage campaigns send their
@@ -88,6 +100,15 @@ approves it there, and the customer then calls `POST /api/v1/otp` (scope `otp:se
 (same page), and the send goes through `dispatch_message()` like any other, charged to the customer at
 the line's OTP tariff. Any edit sends the template back to review; values are short, single-line and
 link-free so the variables can't carry an ad. See [`docs/shared-otp.md`](docs/shared-otp.md).
+
+## Shared sending service (سرویس ارسال اشتراکی)
+
+A customer gives only a recipient and a text — on **/shared-service.php** or `POST /api/v1/shared/messages`
+(scope `shared:send`) — and the platform sends it from a line in its own pool: خدماتی (any hour) or
+تبلیغاتی (only inside the allowed hours). Pool lines have priorities and fail over, so a provider is
+swapped by enabling and disabling lines, invisible to customers. Prohibited words are refused; a text not
+yet approved for that customer, or any message of a customer under supervision, waits for a human
+reviewer. Each kind has its own row in the price matrix. See [`docs/shared-service.md`](docs/shared-service.md).
 
 ## Delivery-based billing (ارسال بر اساس تحویل)
 

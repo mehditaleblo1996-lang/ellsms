@@ -138,7 +138,7 @@ require __DIR__ . '/../app/views/header.php';
         <td><?= e((string)$j['title']) ?></td>
         <td class="msisdn"><?= e((string)$j['originator']) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$j['throttle_count'])) ?> پیام هر <?= to_persian_digits((string)(int)$j['throttle_minutes']) ?> دقیقه</td>
-        <td class="num"><?= to_persian_digits(number_format($jobDone)) ?> از <?= to_persian_digits(number_format((int)$j['total_rows'])) ?></td>
+        <td><span class="num"><?= to_persian_digits(number_format($jobDone)) ?></span> از <span class="num"><?= to_persian_digits(number_format((int)$j['total_rows'])) ?></span></td>
         <td><span class="badge badge-<?= e((string)$j['status']) ?>"><?= e($jobStatusFa[(string)$j['status']] ?? (string)$j['status']) ?></span></td>
         <td>
           <a class="btn btn-sm" href="/messages/bulk-jobs?id=<?= (int)$j['id'] ?>">جزئیات</a>
@@ -171,7 +171,7 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num">#<?= to_persian_digits((string)$b['job_id']) ?></td>
         <?php if (is_admin()): ?><td><?= e((string)$b['username']) ?></td><?php endif; ?>
         <td><?= e((string)$b['title']) ?></td>
-        <td class="num"><?= to_persian_digits((string)$b['batch_no']) ?> از <?= to_persian_digits((string)$b['batch_count']) ?></td>
+        <td><span class="num"><?= to_persian_digits((string)$b['batch_no']) ?></span> از <span class="num"><?= to_persian_digits((string)$b['batch_count']) ?></span></td>
         <td class="num"><?= jdate((string)$b['scheduled_at']) ?></td>
         <td class="msisdn"><?= e((string)$b['originator']) ?></td>
         <td class="num"><?= to_persian_digits(number_format((int)$b['start_row'])) ?> تا <?= to_persian_digits(number_format((int)$b['end_row'])) ?></td>

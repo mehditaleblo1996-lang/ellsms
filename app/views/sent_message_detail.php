@@ -67,7 +67,7 @@ if ($status === 'delivered') {
   <section>
     <h3>مسیر پیام</h3>
     <dl class="detail-grid">
-      <?= $field('فرستنده', $text((string)($m['originator'] ?? ''), 'msisdn')) ?>
+      <?= $field('فرستنده', $text(shared_line_mask((string)($m['originator'] ?? ''), $isAdmin), 'msisdn')) ?>
       <?= $field('گیرنده', $text($m['destination_display'], 'msisdn')) ?>
       <?= $field('اپراتور گیرنده', operator_label($m['operator_code'], $m['operator_name'], 18)) ?>
       <?= $field('کاربر', e($m['username']) . ($m['user_full_name'] !== '' ? ' <span class="muted">(' . e($m['user_full_name']) . ')</span>' : '')) ?>

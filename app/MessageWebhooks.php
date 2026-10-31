@@ -56,7 +56,8 @@ function webhook_emit_delivery_state(string $source, int $rowId, string $state, 
             $data = [
                 'message_id' => 'attempt:' . $row['id'],
                 'reference_type' => (string)$row['reference_type'], 'reference_id' => (string)$row['reference_id'],
-                'originator' => (string)($row['originator'] ?? ''), 'destination' => (string)($row['destination'] ?? ''),
+                // A shared-service / shared-OTP send reaches the customer's endpoint as «خط اشتراکی».
+                'originator' => shared_line_mask((string)($row['originator'] ?? ''), false), 'destination' => (string)($row['destination'] ?? ''),
             ];
         } else {
             $st = db()->prepare('SELECT bi.id, bi.job_id, bi.mobile, bi.provider_message_id, j.organization_id, j.originator, ' . bulk_job_masked_sql('j') . ' AS recipients_masked

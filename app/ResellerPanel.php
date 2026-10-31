@@ -949,18 +949,17 @@ function reseller_registration_attach(array $registration, int $userId, int $act
     if ($resellerId <= 0 || !reseller_panel_available() || !reseller_is_reseller($resellerId)) return ['ok' => true, 'skipped' => true];
     if (customer_account($userId)['exists']) return ['ok' => true, 'skipped' => true];
     $settings = reseller_settings($resellerId);
-    $bp = $settings['signup_tariff_bp'] ?? customer_effective_tariff_bp($resellerId);
     $expiresOn = $settings['signup_expiry_days'] !== null
         ? (new DateTimeImmutable(customer_today()))->modify('+' . $settings['signup_expiry_days'] . ' days')->format('Y-m-d')
         : null;
     $parentExpiry = customer_account($resellerId)['expires_on'];
     if ($expiresOn !== null && $parentExpiry !== null && $expiresOn > $parentExpiry) $expiresOn = $parentExpiry;
-    $attached = customer_attach_child($resellerId, $userId, $settings['signup_customer_type'], 0, $bp, $expiresOn ?? $parentExpiry, $actorId);
+    $attached = customer_attach_child($resellerId, $userId, $settings['signup_customer_type'], 0, CUSTOMER_TARIFF_BASE_BP, $expiresOn ?? $parentExpiry, $actorId);
     if (!$attached['ok']) {
         Logger::warning('reseller.registration_attach_failed', ['reseller_id' => $resellerId, 'user_id' => $userId, 'reason' => $attached['reason']]);
         return $attached;
     }
-    $tariffId = $settings['signup_tariff_id'] ?? reseller_default_tariff_id($resellerId);
+    $tariffId = $settings['signup_tariff_id'] ?? reseller_default_tariff_id($resellerId) ?? (reseller_tariffs_for($resellerId)[0]['id'] ?? null);
     if ($tariffId !== null) reseller_assign_tariff($resellerId, $userId, $tariffId, $actorId);
     if ($settings['signup_package_id'] !== null) {
         $order = reseller_package_assign($resellerId, $userId, $settings['signup_package_id'], $actorId, 'welcome:' . $userId);

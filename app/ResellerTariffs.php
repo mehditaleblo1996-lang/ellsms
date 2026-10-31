@@ -9,10 +9,12 @@
  * How a customer under a reseller is priced (sms_pricing_price_messages() through
  * customer_chain_prices()), from the top of its chain down:
  *
- *   - the top account pays its own exact price (the admin's per-account matrix) for that cell, else
- *     the list price times its tariff percentage, exactly as before;
- *   - each account below pays its named tariff's cell, else the list price times its own tariff
- *     percentage; a sub-organization pays its parent organization's price;
+ *   - the top account pays its own exact price (the admin's per-account matrix, «تعرفه‌ی اختصاصی»)
+ *     for that cell, else the list price;
+ *   - each account below pays its named tariff's cell, else the list price; a sub-organization pays
+ *     its parent organization's price. A reseller must put every customer on one of its tariffs
+ *     (customer_create_sub_account(), reseller_assign_tariff()); the old percentage coefficient
+ *     (tariff_bp) is no longer set from the panel and stays at 100%;
  *   - never less than the reseller directly above it pays for the same message. A tariff cell is
  *     checked against the reseller's own price when it is saved, and the floor is applied again at
  *     send time, because the reseller's own price can depend on the gateway that carries the message.
@@ -262,6 +264,85 @@ function customer_pricing_context(int $userId, string $atUtc): ?array {
    ========================================================================== */
 
 /**
+ * What $userId pays for one segment of a message carried by each of $gatewayIds, per destination
+ * column and encoding: gateway id => [reseller_tariff_cell_key(column, encoding) => millicredits].
+ * The same precedence sms_pricing_price_messages() applies at send time (the account's own cell, else
+ * the global cell or route price times its tariff percentage, or down its reseller chain), at the
+ * default route's price. A cell with no price at all is left out.
+ *
+ * @param list<int> $gatewayIds
+ * @return array<int, array<string,int>>
+ */
+function customer_unit_prices(int $userId, array $gatewayIds): array {
+    // gateway|column|encoding => list price: the global cell, else what an empty global cell falls back to.
+    $listDefaults = gateway_prices_current(null) + gateway_price_defaults(null);
+    $chain = customer_pricing_chain($userId);
+    $now = gmdate('Y-m-d H:i:s');
+    $ownCells = $chain === null && customer_price_owner($userId) === $userId ? gateway_prices_at($userId, $now) : [];
+    $context = $chain !== null ? customer_pricing_context($userId, $now) : null;
+    $bp = customer_effective_tariff_bp($userId);
+    $columns = gateway_price_matrix_columns();
+
+    $out = [];
+    foreach ($gatewayIds as $gatewayId) {
+        $out[$gatewayId] = [];
+        foreach ($columns as $column) {
+            foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding) {
+                $cellKey = gateway_price_key($gatewayId, $column['key'], $encoding);
+                $allKey = gateway_price_key(GATEWAY_PRICE_ALL, $column['key'], $encoding);
+                $list = $listDefaults[$cellKey] ?? $listDefaults[$allKey] ?? null;
+                if ($context !== null) {
+                    $topCell = $context['top_cells'][$cellKey]['millicredits'] ?? $context['top_cells'][$allKey]['millicredits'] ?? null;
+                    $price = customer_chain_prices($context['chain'], $list, $topCell, $context['tariff_cells'], $column['key'], $encoding)[0]['price'];
+                } else {
+                    $cell = $ownCells[$cellKey]['millicredits'] ?? $ownCells[$allKey]['millicredits'] ?? null;
+                    $price = $cell ?? ($list !== null ? customer_tariff_apply($list, $bp) : null);
+                }
+                if ($price !== null) $out[$gatewayId][reseller_tariff_cell_key($column['key'], $encoding)] = $price;
+            }
+        }
+    }
+    return $out;
+}
+
+/**
+ * The customer's own price list (public/my-tariff.php): what it pays per segment from each of its
+ * sending lines, per destination column and encoding. Lines carried by gateways with the same prices
+ * share one row; an account with no line of its own gets one row, for the default gateway.
+ *
+ * @return list<array{lines:list<string>, prices:array<string,int>}>
+ */
+function customer_tariff_rows(array $user): array {
+    $byGateway = [];
+    foreach (sendable_originators($user) as $line) {
+        if ($line === '*') continue;
+        $gatewayId = 0;
+        try {
+            $gatewayId = gateway_number_pinned_id((string)$line);
+            if ($gatewayId <= 0) {
+                $route = sms_pricing_route_for_sender((string)$line, sms_pricing_default_message_type(), null);
+                $gatewayId = (int)($route['gateway_id'] ?? 0);
+            }
+        } catch (Throwable) {
+        }
+        $byGateway[$gatewayId > 0 ? $gatewayId : gateway_default_id()][] = (string)$line;
+    }
+    if ($byGateway === []) {
+        $byGateway[gateway_default_id()] = [];
+    }
+    $rows = [];
+    foreach (customer_unit_prices((int)$user['id'], array_keys($byGateway)) as $gatewayId => $prices) {
+        $key = json_encode($prices);
+        if (isset($rows[$key])) {
+            $rows[$key]['lines'] = array_merge($rows[$key]['lines'], $byGateway[$gatewayId]);
+        } else {
+            $rows[$key] = ['lines' => $byGateway[$gatewayId], 'prices' => $prices];
+        }
+    }
+    return array_values($rows);
+}
+
+/**
  * What $userId pays for one segment in each tariff cell, keyed by reseller_tariff_cell_key() — the
  * floor of a tariff it defines for its customers. Uses the most expensive active gateway for each
  * column, so a tariff that passes this check never sells below the reseller's own cost on any gateway.
@@ -270,33 +351,11 @@ function customer_pricing_context(int $userId, string $atUtc): ?array {
  * @return array<string,int>
  */
 function reseller_own_prices(int $userId): array {
-    // gateway|column|encoding => list price: the global cell, else what an empty global cell falls back to.
-    $listDefaults = gateway_prices_current(null) + gateway_price_defaults(null);
-    $chain = customer_pricing_chain($userId);
-    $now = gmdate('Y-m-d H:i:s');
-    $ownCells = $chain === null && customer_price_owner($userId) === $userId ? gateway_prices_at($userId, $now) : [];
-    $context = $chain !== null ? customer_pricing_context($userId, $now) : null;
-    $bp = customer_effective_tariff_bp($userId);
     $gatewayIds = array_merge([GATEWAY_PRICE_ALL], array_map(static fn(array $g): int => (int)$g['id'], gateway_price_matrix_gateways()));
-
     $out = [];
-    foreach (gateway_price_matrix_columns() as $column) {
-        foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding) {
-            $max = null;
-            foreach ($gatewayIds as $gatewayId) {
-                $list = $listDefaults[gateway_price_key($gatewayId, $column['key'], $encoding)] ?? null;
-                if ($context !== null) {
-                    $topCell = $context['top_cells'][gateway_price_key($gatewayId, $column['key'], $encoding)]['millicredits']
-                        ?? $context['top_cells'][gateway_price_key(GATEWAY_PRICE_ALL, $column['key'], $encoding)]['millicredits'] ?? null;
-                    $price = customer_chain_prices($context['chain'], $list, $topCell, $context['tariff_cells'], $column['key'], $encoding)[0]['price'];
-                } else {
-                    $cell = $ownCells[gateway_price_key($gatewayId, $column['key'], $encoding)]['millicredits']
-                        ?? $ownCells[gateway_price_key(GATEWAY_PRICE_ALL, $column['key'], $encoding)]['millicredits'] ?? null;
-                    $price = $cell ?? ($list !== null ? customer_tariff_apply($list, $bp) : null);
-                }
-                if ($price !== null && ($max === null || $price > $max)) $max = $price;
-            }
-            if ($max !== null) $out[reseller_tariff_cell_key($column['key'], $encoding)] = $max;
+    foreach (customer_unit_prices($userId, $gatewayIds) as $prices) {
+        foreach ($prices as $key => $price) {
+            if (!isset($out[$key]) || $price > $out[$key]) $out[$key] = $price;
         }
     }
     // The 'all' row's floor is the dearest column: it may stand in for any of them.
@@ -337,7 +396,7 @@ function reseller_tariff_cells_from_form(array $posted): array {
 
 /**
  * Creates or updates one of $ownerId's tariffs. $cells maps reseller_tariff_cell_key() => millicredits
- * or null (empty: falls back to the 'all' row, else the customer's tariff percentage). Every price
+ * or null (empty: falls back to the 'all' row, else the list price). Every price
  * must be at least what the owner itself pays for that cell (reseller_own_prices()).
  *
  * @return array{ok:bool, reason?:string, id?:int, cell?:string}
@@ -412,6 +471,8 @@ function reseller_assign_tariff(int $parentId, int $childId, ?int $tariffId, int
     if ($tariffId !== null && reseller_tariff_owned($parentId, $tariffId) === null) return ['ok' => false, 'reason' => 'not_found'];
     $child = customer_account($childId);
     if (!$child['exists'] || $child['parent_user_id'] !== $parentId) return ['ok' => false, 'reason' => 'not_your_child'];
+    // A reseller's customer is always on one of its tariffs.
+    if ($tariffId === null && customer_account($parentId)['customer_type'] === 'reseller') return ['ok' => false, 'reason' => 'tariff_required'];
     if ($child['customer_type'] === 'organ' && customer_account($parentId)['customer_type'] === 'organ') {
         return ['ok' => false, 'reason' => 'sub_organ_tariff'];
     }
@@ -429,6 +490,31 @@ function reseller_default_tariff_id(int $ownerId): ?int {
     return null;
 }
 
+/**
+ * What an account's prices come from, for display: its named tariff's title under a reseller, its
+ * parent organization's tariff for a sub-organization, else the admin's per-account prices
+ * («تعرفه‌ی اختصاصی») or the general price list («تعرفه‌ی عمومی»).
+ */
+function customer_tariff_label(int $userId): string {
+    if ($userId <= 0 || !customer_hierarchy_available()) return 'تعرفه‌ی عمومی';
+    $account = customer_account($userId);
+    if ($account['parent_user_id'] !== null) {
+        $parent = customer_account((int)$account['parent_user_id']);
+        if ($account['customer_type'] === 'organ' && $parent['customer_type'] === 'organ') {
+            return 'تعرفه‌ی سازمان والد';
+        }
+        if ($parent['customer_type'] === 'reseller') {
+            $tariff = $account['tariff_id'] !== null ? reseller_tariff_get((int)$account['tariff_id']) : null;
+            return $tariff !== null && !$tariff['deleted'] ? $tariff['title'] : 'بدون تعرفه';
+        }
+    }
+    $owner = function_exists('customer_price_owner') ? customer_price_owner($userId) : null;
+    if ($owner !== null && gateway_prices_current($owner) !== []) {
+        return $owner === $userId ? 'تعرفه‌ی اختصاصی' : 'تعرفه‌ی اختصاصی سازمان';
+    }
+    return 'تعرفه‌ی عمومی';
+}
+
 function reseller_tariff_error_message(string $reason): string {
     return [
         'not_migrated'     => 'جدول‌های پنل نمایندگی هنوز ساخته نشده‌اند (مهاجرت 2026_10_24_reseller_panel.sql).',
@@ -442,5 +528,6 @@ function reseller_tariff_error_message(string $reason): string {
         'in_package'       => 'این تعرفه در یک بسته استفاده شده است؛ ابتدا بسته را ویرایش کنید.',
         'not_your_child'   => 'این حساب زیرمجموعه‌ی شما نیست.',
         'sub_organ_tariff' => 'زیرسازمان همیشه با تعرفه‌ی سازمان ارسال می‌کند.',
+        'tariff_required'  => 'یکی از تعرفه‌هایتان را برای این مشتری انتخاب کنید.',
     ][$reason] ?? 'عملیات تعرفه انجام نشد.';
 }

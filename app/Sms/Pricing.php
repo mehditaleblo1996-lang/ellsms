@@ -892,6 +892,7 @@ function sms_pricing_price_messages(
     $userCells   = $priceOwner !== null ? gateway_prices_at($priceOwner, $atUtc) : [];
     $globalCells = !$exempt ? gateway_prices_at(null, $atUtc) : [];
     $gatewayByOperator = [];
+    $sharedRow   = !$exempt ? gateway_price_row_override() : null;
 
     $phones = [];
     foreach ($messages as $m) {
@@ -920,14 +921,22 @@ function sms_pricing_price_messages(
             $encoding   = (string)($m['encoding'] ?? 'fa');
             $cellKey    = gateway_price_key($gatewayId, $column, $encoding);
             $allKey     = gateway_price_key(GATEWAY_PRICE_ALL, $column, $encoding);
+            // A shared-service send (app/SharedService.php) is priced from its own row first — the
+            // account's, else the global one — whichever line or provider carries it.
+            $rowKey     = $sharedRow !== null ? gateway_price_key($sharedRow, $column, $encoding) : null;
+            if ($rowKey !== null && isset($userCells[$rowKey])) {
+                $resolution = sms_pricing_with_customer_price($resolution, $userCells[$rowKey]);
+            } elseif ($rowKey !== null && isset($globalCells[$rowKey])) {
+                $resolution = sms_pricing_with_matrix_price($resolution, $globalCells[$rowKey]);
             // The gateway's own cell, else the "every gateway" default row — the account's first.
-            if (($cell = $userCells[$cellKey] ?? $userCells[$allKey] ?? null) !== null) {
+            } elseif (($cell = $userCells[$cellKey] ?? $userCells[$allKey] ?? null) !== null) {
                 $resolution = sms_pricing_with_customer_price($resolution, $cell);
             } elseif (($cell = $globalCells[$cellKey] ?? $globalCells[$allKey] ?? null) !== null) {
                 $resolution = sms_pricing_with_matrix_price($resolution, $cell);
             }
             if ($pricingContext !== null) {
-                $resolution = sms_pricing_with_chain_price($resolution, $pricingContext, $cellKey, $allKey, $column, $encoding);
+                $chainKey = $rowKey !== null && isset($pricingContext['top_cells'][$rowKey]) ? $rowKey : $cellKey;
+                $resolution = sms_pricing_with_chain_price($resolution, $pricingContext, $chainKey, $allKey, $column, $encoding);
             }
         }
         if ($resolution === null || !$resolution['ok']) {

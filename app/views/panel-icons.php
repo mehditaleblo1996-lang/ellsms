@@ -45,14 +45,24 @@ function panel_icon(string $name): string {
         'more' => '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
         'eye' => '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
         'download' => '<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/>',
+        'upload' => '<path d="M12 20V9m-5 5 5-5 5 5M5 4h14"/>',
+        'edit' => '<path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/>',
+        'pause' => '<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>',
+        'play' => '<circle cx="12" cy="12" r="9"/><path d="m10 8.5 5 3.5-5 3.5v-7Z"/>',
+        'unlock' => '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2M12 15v2"/>',
+        'trash' => '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+        'restore' => '<path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v5h5"/><path d="M12 8v4l3 2"/>',
+        'renew' => '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/>',
+        'id-card' => '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16a3 3 0 0 1 6 0M14 10h4M14 14h3"/>',
+        'eye-off' => '<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.6C3.8 8.4 2 12 2 12s3.6 6 10 6a9.6 9.6 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     ];
     $names = [
         'dashboard'=>'grid', 'notifications'=>'bell', 'guide'=>'book', 'onboarding'=>'check',
         'new_send'=>'spark', 'send'=>'send', 'p2p'=>'users', 'smart'=>'spark', 'schedules'=>'clock',
         'autoreply'=>'message', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'sent_count_report'=>'chart', 'received_count_report'=>'inbox', 'inbox'=>'inbox',
         'contacts'=>'users', 'blacklist'=>'ban', 'line_optouts'=>'ban', 'tickets'=>'help',
-        'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe',
-        'api_keys'=>'key', 'otp_templates'=>'key', 'shared_otp'=>'key', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',
+        'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe', 'lba'=>'globe', 'lba_gateways'=>'globe',
+        'api_keys'=>'key', 'otp_templates'=>'key', 'shared_otp'=>'key', 'shared_service'=>'send', 'shared_service_admin'=>'send', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',
         'number_forwards'=>'send', 'billing'=>'wallet', 'subaccounts'=>'users', 'menu_roles'=>'shield',
         'reseller_profits'=>'chart', 'user_send_policies'=>'shield', 'registration_requests'=>'user',
         'kyc_review'=>'shield', 'kyc_gates'=>'key', 'analytics'=>'chart', 'logs'=>'receipt',
@@ -62,7 +72,7 @@ function panel_icon(string $name): string {
         'guide_admin'=>'book', 'billing_admin'=>'wallet', 'financial_admin'=>'receipt',
         'reseller_packages'=>'gift', 'reseller_dashboard'=>'grid', 'reseller_customers'=>'users', 'reseller_tariffs'=>'wallet',
         'reseller_package_admin'=>'gift', 'reseller_finance'=>'chart', 'reseller_tickets'=>'help', 'reseller_announcements'=>'megaphone',
-        'reseller_registrations'=>'user', 'reseller_staff'=>'shield', 'reseller_settings'=>'settings', 'reseller_back'=>'home', 'reseller_panel'=>'users',
+        'reseller_registrations'=>'user', 'reseller_roles'=>'key', 'reseller_staff'=>'shield', 'reseller_settings'=>'settings', 'reseller_back'=>'home', 'reseller_panel'=>'users',
     ];
     $path = $paths[$names[$name] ?? $name] ?? $paths['grid'];
     return '<svg class="ui-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' . $path . '</svg>';

@@ -61,11 +61,27 @@ components:
         id: { type: integer }
         template_id: { type: integer }
         destination: { type: string }
-        originator: { type: string, nullable: true, description: "the shared line it was sent from" }
+        originator: { type: string, nullable: true, description: "always null: the platform's shared line is never disclosed" }
         status: { type: string, enum: [sending, sent, failed] }
         parts: { type: integer }
         error: { type: string, nullable: true }
         created_at: { type: string }
+    SharedMessage:
+      type: object
+      properties:
+        id: { type: integer }
+        line_type: { type: string, enum: [service, promo] }
+        line: { type: string, nullable: true, description: "the private line's name the message was sent with; null = the general shared line" }
+        destination: { type: string }
+        text: { type: string }
+        status: { type: string, enum: [held, queued, sending, sent, failed, rejected, expired] }
+        hold_reason: { type: string, nullable: true, enum: [new_text, supervised] }
+        send_after: { type: string, nullable: true, description: "a queued promotional message goes out from this local time" }
+        originator: { type: string, nullable: true, description: "always null: the platform's shared line is never disclosed" }
+        parts: { type: integer }
+        error: { type: string, nullable: true, description: "why it failed, or the reviewer's reason when rejected" }
+        created_at: { type: string }
+        sent_at: { type: string, nullable: true }
     WebEngageResult:
       type: object
       required: [status]
@@ -588,6 +604,45 @@ paths:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/OtpMessage' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /shared/messages:
+    post:
+      summary: Send a message from the platform's shared lines — recipient and text only (scope shared:send) — see docs/shared-service.md
+      description: >
+        The caller never chooses the sender (`originator`/`sender`/`from` are rejected, 422) nor the price
+        (the pricing fields are rejected). A text the platform has not approved for this customer, or any
+        message of a customer under supervision, is held for human review (202, status `held`); a
+        promotional message outside the allowed hours waits for them (202, status `queued`, `send_after`).
+        Charged to the key owner's wallet at the shared-service tariff when it is actually sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination, text]
+              properties:
+                destination: { type: string }
+                text: { type: string, maxLength: 1000 }
+                line_type: { type: string, enum: [service, promo], default: service }
+                line: { type: string, description: "optional: the name of a private line the platform gave you (e.g. «تاجماهی»); omit for the general shared line" }
+                client_message_id: { type: string }
+      responses:
+        "201": { description: Sent, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/SharedMessage' } } } } } }
+        "202": { description: Accepted — held for review or queued for the promotional hours, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/SharedMessage' } } } } } }
+        "402": { description: Not sent (insufficient credit, gateway refused, quota) }
+        "409": { $ref: '#/components/responses/IdempotencyConflict' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+        "503": { description: The shared service is not enabled on this deployment }
+
+  /shared/messages/{id}:
+    get:
+      summary: One shared-service message and its status (scope shared:send)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/SharedMessage' } } } } } }
         "404": { $ref: '#/components/responses/NotFound' }
 
   /webengage/sms:

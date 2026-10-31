@@ -7,6 +7,8 @@ node_modules/
 composer.phar
 storage/kyc/*
 !storage/kyc/.gitkeep
+storage/number-commitments/*
+!storage/number-commitments/.gitkeep
 # Customers' payment receipts and cheque images (app/ManualPayments.php): personal financial data.
 storage/payment-receipts/*
 !storage/payment-receipts/.gitkeep

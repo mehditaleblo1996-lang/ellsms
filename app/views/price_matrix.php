@@ -1,7 +1,7 @@
 <?php
 /**
  * The price matrix form (app/GatewayPrices.php): a "default for every gateway" row, then one row per
- * sending gateway, one column pair
+ * sending gateway, then the shared sending service's two rows (خدماتی / تبلیغاتی), one column pair
  * (Persian / Latin) per destination operator, plus "other" and "international". The top row of each
  * column pair fills the whole column with one value (the ↓ button, assets/js/forms.js).
  *
@@ -59,10 +59,19 @@ $matrixFormat = static fn(int $millis): string => (string)sms_pricing_millicredi
       </tr>
     </thead>
     <tbody>
-      <?php foreach (array_merge([['id' => GATEWAY_PRICE_ALL, 'name' => 'پیش‌فرض همه‌ی درگاه‌ها']], $matrixGateways) as $gateway): $gatewayId = (int)$gateway['id']; ?>
-        <tr<?= $gatewayId === GATEWAY_PRICE_ALL ? ' class="pm-default-row"' : '' ?>>
+      <?php
+        $matrixSharedRows = [];
+        foreach (GATEWAY_PRICE_SHARED_ROWS as $sharedSlot => $sharedName) {
+            $matrixSharedRows[] = ['id' => $sharedSlot, 'name' => $sharedName];
+        }
+      ?>
+      <?php foreach (array_merge([['id' => GATEWAY_PRICE_ALL, 'name' => 'پیش‌فرض همه‌ی درگاه‌ها']], $matrixGateways, $matrixSharedRows) as $gateway):
+          $gatewayId = (int)$gateway['id'];
+          $isSharedRow = isset(GATEWAY_PRICE_SHARED_ROWS[$gatewayId]); ?>
+        <tr<?= $gatewayId === GATEWAY_PRICE_ALL ? ' class="pm-default-row"' : ($isSharedRow ? ' class="pm-shared-row"' : '') ?>>
           <th scope="row" class="pm-gateway"><?= e((string)$gateway['name']) ?>
-            <?php if ($gatewayId === GATEWAY_PRICE_ALL): ?><span class="hint" style="display:block;font-weight:normal">برای درگاهی که قیمت خودش را ندارد</span><?php endif; ?></th>
+            <?php if ($gatewayId === GATEWAY_PRICE_ALL): ?><span class="hint" style="display:block;font-weight:normal">برای درگاهی که قیمت خودش را ندارد</span><?php endif; ?>
+            <?php if ($isSharedRow): ?><span class="hint" style="display:block;font-weight:normal">از هر خط و تأمین‌کننده‌ای که برود؛ خالی = قیمت خط ارسال</span><?php endif; ?></th>
           <?php foreach ($matrixColumns as $column): ?>
             <?php foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding):
                 $cellKey = gateway_price_key($gatewayId, $column['key'], $encoding);
@@ -72,7 +81,7 @@ $matrixFormat = static fn(int $millis): string => (string)sms_pricing_millicredi
               <td>
                 <input type="text" inputmode="decimal" class="ltr pm-cell<?= $value === null && $default !== null ? ' is-default' : '' ?>"
                        name="price[<?= $gatewayId ?>][<?= e($column['key']) ?>][<?= $encoding ?>]"
-                       data-fill-target="<?= e($column['key'] . '-' . $encoding) ?>"
+                       <?= $isSharedRow ? '' : 'data-fill-target="' . e($column['key'] . '-' . $encoding) . '"' ?>
                        data-default="<?= $default !== null ? e($matrixFormat($default)) : '' ?>"
                        value="<?= $shown !== null ? e($matrixFormat($shown)) : '' ?>"
                        placeholder="<?= $default !== null ? e($matrixFormat($default)) : '—' ?>"

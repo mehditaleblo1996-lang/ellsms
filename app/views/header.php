@@ -29,6 +29,10 @@ $nav += [
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
     'financial_log' => ['/financial-log.php', 'تاریخچه مالی', '📒'],
 ];
+// The customer's own per-operator price list (public/my-tariff.php); admins set prices elsewhere.
+if ($me['role'] !== 'admin') {
+    $nav['my_tariff'] = ['/my-tariff.php', 'تعرفه من', '💱'];
+}
 // Operator reports (public/operator-reports.php) open with the send report's menu; by provider is admin-only.
 if ($me['role'] === 'admin' || menu_access_allows($me, 'reports')) {
     $nav['operator_reports'] = ['/operator-reports.php', 'گزارش اپراتورها', '≣'];
@@ -55,6 +59,10 @@ if ($me['role'] === 'admin' || voice_configured()) {
 if ($me['role'] === 'admin' || regional_bulk_configured()) {
     $nav['regional_bulk'] = ['/regional-bulk.php', 'ارسال منطقه‌ای', '🗺️'];
 }
+// LBA through LBA gateways (app/Lba.php): admins always, customers with a line that has an LBA gateway.
+if (lba_menu_visible($me)) {
+    $nav['lba'] = ['/lba.php', 'ارسال پیام منطقه‌ای (LBA)', '📍'];
+}
 // Aimed bulk from ELLSMS's own subscriber bank, shown once enabled (admins always, to set it up).
 if ($me['role'] === 'admin' || aimed_bulk_enabled()) {
     $nav['aimed_bulk'] = ['/aimed-bulk.php', 'ارسال با کد پستی', '📮'];
@@ -67,6 +75,10 @@ if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
 // Shared OTP templates (app/SharedOtp.php), once the service is on; admins manage it under their own menu.
 if ($me['role'] !== 'admin' && shared_otp_configured()) {
     $integrationNav['otp_templates'] = ['/otp-templates.php', 'کد تایید اشتراکی', '🔐'];
+}
+// Shared sending service (app/SharedService.php): recipient + text, no line of their own needed.
+if ($me['role'] !== 'admin' && shared_service_configured()) {
+    $nav['shared_service'] = ['/shared-service.php', 'ارسال با خط اشتراکی', '📨'];
 }
 // WooCommerce plugin, SDKs and their guide — for whoever can see API keys (they are what the tools use).
 if ($me['role'] === 'admin' || ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW))) {
@@ -132,8 +144,10 @@ $adminNav = [
     'price_quote'           => ['/price-quote.php',           'فاکتور / لیست قیمت', '🧾'],
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
+    'lba_gateways'          => ['/lba-gateways.php',          'درگاه‌های LBA',       '📍'],
     'voice_settings'        => ['/voice-settings.php',        'سرویس پیام صوتی',     '🔊'],
     'shared_otp'            => ['/otp-templates.php',         'کد تایید اشتراکی',    '🔐'],
+    'shared_service_admin'  => ['/shared-service.php',        'سرویس ارسال اشتراکی' . (($sharedHeld = shared_service_held_count()) > 0 ? ' (' . to_persian_digits((string)$sharedHeld) . ')' : ''), '📨'],
     'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
     'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
@@ -151,9 +165,9 @@ $adminNav = [
 $adminNavGroups = menu_group_items($adminNav, [
     'admin_users'    => ['کاربران و نمایندگان', ['users', 'registration_requests', 'menu_roles', 'reseller_profits', 'user_send_policies']],
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
-    'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
+    'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'lba_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
-    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
+    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'shared_service_admin', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
 ]);
@@ -358,6 +372,6 @@ $userLabel = $me['full_name'] ?: $me['username'];
           </form>
         </div>
       <?php endif; ?>
-      <?php foreach (flashes() as $f): ?>
-        <div class="flash flash-<?= e($f['type']) ?>" data-flash="<?= e($f['type']) ?>"><span class="flash-text"><?= e($f['msg']) ?></span></div>
+      <?php foreach (flashes() as $flashItem): ?>
+        <div class="flash flash-<?= e($flashItem['type']) ?>" data-flash="<?= e($flashItem['type']) ?>"><span class="flash-text"><?= e($flashItem['msg']) ?></span></div>
       <?php endforeach; ?>

@@ -53,3 +53,37 @@ function composer_side_html(string $actionsHtml): string {
         . '</div>'
         . '</aside>';
 }
+
+/**
+ * The <option>s of a send page's sender picker, from user_sendable_numbers(). When the user has
+ * shared lines (docs/shared-numbers.md) they are listed in their own group, labelled send-only, so a
+ * customer can tell a line lent to them from their own. $serviceLines (number => true) adds the
+ * «خدماتی» mark and data-service attribute new-send.php's blacklist toggle reads.
+ */
+function originator_options_html(array $numbers, string $selected, array $serviceLines = []): string {
+    $option = static function (array $n) use ($selected, $serviceLines): string {
+        $number = (string)$n['number'];
+        $isService = isset($serviceLines[$number]);
+        return '<option value="' . e($number) . '" data-service="' . ($isService ? '1' : '0') . '"'
+            . ($number === $selected ? ' selected' : '') . '>'
+            . e($number) . ($isService ? ' — خدماتی' : '') . (!empty($n['shared']) ? ' — اشتراکی' : '')
+            . '</option>';
+    };
+    $own = array_filter($numbers, static fn(array $n): bool => empty($n['shared']));
+    $shared = array_filter($numbers, static fn(array $n): bool => !empty($n['shared']));
+    if ($shared === []) {
+        return implode('', array_map($option, $own));
+    }
+    $html = $own ? '<optgroup label="خطوط من">' . implode('', array_map($option, $own)) . '</optgroup>' : '';
+    return $html . '<optgroup label="خطوط اشتراکی (فقط ارسال)">' . implode('', array_map($option, $shared)) . '</optgroup>';
+}
+
+/** One line under the picker when shared lines are on it: what «اشتراکی» means for the user. */
+function originator_shared_hint_html(array $numbers): string {
+    foreach ($numbers as $n) {
+        if (!empty($n['shared'])) {
+            return '<div class="hint">خطوط «اشتراکی» را مدیر سامانه با شما به اشتراک گذاشته است: می‌توانید از آن‌ها ارسال کنید، ولی پیام‌های دریافتی‌شان به صاحب خط می‌رسد.</div>';
+        }
+    }
+    return '';
+}

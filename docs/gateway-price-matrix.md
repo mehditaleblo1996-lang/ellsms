@@ -38,6 +38,16 @@ Both tables start with a **پیش‌فرض همه‌ی درگاه‌ها** row (
 tariff: it prices every gateway that has no value of its own in that cell, including gateways added
 later and sends with no gateway at all (the legacy backend path).
 
+## Shared-service rows
+
+Under the gateways, both tables have two more rows, «سرویس اشتراکی خدماتی» and «سرویس اشتراکی تبلیغاتی»
+(`GATEWAY_PRICE_SHARED_SERVICE` / `GATEWAY_PRICE_SHARED_PROMO`, stored as `gateway_id` NULL with
+`gateway_slot` 4294967001 / 4294967002). They price only messages of the shared sending service
+(`docs/shared-service.md`), whatever line or gateway carries them: the account's row, else the global row
+× the tariff percentage, else the normal price of the sending line. On an account's table an empty shared
+cell shows the global row × the account's percentage in grey; on the global table it has no default. The
+column ↓ buttons do not fill these rows.
+
 ## How a message is priced
 
 `sms_pricing_price_messages()` works out the cell (gateway, column, encoding) for each message and

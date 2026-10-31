@@ -114,7 +114,8 @@ function user_shared_numbers(array $user): array {
 
 /**
  * Every line this user may send from, as rows for a picker: their own, their organization's, and
- * every one shared with them — de-duplicated by number, ordered by number.
+ * every one shared with them — de-duplicated by number, ordered by number. A shared row carries
+ * `shared => true`; render the list with originator_options_html() (app/views/sms_composer.php).
  *
  * This, not user_assigned_numbers(), is what a send page's "ارسال‌کننده" dropdown must read. The two
  * had already drifted before shares existed: allowed_originators() has permitted the organization's
@@ -128,7 +129,8 @@ function user_sendable_numbers(array $user): array {
         user_assigned_numbers($user),
         organization_assigned_numbers((int)($user['organization_id'] ?? 0))
     );
-    $shared = user_shared_numbers($user);
+    // Tagged so a picker can list them apart: a shared line sends but never brings the user its inbox.
+    $shared = array_map(static fn(array $row): array => $row + ['shared' => true], user_shared_numbers($user));
 
     // A user with no numbers row still sends from a legacy ellsms_meta.originator that an admin set
     // by hand (allowed_originators() falls back to it), so it is listed here too — this list and
@@ -152,7 +154,8 @@ function user_sendable_numbers(array $user): array {
     // Sorted on the value, not on an array key: PHP silently casts a numeric-string key to int, and
     // an originator is a string ('09…' and '9…' must not order by numeric value).
     usort($out, static fn(array $a, array $b): int => strcmp((string)$a['number'], (string)$b['number']));
-    return $out;
+    // Filtered last, after the legacy fallback above, so this stays the same set as sendable_originators().
+    return number_filter_sendable($out);
 }
 
 /**
@@ -166,8 +169,9 @@ function sendable_originators(array $user): array {
     $allowed = allowed_originators($user);
     if (in_array('*', $allowed, true)) return $allowed;
     $shared = array_column(user_shared_numbers($user), 'number');
-    if (!$shared) return $allowed;
-    return array_values(array_unique(array_merge($allowed, $shared)));
+    // A line that is not active or has expired (app/NumberDetails.php) cannot be sent from by anyone;
+    // it stays in allowed_originators(), so its inbox and auto-replies keep working.
+    return number_filter_sendable($shared ? array_values(array_unique(array_merge($allowed, $shared))) : $allowed);
 }
 
 function can_view_inbound_message(array $user, string $destination): bool {
@@ -331,6 +335,8 @@ function can_use_originator(array $user, string $originator): bool {
     if ($normalized === null) return false;
     $userId = (int)($user['id'] ?? 0);
     if ($userId > 0 && !user_send_policy_request_allowed($userId)) return false;
+    // Checked before the admin shortcut: an inactive or expired line cannot send for anyone.
+    if (number_unsendable_reason($normalized) !== null) return false;
     if (($user['role'] ?? null) === 'admin') return true;
     // sendable_originators(), not allowed_originators(): a line shared with this user may be sent
     // from, while its inbox/auto-reply/opt-out list stay with its owner (docs/shared-numbers.md).

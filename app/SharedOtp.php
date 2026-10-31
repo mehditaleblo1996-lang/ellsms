@@ -489,10 +489,67 @@ function shared_otp_message_public(array $m): array {
         'id'          => (int)$m['id'],
         'template_id' => (int)$m['template_id'],
         'destination' => (string)$m['destination'],
-        'originator'  => $m['originator'] !== null ? (string)$m['originator'] : null,
+        'originator'  => null, // the platform's line is never disclosed to the customer
         'status'      => (string)$m['status'],
         'parts'       => (int)$m['parts'],
         'error'       => $m['error'] !== null ? (string)$m['error'] : null,
         'created_at'  => (string)$m['created_at'],
     ];
+}
+
+/**
+ * The «کد تایید اشتراکی» box on the send pages (app/views/shared_otp_send_card.php): handles its POST
+ * (do=shared_otp_send) and redirects back to $back. One recipient, one approved template, a value per
+ * variable — the same shared_otp_send() the API and the templates page use, recorded as source 'panel'.
+ * Returns without doing anything for any other POST, so a page calls it first and carries on.
+ */
+function shared_otp_handle_send_form(array $me, string $back): void {
+    if (($_POST['do'] ?? '') !== 'shared_otp_send') {
+        return;
+    }
+    $back .= '#sharedOtp';
+    if (($me['role'] ?? null) === 'admin') {
+        redirect($back);
+    }
+    // Spends the customer's wallet exactly like a direct send, so it is blocked in support mode too.
+    if (impersonation_guard_post('send.direct')) {
+        redirect($back);
+    }
+    $user = ['id' => (int)$me['id'], 'role' => $me['role'], 'organization_id' => $me['organization_id'] ?? null];
+    $templateId = (int)($_POST['otp_template_id'] ?? 0);
+    $destination = (string)($_POST['otp_destination'] ?? '');
+    $params = [];
+    foreach ((array)($_POST['otp_param'] ?? []) as $name => $value) {
+        if (is_string($value)) $params[(string)$name] = from_persian_digits($value);
+    }
+    $r = shared_otp_send($user, $templateId, $destination, $params, 'panel');
+    audit((int)$me['id'], 'shared_otp.send', 'template=' . $templateId . ' ok=' . (int)$r['ok']);
+    if ($r['ok']) {
+        flash('success', 'کد تایید به ' . to_persian_digits((string)normalize_msisdn(from_persian_digits($destination)))
+            . ' با خط اشتراکی ارسال شد.');
+    } else {
+        flash('error', (string)$r['error'] . shared_otp_fields_message($r['fields'] ?? []));
+    }
+    redirect($back);
+}
+
+/** Persian detail for shared_otp_send()'s field errors, e.g. « (code: خالی است)». */
+function shared_otp_fields_message(array $fields): string {
+    if ($fields === []) return '';
+    $labels = [
+        'required' => 'خالی است', 'single_line_only' => 'باید یک‌خطی باشد', 'links_not_allowed' => 'لینک مجاز نیست',
+        'invalid_characters' => 'آکولاد مجاز نیست', 'unknown_variable' => 'متغیر ناشناخته', 'invalid_format' => 'نامعتبر است',
+        'not_found' => 'پیدا نشد', 'not_approved' => 'تأیید نشده', 'must_be_string' => 'نامعتبر است',
+    ];
+    $parts = [];
+    foreach ($fields as $field => $codes) {
+        $name = str_starts_with((string)$field, 'parameters.') ? substr((string)$field, 11) : (string)$field;
+        $text = array_map(static function (string $c) use ($labels): string {
+            if (str_starts_with($c, 'too_long')) return 'حداکثر ' . to_persian_digits((string)SHARED_OTP_MAX_VALUE_CHARS) . ' نویسه';
+            if (str_starts_with($c, 'expected_')) return 'تعداد مقادیر درست نیست';
+            return $labels[$c] ?? $c;
+        }, (array)$codes);
+        $parts[] = $name . ': ' . implode('، ', $text);
+    }
+    return ' (' . implode('؛ ', $parts) . ')';
 }

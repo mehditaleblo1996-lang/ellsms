@@ -13,8 +13,8 @@
  * A closed menu is hidden in the sidebar (app/views/header.php) AND its pages answer 403
  * (menu_access_enforce(), called from require_login()), and the public API refuses the matching
  * routes for keys created by that user (menu_access_api_refusal()). Platform admins are never
- * restricted. Dashboard, notifications, guide, onboarding and profile are not in the catalog and
- * are always available.
+ * restricted. Dashboard, notifications, guide, onboarding, profile and «تعرفه من» are not in the catalog
+ * and are always available.
  *
  * Schema: db/migrations/2026_10_12_customer_hierarchy.sql. Until it is applied nothing is restricted.
  */
@@ -48,9 +48,11 @@ function menu_catalog(): array {
         'voice_files'   => ['فایل‌های صوتی',         '🎙', '/voice-files.php',   ['voice-files.php']],
         'regional_bulk' => ['ارسال منطقه‌ای',        '🗺️', '/regional-bulk.php', ['regional-bulk.php']],
         'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
+        'lba'           => ['ارسال پیام منطقه‌ای (LBA)', '📍', '/lba.php',       ['lba.php']],
         'otp_templates' => ['کد تایید اشتراکی',      '🔐', '/otp-templates.php', ['otp-templates.php']],
+        'shared_service' => ['ارسال با خط اشتراکی', '📨', '/shared-service.php', ['shared-service.php']],
         // A reseller's panel (app/ResellerPanel.php) is its sub-account menu: closing it closes the panel.
-        'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php',
+        'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php', 'reseller-customer-new.php', 'reseller-roles.php',
                                                                                 'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-payments.php', 'reseller-tickets.php',
                                                                                 'reseller-announcements.php', 'reseller-registrations.php', 'reseller-staff.php', 'reseller-settings.php']],
         'api_keys'      => ['کلیدهای API',          '🔑', '/api-keys.php',      ['api-keys.php']],
@@ -70,11 +72,11 @@ function menu_catalog(): array {
 function menu_groups(): array {
     return [
         'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
-        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'regional_bulk', 'aimed_bulk', 'schedules', 'autoreply']],
+        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'shared_service', 'regional_bulk', 'lba', 'aimed_bulk', 'schedules', 'autoreply']],
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'sent_count_report', 'inbox', 'received_count_report', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
-        'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
+        'finance'      => ['مالی',              ['my_tariff', 'buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
         'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'otp_templates', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
         'account'      => ['حساب و پشتیبانی',   ['reseller_panel', 'subaccounts', 'tickets']],
     ];
@@ -244,6 +246,7 @@ function menu_key_for_api_path(string $path): ?string {
         str_starts_with($path, '/api/v1/contacts')  => 'contacts',
         str_starts_with($path, '/api/v1/voice')     => 'voice',
         str_starts_with($path, '/api/v1/otp')       => 'otp_templates',
+        str_starts_with($path, '/api/v1/shared')    => 'shared_service',
         str_starts_with($path, '/api/v1/webhooks')  => 'webhooks',
         default => null,
     };

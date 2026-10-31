@@ -103,7 +103,7 @@ if (lazy_part_begin('list')) {
       <tr data-detail="<?= e($r['ref']) ?>" tabindex="0" class="is-clickable<?= $isHidden ? ' is-hidden-row' : '' ?>">
         <td class="num"><?= to_persian_digits((string)($offset + $n + 1)) ?></td>
         <td class="ltr report-ref"><?= e($r['ref']) ?></td>
-        <td class="msisdn"><?= e((string)$r['originator']) ?: '—' ?></td>
+        <td class="msisdn"><?= e(shared_line_mask((string)$r['originator'], $isAdmin)) ?: '—' ?></td>
         <?php if ($showUser): ?><td><?= e($r['username']) ?></td><?php endif; ?>
         <td><?= operator_label($r['operator_code'], $r['operator_name'], 18) ?></td>
         <td class="msisdn"><?= e($r['destination_display']) ?></td>

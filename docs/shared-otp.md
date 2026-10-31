@@ -34,8 +34,18 @@ text in advance, an admin approves it, and each call supplies only the variable 
    `parameters` may also be a list in the template's variable order (`["سارا", "4821"]`), like Negar's
    positional parameters. The answer is `201` with
    `{"id", "template_id", "destination", "originator", "status": "sent", "parts", "error", "created_at"}`;
-   `originator` is the shared line it went out from. The customer can also send a test code from the
+   `originator` is always `null`: the customer never learns the shared line (shown as «خط اشتراکی» in
+   reports, `shared_line_mask()`). The customer can also send a test code from the
    panel page.
+
+   **From the send pages.** «ارسال پیامک» (`send.php`) and «پنل جدید ارسال» (`new-send.php`) carry an
+   «ارسال کد تایید اشتراکی» box above the composer while the service is on
+   (`app/views/shared_otp_send_card.php`): pick an approved template, type one mobile number and a
+   value for each of its variables. It posts `do=shared_otp_send` back to the same page, which hands it
+   to `shared_otp_handle_send_form()` before its own POST handling — the same `shared_otp_send()` as
+   the API, recorded with source `panel`, blocked during a support impersonation like any direct send.
+   The box starts open for a customer with no sender line of their own, since it is then the only way
+   they can send.
 
 ## What keeps a shared line safe to lend
 
@@ -101,5 +111,5 @@ menu-mapped route.
 | Schema | `db/migrations/2026_10_25_shared_otp.sql` |
 | Logic | `app/SharedOtp.php`; the line grant in `dispatch_message_raw()` (`app/backend.php`) |
 | API | `app/Api/Handlers/SharedOtp.php`, routes in `public/api/index.php` |
-| Panel | `public/otp-templates.php` (`/integrations/otp`) |
-| Tests | `tests/Unit/SharedOtpTest.php`, `tests/Integration/SharedOtpTest.php` |
+| Panel | `public/otp-templates.php` (`/integrations/otp`); the send-page box `app/views/shared_otp_send_card.php` |
+| Tests | `tests/Unit/SharedOtpTest.php`, `tests/Integration/SharedOtpTest.php`, `tests/Integration/SharedOtpHttpTest.php` |

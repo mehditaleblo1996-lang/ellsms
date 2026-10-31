@@ -62,7 +62,7 @@ require __DIR__ . '/../app/views/reseller_header.php';
     </div>
     <h3 style="margin-top:16px">وضعیت حساب نمایندگی</h3>
     <ul class="hint" style="margin:6px 0 0;padding-inline-start:18px">
-      <li><?= e(customer_type_label($account)) ?> · تعرفه‌ی شما <?= to_persian_digits(customer_tariff_percent(customer_effective_tariff_bp($resellerId))) ?>٪ نرخ پایه</li>
+      <li><?= e(customer_type_label($account)) ?> · تعرفه‌ی شما: <?= e(customer_tariff_label($resellerId)) ?></li>
       <li>انقضا: <?= e($account['expires_on'] === null ? 'بدون انقضا' : jdate($account['expires_on'], false)) ?></li>
       <li>برند اختصاصی: <?= $settings['brand_enabled'] && $settings['host'] !== null ? '<span class="ltr">' . e($settings['host']) . '</span>' : 'فعال نیست' ?></li>
       <li>لینک ثبت‌نام: <?= $settings['signup_enabled'] ? 'فعال' : 'غیرفعال' ?></li>

@@ -67,6 +67,7 @@ require_once __DIR__ . '/Idempotency.php';
 require_once __DIR__ . '/Webhooks.php';
 require_once __DIR__ . '/MessageWebhooks.php';
 require_once __DIR__ . '/NumberForwarding.php';
+require_once __DIR__ . '/NumberDetails.php';
 require_once __DIR__ . '/WebEngage.php';
 // Phase 13 — plans/subscriptions/entitlements/quotas (docs/plans-and-entitlements.md). Loaded last
 // because Entitlements.php builds on Billing.php, which builds on tenant.php's organization model
@@ -129,8 +130,12 @@ require_once __DIR__ . '/RemoteDb/Sync.php';
 // Voice messages through ZarinCall (docs/voice-messages.md).
 require_once __DIR__ . '/Voice/ZarinCall.php';
 require_once __DIR__ . '/VoiceMessages.php';
+// LBA (location-based) sending through LBA gateways (docs/lba.md).
+require_once __DIR__ . '/Lba/PishgamSmartSms.php';
+require_once __DIR__ . '/Lba.php';
 // Shared OTP — approved templates sent from the platform's shared lines (docs/shared-otp.md).
 require_once __DIR__ . '/SharedOtp.php';
+require_once __DIR__ . '/SharedService.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';
@@ -246,10 +251,13 @@ ErrorHandler::register();
  * frame-src admits only the office map on /contact: the OpenStreetMap
  * embed, or (with no pin set) the Google Maps embed a visitor asks for.
  */
-function send_security_headers(): void {
+function send_security_headers(array $extraImageOrigins = []): void {
     if (headers_sent() || PHP_SAPI === 'cli') {
         return;
     }
+    // A page that shows map tiles (public/lba.php) calls this again with the tile server's origin: the
+    // second Content-Security-Policy header replaces the first. Only plain https origins are accepted.
+    $extraImageOrigins = array_values(array_filter($extraImageOrigins, static fn($o): bool => is_string($o) && preg_match('#^https://[a-z0-9.-]+(:\d+)?$#i', $o) === 1));
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('X-Frame-Options: SAMEORIGIN'); // legacy fallback alongside frame-ancestors below for older browsers
@@ -257,7 +265,7 @@ function send_security_headers(): void {
         "Content-Security-Policy: default-src 'self'; " .
         "script-src 'self' 'unsafe-inline'; " .
         "style-src 'self' 'unsafe-inline'; " .
-        "img-src 'self' data:; " .
+        "img-src 'self' data:" . ($extraImageOrigins === [] ? '' : ' ' . implode(' ', $extraImageOrigins)) . "; " .
         "font-src 'self'; " .
         "frame-src 'self' https://www.openstreetmap.org https://www.google.com https://maps.google.com; " .
         "object-src 'none'; " .

@@ -33,6 +33,11 @@ For the pickers the same split holds:
   `sendable_originators()`).
 - `user_assigned_numbers($user)` — unchanged, own lines only; still what `autoreply.php` lists.
 
+A shared row comes back with `shared => true`, and the four send pages render the list with
+`originator_options_html()` (`app/views/sms_composer.php`): when any shared line is present, own and
+organization lines go under «خطوط من» and shared ones under «خطوط اشتراکی (فقط ارسال)», each marked
+«اشتراکی», with a one-line hint that their incoming messages go to the line's owner.
+
 A user with no numbers row of their own whose legacy `ellsms_meta.originator` an admin set by hand
 gets that line listed too (label «قدیمی»), so the list always equals `sendable_originators()`.
 

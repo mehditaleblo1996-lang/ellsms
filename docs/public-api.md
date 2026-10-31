@@ -384,6 +384,16 @@ service_unavailable`). Full behaviour: `docs/shared-otp.md`.
 - `GET /otp/templates?status=` — the organization's templates: `[{"id", "title", "content", "variables", "status", "review_note", "created_at"}]`
 - `GET /otp/{id}` — one send, the same shape as `POST /otp` answers
 
+### Shared sending service — scope `shared:send`
+Recipient and text only; the platform picks the line from its pool (`originator`/`sender`/`from` → `422`).
+A text not yet approved for the customer, or any message of a supervised customer, is held for human
+review; a promotional message outside the allowed hours waits for them. Full behaviour:
+`docs/shared-service.md`.
+- `POST /shared/messages` — `{"destination": "0912…", "text": "…", "line_type": "service"|"promo", "client_message_id": "…"}`
+  → `201` sent, `202` `held` (`hold_reason`) or `queued` (`send_after`); `422` with `error.reason`
+  (`prohibited_content`, `text_rejected`, `blacklisted`, `opted_out`, …); `402` not sent; `503` service off
+- `GET /shared/messages/{id}` — the same object, to follow a held or queued message
+
 ### WebEngage — scope `messages:send`
 `POST /webengage/sms` is the SMS Service Provider endpoint WebEngage calls. It accepts WebEngage's own
 payload and answers in WebEngage's own shape (`{"status":"sms_accepted"}` or

@@ -129,6 +129,8 @@ if (PHP_SAPI !== 'cli') {
                 '/reseller.php' => '/reseller',
                 '/reseller-customers.php' => '/reseller/customers',
                 '/reseller-customer.php' => '/reseller/customers/view',
+                '/reseller-customer-new.php' => '/reseller/customers/new',
+                '/reseller-roles.php' => '/reseller/roles',
                 '/reseller-tariffs.php' => '/reseller/tariffs',
                 '/reseller-packages.php' => '/reseller/packages',
                 '/reseller-finance.php' => '/reseller/finance',
@@ -156,6 +158,8 @@ if (PHP_SAPI !== 'cli') {
                 '/voice-files.php' => '/messages/voice/files',
                 '/voice-settings.php' => '/admin/voice',
                 '/regional-bulk.php' => '/messages/regional',
+                '/lba.php' => '/messages/lba',
+                '/lba-gateways.php' => '/admin/lba-gateways',
                 '/aimed-bulk.php' => '/messages/aimed',
                 '/reports-bulk.php' => '/messages/reports/bulk',
                 '/operator-reports.php' => '/messages/reports/operators',
@@ -164,6 +168,7 @@ if (PHP_SAPI !== 'cli') {
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
                 '/otp-templates.php' => '/integrations/otp',
+                '/shared-service.php' => '/messages/shared',
             ];
 
             foreach (headers_list() as $headerLine) {

@@ -64,6 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'extra
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // The «کد تایید اشتراکی» box posts here too; it is handled (and redirected) on its own.
+    shared_otp_handle_send_form($me, '/new-send.php');
     $mode       = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? ($_POST['mode'] ?? 'direct') : 'direct';
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     $content    = trim($_POST['content'] ?? '');
@@ -183,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($mode === 'direct') {
         // #42 — the Bale channel is offered only while it is configured; 'sms' is the unchanged path.
-        $channel = in_array($_POST['channel'] ?? 'sms', MESSAGE_CHANNELS, true) ? (string)$_POST['channel'] : 'sms';
+        $channel = in_array($_POST['channel'] ?? '', MESSAGE_CHANNELS, true) ? (string)$_POST['channel'] : 'sms';
         [$ok, $info] = dispatch_with_channel($me, $originator, $dests, $content, $channel);
         flash($ok ? 'success' : 'error', $info . $blockedNote);
         audit((int)$me['id'], 'new_send.direct', count($dests) . ' dest, ok=' . (int)$ok);
@@ -251,7 +253,8 @@ if (!empty($costPricingFailure)) {
 if (isset($costPreview) && $costPreview) {
     $previewFormFields = '';
     foreach (['originator', 'destinations', 'content', 'notes', 'group', 'category', 'mode',
-              'repeat', 'throttle_count', 'throttle_minutes', 'use_blacklist'] as $field) {
+              'repeat', 'throttle_count', 'throttle_minutes', 'use_blacklist', 'channel',
+              'save_campaign', 'campaign_name'] as $field) {
         if (isset($_POST[$field])) {
             $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)$_POST[$field]) . '">';
         }
@@ -263,6 +266,8 @@ if (isset($costPreview) && $costPreview) {
     }
     require __DIR__ . '/../app/views/cost_preview.php';
 }
+$sharedOtpOpen = !$myNumbers;
+require __DIR__ . '/../app/views/shared_otp_send_card.php';
 ?>
 <?php
 require_once __DIR__ . '/../app/views/sms_composer.php';
@@ -295,10 +300,9 @@ $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'grad
       <label>ارسال‌کننده *
         <?php if ($myNumbers): ?>
           <select name="originator" id="originatorSelect">
-            <?php foreach ($myNumbers as $n): $isService = isset($serviceLines[(string)$n['number']]); ?>
-              <option value="<?= e($n['number']) ?>" data-service="<?= $isService ? '1' : '0' ?>"<?= (string)($_POST['originator'] ?? '') === (string)$n['number'] ? ' selected' : '' ?>><?= e($n['number']) ?><?= $isService ? ' — خدماتی' : '' ?></option>
-            <?php endforeach; ?>
+            <?= originator_options_html($myNumbers, (string)($_POST['originator'] ?? ''), $serviceLines) ?>
           </select>
+          <?= originator_shared_hint_html($myNumbers) ?>
         <?php elseif (($me['role'] ?? null) === 'admin'): ?>
           <input type="text" name="originator" id="originatorField" class="ltr" value="<?= e(user_default_send_originator($me)) ?>">
         <?php else: ?>

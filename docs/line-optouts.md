@@ -4,6 +4,9 @@ A recipient who texts **11** to a line stops receiving messages from **that line
 Other lines are unaffected. This is the operator convention for promotional SMS in Iran, and it is how
 Vesal's `MOPreparationJob` (`check11And12MOMessage`) and its internal blacklist behave.
 
+A line an admin marks «عبور از لیست سیاه داخلی» on /numbers.php (`ellsms_numbers.bypass_optouts`, Vesal's
+`internalBlackList`) skips this list entirely — `line_optout_filter()` returns nothing for it. See docs/numbers.md.
+
 ## How it works
 
 | Piece | Where |

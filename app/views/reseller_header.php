@@ -10,6 +10,7 @@ require_once __DIR__ . '/../NotificationCenter.php';
 $resellerNav = [
     'reseller_dashboard'     => ['/reseller',               'داشبورد نمایندگی',      null],
     'reseller_customers'     => ['/reseller/customers',     'مشتریان',               'customers.view'],
+    'reseller_roles'         => ['/reseller/roles',         'نقش‌های دسترسی منو',    'customers.manage'],
     'reseller_registrations' => ['/reseller/registrations', 'درخواست‌های ثبت‌نام',   'registrations.manage'],
     'reseller_tickets'       => ['/reseller/tickets',       'تیکت‌های مشتریان',      'tickets.manage'],
     'reseller_announcements' => ['/reseller/announcements', 'اطلاعیه‌ها',            'announcements.manage'],
@@ -26,7 +27,7 @@ if (!$ctx['staff']) {
 $resellerNav = array_filter($resellerNav, static fn(array $item): bool => $item[2] === null || reseller_can($ctx, $item[2]));
 $resellerGroups = menu_group_items($resellerNav, [
     'r_general'   => ['نمایندگی',      ['reseller_dashboard']],
-    'r_customers' => ['مشتریان',       ['reseller_customers', 'reseller_registrations', 'reseller_tickets', 'reseller_announcements']],
+    'r_customers' => ['مشتریان',       ['reseller_customers', 'reseller_roles', 'reseller_registrations', 'reseller_tickets', 'reseller_announcements']],
     'r_sales'     => ['فروش و قیمت',   ['reseller_tariffs', 'reseller_package_admin', 'reseller_finance', 'reseller_payments']],
     'r_settings'  => ['تنظیمات',       ['reseller_staff', 'reseller_settings', 'reseller_back']],
 ]);
@@ -148,6 +149,6 @@ $userLabel = $me['full_name'] ?: $me['username'];
           </form>
         </div>
       <?php endif; ?>
-      <?php foreach (flashes() as $f): ?>
-        <div class="flash flash-<?= e($f['type']) ?>" data-flash="<?= e($f['type']) ?>"><span class="flash-text"><?= e($f['msg']) ?></span></div>
+      <?php foreach (flashes() as $flashItem): ?>
+        <div class="flash flash-<?= e($flashItem['type']) ?>" data-flash="<?= e($flashItem['type']) ?>"><span class="flash-text"><?= e($flashItem['msg']) ?></span></div>
       <?php endforeach; ?>
