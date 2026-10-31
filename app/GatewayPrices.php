@@ -33,6 +33,44 @@ const GATEWAY_PRICE_ENCODINGS = ['fa' => 'فارسی', 'en' => 'لاتین'];
 /** The gateway id of the "default for every gateway" row (stored as gateway_id NULL, gateway_slot 0). */
 const GATEWAY_PRICE_ALL = 0;
 
+/**
+ * The shared sending service's two price rows (app/SharedService.php, docs/shared-service.md): virtual
+ * "gateways" stored as gateway_id NULL with these slots, far above any real gateway id. A send of the
+ * shared service is priced from its row (account's, else global × tariff percentage) whatever line and
+ * provider it actually leaves from; an empty row falls back to that line's normal price.
+ */
+const GATEWAY_PRICE_SHARED_SERVICE = 4294967001;
+const GATEWAY_PRICE_SHARED_PROMO = 4294967002;
+const GATEWAY_PRICE_SHARED_ROWS = [
+    GATEWAY_PRICE_SHARED_SERVICE => 'سرویس اشتراکی خدماتی',
+    GATEWAY_PRICE_SHARED_PROMO   => 'سرویس اشتراکی تبلیغاتی',
+];
+
+/** Whether $gatewayId is a row with no real gateway behind it (stored with gateway_id NULL). */
+function gateway_price_is_virtual_row(int $gatewayId): bool {
+    return $gatewayId === GATEWAY_PRICE_ALL || isset(GATEWAY_PRICE_SHARED_ROWS[$gatewayId]);
+}
+
+/**
+ * Runs $fn with every price pass inside it reading the shared-service row $slot first
+ * (sms_pricing_price_messages()). The override lives only inside this call.
+ */
+function gateway_price_with_row(int $slot, callable $fn): mixed {
+    $previous = $GLOBALS['__ellsms_gateway_price_row'] ?? null;
+    $GLOBALS['__ellsms_gateway_price_row'] = $slot;
+    try {
+        return $fn();
+    } finally {
+        $GLOBALS['__ellsms_gateway_price_row'] = $previous;
+    }
+}
+
+/** The shared-service price row gateway_price_with_row() is granting, or null. */
+function gateway_price_row_override(): ?int {
+    $slot = $GLOBALS['__ellsms_gateway_price_row'] ?? null;
+    return is_int($slot) && isset(GATEWAY_PRICE_SHARED_ROWS[$slot]) ? $slot : null;
+}
+
 /** Whether 2026_10_14_gateway_price_matrix.sql has been applied. Cached per process. */
 function gateway_prices_available(?bool $set = null): bool {
     static $available = null;
@@ -236,6 +274,20 @@ function gateway_price_defaults(?int $userId): array {
             }
         }
     }
+    // The shared-service rows: empty on the global matrix means "the sending line's own price", which
+    // has no single value to show; on an account's matrix, the global row × the tariff percentage.
+    if ($userId !== null) {
+        foreach (array_keys(GATEWAY_PRICE_SHARED_ROWS) as $slot) {
+            foreach (array_keys($routePrices) as $columnKey) {
+                foreach (array_keys(GATEWAY_PRICE_ENCODINGS) as $encoding) {
+                    $key = gateway_price_key($slot, (string)$columnKey, $encoding);
+                    if (isset($global[$key])) {
+                        $defaults[$key] = customer_tariff_apply($global[$key], $tariffBp);
+                    }
+                }
+            }
+        }
+    }
     return $defaults;
 }
 
@@ -268,6 +320,9 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
     }
     $gateways = array_flip(array_map(static fn(array $g): int => (int)$g['id'], gateway_price_matrix_gateways()));
     $gateways[GATEWAY_PRICE_ALL] = true;
+    foreach (array_keys(GATEWAY_PRICE_SHARED_ROWS) as $sharedRow) {
+        $gateways[$sharedRow] = true;
+    }
     $columns = array_flip(array_column(gateway_price_matrix_columns(), 'key'));
     foreach ($cells as $key => $millis) {
         [$gatewayId, $column, $encoding] = array_pad(explode('|', (string)$key), 3, '');
@@ -312,7 +367,7 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
             [$gatewayId, $column, $encoding] = explode('|', (string)$key);
             $close->execute([$now, $slot, (int)$gatewayId, $column, $encoding]);
             if ($millis !== null) {
-                $insert->execute([$userId, $slot, (int)$gatewayId === GATEWAY_PRICE_ALL ? null : (int)$gatewayId, (int)$gatewayId, $column, $encoding, $millis, $now, $actorId]);
+                $insert->execute([$userId, $slot, gateway_price_is_virtual_row((int)$gatewayId) ? null : (int)$gatewayId, (int)$gatewayId, $column, $encoding, $millis, $now, $actorId]);
             }
             $changed++;
         }

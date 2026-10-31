@@ -31,6 +31,7 @@ final class ApiScopes
     public const VOICE_SEND     = 'voice:send';
     public const VOICE_READ     = 'voice:read';
     public const OTP_SEND       = 'otp:send';
+    public const SHARED_SEND    = 'shared:send';
 
     /** Every scope constant this class defines — never hand-maintained twice (mirrors Permissions::all()). */
     public static function all(): array
@@ -43,6 +44,7 @@ final class ApiScopes
             self::WEBHOOKS_READ, self::WEBHOOKS_WRITE,
             self::VOICE_SEND, self::VOICE_READ,
             self::OTP_SEND,
+            self::SHARED_SEND,
         ];
     }
 

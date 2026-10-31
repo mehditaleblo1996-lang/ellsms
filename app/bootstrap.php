@@ -135,6 +135,7 @@ require_once __DIR__ . '/Lba/PishgamSmartSms.php';
 require_once __DIR__ . '/Lba.php';
 // Shared OTP — approved templates sent from the platform's shared lines (docs/shared-otp.md).
 require_once __DIR__ . '/SharedOtp.php';
+require_once __DIR__ . '/SharedService.php';
 // Cost preview — read-only estimator built on top of the segmentation, pricing, wallet, and quota
 // primitives above; loaded last because it composes all four and owns none of them.
 require_once __DIR__ . '/Cost/MessageCostEstimator.php';

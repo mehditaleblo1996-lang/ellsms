@@ -72,6 +72,10 @@ if ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW)) {
 if ($me['role'] !== 'admin' && shared_otp_configured()) {
     $integrationNav['otp_templates'] = ['/otp-templates.php', 'کد تایید اشتراکی', '🔐'];
 }
+// Shared sending service (app/SharedService.php): recipient + text, no line of their own needed.
+if ($me['role'] !== 'admin' && shared_service_configured()) {
+    $nav['shared_service'] = ['/shared-service.php', 'ارسال اشتراکی (بدون خط)', '📨'];
+}
 // WooCommerce plugin, SDKs and their guide — for whoever can see API keys (they are what the tools use).
 if ($me['role'] === 'admin' || ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW))) {
     $integrationNav['integrations'] = ['/integrations.php', 'افزونه ووکامرس و SDK', '🧩'];
@@ -139,6 +143,7 @@ $adminNav = [
     'lba_gateways'          => ['/lba-gateways.php',          'درگاه‌های LBA',       '📍'],
     'voice_settings'        => ['/voice-settings.php',        'سرویس پیام صوتی',     '🔊'],
     'shared_otp'            => ['/otp-templates.php',         'کد تایید اشتراکی',    '🔐'],
+    'shared_service_admin'  => ['/shared-service.php',        'سرویس ارسال اشتراکی' . (($sharedHeld = shared_service_held_count()) > 0 ? ' (' . to_persian_digits((string)$sharedHeld) . ')' : ''), '📨'],
     'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
     'prohibited_words'      => ['/prohibited-words.php',      'کلمات ممنوع',         '🚷'],
     'queue_cancellation'    => ['/admin/queue/cancellation',  'لغو صف ارسال',        '🛑'],
@@ -158,7 +163,7 @@ $adminNavGroups = menu_group_items($adminNav, [
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
     'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'lba_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
-    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
+    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'shared_service_admin', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
 ]);

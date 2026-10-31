@@ -168,6 +168,7 @@ if (PHP_SAPI !== 'cli') {
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
                 '/otp-templates.php' => '/integrations/otp',
+                '/shared-service.php' => '/messages/shared',
             ];
 
             foreach (headers_list() as $headerLine) {

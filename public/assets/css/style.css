@@ -1627,6 +1627,8 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .price-matrix input:not(.is-default):not(:placeholder-shown) { font-weight: 600; }
 .price-matrix tr.pm-default-row th, .price-matrix tr.pm-default-row td { background: #f2f4ff; border-bottom: 2px solid #c9cff5; }
 .price-matrix tr.pm-default-row .pm-gateway { color: #3b3fc4; }
+.price-matrix tr.pm-shared-row th, .price-matrix tr.pm-shared-row td { background: #f1faf4; }
+.price-matrix tr.pm-shared-row .pm-gateway { color: #1d6b3a; }
 
 /* ---------- Accessibility helpers ---------- */
 .sr-only {

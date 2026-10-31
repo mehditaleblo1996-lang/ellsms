@@ -101,6 +101,15 @@ approves it there, and the customer then calls `POST /api/v1/otp` (scope `otp:se
 the line's OTP tariff. Any edit sends the template back to review; values are short, single-line and
 link-free so the variables can't carry an ad. See [`docs/shared-otp.md`](docs/shared-otp.md).
 
+## Shared sending service (سرویس ارسال اشتراکی)
+
+A customer gives only a recipient and a text — on **/shared-service.php** or `POST /api/v1/shared/messages`
+(scope `shared:send`) — and the platform sends it from a line in its own pool: خدماتی (any hour) or
+تبلیغاتی (only inside the allowed hours). Pool lines have priorities and fail over, so a provider is
+swapped by enabling and disabling lines, invisible to customers. Prohibited words are refused; a text not
+yet approved for that customer, or any message of a customer under supervision, waits for a human
+reviewer. Each kind has its own row in the price matrix. See [`docs/shared-service.md`](docs/shared-service.md).
+
 ## Delivery-based billing (ارسال بر اساس تحویل)
 
 An admin can switch it on per user (**Users → user → ارسال بر اساس تحویل**) and set a refund percentage

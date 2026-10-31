@@ -29,6 +29,7 @@ const NOTIFICATION_EVENTS = [
     'ticket.created'                => 'ثبت تیکت (به کاربر)',
     'ticket.answered'               => 'پاسخ تیکت (به کاربر)',
     'shared_otp.template_reviewed'  => 'بررسی قالب کد تایید',
+    'shared_service.rejected'       => 'رد پیام سرویس اشتراکی',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];

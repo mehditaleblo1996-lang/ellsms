@@ -55,6 +55,9 @@ function scheduler_jobs(): array {
         // LBA (app/Lba.php): builds pending audiences, follows sends, settles periodic sends.
         'lba-worker' => ['title' => 'پیگیری و تسویه‌ی ارسال‌های منطقه‌ای (LBA)', 'every' => 60,
             'steps' => [['lba-worker.php']], 'timeout' => 900],
+        // Shared sending service (docs/shared-service.md): approved and promotional-window messages, review expiry.
+        'shared-service' => ['title' => 'ارسال پیام‌های صف سرویس اشتراکی', 'every' => 60,
+            'steps' => [['shared-service-worker.php']], 'timeout' => 900],
         'backup' => ['title' => 'بکاپ روزانه‌ی پایگاه داده', 'daily' => scheduler_backup_time(),
             'steps' => [['backup.php'], ['backup-prune.php'], ['backup-offsite.php']], 'timeout' => 4 * 3600],
         'usage-reconcile' => ['title' => 'تطبیق شمارنده‌های مصرف', 'daily' => '04:10',

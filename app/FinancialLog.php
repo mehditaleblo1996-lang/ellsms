@@ -141,6 +141,7 @@ function financial_log_reference_labels(): array {
         'voice_message'     => 'پیام صوتی',
         'voice_tts'         => 'ساخت فایل صوتی',
         'shared_otp'        => 'کد تایید اشتراکی',
+        'shared_service'    => 'سرویس ارسال اشتراکی',
         'reseller_package'  => 'بسته‌ی نماینده',
     ];
 }

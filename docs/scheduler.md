@@ -15,6 +15,7 @@ before.
 | `bulk-archive` | every minute | advances approved bulk-archive runs one bounded pass |
 | `voice-worker` | every minute | sends due scheduled voice messages, polls ZarinCall for answered / not answered calls and settles their cost (`docs/voice-messages.md`) |
 | `lba-worker` | every minute | polls LBA audiences the provider is still building, follows one-off LBA sends and charges / settles periodic ones (`docs/lba.md`) |
+| `shared-service` | every minute | sends approved and promotional-window messages of the shared sending service and expires held messages nobody reviewed (`docs/shared-service.md`) |
 | `backup` | daily `BACKUP_DAILY_AT` (03:30) | backup without message rows → retention prune → off-server copy (`docs/backup-and-disaster-recovery.md` §1, §17) |
 | `usage-reconcile` | daily 04:10 | rebuilds usage counters' `reserved` from the live reservations |
 | `idempotency-prune` | daily 04:20 | deletes completed Idempotency-Key records past their TTL |

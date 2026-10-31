@@ -50,6 +50,7 @@ function menu_catalog(): array {
         'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
         'lba'           => ['ارسال پیام منطقه‌ای (LBA)', '📍', '/lba.php',       ['lba.php']],
         'otp_templates' => ['کد تایید اشتراکی',      '🔐', '/otp-templates.php', ['otp-templates.php']],
+        'shared_service' => ['ارسال اشتراکی (بدون خط)', '📨', '/shared-service.php', ['shared-service.php']],
         // A reseller's panel (app/ResellerPanel.php) is its sub-account menu: closing it closes the panel.
         'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php', 'reseller-customer-new.php', 'reseller-roles.php',
                                                                                 'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-payments.php', 'reseller-tickets.php',
@@ -71,7 +72,7 @@ function menu_catalog(): array {
 function menu_groups(): array {
     return [
         'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
-        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'regional_bulk', 'lba', 'aimed_bulk', 'schedules', 'autoreply']],
+        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'shared_service', 'regional_bulk', 'lba', 'aimed_bulk', 'schedules', 'autoreply']],
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'sent_count_report', 'inbox', 'received_count_report', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
@@ -245,6 +246,7 @@ function menu_key_for_api_path(string $path): ?string {
         str_starts_with($path, '/api/v1/contacts')  => 'contacts',
         str_starts_with($path, '/api/v1/voice')     => 'voice',
         str_starts_with($path, '/api/v1/otp')       => 'otp_templates',
+        str_starts_with($path, '/api/v1/shared')    => 'shared_service',
         str_starts_with($path, '/api/v1/webhooks')  => 'webhooks',
         default => null,
     };
