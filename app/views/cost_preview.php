@@ -139,7 +139,7 @@ $rialFigure = static fn(int $millis): string => to_persian_digits(rtrim(rtrim(nu
       <?php endif; ?>
       <tr><th><strong>هزینه‌ی تقریبی</strong></th><td class="num"><strong><?= to_persian_digits(number_format($estimatedCost)) ?> ریال</strong></td></tr>
     <?php endif; ?>
-    <tr><th>اعتبار فعلی</th><td class="num"><?= to_persian_digits(number_format((int)$cp['wallet']['balance'])) ?> ریال</td></tr>
+    <tr><th>اعتبار فعلی</th><td><span class="num"><?= to_persian_digits(number_format((int)$cp['wallet']['balance'])) ?></span> ریال</td></tr>
     <tr><th>اعتبار پس از ارسال</th><td class="num" style="color:<?= $walletOk ? 'inherit' : '#c0392b' ?>">
       <?= to_persian_digits(number_format((int)$cp['wallet']['estimated_remaining'])) ?> ریال
     </td></tr>

@@ -202,7 +202,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="summary-grid">
     <div class="summary-item"><div class="summary-label">اعتبار شما (ریال)</div><div class="summary-value num"><?= to_persian_digits(number_format((int)wallet_balance($meId)['available'])) ?></div></div>
     <div class="summary-item"><div class="summary-label">تعرفه‌ی شما</div><div class="summary-value"><?= e(customer_tariff_label($meId)) ?></div></div>
-    <div class="summary-item"><div class="summary-label">سقف زیرمجموعه</div><div class="summary-value num"><?= to_persian_digits((string)$usedSubset) ?> از <?= to_persian_digits((string)$myAccount['max_subset_limit']) ?></div></div>
+    <div class="summary-item"><div class="summary-label">سقف زیرمجموعه</div><div class="summary-value"><span class="num"><?= to_persian_digits((string)$usedSubset) ?></span> از <span class="num"><?= to_persian_digits((string)$myAccount['max_subset_limit']) ?></span></div></div>
     <div class="summary-item"><div class="summary-label">انقضای حساب شما</div><div class="summary-value"><?= e($expiryText($myAccount['expires_on'])) ?></div></div>
   </div>
 </div>

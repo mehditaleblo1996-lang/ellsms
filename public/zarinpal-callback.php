@@ -130,8 +130,8 @@ require __DIR__ . '/../app/views/header.php';
   <div class="flash flash-<?= $result['ok'] ? 'success' : 'error' ?>"><?= e($result['message']) ?></div>
   <?php if ($payment): ?>
   <table>
-    <tr><th>اعتبار افزوده‌شده</th><td class="num"><?= to_persian_digits(number_format($payment['credits'])) ?> ریال</td></tr>
-    <tr><th>مبلغ</th><td class="num"><?= to_persian_digits(number_format($payment['amount_rial'])) ?> ریال</td></tr>
+    <tr><th>اعتبار افزوده‌شده</th><td><span class="num"><?= to_persian_digits(number_format($payment['credits'])) ?></span> ریال</td></tr>
+    <tr><th>مبلغ</th><td><span class="num"><?= to_persian_digits(number_format($payment['amount_rial'])) ?></span> ریال</td></tr>
   </table>
   <?php endif; ?>
   <div class="toolbar" style="margin-top:14px">
