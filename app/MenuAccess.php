@@ -13,8 +13,8 @@
  * A closed menu is hidden in the sidebar (app/views/header.php) AND its pages answer 403
  * (menu_access_enforce(), called from require_login()), and the public API refuses the matching
  * routes for keys created by that user (menu_access_api_refusal()). Platform admins are never
- * restricted. Dashboard, notifications, guide, onboarding and profile are not in the catalog and
- * are always available.
+ * restricted. Dashboard, notifications, guide, onboarding, profile and «تعرفه من» are not in the catalog
+ * and are always available.
  *
  * Schema: db/migrations/2026_10_12_customer_hierarchy.sql. Until it is applied nothing is restricted.
  */
@@ -76,7 +76,7 @@ function menu_groups(): array {
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'sent_count_report', 'inbox', 'received_count_report', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
-        'finance'      => ['مالی',              ['buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
+        'finance'      => ['مالی',              ['my_tariff', 'buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
         'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'otp_templates', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
         'account'      => ['حساب و پشتیبانی',   ['reseller_panel', 'subaccounts', 'tickets']],
     ];

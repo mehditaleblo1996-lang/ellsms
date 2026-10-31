@@ -29,6 +29,10 @@ $nav += [
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
     'financial_log' => ['/financial-log.php', 'تاریخچه مالی', '📒'],
 ];
+// The customer's own per-operator price list (public/my-tariff.php); admins set prices elsewhere.
+if ($me['role'] !== 'admin') {
+    $nav['my_tariff'] = ['/my-tariff.php', 'تعرفه من', '💱'];
+}
 // Operator reports (public/operator-reports.php) open with the send report's menu; by provider is admin-only.
 if ($me['role'] === 'admin' || menu_access_allows($me, 'reports')) {
     $nav['operator_reports'] = ['/operator-reports.php', 'گزارش اپراتورها', '≣'];
