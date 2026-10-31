@@ -73,6 +73,7 @@ final class SharedOtpHttpTest extends TestCase
         db()->prepare('DELETE FROM ellsms_organization_memberships WHERE organization_id = ?')->execute([$this->orgId]);
         db()->prepare('DELETE FROM ellsms_organizations WHERE id = ?')->execute([$this->orgId]);
         foreach ($this->userIds as $id) {
+            db()->prepare('DELETE FROM ellsms_otp_messages WHERE user_id = ?')->execute([$id]);
             db()->prepare('DELETE FROM ellsms_otp_templates WHERE user_id = ?')->execute([$id]);
             db()->prepare('DELETE FROM ellsms_notifications WHERE user_id = ?')->execute([$id]);
             db()->prepare('DELETE FROM ellsms_audit_log WHERE user_id = ?')->execute([$id]);
@@ -98,9 +99,9 @@ final class SharedOtpHttpTest extends TestCase
         return $sid;
     }
 
-    private function request(string $method, string $sid, array $post = [], string $query = ''): array
+    private function request(string $method, string $sid, array $post = [], string $query = '', string $page = '/otp-templates.php'): array
     {
-        $ch = curl_init("http://127.0.0.1:{$this->port}/otp-templates.php" . $query);
+        $ch = curl_init("http://127.0.0.1:{$this->port}{$page}" . $query);
         $opts = [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_COOKIE => 'ELLSMS_SESSION=' . $sid];
         if ($method === 'POST') {
             $opts[CURLOPT_POST] = true;
@@ -162,5 +163,41 @@ final class SharedOtpHttpTest extends TestCase
         $this->assertSame('5000999,5000998', setting_fresh('shared_otp_lines'));
         $this->assertSame('90', setting_fresh('shared_otp_min_interval_seconds'));
         $this->assertStringContainsString('در «شماره‌ها» ثبت نشده است', $this->request('GET', $admin)['body'], 'an unknown line is flagged');
+    }
+
+    public function testTheSendPagesOfferTheServiceOnlyOnceItIsOn(): void
+    {
+        set_setting('shared_otp_enabled', '0');
+        $customer = $this->session($this->customerId);
+        foreach (['/send.php', '/new-send.php'] as $page) {
+            $body = $this->request('GET', $customer, [], '', $page)['body'];
+            $this->assertStringNotContainsString('id="sharedOtp"', $body, $page . ' hides the box while the service is off');
+        }
+
+        set_setting('shared_otp_enabled', '1');
+        set_setting('shared_otp_lines', '5000999');
+        db()->prepare("INSERT INTO ellsms_otp_templates (organization_id, user_id, title, content, variables, status, created_at, updated_at)
+                       VALUES (?,?,?,?,?, 'approved', NOW(), NOW())")
+            ->execute([$this->orgId, $this->customerId, 'ورود', 'فروشگاه نمونه — کد شما: {code}', '["code"]']);
+        $templateId = (int)db()->lastInsertId();
+
+        foreach (['/send.php', '/new-send.php'] as $page) {
+            $res = $this->request('GET', $customer, [], '', $page);
+            $this->assertSame(200, $res['code'], mb_substr($res['body'], 0, 500));
+            $this->assertStringContainsString('id="sharedOtp"', $res['body'], $page);
+            $this->assertStringContainsString('name="otp_param[code]"', $res['body'], $page . ' asks for each variable');
+            // A customer with no line of their own gets the box opened for them.
+            $this->assertMatchesRegularExpression('/id="sharedOtp"[^>]*>\s*<details open/', $res['body'], $page);
+        }
+
+        // An invalid recipient is refused before anything is recorded or charged.
+        preg_match('/name="_csrf" value="([^"]+)"/', $this->request('GET', $customer, [], '', '/send.php')['body'], $m);
+        $res = $this->request('POST', $customer, ['_csrf' => $m[1], 'do' => 'shared_otp_send', 'otp_template_id' => $templateId,
+                                                  'otp_destination' => '12345', 'otp_param' => ['code' => '4821']], '', '/send.php');
+        $this->assertSame(302, $res['code']);
+        $st = db()->prepare('SELECT COUNT(*) FROM ellsms_otp_messages WHERE user_id = ?');
+        $st->execute([$this->customerId]);
+        $this->assertSame(0, (int)$st->fetchColumn());
+        $this->assertStringContainsString('شماره‌ی موبایل نامعتبر است', $this->request('GET', $customer, [], '', '/send.php')['body']);
     }
 }

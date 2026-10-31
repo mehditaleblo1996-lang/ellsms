@@ -114,7 +114,8 @@ function user_shared_numbers(array $user): array {
 
 /**
  * Every line this user may send from, as rows for a picker: their own, their organization's, and
- * every one shared with them — de-duplicated by number, ordered by number.
+ * every one shared with them — de-duplicated by number, ordered by number. A shared row carries
+ * `shared => true`; render the list with originator_options_html() (app/views/sms_composer.php).
  *
  * This, not user_assigned_numbers(), is what a send page's "ارسال‌کننده" dropdown must read. The two
  * had already drifted before shares existed: allowed_originators() has permitted the organization's
@@ -128,7 +129,8 @@ function user_sendable_numbers(array $user): array {
         user_assigned_numbers($user),
         organization_assigned_numbers((int)($user['organization_id'] ?? 0))
     );
-    $shared = user_shared_numbers($user);
+    // Tagged so a picker can list them apart: a shared line sends but never brings the user its inbox.
+    $shared = array_map(static fn(array $row): array => $row + ['shared' => true], user_shared_numbers($user));
 
     // A user with no numbers row still sends from a legacy ellsms_meta.originator that an admin set
     // by hand (allowed_originators() falls back to it), so it is listed here too — this list and

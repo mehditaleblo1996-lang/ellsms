@@ -151,11 +151,11 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
       <label>عنوان ارسال <input type="text" name="title" placeholder="مثلاً یادآوری قبض تیر"></label>
       <label>خط ارسال‌کننده
         <?php if ($myNumbers): ?>
+          <?php require_once __DIR__ . '/../app/views/sms_composer.php'; ?>
           <select name="originator">
-            <?php foreach ($myNumbers as $n): ?>
-              <option value="<?= e($n['number']) ?>"><?= e($n['number']) ?></option>
-            <?php endforeach; ?>
+            <?= originator_options_html($myNumbers, '') ?>
           </select>
+          <?= originator_shared_hint_html($myNumbers) ?>
         <?php elseif (($me['role'] ?? null) === 'admin'): ?>
           <input type="text" name="originator" class="ltr" value="<?= e(user_default_send_originator($me)) ?>">
         <?php else: ?>

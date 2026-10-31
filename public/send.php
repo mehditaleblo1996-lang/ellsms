@@ -29,6 +29,8 @@ $categories = $categories->fetchAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // The «کد تایید اشتراکی» box posts here too; it is handled (and redirected) on its own.
+    shared_otp_handle_send_form($me, '/send.php');
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     $content    = trim($_POST['content'] ?? '');
     $dests      = parse_destinations($_POST['destinations'] ?? '');
@@ -185,6 +187,8 @@ if (isset($costPreview) && $costPreview) {
     }
     require __DIR__ . '/../app/views/cost_preview.php';
 }
+$sharedOtpOpen = !$myNumbers;
+require __DIR__ . '/../app/views/shared_otp_send_card.php';
 ?>
 <?php require_once __DIR__ . '/../app/views/sms_composer.php'; ?>
 <form method="post" data-composer data-composer-estimate="/send-estimate.php" data-composer-live-max="<?= live_cost_max_recipients() ?>">
@@ -200,13 +204,9 @@ if (isset($costPreview) && $costPreview) {
     <label>خط ارسال‌کننده (originator)
       <?php if ($myNumbers): ?>
         <select name="originator">
-          <?php $pickedOriginator = (string)($_POST['originator'] ?? $me['originator']); ?>
-          <?php foreach ($myNumbers as $n): ?>
-            <option value="<?= e($n['number']) ?>" <?= (string)$n['number'] === $pickedOriginator ? 'selected' : '' ?>>
-              <?= e($n['number']) ?>
-            </option>
-          <?php endforeach; ?>
+          <?= originator_options_html($myNumbers, (string)($_POST['originator'] ?? $me['originator'])) ?>
         </select>
+        <?= originator_shared_hint_html($myNumbers) ?>
       <?php elseif (($me['role'] ?? null) === 'admin'): ?>
         <input type="text" name="originator" class="msisdn" value="<?= e(user_default_send_originator($me)) ?>">
         <div class="hint">خطی که گیرنده می‌بیند، مثلاً ۵۰۰۰۴۳۵۸۰۰.</div>

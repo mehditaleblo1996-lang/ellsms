@@ -64,6 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'extra
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    // The «کد تایید اشتراکی» box posts here too; it is handled (and redirected) on its own.
+    shared_otp_handle_send_form($me, '/new-send.php');
     $mode       = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? ($_POST['mode'] ?? 'direct') : 'direct';
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     $content    = trim($_POST['content'] ?? '');
@@ -264,6 +266,8 @@ if (isset($costPreview) && $costPreview) {
     }
     require __DIR__ . '/../app/views/cost_preview.php';
 }
+$sharedOtpOpen = !$myNumbers;
+require __DIR__ . '/../app/views/shared_otp_send_card.php';
 ?>
 <?php
 require_once __DIR__ . '/../app/views/sms_composer.php';
@@ -296,10 +300,9 @@ $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'grad
       <label>ارسال‌کننده *
         <?php if ($myNumbers): ?>
           <select name="originator" id="originatorSelect">
-            <?php foreach ($myNumbers as $n): $isService = isset($serviceLines[(string)$n['number']]); ?>
-              <option value="<?= e($n['number']) ?>" data-service="<?= $isService ? '1' : '0' ?>"<?= (string)($_POST['originator'] ?? '') === (string)$n['number'] ? ' selected' : '' ?>><?= e($n['number']) ?><?= $isService ? ' — خدماتی' : '' ?></option>
-            <?php endforeach; ?>
+            <?= originator_options_html($myNumbers, (string)($_POST['originator'] ?? ''), $serviceLines) ?>
           </select>
+          <?= originator_shared_hint_html($myNumbers) ?>
         <?php elseif (($me['role'] ?? null) === 'admin'): ?>
           <input type="text" name="originator" id="originatorField" class="ltr" value="<?= e(user_default_send_originator($me)) ?>">
         <?php else: ?>
