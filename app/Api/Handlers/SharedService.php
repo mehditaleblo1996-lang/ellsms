@@ -45,6 +45,11 @@ function api_handle_shared_service_send(array $ctx): void {
     if (!is_string($kind) || !shared_service_kind_valid($kind)) {
         $fields['line_type'] = ['must_be_one_of: service, promo'];
     }
+    // Optional: the name of a private line the admin gave this customer («تاجماهی»); absent = the general pool.
+    $line = $body['line'] ?? null;
+    if ($line !== null && (!is_string($line) || trim($line) === '' || mb_strlen($line) > 60)) {
+        $fields['line'] = ['must_be_a_line_name_given_to_you'];
+    }
     if ($fields) {
         ApiResponse::validationFailed($fields);
         return;
@@ -76,7 +81,8 @@ function api_handle_shared_service_send(array $ctx): void {
         return;
     }
 
-    $r = shared_service_submit($user, (string)$kind, (string)$body['destination'], (string)$body['text'], 'api', (int)$principal['api_key_id'], $clientMessageId);
+    $r = shared_service_submit($user, (string)$kind, (string)$body['destination'], (string)$body['text'], 'api', (int)$principal['api_key_id'], $clientMessageId,
+        is_string($line) ? $line : null);
     if (!$r['ok']) {
         $code = (string)$r['error_code'];
         if (isset($r['fields'])) {

@@ -37,12 +37,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $available) {
             flash('success', 'تنظیمات ذخیره شد.');
         }
     } elseif ($isAdmin && $do === 'line_add') {
-        $r = shared_service_line_add($adminId, (string)($_POST['number'] ?? ''), (string)($_POST['kind'] ?? ''), (int)from_persian_digits((string)($_POST['priority'] ?? '100')), (string)($_POST['note'] ?? ''));
-        flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'خط به استخر اضافه شد.' : (string)$r['error']);
+        $r = shared_service_line_add($adminId, (string)($_POST['number'] ?? ''), (string)($_POST['kind'] ?? ''), (int)from_persian_digits((string)($_POST['priority'] ?? '100')), (string)($_POST['note'] ?? ''), (string)($_POST['name'] ?? ''));
+        flash($r['ok'] ? 'success' : 'error', $r['ok']
+            ? (trim((string)($_POST['name'] ?? '')) !== '' ? 'خط اختصاصی اضافه شد؛ تا آن را در «خط هر کاربر» برای کسی تیک نزنید، هیچ مشتری‌ای آن را نمی‌بیند.' : 'خط به استخر اضافه شد.')
+            : (string)$r['error']);
     } elseif ($isAdmin && $do === 'line_update') {
         $changes = isset($_POST['delete']) ? ['delete' => true] : array_filter([
             'enabled'  => isset($_POST['enabled']) ? (string)$_POST['enabled'] === '1' : null,
             'priority' => isset($_POST['priority']) ? (int)from_persian_digits((string)$_POST['priority']) : null,
+            'name'     => isset($_POST['name']) ? (string)$_POST['name'] : null,
         ], static fn($v) => $v !== null);
         $r = shared_service_line_update($adminId, (int)($_POST['id'] ?? 0), $changes);
         flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'استخر خطوط به‌روز شد.' : (string)$r['error']);
@@ -68,7 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $available) {
         $r = shared_service_trust_set($adminId, (int)from_persian_digits((string)($_POST['user_id'] ?? '0')), (string)($_POST['trust'] ?? ''), (string)($_POST['note'] ?? ''));
         flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'سطح اعتماد ذخیره شد.' : (string)$r['error']);
     } elseif (!$isAdmin && $do === 'send') {
-        $r = shared_service_submit($user, (string)($_POST['kind'] ?? 'service'), (string)($_POST['destination'] ?? ''), (string)($_POST['text'] ?? ''), 'panel');
+        $pickedLine = trim((string)($_POST['line'] ?? ''));
+        $r = shared_service_submit($user, (string)($_POST['kind'] ?? 'service'), (string)($_POST['destination'] ?? ''), (string)($_POST['text'] ?? ''), 'panel',
+            null, null, $pickedLine !== '' ? $pickedLine : null);
         if (!$r['ok']) {
             flash('error', (string)$r['error']);
         } else {
@@ -94,12 +99,27 @@ if ($available) {
         $poolLines = shared_service_lines_list();
         $trustRows = shared_service_trust_list();
         $userLinesReady = shared_service_user_lines_available();
+        $namedReady = shared_service_named_ready();
         $userLineRows = shared_service_user_lines_list();
         $assignUser = (int)from_persian_digits((string)($_GET['assign_user'] ?? '0'));
         $assignedIds = $assignUser > 0 ? shared_service_user_line_ids($assignUser) : [];
         $texts = shared_service_texts_list((string)($_GET['texts'] ?? '') ?: null);
         $heldIndividually = shared_service_messages_list($user, 'held', 100);
     }
+}
+
+if ($available && !$isAdmin) {
+    // «خط ارسال» for the customer: «خط اشتراکی» for the kinds the general pool serves them, then each
+    // named line ticked for them, by name — never a number.
+    $customerLineOptions = [];
+    $customerKinds = [];
+    $generalKinds = array_values(array_filter(array_keys(SHARED_SERVICE_KINDS), static fn(string $k): bool => shared_service_pool_for((int)$me['id'], $k) !== []));
+    if ($generalKinds) $customerLineOptions[] = ['value' => '', 'label' => SHARED_LINE_LABEL, 'kinds' => $generalKinds];
+    $named = [];
+    foreach (shared_service_user_named_lines((int)$me['id']) as $nl) $named[$nl['name']][] = $nl['kind'];
+    foreach ($named as $name => $kinds) $customerLineOptions[] = ['value' => (string)$name, 'label' => (string)$name, 'kinds' => $kinds];
+    foreach ($customerLineOptions as $opt) $customerKinds = array_merge($customerKinds, $opt['kinds']);
+    $customerKinds = array_values(array_unique($customerKinds));
 }
 
 require __DIR__ . '/../app/views/header.php';
@@ -175,18 +195,27 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card" style="margin-top:18px">
   <h2>استخر خطوط</h2>
   <p class="hint">
-    مشتری هیچ‌وقت شماره‌ی فرستنده را نمی‌بیند و انتخاب نمی‌کند. خطوط فعالِ هر نوع به ترتیب اولویت (عدد کمتر اول) امتحان می‌شوند؛
+    <strong>خط عمومی</strong> (بدون اسم): همه‌ی مشتریان از آن ارسال می‌کنند و برایشان «خط اشتراکی» نمایش داده می‌شود.
+    <strong>خط اختصاصی</strong> (با اسم، مثلاً «تاجماهی»): به‌طور پیش‌فرض هیچ مشتری‌ای آن را نمی‌بیند؛ فقط مشتریانی که در «خط هر کاربر»
+    برایشان تیک بزنید، آن را با همین اسم در فهرست «خط ارسال» می‌بینند. چند خط می‌توانند یک اسم داشته باشند (برای پشتیبان‌گیری بین تأمین‌کننده‌ها).
+    مشتری هیچ‌وقت شماره‌ی فرستنده را نمی‌بیند. خطوط فعالِ هر نوع به ترتیب اولویت (عدد کمتر اول) امتحان می‌شوند؛
     خطوط هم‌اولویت بار را بر اساس شماره‌ی گیرنده تقسیم می‌کنند و اگر درگاه یک خط پیام را نپذیرد، خط بعدی امتحان می‌شود.
     برای عوض کردن تأمین‌کننده، خط تأمین‌کننده‌ی جدید را اضافه و فعال کنید و خط قبلی را غیرفعال کنید. تأمین‌کننده‌ی هر خط را مسیر/درگاه
     همان شماره در «شماره‌ها» تعیین می‌کند.
   </p>
   <div class="table-wrap">
   <table>
-    <tr><th>خط</th><th>نوع</th><th>اولویت</th><th>وضعیت</th><th>یادداشت</th><th></th></tr>
+    <tr><th>خط</th><th>نوع</th><th>اسم (خط اختصاصی)</th><th>اولویت</th><th>وضعیت</th><th>یادداشت</th><th></th></tr>
     <?php foreach ($poolLines as $l): ?>
       <tr>
         <td class="ltr"><?= e((string)$l['number']) ?><?php if ($l['number_id'] === null): ?> <span class="badge badge-failed">در «شماره‌ها» نیست</span><?php endif; ?></td>
         <td><?= e(SHARED_SERVICE_KINDS[$l['kind']] ?? $l['kind']) ?></td>
+        <td>
+          <?php if ($namedReady): ?>
+          <form method="post" class="toolbar" style="margin:0"><?= csrf_field() ?><input type="hidden" name="do" value="line_update"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
+            <input type="text" name="name" maxlength="60" value="<?= e((string)($l['name'] ?? '')) ?>" placeholder="عمومی" style="width:130px"><button class="btn btn-sm">ذخیره</button></form>
+          <?php else: ?>—<?php endif; ?>
+        </td>
         <td>
           <form method="post" class="toolbar" style="margin:0"><?= csrf_field() ?><input type="hidden" name="do" value="line_update"><input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
             <input type="number" name="priority" min="0" max="65535" value="<?= (int)$l['priority'] ?>" style="width:90px"><button class="btn btn-sm">ذخیره</button></form>
@@ -201,7 +230,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$poolLines): ?><tr><td colspan="6" class="empty">هنوز خطی در استخر نیست.</td></tr><?php endif; ?>
+    <?php if (!$poolLines): ?><tr><td colspan="7" class="empty">هنوز خطی در استخر نیست.</td></tr><?php endif; ?>
   </table>
   </div>
   <form method="post" class="toolbar" style="margin-top:12px">
@@ -210,6 +239,7 @@ require __DIR__ . '/../app/views/header.php';
     <label>نوع
       <select name="kind"><?php foreach (SHARED_SERVICE_KINDS as $k => $label): ?><option value="<?= $k ?>"><?= e($label) ?></option><?php endforeach; ?></select>
     </label>
+    <?php if ($namedReady): ?><label>اسم (فقط برای خط اختصاصی) <input type="text" name="name" maxlength="60" placeholder="مثلاً تاجماهی"></label><?php endif; ?>
     <label>اولویت <input type="number" name="priority" min="0" max="65535" value="100" style="width:90px"></label>
     <label>یادداشت (مثلاً نام تأمین‌کننده) <input type="text" name="note" maxlength="190"></label>
     <button class="btn btn-primary">افزودن</button>
@@ -222,9 +252,10 @@ require __DIR__ . '/../app/views/header.php';
     <p class="flash flash-error">مهاجرت 2026_10_31_shared_service_user_lines.sql اجرا نشده است.</p>
   <?php else: ?>
   <p class="hint">
-    مشخص کنید پیام‌های هر کاربر از کدام خطوط استخر (و در نتیجه از کدام مسیر/تأمین‌کننده) ارسال شود. مشتری فقط «خط اشتراکی» می‌بیند،
-    نه شماره و نه مسیر. اگر برای یک نوع (خدماتی/تبلیغاتی) هیچ خطی تیک نخورد، کاربر از همه‌ی خطوط فعال آن نوع ارسال می‌کند. اگر خطوط
-    تیک‌خورده‌ی یک کاربر همه غیرفعال شوند، ارسال آن نوع برای او متوقف می‌شود و به خطوط دیگر نمی‌رود.
+    <strong>خط اختصاصی (اسم‌دار):</strong> با تیک زدن، کاربر آن را با همان اسم در فهرست «خط ارسال» می‌بیند و انتخاب می‌کند؛ بدون تیک، نمی‌بیند.<br>
+    <strong>خط عمومی:</strong> مشخص می‌کند «خط اشتراکی» این کاربر از کدام خطوط (و در نتیجه کدام مسیر/تأمین‌کننده) برود. اگر برای یک نوع
+    (خدماتی/تبلیغاتی) هیچ خط عمومی‌ای تیک نخورد، از همه‌ی خطوط عمومی فعال آن نوع ارسال می‌کند؛ اگر خطوط تیک‌خورده همه غیرفعال شوند،
+    ارسال آن نوع برای او متوقف می‌شود و به خطوط دیگر نمی‌رود. مشتری هیچ‌وقت شماره را نمی‌بیند.
   </p>
   <form method="get" class="toolbar" action="<?= $self ?>#userLines">
     <label>شناسه‌ی کاربر <input type="text" name="assign_user" required class="ltr" style="width:100px" value="<?= $assignUser > 0 ? $assignUser : '' ?>"></label>
@@ -247,6 +278,7 @@ require __DIR__ . '/../app/views/header.php';
               <label class="check" style="display:inline-flex;gap:6px;margin-left:16px">
                 <input type="checkbox" name="line_ids[]" value="<?= (int)$l['id'] ?>"<?= in_array((int)$l['id'], $assignedIds, true) ? ' checked' : '' ?>>
                 <span class="ltr"><?= e((string)$l['number']) ?></span>
+                <?php if (!empty($l['name'])): ?><span class="badge badge-ok"><?= e((string)$l['name']) ?></span><?php else: ?><span class="hint">عمومی</span><?php endif; ?>
                 <?php if ($l['note']): ?><span class="hint"><?= e((string)$l['note']) ?></span><?php endif; ?>
                 <?php if (!$l['enabled']): ?><span class="badge badge-off">غیرفعال</span><?php endif; ?>
               </label>
@@ -266,7 +298,7 @@ require __DIR__ . '/../app/views/header.php';
         <td><?= e($u['username']) ?> <span class="hint">#<?= (int)$u['user_id'] ?></span></td>
         <td>
           <?php foreach ($u['lines'] as $l): ?>
-            <span class="badge <?= $l['enabled'] ? 'badge-ok' : 'badge-off' ?>"><span class="ltr"><?= e($l['number']) ?></span> — <?= e(SHARED_SERVICE_KINDS[$l['kind']] ?? $l['kind']) ?></span>
+            <span class="badge <?= $l['enabled'] ? 'badge-ok' : 'badge-off' ?>"><?php if ($l['name'] !== null): ?><?= e($l['name']) ?> · <?php endif; ?><span class="ltr"><?= e($l['number']) ?></span> — <?= e(SHARED_SERVICE_KINDS[$l['kind']] ?? $l['kind']) ?></span>
           <?php endforeach; ?>
         </td>
         <td><a class="btn btn-sm" href="<?= $self ?>?assign_user=<?= (int)$u['user_id'] ?>#userLines">ویرایش</a></td>
@@ -355,7 +387,9 @@ require __DIR__ . '/../app/views/header.php';
   </div>
 </div>
 <?php else: ?>
-<?php if ($configured): ?>
+<?php if ($configured && !$customerLineOptions): ?>
+  <div class="flash flash-info">هنوز خطی برای ارسال اشتراکی در دسترس شما نیست؛ با پشتیبانی تماس بگیرید.</div>
+<?php elseif ($configured): ?>
 <div class="card">
   <h2>ارسال پیام</h2>
   <p class="hint">
@@ -368,17 +402,39 @@ require __DIR__ . '/../app/views/header.php';
     <div class="toolbar">
       <label>نوع پیام
         <select name="kind">
-          <?php foreach (SHARED_SERVICE_KINDS as $k => $label): if (shared_service_pool_for((int)$me['id'], $k) === []) continue; ?>
+          <?php foreach (SHARED_SERVICE_KINDS as $k => $label): if (!in_array($k, $customerKinds, true)) continue; ?>
             <option value="<?= $k ?>"><?= e($label) ?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label>خط ارسال <input type="text" value="<?= e(SHARED_LINE_LABEL) ?>" disabled></label>
+      <label>خط ارسال
+        <select name="line" data-shared-line>
+          <?php foreach ($customerLineOptions as $opt): ?>
+            <option value="<?= e($opt['value']) ?>" data-kinds="<?= e(implode(',', $opt['kinds'])) ?>"><?= e($opt['label']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
       <label>موبایل گیرنده <input type="text" name="destination" required class="ltr" placeholder="09121234567"></label>
     </div>
     <p><textarea name="text" rows="4" required maxlength="<?= SHARED_SERVICE_MAX_CONTENT_CHARS ?>" style="width:100%" placeholder="متن پیام"></textarea></p>
     <button class="btn btn-primary">ارسال</button>
   </form>
+  <script>
+  (function () {
+    var kind = document.querySelector('select[name=kind]'), line = document.querySelector('[data-shared-line]');
+    if (!kind || !line) return;
+    function sync() {
+      var firstOk = null;
+      Array.prototype.forEach.call(line.options, function (o) {
+        var ok = o.getAttribute('data-kinds').split(',').indexOf(kind.value) !== -1;
+        o.hidden = !ok; o.disabled = !ok;
+        if (ok && firstOk === null) firstOk = o;
+      });
+      if (line.selectedOptions[0] && line.selectedOptions[0].disabled && firstOk) line.value = firstOk.value;
+    }
+    kind.addEventListener('change', sync); sync();
+  })();
+  </script>
 </div>
 
 <div class="card" style="margin-top:18px">
@@ -407,7 +463,7 @@ Content-Type: application/json
   </form>
   <div class="table-wrap">
   <table>
-    <tr><th>شناسه</th><?php if ($isAdmin): ?><th>مشتری</th><?php endif; ?><th>نوع</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><?php if ($isAdmin): ?><th>خط</th><?php endif; ?><th>بخش</th><th>منبع</th><th>زمان</th></tr>
+    <tr><th>شناسه</th><?php if ($isAdmin): ?><th>مشتری</th><?php endif; ?><th>نوع</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>خط</th><th>بخش</th><th>منبع</th><th>زمان</th></tr>
     <?php foreach ($recent as $m): [$label, $class] = shared_service_status_label((string)$m['status']); ?>
       <tr>
         <td class="num"><?= (int)$m['id'] ?></td>
@@ -421,13 +477,15 @@ Content-Type: application/json
           <?php if ($m['status'] === 'queued' && $m['send_after']): ?><div class="hint">ارسال از <?= jdate((string)$m['send_after']) ?></div><?php endif; ?>
           <?php if ($m['error']): ?><div class="hint"><?= e(mb_strimwidth((string)$m['error'], 0, 160, '…')) ?></div><?php endif; ?>
         </td>
-        <?php if ($isAdmin): ?><td class="ltr"><?= e((string)($m['originator'] ?? '—')) ?></td><?php endif; ?>
+        <?php $lineLabel = ($m['line_name'] ?? null) !== null ? (string)$m['line_name'] : SHARED_LINE_LABEL; ?>
+        <?php if ($isAdmin): ?><td><?= e($lineLabel) ?><div class="ltr hint"><?= e((string)($m['originator'] ?? '—')) ?></div></td>
+        <?php else: ?><td><?= e($lineLabel) ?></td><?php endif; ?>
         <td class="num"><?= to_persian_digits((string)$m['parts']) ?></td>
         <td><?= $m['source'] === 'api' ? 'API' : 'پنل' ?></td>
         <td class="num"><?= jdate((string)$m['created_at']) ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$recent): ?><tr><td colspan="<?= $isAdmin ? 10 : 8 ?>" class="empty">هنوز پیامی ثبت نشده است.</td></tr><?php endif; ?>
+    <?php if (!$recent): ?><tr><td colspan="<?= $isAdmin ? 10 : 9 ?>" class="empty">هنوز پیامی ثبت نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>

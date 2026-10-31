@@ -71,6 +71,7 @@ components:
       properties:
         id: { type: integer }
         line_type: { type: string, enum: [service, promo] }
+        line: { type: string, nullable: true, description: "the private line's name the message was sent with; null = the general shared line" }
         destination: { type: string }
         text: { type: string }
         status: { type: string, enum: [held, queued, sending, sent, failed, rejected, expired] }
@@ -625,6 +626,7 @@ paths:
                 destination: { type: string }
                 text: { type: string, maxLength: 1000 }
                 line_type: { type: string, enum: [service, promo], default: service }
+                line: { type: string, description: "optional: the name of a private line the platform gave you (e.g. «تاجماهی»); omit for the general shared line" }
                 client_message_id: { type: string }
       responses:
         "201": { description: Sent, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/SharedMessage' } } } } } }

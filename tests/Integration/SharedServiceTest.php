@@ -451,4 +451,58 @@ final class SharedServiceTest extends IntegrationTestCase
         $this->assertSame('5000777123', shared_line_mask('5000777123', false), 'any other line is shown as it is');
         $this->assertSame('', shared_line_mask(null, false));
     }
+
+    public function testANamedLineIsHiddenUntilTheAdminGivesItToACustomer(): void
+    {
+        $named = '5000800404';
+        $this->makeLine($named, '/vesal/ss-named');
+        $admin = $this->admin();
+        $this->assertTrue(shared_service_line_add($admin, $named, 'service', 100, 'provider X', 'تاجماهی')['ok']);
+        $this->resetCaches();
+
+        // Nobody sees it by default, and it never joins the general pool.
+        $this->assertSame([], shared_service_user_named_lines($this->userId));
+        $this->assertNotContains($named, array_column(shared_service_pool_for($this->userId, 'service'), 'number'));
+        $refused = shared_service_submit($this->user(), 'service', '09121240030', 'رسید 1', 'panel', null, null, 'تاجماهی');
+        $this->assertFalse($refused['ok']);
+        $this->assertSame('line_not_available', $refused['error_code']);
+
+        // Ticked for this customer: offered by name, and a message picked with it goes out from it.
+        $lineId = $this->lineId($named);
+        $this->assertTrue(shared_service_user_lines_set($admin, $this->userId, [$lineId])['ok']);
+        $this->assertSame([['name' => 'تاجماهی', 'kind' => 'service']], shared_service_user_named_lines($this->userId));
+        // Ticking a named line does not narrow the customer's general «خط اشتراکی».
+        $this->assertSame([$this->serviceA, $this->serviceB], array_column(shared_service_pool_for($this->userId, 'service'), 'number'));
+
+        $r = shared_service_submit($this->user(), 'service', '09121240031', 'رسید 2', 'panel', null, null, 'تاجماهی');
+        $this->assertTrue($r['ok'], (string)($r['error'] ?? ''));
+        shared_service_review($admin, 'approve', (int)shared_service_message_get($r['id'])['text_id']);
+        $row = shared_service_message_get($r['id']);
+        $this->assertSame('sent', $row['status'], (string)$row['error']);
+        $this->assertSame($named, $row['originator']);
+        $this->assertSame('تاجماهی', $row['line_name']);
+        $this->assertCount(1, $this->recorded('/vesal/ss-named'));
+
+        // The customer sees the name, never the number.
+        $public = shared_service_message_public($row);
+        $this->assertSame('تاجماهی', $public['line']);
+        $this->assertNull($public['originator']);
+        $this->assertSame('تاجماهی', shared_line_mask($named, false));
+        $this->assertSame($named, shared_line_mask($named, true));
+    }
+
+    public function testAnotherCustomerCannotUseSomeoneElsesNamedLine(): void
+    {
+        $named = '5000800505';
+        $this->makeLine($named, '/vesal/ss-named2');
+        $admin = $this->admin();
+        shared_service_line_add($admin, $named, 'service', 100, '', 'تاجماهی');
+        $other = $this->makeUser();
+        shared_service_user_lines_set($admin, $other, [$this->lineId($named)]);
+
+        $r = shared_service_submit($this->user(), 'service', '09121240032', 'رسید 3', 'api', null, null, 'تاجماهی');
+        $this->assertFalse($r['ok']);
+        $this->assertSame('line_not_available', $r['error_code']);
+    }
 }
+

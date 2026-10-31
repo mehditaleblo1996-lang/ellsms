@@ -114,10 +114,29 @@ customer's messages go through (`ellsms_shared_user_lines`, migration
 
 The customer never sees any of this: no number, no route name — only «خط اشتراکی».
 
+### Named (private) lines — خط اختصاصی با اسم
+
+A pool line may have a **name** (`ellsms_shared_lines.name`, migration
+`2026_10_31_shared_service_named_lines.sql`), e.g. «تاجماهی». Then:
+
+- **nobody sees it by default.** A named line is never part of the general pool; only customers the
+  admin ticks it for under «خط هر کاربر» get it;
+- such a customer picks it **by name** in the «خط ارسال» list on the send form, next to «خط اشتراکی»
+  (the general pool, which stays as before). The list shows each name only for the kinds it serves.
+  Through the API: `"line": "تاجماهی"` on `POST /api/v1/shared/messages` (omitted = general);
+- a message picked with a name goes **only** through the customer's ticked, enabled lines of that name and
+  kind (priority and fail-over among them); several lines may share one name, e.g. one per provider.
+  Asking for a name the customer was not given is refused (`line_not_available`, `422` in the API);
+- ticking a named line does not narrow the customer's general «خط اشتراکی»: only ticked *general* lines
+  do that (above);
+- the customer sees the name — in the list of messages, the send report, exports and webhooks
+  (`shared_line_mask()`), and as `line` in the API object — never the number. Clearing the name on the
+  pool table turns the line back into a general one.
+
 ## Hiding the line from the customer
 
-`shared_line_mask()` shows a customer «خط اشتراکی» (`SHARED_LINE_LABEL`) in place of any platform shared
-line — every pool line here and every shared-OTP line (`shared_line_numbers()`, cached for a minute) — in
+`shared_line_mask()` shows a customer «خط اشتراکی» (`SHARED_LINE_LABEL`) — or a named line's name — in
+place of any platform shared line — every pool line here and every shared-OTP line (`shared_line_numbers()`, cached for a minute) — in
 the send report list and message detail, report exports, and delivery webhooks. The shared-service and
 shared-OTP API objects return `originator: null`. Admins see the real line everywhere.
 
