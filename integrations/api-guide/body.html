@@ -59,6 +59,7 @@ Content-Type: application/json
   <tr><td><span class="c">contacts:read</span> / <span class="c">contacts:write</span></td><td>خواندن / ساخت، ویرایش و حذف مخاطبین</td></tr>
   <tr><td><span class="c">balance:read</span></td><td>مشاهده‌ی موجودی اعتبار</td></tr>
   <tr><td><span class="c">webhooks:read</span> / <span class="c">webhooks:write</span></td><td>مدیریت وبهوک‌ها</td></tr>
+  <tr><td><span class="c">shared:send</span></td><td>ارسال با خط اشتراکی و پیگیری آن (بخش ۸)</td></tr>
 </table>
 
 <h3>محدودیت آی‌پی (اختیاری)</h3>
@@ -258,7 +259,35 @@ curl -X POST https://datisrayan.com/api/v1/bulk-jobs \
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m patch">PATCH</span> <span class="m delete">DELETE</span> <span class="c">/webhooks/{id}</span></td><td><span class="c">webhooks:*</span></td><td>مدیریت یک وبهوک.</td></tr>
   <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/webhooks/{id}/rotate-secret</span></td><td><span class="c">webhooks:write</span></td><td>تعویض کلید امضای وبهوک.</td></tr>
   <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/webhooks/{id}/test</span></td><td><span class="c">webhooks:write</span></td><td>ارسال یک رویداد آزمایشی.</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/shared/messages</span></td><td><span class="c">shared:send</span></td><td>ارسال با خط اشتراکی (پایین).</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/shared/messages/{id}</span></td><td><span class="c">shared:send</span></td><td>وضعیت یک پیام خط اشتراکی.</td></tr>
 </table>
+
+<h3>ارسال با خط اشتراکی</h3>
+<p>اگر خط اختصاصی ندارید، فقط گیرنده و متن را بفرستید؛ پیام از خطوط اشتراکی سامانه ارسال می‌شود و شماره‌ی خط هرگز در پاسخ نمی‌آید (<span class="c">originator</span> همیشه <span class="c">null</span> است). فیلد <span class="c">originator</span> را نفرستید؛ فرستادنش خطای <span class="c">422</span> می‌دهد. سرویس باید برای حساب شما فعال باشد.</p>
+<table class="t">
+  <tr><th style="width:24%">فیلد</th><th style="width:13%">وضعیت</th><th>توضیح</th></tr>
+  <tr><td><span class="c">destination</span></td><td class="req">اجباری</td><td>یک شماره‌ی گیرنده.</td></tr>
+  <tr><td><span class="c">text</span></td><td class="req">اجباری</td><td>متن پیام.</td></tr>
+  <tr><td><span class="c">line_type</span></td><td class="opt">اختیاری</td><td><span class="c">service</span> (خدماتی، هر ساعت؛ پیش‌فرض) یا <span class="c">promo</span> (تبلیغاتی، فقط در ساعات مجاز؛ بیرون از آن در صف می‌ماند).</td></tr>
+  <tr><td><span class="c">line</span></td><td class="opt">اختیاری</td><td>نام خط اختصاصی‌ای که مدیر به شما داده است؛ نفرستید تا از خط اشتراکی عمومی ارسال شود.</td></tr>
+  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>مثل بخش ۷.</td></tr>
+</table>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl -X POST https://datisrayan.com/api/v1/shared/messages \
+  -H "Authorization: Bearer $DATIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "destination": "09121234567", "text": "سفارش 1234 شما ارسال شد.", "line_type": "service" }'
+</pre></div>
+<table class="t">
+  <tr><th style="width:24%">کد HTTP</th><th>معنی</th></tr>
+  <tr><td><span class="c">201</span></td><td>ارسال شد.</td></tr>
+  <tr><td><span class="c">202</span></td><td>پذیرفته شد و منتظر است: <span class="c">held</span> (در انتظار بررسی کارشناس، با <span class="c">hold_reason</span>) یا <span class="c">queued</span> (پیام تبلیغاتی، با <span class="c">send_after</span>). وضعیت را با <span class="c">GET /shared/messages/{id}</span> پیگیری کنید.</td></tr>
+  <tr><td><span class="c">402</span></td><td>ارسال نشد: اعتبار یا سهمیه کافی نیست، یا درگاه نپذیرفت.</td></tr>
+  <tr><td><span class="c">422</span></td><td>متن یا گیرنده پذیرفته نشد — <span class="c">error.reason</span> دلیل را می‌گوید (مثلاً کلمه‌ی غیرمجاز، متن ردشده، گیرنده در لیست سیاه یا لغو عضویت).</td></tr>
+  <tr><td><span class="c">503</span></td><td>سرویس خاموش است.</td></tr>
+</table>
+<p class="note">متنی که برای اولین بار می‌فرستید ممکن است تا تأیید کارشناس منتظر بماند و اگر در مهلت بررسی نشود منقضی می‌شود. هزینه فقط هنگام ارسال واقعی کم می‌شود.</p>
 
 <h3>نمونه: موجودی اعتبار</h3>
 <div class="code"><div class="lbl">GET /BALANCE · 200</div><pre>
