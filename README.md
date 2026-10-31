@@ -300,13 +300,15 @@ following Negar's rules:
 From **زیرمجموعه‌ها** (`/subaccounts.php`) the parent:
 
 - gives credit to its sub-accounts and takes it back;
-- sets their tariff (a coefficient on the system price list, never below its own);
+- puts each on one of its **named tariffs** (exact Rial prices, never below its own; the old
+  percentage field was removed — see `docs/resellers-and-menu-access.md`);
 - sets expiry, suspends them and resets passwords;
 - shares its lines with them;
 - reads their sending report and can enter their panel.
 
 A reseller is paid the tariff difference on its sub-accounts' sends once a day (`make reseller-profit`;
-the worker does it hourly).
+the worker does it hourly). Every customer sees its own price per segment, per line, operator and
+encoding, on **«تعرفه من»** (`/my-tariff.php`, under «مالی»), computed the same way a send is charged.
 
 Separately, an admin — or a parent for its sub-accounts — decides which **menus** a user sees, through
 roles plus per-user exceptions. A closed menu leaves the sidebar, its pages answer 403 and the
@@ -401,4 +403,122 @@ db/ellsms_extra.sql supplementary ELLSMS tables — never touches the backend's 
 docker/             PHP-Apache image
 deploy.sh           git pull + rebuild + restart + re-apply supplementary schema
 ```
-# ellsms
+
+## Documentation index
+
+Every feature and service has its own page under `docs/`. **When a service is added or changed, its
+doc page, this README (its section and this index), `docs/openapi-v1.yaml` / `docs/public-api.md`
+for API routes, `docs/scheduler.md` for periodic jobs, and `.env.example` for new settings are
+updated in the same change** — see `CLAUDE.md`.
+
+**Architecture & platform**
+[architecture](docs/architecture.md) ·
+[service-boundaries](docs/service-boundaries.md) ·
+[multi-tenancy-architecture](docs/multi-tenancy-architecture.md) ·
+[rbac-architecture](docs/rbac-architecture.md) ·
+[job-queue-architecture](docs/job-queue-architecture.md) ·
+[scheduler](docs/scheduler.md) ·
+[database-audit](docs/database-audit.md) ·
+[database-migrations](docs/database-migrations.md) ·
+[remote-db](docs/remote-db.md) ·
+[font-integration](docs/font-integration.md) ·
+[panel-ui-review](docs/panel-ui-review.md)
+
+**Sending & gateways**
+[sms-gateway-connectors](docs/sms-gateway-connectors.md) ·
+[smpp-gateway](docs/smpp-gateway.md) ·
+[number-gateway](docs/number-gateway.md) ·
+[sms-callbacks](docs/sms-callbacks.md) ·
+[provider-response-normalization](docs/provider-response-normalization.md) ·
+[provider-health-model](docs/provider-health-model.md) ·
+[provider-outage-handling](docs/provider-outage-handling.md) ·
+[mnp-operator-resolution](docs/mnp-operator-resolution.md) ·
+[bulk-provider-batching](docs/bulk-provider-batching.md) ·
+[many-to-many-batching](docs/many-to-many-batching.md) ·
+[large-import-architecture](docs/large-import-architecture.md) ·
+[aimed-bulk](docs/aimed-bulk.md) ·
+[regional-bulk](docs/regional-bulk.md) ·
+[queue-cancellation](docs/queue-cancellation.md) ·
+[queue-monitor](docs/queue-monitor.md) ·
+[bulk-archive-workflow](docs/bulk-archive-workflow.md) ·
+[prohibited-words](docs/prohibited-words.md) ·
+[line-optouts](docs/line-optouts.md)
+
+**Lines & services**
+[numbers](docs/numbers.md) ·
+[shared-numbers](docs/shared-numbers.md) ·
+[service-lines](docs/service-lines.md) ·
+[number-forwarding](docs/number-forwarding.md) ·
+[shared-otp](docs/shared-otp.md) ·
+[shared-service](docs/shared-service.md) ·
+[lba](docs/lba.md) ·
+[voice-messages](docs/voice-messages.md) ·
+[bale-channel](docs/bale-channel.md) ·
+[webengage](docs/webengage.md) ·
+[telegram-invoice-bot](docs/telegram-invoice-bot.md)
+
+**Pricing, wallet & billing**
+[sms-pricing](docs/sms-pricing.md) ·
+[gateway-price-matrix](docs/gateway-price-matrix.md) ·
+[cost-preview](docs/cost-preview.md) ·
+[rial-currency](docs/rial-currency.md) ·
+[wallet-architecture](docs/wallet-architecture.md) ·
+[delivery-based-billing](docs/delivery-based-billing.md) ·
+[manual-payments](docs/manual-payments.md) ·
+[financial-commerce](docs/financial-commerce.md) ·
+[plans-and-entitlements](docs/plans-and-entitlements.md) ·
+[billing-operations](docs/billing-operations.md)
+
+**Customers, resellers & access**
+[resellers-and-menu-access](docs/resellers-and-menu-access.md) ·
+[reseller-panel](docs/reseller-panel.md) ·
+[customer-profile](docs/customer-profile.md) ·
+[profile-kyc](docs/profile-kyc.md) ·
+[admin-impersonation](docs/admin-impersonation.md)
+
+**API & integrations**
+[public-api](docs/public-api.md) ·
+[openapi-v1.yaml](docs/openapi-v1.yaml) ·
+[webhooks](docs/webhooks.md) ·
+[api-ip-allowlist](docs/api-ip-allowlist.md) ·
+[integrations-guide](docs/integrations-guide.md) ·
+[integrations/GUIDE.fa.md](integrations/GUIDE.fa.md)
+
+**Operations, observability & security**
+[production-runbook](docs/production-runbook.md) ·
+[production-hardening](docs/production-hardening.md) ·
+[production-deployment-handoff](docs/production-deployment-handoff.md) ·
+[staging](docs/staging.md) ·
+[backup-and-disaster-recovery](docs/backup-and-disaster-recovery.md) ·
+[alerting](docs/alerting.md) ·
+[observability-and-performance](docs/observability-and-performance.md) ·
+[observability-cardinality](docs/observability-cardinality.md) ·
+[observability-dod-checklist](docs/observability-dod-checklist.md) ·
+[slo-latency-targets](docs/slo-latency-targets.md) ·
+[reporting-scalability](docs/reporting-scalability.md) ·
+[daily-metadata-aggregation](docs/daily-metadata-aggregation.md) ·
+[mysql-performance-audit](docs/mysql-performance-audit.md) ·
+[sms-load-testing](docs/sms-load-testing.md) ·
+[capacity-load-test-2026-08-31](docs/capacity-load-test-2026-08-31.md) ·
+[security-review](docs/security-review.md) ·
+[technical-debt](docs/technical-debt.md)
+
+**User flows** — [docs/flows/](docs/flows/) (authentication, send, bulk, scheduled, auto-reply, credit, payment)
+
+**Reports (historical record)**
+phase reports [1](docs/phase-1-final-report.md) · [2](docs/phase-2-final-report.md) ·
+[3](docs/phase-3-final-report.md) · [4](docs/phase-4-final-report.md) · [5](docs/phase-5-final-report.md) ·
+[6](docs/phase-6-final-report.md) · [7](docs/phase-7-final-report.md) · [8](docs/phase-8-final-report.md) ·
+[9](docs/phase-9-final-report.md) · [10](docs/phase-10-final-report.md) · [11](docs/phase-11-final-report.md) ·
+[12](docs/phase-12-final-report.md) · [13](docs/phase-13-final-report.md) ·
+[admin-impersonation](docs/admin-impersonation-final-report.md) ·
+[cost-preview](docs/cost-preview-final-report.md) ·
+[customer-profile](docs/customer-profile-final-report.md) ·
+[financial-commerce](docs/financial-commerce-final-report.md) ·
+[scale-continuation](docs/scale-continuation-final-report.md) ·
+[sms-gateway-connectors](docs/sms-gateway-connectors-final-report.md) ·
+[sms-gateway-connectors closure](docs/sms-gateway-connectors-closure-report.md) ·
+[sms-gateway-status-batch closure](docs/sms-gateway-status-batch-closure-report.md) ·
+[sms-pricing](docs/sms-pricing-final-report.md) ·
+[delivery-runtime-reporting closure](docs/delivery-runtime-reporting-closure.md) ·
+[td-070 restore safety](docs/td-070-restore-safety-closure.md)
