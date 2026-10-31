@@ -489,7 +489,7 @@ function shared_otp_message_public(array $m): array {
         'id'          => (int)$m['id'],
         'template_id' => (int)$m['template_id'],
         'destination' => (string)$m['destination'],
-        'originator'  => $m['originator'] !== null ? (string)$m['originator'] : null,
+        'originator'  => null, // the platform's line is never disclosed to the customer
         'status'      => (string)$m['status'],
         'parts'       => (int)$m['parts'],
         'error'       => $m['error'] !== null ? (string)$m['error'] : null,
@@ -526,7 +526,7 @@ function shared_otp_handle_send_form(array $me, string $back): void {
     audit((int)$me['id'], 'shared_otp.send', 'template=' . $templateId . ' ok=' . (int)$r['ok']);
     if ($r['ok']) {
         flash('success', 'کد تایید به ' . to_persian_digits((string)normalize_msisdn(from_persian_digits($destination)))
-            . ' از خط اشتراکی ' . to_persian_digits((string)$r['originator']) . ' ارسال شد.');
+            . ' با خط اشتراکی ارسال شد.');
     } else {
         flash('error', (string)$r['error'] . shared_otp_fields_message($r['fields'] ?? []));
     }

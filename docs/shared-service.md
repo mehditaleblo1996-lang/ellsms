@@ -98,6 +98,29 @@ customer's **own wallet** through `dispatch_message()` at the moment it is sent 
 the customer's send policy, suspended sub-accounts and support impersonation all applying as for any
 send. If the wallet is short at that moment, the message fails with that reason.
 
+### Lines per customer (خط هر کاربر)
+
+On the same admin page, **خط هر کاربر** decides which pool lines — and so which route/provider — a
+customer's messages go through (`ellsms_shared_user_lines`, migration
+`2026_10_31_shared_service_user_lines.sql`, `shared_service_pool_for()`):
+
+- the admin enters a user id and ticks pool lines; the list below shows every customer with lines;
+- a customer with ticked lines of a kind is sent **only** through those lines of that kind that are
+  enabled, in their priority order with the usual fail-over among them;
+- a kind with no ticked line uses the whole pool of that kind (the default), so assigning service lines
+  leaves promo untouched;
+- when every ticked line of a kind is disabled, that kind stops for the customer (`not_enabled`) rather
+  than spilling onto lines the admin did not choose; removing a pool line removes its assignments.
+
+The customer never sees any of this: no number, no route name — only «خط اشتراکی».
+
+## Hiding the line from the customer
+
+`shared_line_mask()` shows a customer «خط اشتراکی» (`SHARED_LINE_LABEL`) in place of any platform shared
+line — every pool line here and every shared-OTP line (`shared_line_numbers()`, cached for a minute) — in
+the send report list and message detail, report exports, and delivery webhooks. The shared-service and
+shared-OTP API objects return `originator: null`. Admins see the real line everywhere.
+
 ## The line never becomes the customer's
 
 The pool line is granted to exactly one `dispatch_message()` call (`shared_otp_with_line()`, the same
@@ -106,11 +129,11 @@ unchanged, so the same customer sending free text from that line on any other pa
 
 ## Customer side
 
-Sidebar → ارسال پیامک → **ارسال اشتراکی (بدون خط)**, shown once the service is on and a pool has a line.
+Sidebar → ارسال پیامک → **ارسال با خط اشتراکی**, shown once the service is on and a pool has a line.
 The form takes the kind (only kinds with an enabled line are offered), the recipient and the text; the
 list shows each message's status (`held` with the reason, `queued` with its time, `sent`, `failed`,
 `rejected` with the reviewer's reason, `expired`). An account whose menus are restricted
-(`docs/resellers-and-menu-access.md`) needs the «ارسال اشتراکی (بدون خط)» menu opened for it, and the
+(`docs/resellers-and-menu-access.md`) needs the «ارسال با خط اشتراکی» menu opened for it, and the
 API follows the same menu.
 
 ### API
@@ -127,7 +150,7 @@ Content-Type: application/json
 
 | Answer | Meaning |
 |---|---|
-| `201` | sent; `data.originator` is the line it left from |
+| `201` | sent; `data.originator` is always `null` (the line is never disclosed) |
 | `202` | accepted and waiting: `status` `held` (with `hold_reason`) or `queued` (with `send_after`) |
 | `402` | not sent: credit, quota or every line's gateway refused |
 | `422` | validation: `originator`/`sender`/`from`, pricing fields, bad `line_type`, prohibited content, rejected text, blacklisted / opted-out recipient (`error.reason` names it) |

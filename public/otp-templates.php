@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $values = preg_split('/\s*[,،]\s*/u', trim((string)($_POST['values'] ?? '')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $r = shared_otp_send($user, $id, (string)($_POST['destination'] ?? ''), $values, 'panel');
         if ($r['ok']) {
-            flash('success', 'کد از خط ' . to_persian_digits((string)$r['originator']) . ' ارسال شد.');
+            flash('success', $isAdmin ? 'کد از خط ' . to_persian_digits((string)$r['originator']) . ' ارسال شد.' : 'کد با خط اشتراکی ارسال شد.');
         } else {
             $detail = isset($r['fields']) ? ' (' . implode('، ', array_map(static fn($k, $v) => $k . ': ' . implode('/', $v), array_keys($r['fields']), $r['fields'])) . ')' : '';
             flash('error', (string)$r['error'] . $detail);
@@ -241,7 +241,7 @@ Content-Type: application/json
         <td class="num"><?= (int)$m['id'] ?></td>
         <td><?= e((string)($m['template_title'] ?? '#' . $m['template_id'])) ?></td>
         <td class="ltr msisdn"><?= e((string)$m['destination']) ?></td>
-        <td class="ltr"><?= e((string)($m['originator'] ?? '—')) ?></td>
+        <td class="ltr"><?= e($m['originator'] !== null ? shared_line_mask((string)$m['originator'], $isAdmin) : '—') ?></td>
         <td><span class="badge <?= $class ?>"><?= e($label) ?></span><?php if ($m['error']): ?><div class="hint"><?= e(mb_strimwidth((string)$m['error'], 0, 120, '…')) ?></div><?php endif; ?></td>
         <td class="num"><?= to_persian_digits((string)$m['parts']) ?></td>
         <td><?= $m['source'] === 'api' ? 'API' : 'پنل' ?></td>

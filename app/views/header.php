@@ -78,7 +78,7 @@ if ($me['role'] !== 'admin' && shared_otp_configured()) {
 }
 // Shared sending service (app/SharedService.php): recipient + text, no line of their own needed.
 if ($me['role'] !== 'admin' && shared_service_configured()) {
-    $nav['shared_service'] = ['/shared-service.php', 'ارسال اشتراکی (بدون خط)', '📨'];
+    $nav['shared_service'] = ['/shared-service.php', 'ارسال با خط اشتراکی', '📨'];
 }
 // WooCommerce plugin, SDKs and their guide — for whoever can see API keys (they are what the tools use).
 if ($me['role'] === 'admin' || ($navOrg && membership_has_permission($navOrg, Permissions::API_KEYS_VIEW))) {

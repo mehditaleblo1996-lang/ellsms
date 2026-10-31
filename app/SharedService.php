@@ -190,6 +190,123 @@ function shared_service_line_order(array $lines, string $destination): array {
     return $out;
 }
 
+/* ==========================================================================
+   Lines per customer (2026_10_31_shared_service_user_lines.sql)
+   ========================================================================== */
+
+function shared_service_user_lines_available(): bool {
+    static $available = false;
+    if ($available) return true;
+    try {
+        db()->query('SELECT 1 FROM ellsms_shared_user_lines LIMIT 0');
+        return $available = true;
+    } catch (PDOException) {
+        return false;
+    }
+}
+
+/**
+ * The lines $userId's messages of $kind go through: their assigned lines of that kind that are enabled,
+ * in priority order — or the whole pool of the kind when the admin assigned them none of it. A
+ * customer whose assigned lines are all disabled gets none (the send fails and says so) rather than
+ * silently spilling onto lines the admin did not choose for them.
+ *
+ * @return list<array{number:string, priority:int}>
+ */
+function shared_service_pool_for(int $userId, string $kind): array {
+    if (!shared_service_user_lines_available()) return shared_service_pool($kind);
+    $st = db()->prepare('SELECT l.number, l.priority, l.enabled FROM ellsms_shared_user_lines u
+                           JOIN ellsms_shared_lines l ON l.id = u.line_id
+                          WHERE u.user_id = ? AND l.kind = ? ORDER BY l.priority, l.id');
+    $st->execute([$userId, $kind]);
+    $rows = $st->fetchAll();
+    if ($rows === []) return shared_service_pool($kind);
+    $enabled = array_filter($rows, static fn(array $r): bool => (int)$r['enabled'] === 1);
+    return array_values(array_map(static fn(array $r): array => ['number' => (string)$r['number'], 'priority' => (int)$r['priority']], $enabled));
+}
+
+/** @return list<int> the pool line ids assigned to $userId */
+function shared_service_user_line_ids(int $userId): array {
+    if (!shared_service_user_lines_available()) return [];
+    $st = db()->prepare('SELECT line_id FROM ellsms_shared_user_lines WHERE user_id = ? ORDER BY line_id');
+    $st->execute([$userId]);
+    return array_map('intval', array_column($st->fetchAll(), 'line_id'));
+}
+
+/** Replaces $userId's assigned lines with $lineIds (pool line ids); [] puts them back on the whole pool. */
+function shared_service_user_lines_set(int $adminId, int $userId, array $lineIds): array {
+    if (!shared_service_user_lines_available()) return ['ok' => false, 'error' => 'مهاجرت 2026_10_31_shared_service_user_lines.sql اجرا نشده است.'];
+    if ($userId <= 0 || resolve_ellsms_managed_user($userId) === null) return ['ok' => false, 'error' => 'کاربر پیدا نشد.'];
+    $lineIds = array_values(array_unique(array_filter(array_map('intval', $lineIds), static fn(int $id): bool => $id > 0)));
+    if ($lineIds !== []) {
+        $st = db()->prepare('SELECT id FROM ellsms_shared_lines WHERE id IN (' . implode(',', array_fill(0, count($lineIds), '?')) . ')');
+        $st->execute($lineIds);
+        $lineIds = array_map('intval', array_column($st->fetchAll(), 'id'));
+    }
+    db_transaction(static function (PDO $db) use ($userId, $lineIds, $adminId): void {
+        $db->prepare('DELETE FROM ellsms_shared_user_lines WHERE user_id = ?')->execute([$userId]);
+        $ins = $db->prepare('INSERT INTO ellsms_shared_user_lines (user_id, line_id, created_by, created_at) VALUES (?,?,?,?)');
+        foreach ($lineIds as $lineId) {
+            $ins->execute([$userId, $lineId, $adminId, shared_service_now()]);
+        }
+    });
+    audit($adminId, 'shared_service.user_lines', "#{$userId} lines=" . ($lineIds ? implode(',', $lineIds) : 'pool'));
+    return ['ok' => true, 'count' => count($lineIds)];
+}
+
+/** Every customer with assigned lines: user_id, username, and their lines (number, kind, enabled). */
+function shared_service_user_lines_list(): array {
+    if (!shared_service_user_lines_available()) return [];
+    $rows = db()->query('SELECT u.user_id, us.username, l.number, l.kind, l.enabled FROM ellsms_shared_user_lines u
+                           JOIN ellsms_shared_lines l ON l.id = u.line_id
+                           LEFT JOIN user_ us ON us.id = u.user_id
+                          ORDER BY u.user_id, l.kind, l.priority, l.id')->fetchAll();
+    $out = [];
+    foreach ($rows as $r) {
+        $id = (int)$r['user_id'];
+        $out[$id] ??= ['user_id' => $id, 'username' => (string)($r['username'] ?? ''), 'lines' => []];
+        $out[$id]['lines'][] = ['number' => (string)$r['number'], 'kind' => (string)$r['kind'], 'enabled' => (int)$r['enabled'] === 1];
+    }
+    return array_values($out);
+}
+
+/* ==========================================================================
+   Hiding the platform's lines from customers
+   ========================================================================== */
+
+const SHARED_LINE_LABEL = 'خط اشتراکی';
+
+/**
+ * The platform's shared lines — every shared-service pool line and every shared-OTP line — as
+ * number => true. Cached for a minute so long-running workers (exports, webhooks) see pool changes.
+ */
+function shared_line_numbers(): array {
+    static $cache = null, $at = 0;
+    if ($cache !== null && time() - $at < 60) return $cache;
+    $numbers = [];
+    try {
+        if (shared_service_available()) {
+            foreach (db()->query('SELECT number FROM ellsms_shared_lines')->fetchAll() as $r) $numbers[(string)$r['number']] = true;
+        }
+    } catch (PDOException) {
+    }
+    foreach (shared_otp_lines() as $line) $numbers[(string)$line] = true;
+    $at = time();
+    return $cache = $numbers;
+}
+
+/**
+ * What a viewer sees as the sender of a message: an admin the real line, a customer «خط اشتراکی» in
+ * place of any of the platform's shared lines (the customer never learns which line or provider carried
+ * it), and every other line as it is.
+ */
+function shared_line_mask(?string $originator, bool $viewerIsAdmin): string {
+    $originator = (string)$originator;
+    if ($viewerIsAdmin || $originator === '') return $originator;
+    $number = normalize_originator($originator) ?? $originator;
+    return isset(shared_line_numbers()[$number]) || isset(shared_line_numbers()[$originator]) ? SHARED_LINE_LABEL : $originator;
+}
+
 function shared_service_lines_list(): array {
     return db()->query('SELECT l.*, n.id number_id FROM ellsms_shared_lines l LEFT JOIN ellsms_numbers n ON n.number = l.number ORDER BY l.kind, l.priority, l.id')->fetchAll();
 }
@@ -223,6 +340,9 @@ function shared_service_line_update(int $adminId, int $id, array $changes): arra
     if (!$line) return ['ok' => false, 'error' => 'خط پیدا نشد.'];
     if (!empty($changes['delete'])) {
         db()->prepare('DELETE FROM ellsms_shared_lines WHERE id = ?')->execute([$id]);
+        if (shared_service_user_lines_available()) {
+            db()->prepare('DELETE FROM ellsms_shared_user_lines WHERE line_id = ?')->execute([$id]);
+        }
         audit($adminId, 'shared_service.line_remove', (string)$line['number']);
         return ['ok' => true];
     }
@@ -302,7 +422,7 @@ function shared_service_submit(array $user, string $kind, string $destination, s
     if (!shared_service_kind_valid($kind)) {
         return shared_service_fail('invalid_kind', 'نوع ارسال باید خدماتی یا تبلیغاتی باشد.', ['fields' => ['line_type' => ['must_be_one_of: service, promo']]]);
     }
-    if (shared_service_pool($kind) === []) {
+    if (shared_service_pool_for((int)$user['id'], $kind) === []) {
         return shared_service_fail('not_enabled', 'برای ارسال ' . SHARED_SERVICE_KINDS[$kind] . ' هنوز خطی فعال نشده است.');
     }
     $number = normalize_msisdn(from_persian_digits($destination));
@@ -363,7 +483,8 @@ function shared_service_result_of(array $row): array {
         'status'      => (string)$row['status'],
         'hold_reason' => $row['hold_reason'] !== null ? (string)$row['hold_reason'] : null,
         'send_after'  => $row['send_after'] !== null ? (string)$row['send_after'] : null,
-        'originator'  => $row['originator'] !== null ? (string)$row['originator'] : null,
+        // Never the line: a customer does not learn which line or provider carried the message.
+        'originator'  => null,
         'parts'       => (int)$row['parts'],
     ] + ($row['error'] !== null ? ['error' => (string)$row['error']] : []);
 }
@@ -414,7 +535,8 @@ function shared_service_send(array $row): void {
     $parts = 0;
     $usedLine = null;
     try {
-        foreach (shared_service_line_order(shared_service_pool($kind), (string)$row['destination']) as $i => $line) {
+        // The customer's own assigned lines of this kind when an admin chose some, else the whole pool.
+        foreach (shared_service_line_order(shared_service_pool_for((int)$row['user_id'], $kind), (string)$row['destination']) as $i => $line) {
             $usedLine = $line;
             // Each line is its own wallet/quota operation: a failed attempt is released by
             // dispatch_message() before the next line is tried, so a fail-over never double-charges.
@@ -652,7 +774,7 @@ function shared_service_hold_reason_label(?string $reason): string {
     };
 }
 
-/** The API's view of a message. The text is returned to its owner; the sender only once it is known. */
+/** The API's view of a message. The text is returned to its owner; the sender line never is. */
 function shared_service_message_public(array $m): array {
     return [
         'id'          => (int)$m['id'],
@@ -662,7 +784,7 @@ function shared_service_message_public(array $m): array {
         'status'      => (string)$m['status'],
         'hold_reason' => $m['hold_reason'] !== null ? (string)$m['hold_reason'] : null,
         'send_after'  => $m['send_after'] !== null ? (string)$m['send_after'] : null,
-        'originator'  => $m['originator'] !== null ? (string)$m['originator'] : null,
+        'originator'  => null,
         'parts'       => (int)$m['parts'],
         'error'       => $m['error'] !== null ? (string)$m['error'] : null,
         'created_at'  => (string)$m['created_at'],

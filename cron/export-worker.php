@@ -141,6 +141,10 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
                     if ($kind === 'bulk' && !empty($r['recipients_masked']) && empty($filters['is_admin'])) {
                         $r['destination'] = msisdn_mask((string)$r['destination']);
                     }
+                    // The platform's shared lines are «خط اشتراکی» in a customer's file, as in the panel.
+                    if (array_key_exists('originator', $r)) {
+                        $r['originator'] = shared_line_mask((string)$r['originator'], !empty($filters['is_admin']));
+                    }
                     fputcsv($out, array_merge([$source['label']], export_csv_row($kind, $r, $usernames, $delivery)));
                     $cursor = (int)$r['id'];
                     $written++;

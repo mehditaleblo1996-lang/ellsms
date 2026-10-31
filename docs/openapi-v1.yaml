@@ -61,7 +61,7 @@ components:
         id: { type: integer }
         template_id: { type: integer }
         destination: { type: string }
-        originator: { type: string, nullable: true, description: "the shared line it was sent from" }
+        originator: { type: string, nullable: true, description: "always null: the platform's shared line is never disclosed" }
         status: { type: string, enum: [sending, sent, failed] }
         parts: { type: integer }
         error: { type: string, nullable: true }
@@ -76,7 +76,7 @@ components:
         status: { type: string, enum: [held, queued, sending, sent, failed, rejected, expired] }
         hold_reason: { type: string, nullable: true, enum: [new_text, supervised] }
         send_after: { type: string, nullable: true, description: "a queued promotional message goes out from this local time" }
-        originator: { type: string, nullable: true, description: "the shared line it was sent from, once sent" }
+        originator: { type: string, nullable: true, description: "always null: the platform's shared line is never disclosed" }
         parts: { type: integer }
         error: { type: string, nullable: true, description: "why it failed, or the reviewer's reason when rejected" }
         created_at: { type: string }

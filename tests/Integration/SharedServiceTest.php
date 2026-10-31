@@ -291,7 +291,8 @@ final class SharedServiceTest extends IntegrationTestCase
         $this->assertTrue(shared_service_line_update($this->admin(), $lineId, ['enabled' => false])['ok']);
         [$status, $body] = $this->call(['destination' => '09121240010', 'text' => 'پرداخت شما ثبت شد. 2']);
         $this->assertSame(201, $status);
-        $this->assertSame($this->serviceB, $body['data']['originator']);
+        $this->assertNull($body['data']['originator'], 'the customer never learns the line');
+        $this->assertSame($this->serviceB, shared_service_message_get((int)$body['data']['id'])['originator']);
         $this->assertCount(1, $this->recorded('/vesal/ss-b'));
     }
 
@@ -391,5 +392,63 @@ final class SharedServiceTest extends IntegrationTestCase
         $other = $this->makeUser();
         $otherOrg = (int)create_organization($other, 'Other')['organization_id'];
         $this->assertNull(shared_service_message_find(['id' => $other, 'role' => 'user', 'organization_id' => $otherOrg], (int)$body['data']['id']));
+    }
+
+    private function lineId(string $number): int
+    {
+        return (int)db()->query("SELECT id FROM ellsms_shared_lines WHERE number = '{$number}'")->fetchColumn();
+    }
+
+    public function testAnAdminRoutesACustomerThroughTheirOwnAssignedLines(): void
+    {
+        // serviceA has the better priority, so the whole pool would send from it.
+        $this->assertSame($this->serviceA, shared_service_pool_for($this->userId, 'service')[0]['number']);
+
+        $admin = $this->admin();
+        $this->assertTrue(shared_service_user_lines_set($admin, $this->userId, [$this->lineId($this->serviceB)])['ok']);
+        $this->assertSame([$this->serviceB], array_column(shared_service_pool_for($this->userId, 'service'), 'number'));
+        // Only the kind the admin assigned is narrowed; promo still uses its whole pool.
+        $this->assertSame([$this->promoLine], array_column(shared_service_pool_for($this->userId, 'promo'), 'number'));
+
+        $r = shared_service_submit($this->user(), 'service', '09121240020', 'رسید پرداخت 5');
+        shared_service_review($admin, 'approve', (int)shared_service_message_get($r['id'])['text_id']);
+        $row = shared_service_message_get($r['id']);
+        $this->assertSame('sent', $row['status'], (string)$row['error']);
+        $this->assertSame($this->serviceB, $row['originator']);
+        $this->assertCount(0, $this->recorded('/vesal/ss-a'));
+
+        // Back to the whole pool.
+        $this->assertTrue(shared_service_user_lines_set($admin, $this->userId, [])['ok']);
+        $this->assertSame([$this->serviceA, $this->serviceB], array_column(shared_service_pool_for($this->userId, 'service'), 'number'));
+    }
+
+    public function testACustomerWhoseAssignedLinesAreAllOffDoesNotSpillOntoOtherLines(): void
+    {
+        $admin = $this->admin();
+        $lineB = $this->lineId($this->serviceB);
+        shared_service_user_lines_set($admin, $this->userId, [$lineB]);
+        shared_service_line_update($admin, $lineB, ['enabled' => false]);
+
+        $r = shared_service_submit($this->user(), 'service', '09121240021', 'رسید پرداخت 6');
+        $this->assertFalse($r['ok']);
+        $this->assertSame('not_enabled', $r['error_code']);
+    }
+
+    public function testRemovingAPoolLineDropsItsAssignments(): void
+    {
+        $admin = $this->admin();
+        $lineB = $this->lineId($this->serviceB);
+        shared_service_user_lines_set($admin, $this->userId, [$lineB]);
+        shared_service_line_update($admin, $lineB, ['delete' => true]);
+        $this->assertSame([], shared_service_user_line_ids($this->userId));
+    }
+
+    public function testCustomersSeeAPlatformLineOnlyAsTheSharedLine(): void
+    {
+        $this->assertSame(SHARED_LINE_LABEL, shared_line_mask($this->serviceA, false));
+        $this->assertSame(SHARED_LINE_LABEL, shared_line_mask($this->promoLine, false));
+        $this->assertSame($this->serviceA, shared_line_mask($this->serviceA, true), 'an admin sees the real line');
+        $this->assertSame('5000777123', shared_line_mask('5000777123', false), 'any other line is shown as it is');
+        $this->assertSame('', shared_line_mask(null, false));
     }
 }

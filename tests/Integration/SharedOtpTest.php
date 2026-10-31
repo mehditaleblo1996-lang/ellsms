@@ -183,7 +183,7 @@ final class SharedOtpTest extends IntegrationTestCase
         $this->assertSame(201, $status, json_encode($body, JSON_UNESCAPED_UNICODE));
         $line = $this->firstLineFor('989121230001');
         $this->assertSame('sent', $body['data']['status']);
-        $this->assertSame($line, $body['data']['originator']);
+        $this->assertNull($body['data']['originator'], 'the customer never learns the shared line');
         $this->assertSame('989121230001', $body['data']['destination']);
 
         $sent = $this->recorded($line === $this->lineA ? '/vesal/otp-gw-a' : '/vesal/otp-gw-b');

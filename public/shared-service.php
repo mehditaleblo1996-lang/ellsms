@@ -10,7 +10,7 @@
 require_once __DIR__ . '/../app/backend.php';
 $me = require_login();
 $isAdmin = is_admin();
-$pageTitle = 'سرویس ارسال اشتراکی';
+$pageTitle = $isAdmin ? 'سرویس ارسال اشتراکی' : 'ارسال با خط اشتراکی';
 $active = $isAdmin ? 'shared_service_admin' : 'shared_service';
 $rbacOrg = $isAdmin ? null : require_permission(Permissions::MESSAGES_SEND);
 $self = '/shared-service.php';
@@ -57,6 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $available) {
     } elseif ($isAdmin && $do === 'text_reset') {
         shared_service_text_reset($adminId, (int)($_POST['text_id'] ?? 0));
         flash('info', 'متن به حالت «در انتظار بررسی» برگشت؛ پیام بعدی با این متن بررسی می‌شود.');
+    } elseif ($isAdmin && $do === 'user_lines') {
+        $targetId = (int)from_persian_digits((string)($_POST['user_id'] ?? '0'));
+        $r = shared_service_user_lines_set($adminId, $targetId, (array)($_POST['line_ids'] ?? []));
+        flash($r['ok'] ? 'success' : 'error', $r['ok']
+            ? ($r['count'] > 0 ? 'خطوط کاربر ذخیره شد (' . to_persian_digits((string)$r['count']) . ' خط).' : 'کاربر به استخر پیش‌فرض برگشت.')
+            : (string)$r['error']);
+        redirect($self . '?assign_user=' . $targetId . '#userLines');
     } elseif ($isAdmin && $do === 'trust') {
         $r = shared_service_trust_set($adminId, (int)from_persian_digits((string)($_POST['user_id'] ?? '0')), (string)($_POST['trust'] ?? ''), (string)($_POST['note'] ?? ''));
         flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'سطح اعتماد ذخیره شد.' : (string)$r['error']);
@@ -86,6 +93,10 @@ if ($available) {
         $queue = shared_service_review_queue();
         $poolLines = shared_service_lines_list();
         $trustRows = shared_service_trust_list();
+        $userLinesReady = shared_service_user_lines_available();
+        $userLineRows = shared_service_user_lines_list();
+        $assignUser = (int)from_persian_digits((string)($_GET['assign_user'] ?? '0'));
+        $assignedIds = $assignUser > 0 ? shared_service_user_line_ids($assignUser) : [];
         $texts = shared_service_texts_list((string)($_GET['texts'] ?? '') ?: null);
         $heldIndividually = shared_service_messages_list($user, 'held', 100);
     }
@@ -205,6 +216,68 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 </div>
 
+<div class="card" style="margin-top:18px" id="userLines">
+  <h2>خط هر کاربر</h2>
+  <?php if (!$userLinesReady): ?>
+    <p class="flash flash-error">مهاجرت 2026_10_31_shared_service_user_lines.sql اجرا نشده است.</p>
+  <?php else: ?>
+  <p class="hint">
+    مشخص کنید پیام‌های هر کاربر از کدام خطوط استخر (و در نتیجه از کدام مسیر/تأمین‌کننده) ارسال شود. مشتری فقط «خط اشتراکی» می‌بیند،
+    نه شماره و نه مسیر. اگر برای یک نوع (خدماتی/تبلیغاتی) هیچ خطی تیک نخورد، کاربر از همه‌ی خطوط فعال آن نوع ارسال می‌کند. اگر خطوط
+    تیک‌خورده‌ی یک کاربر همه غیرفعال شوند، ارسال آن نوع برای او متوقف می‌شود و به خطوط دیگر نمی‌رود.
+  </p>
+  <form method="get" class="toolbar" action="<?= $self ?>#userLines">
+    <label>شناسه‌ی کاربر <input type="text" name="assign_user" required class="ltr" style="width:100px" value="<?= $assignUser > 0 ? $assignUser : '' ?>"></label>
+    <button class="btn">نمایش / ویرایش</button>
+  </form>
+  <?php if ($assignUser > 0): ?>
+    <?php $assignAccount = resolve_ellsms_managed_user($assignUser); ?>
+    <?php if ($assignAccount === null): ?>
+      <p class="flash flash-error">کاربر #<?= to_persian_digits((string)$assignUser) ?> پیدا نشد.</p>
+    <?php elseif (!$poolLines): ?>
+      <p class="hint">هنوز خطی در استخر نیست.</p>
+    <?php else: ?>
+      <form method="post" style="margin-top:12px">
+        <?= csrf_field() ?><input type="hidden" name="do" value="user_lines"><input type="hidden" name="user_id" value="<?= $assignUser ?>">
+        <p><strong>خطوط کاربر <?= e((string)($assignAccount['username'] ?? '')) ?> <span class="hint">#<?= $assignUser ?></span></strong></p>
+        <?php foreach (SHARED_SERVICE_KINDS as $k => $kindLabel): ?>
+          <fieldset style="border:0;padding:0;margin:0 0 8px">
+            <legend class="hint"><?= e($kindLabel) ?></legend>
+            <?php foreach ($poolLines as $l): if ($l['kind'] !== $k) continue; ?>
+              <label class="check" style="display:inline-flex;gap:6px;margin-left:16px">
+                <input type="checkbox" name="line_ids[]" value="<?= (int)$l['id'] ?>"<?= in_array((int)$l['id'], $assignedIds, true) ? ' checked' : '' ?>>
+                <span class="ltr"><?= e((string)$l['number']) ?></span>
+                <?php if ($l['note']): ?><span class="hint"><?= e((string)$l['note']) ?></span><?php endif; ?>
+                <?php if (!$l['enabled']): ?><span class="badge badge-off">غیرفعال</span><?php endif; ?>
+              </label>
+            <?php endforeach; ?>
+          </fieldset>
+        <?php endforeach; ?>
+        <button class="btn btn-primary">ذخیره</button>
+        <span class="hint">بدون تیک = استخر پیش‌فرض.</span>
+      </form>
+    <?php endif; ?>
+  <?php endif; ?>
+  <div class="table-wrap" style="margin-top:12px">
+  <table>
+    <tr><th>کاربر</th><th>خطوط</th><th></th></tr>
+    <?php foreach ($userLineRows as $u): ?>
+      <tr>
+        <td><?= e($u['username']) ?> <span class="hint">#<?= (int)$u['user_id'] ?></span></td>
+        <td>
+          <?php foreach ($u['lines'] as $l): ?>
+            <span class="badge <?= $l['enabled'] ? 'badge-ok' : 'badge-off' ?>"><span class="ltr"><?= e($l['number']) ?></span> — <?= e(SHARED_SERVICE_KINDS[$l['kind']] ?? $l['kind']) ?></span>
+          <?php endforeach; ?>
+        </td>
+        <td><a class="btn btn-sm" href="<?= $self ?>?assign_user=<?= (int)$u['user_id'] ?>#userLines">ویرایش</a></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if (!$userLineRows): ?><tr><td colspan="3" class="empty">همه‌ی کاربران از استخر پیش‌فرض ارسال می‌کنند.</td></tr><?php endif; ?>
+  </table>
+  </div>
+  <?php endif; ?>
+</div>
+
 <div class="card" style="margin-top:18px">
   <h2>تنظیمات</h2>
   <form method="post">
@@ -286,7 +359,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2>ارسال پیام</h2>
   <p class="hint">
-    فقط گیرنده و متن را وارد کنید؛ پیام از خطوط سامانه ارسال می‌شود و به خط اختصاصی نیازی ندارید. متنی که اولین بار ارسال می‌کنید
+    فقط گیرنده و متن را وارد کنید؛ پیام با «خط اشتراکی» سامانه ارسال می‌شود و به خط اختصاصی نیازی ندارید. متنی که اولین بار ارسال می‌کنید
     پیش از ارسال توسط کارشناس بررسی می‌شود. ارسال تبلیغاتی فقط از ساعت <?= to_persian_digits($promoStart) ?> تا <?= to_persian_digits($promoEnd) ?> انجام
     می‌شود و پیامی که بیرون از این بازه ثبت شود در اولین فرصت ارسال می‌شود. هزینه هنگام ارسال از اعتبار شما کسر می‌شود.
   </p>
@@ -295,11 +368,12 @@ require __DIR__ . '/../app/views/header.php';
     <div class="toolbar">
       <label>نوع پیام
         <select name="kind">
-          <?php foreach (SHARED_SERVICE_KINDS as $k => $label): if (shared_service_pool($k) === []) continue; ?>
+          <?php foreach (SHARED_SERVICE_KINDS as $k => $label): if (shared_service_pool_for((int)$me['id'], $k) === []) continue; ?>
             <option value="<?= $k ?>"><?= e($label) ?></option>
           <?php endforeach; ?>
         </select>
       </label>
+      <label>خط ارسال <input type="text" value="<?= e(SHARED_LINE_LABEL) ?>" disabled></label>
       <label>موبایل گیرنده <input type="text" name="destination" required class="ltr" placeholder="09121234567"></label>
     </div>
     <p><textarea name="text" rows="4" required maxlength="<?= SHARED_SERVICE_MAX_CONTENT_CHARS ?>" style="width:100%" placeholder="متن پیام"></textarea></p>

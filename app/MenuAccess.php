@@ -50,7 +50,7 @@ function menu_catalog(): array {
         'aimed_bulk'    => ['ارسال با کد پستی',      '📮', '/aimed-bulk.php',    ['aimed-bulk.php']],
         'lba'           => ['ارسال پیام منطقه‌ای (LBA)', '📍', '/lba.php',       ['lba.php']],
         'otp_templates' => ['کد تایید اشتراکی',      '🔐', '/otp-templates.php', ['otp-templates.php']],
-        'shared_service' => ['ارسال اشتراکی (بدون خط)', '📨', '/shared-service.php', ['shared-service.php']],
+        'shared_service' => ['ارسال با خط اشتراکی', '📨', '/shared-service.php', ['shared-service.php']],
         // A reseller's panel (app/ResellerPanel.php) is its sub-account menu: closing it closes the panel.
         'subaccounts'   => ['زیرمجموعه‌ها',          '👥', '/subaccounts.php',   ['subaccounts.php', 'reseller.php', 'reseller-customers.php', 'reseller-customer.php', 'reseller-customer-new.php', 'reseller-roles.php',
                                                                                 'reseller-tariffs.php', 'reseller-packages.php', 'reseller-finance.php', 'reseller-payments.php', 'reseller-tickets.php',

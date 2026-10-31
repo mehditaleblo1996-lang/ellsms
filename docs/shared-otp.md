@@ -34,7 +34,8 @@ text in advance, an admin approves it, and each call supplies only the variable 
    `parameters` may also be a list in the template's variable order (`["سارا", "4821"]`), like Negar's
    positional parameters. The answer is `201` with
    `{"id", "template_id", "destination", "originator", "status": "sent", "parts", "error", "created_at"}`;
-   `originator` is the shared line it went out from. The customer can also send a test code from the
+   `originator` is always `null`: the customer never learns the shared line (shown as «خط اشتراکی» in
+   reports, `shared_line_mask()`). The customer can also send a test code from the
    panel page.
 
    **From the send pages.** «ارسال پیامک» (`send.php`) and «پنل جدید ارسال» (`new-send.php`) carry an
