@@ -413,20 +413,24 @@ function gateway_send(array $connector,array $input,?int $routeId,?int $operator
     // each compatible group is split into requests of at most that many destinations. 0/absent = no cap.
     $cap=(int)($connector['send']['batch']['max_recipients']??0);
     if($cap>0){$chunked=[];foreach($groups as $groupKey=>$group){foreach(array_chunk($group['destinations'],$cap) as $chunkIndex=>$chunk)$chunked[$groupKey.'#'.$chunkIndex]=['operator'=>$group['operator'],'destinations'=>$chunk];}$groups=$chunked;}
-    $sent=[];$messageIds=[];$lastError=null;$lastClass=null;$lastHttp=0;$retryable=false;$lastOutcome=PROVIDER_RESPONSE_FAILED;$lastProviderErrorCode=null;$lastProviderErrorDetail=null;
+    $sent=[];$messageIds=[];$rejected=[];$lastError=null;$lastClass=null;$lastHttp=0;$retryable=false;$lastOutcome=PROVIDER_RESPONSE_FAILED;$lastProviderErrorCode=null;$lastProviderErrorDetail=null;
     foreach($groups as $group){
         $groupDestinations=$group['destinations'];$operator=$group['operator'];
         $context=gateway_send_context(array_merge($input,['recipients'=>$groupDestinations,'recipient'=>$groupDestinations[0],'operator_code'=>$operator['operator_code']]));
         $request=gateway_build_request($connector,'send',$context,$routeId,$operator['operator_id']);$response=gateway_execute($connector,'send',$request);
         $lastOutcome=(string)($response['normalized_outcome']??PROVIDER_RESPONSE_FAILED);$lastProviderErrorCode=$response['provider_error_code']??null;$lastProviderErrorDetail=$response['provider_error_detail']??null;
-        if(!$response['ok']){$lastError=$response['error'];$lastClass=$response['error_class'];$lastHttp=$response['http'];$retryable=$retryable||BackendError::isRetryable((string)$response['error_class']);continue;}
-        $lastHttp=$response['http'];[$groupSent,$groupIds]=gateway_read_send_response($connector,$response,$groupDestinations);
-        if($groupSent===[]){$lastError='provider response did not contain valid per-recipient message ids';$lastClass=BackendError::INVALID_RESPONSE;$lastOutcome=PROVIDER_RESPONSE_FAILED;continue;}
+        if(!$response['ok']){$lastError=$response['error'];$lastClass=$response['error_class'];$lastHttp=$response['http'];$retryable=$retryable||BackendError::isRetryable((string)$response['error_class']);foreach($groupDestinations as $destination)$rejected[$destination]=(string)($response['provider_error_code']??$response['error_class']??'rejected');continue;}
+        $lastHttp=$response['http'];[$groupSent,$groupIds,$groupRejected]=array_pad(gateway_read_send_response($connector,$response,$groupDestinations),3,[]);
+        // Each recipient the provider did not accept keeps its own reason (a positional provider's
+        // negative per-recipient code such as -11), so the send report can show why it failed.
+        foreach(array_diff($groupDestinations,$groupSent) as $destination)$rejected[$destination]=(string)($groupRejected[$destination]??BackendError::INVALID_RESPONSE);
+        if($groupSent===[]){$lastError='provider response did not contain valid per-recipient message ids';$lastClass=BackendError::INVALID_RESPONSE;$lastOutcome=PROVIDER_RESPONSE_FAILED;if($groupRejected!==[]){$lastProviderErrorCode=(string)reset($groupRejected);$lastError='provider rejected the recipient(s) with code '.$lastProviderErrorCode;$lastClass=BackendError::REJECTED;}continue;}
         foreach($groupSent as $destination)$sent[]=$destination;foreach($groupIds as $destination=>$messageId)$messageIds[$destination]=$messageId;
     }
+    foreach($unsupported as $destination)$rejected[$destination]='operator_not_carried';
     if($unsupported!==[]){Logger::warning('gateway.send.operator_not_carried',['gateway_id'=>$connector['gateway_id'],'destination_count'=>count($unsupported)]);if($sent===[]&&$lastClass===null){$lastError='gateway does not carry this operator';$lastClass=BackendError::REJECTED;}}
     if($sent===[]&&$lastClass===null){$lastError='gateway rejected every destination';$lastClass=BackendError::REJECTED;}
-    return ['ok'=>$sent!==[],'sent'=>$sent,'message_ids'=>$messageIds,'error'=>$sent===[]?$lastError:null,'error_class'=>$sent===[]?$lastClass:null,'http'=>$lastHttp,'retryable'=>$sent===[]?$retryable:false,'groups'=>count($groups),'operators'=>$resolvedOperators,'normalized_outcome'=>$sent!==[]?PROVIDER_RESPONSE_SUCCESS:$lastOutcome,'provider_error_code'=>$sent===[]?$lastProviderErrorCode:null,'provider_error_detail'=>$sent===[]?$lastProviderErrorDetail:null];
+    return ['ok'=>$sent!==[],'sent'=>$sent,'message_ids'=>$messageIds,'rejected'=>$rejected,'error'=>$sent===[]?$lastError:null,'error_class'=>$sent===[]?$lastClass:null,'http'=>$lastHttp,'retryable'=>$sent===[]?$retryable:false,'groups'=>count($groups),'operators'=>$resolvedOperators,'normalized_outcome'=>$sent!==[]?PROVIDER_RESPONSE_SUCCESS:$lastOutcome,'provider_error_code'=>$sent===[]?$lastProviderErrorCode:null,'provider_error_detail'=>$sent===[]?$lastProviderErrorDetail:null];
 }
 
 function gateway_send_failure(string $error,string $errorClass):array{return ['ok'=>false,'sent'=>[],'message_ids'=>[],'error'=>$error,'error_class'=>$errorClass,'http'=>0,'retryable'=>false,'groups'=>0,'operators'=>[],'normalized_outcome'=>PROVIDER_RESPONSE_FAILED,'provider_error_code'=>null,'provider_error_detail'=>$error];}
@@ -459,11 +463,11 @@ function gateway_extract_positional_result(array $section,mixed $decoded,array $
     // destination. Rejecting the whole group here marked every neighbour failed although the provider
     // had accepted and delivered them (1 bad entry in a 1000-recipient batch = 999 false failures),
     // left them without a provider id so delivery was never polled, and never charged them.
-    $accepted=[];$messageIds=[];$rejected=0;$duplicates=0;$duplicateValues=$batch['duplicate_values']??[];
-    foreach($groupDestinations as $index=>$destination){$id=gateway_provider_message_id_normalize($ids[$index]??null);if($id===null){if(gateway_is_duplicate_answer($ids[$index]??null,$duplicateValues)){$accepted[]=$destination;$duplicates++;continue;}$rejected++;continue;}$accepted[]=$destination;$messageIds[$destination]=$id;}
+    $accepted=[];$messageIds=[];$rejected=0;$rejectedCodes=[];$duplicates=0;$duplicateValues=$batch['duplicate_values']??[];
+    foreach($groupDestinations as $index=>$destination){$id=gateway_provider_message_id_normalize($ids[$index]??null);if($id===null){if(gateway_is_duplicate_answer($ids[$index]??null,$duplicateValues)){$accepted[]=$destination;$duplicates++;continue;}$rejected++;$raw=$ids[$index]??null;$rejectedCodes[$destination]=is_scalar($raw)?mb_strimwidth((string)$raw,0,60,''):'invalid_provider_id';continue;}$accepted[]=$destination;$messageIds[$destination]=$id;}
     if($duplicates>0){Logger::info('gateway.correlation.already_accepted',['duplicates'=>$duplicates,'mode'=>'position']);Metrics::increment('gateway.provider_duplicate_accepted',$duplicates);}
     if($rejected>0){Logger::warning('gateway.correlation.positional_invalid_id',['rejected'=>$rejected,'accepted'=>count($accepted)]);Metrics::increment('gateway.correlation_failure',$rejected,['reason'=>'invalid_provider_id']);}
-    return [$accepted,$messageIds];
+    return [$accepted,$messageIds,$rejectedCodes];
 }
 
 function gateway_transport_enabled():bool{return (string)env('SMS_GATEWAY_TRANSPORT','0')==='1';}
@@ -536,7 +540,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         $groupResults[] = ['destinations' => $group['destinations'], 'result' => $result];
     }
 
-    $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = [];
+    $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = []; $rejected = [];
     $anyOk = false; $lastError = null; $lastErrorClass = null; $lastHttp = 0; $retryable = false;
     $lastGatewayId = null; $lastRouteId = null; $lastConfigVersion = null; $lastOutcome = PROVIDER_RESPONSE_FAILED; $lastProviderErrorCode = null; $lastProviderErrorDetail = null;
     foreach ($groupResults as $g) {
@@ -545,6 +549,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         foreach ($result['sent'] as $destination) { $sent[] = $destination; }
         foreach ($result['message_ids'] as $destination => $id) { $messageIds[$destination] = $id; }
         foreach ($result['operators'] as $destination => $operatorId) { $operators[$destination] = $operatorId; }
+        foreach (($result['rejected'] ?? []) as $destination => $code) { $rejected[$destination] = $code; }
         foreach ($g['destinations'] as $destination) { $routeIds[$destination] = $result['route_id']; $gatewayIds[$destination] = $result['gateway_id']; }
         $lastGatewayId = $result['gateway_id']; $lastRouteId = $result['route_id']; $lastConfigVersion = $result['gateway_config_version'];
         $lastOutcome = (string)($result['normalized_outcome'] ?? $lastOutcome);
@@ -554,7 +559,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
     }
 
     return [
-        'ok' => $anyOk, 'sent' => $sent, 'message_ids' => $messageIds, 'operators' => $operators,
+        'ok' => $anyOk, 'sent' => $sent, 'message_ids' => $messageIds, 'operators' => $operators, 'rejected' => $rejected,
         'route_ids' => $routeIds, 'gateway_ids' => $gatewayIds,
         'error' => $anyOk ? null : $lastError, 'error_class' => $anyOk ? null : $lastErrorClass,
         'http' => $lastHttp, 'retryable' => $anyOk ? false : $retryable, 'groups' => count($groupResults),
