@@ -534,12 +534,43 @@ function sent_report_find(string $ref, ?array $scope, bool $hide, bool $isAdmin)
 
     $row['gateway_name'] = null;
     $row['route_name'] = null;
+    $row['provider_response'] = null;
     if ($isAdmin) {
         $row['gateway_name'] = sent_report_lookup_name('ellsms_sms_gateways', (int)($row['gateway_id'] ?? 0));
         $row['route_name'] = sent_report_lookup_name('ellsms_sms_routes', (int)($row['route_id'] ?? 0));
+        // Admins only: what the provider answered when it turned this recipient down.
+        $row['provider_response'] = sent_report_provider_response((int)($row['provider_audit_id'] ?? 0));
     }
     $row['dlr_forward'] = $source === 'legacy' ? null : sent_report_dlr_forward(($source === 'bulk' ? 'bulk_item:' : 'attempt:') . $id);
     return $row;
+}
+
+/**
+ * The provider's exact answer (ellsms_provider_response_audit) behind a rejected message, or null.
+ * Admin-only: callers must never pass it to a customer's view.
+ *
+ * @return array{id:int, gateway_id:int, http_status:int, normalized_outcome:string, provider_error_code:?string, provider_error_detail:?string, raw_response:string, created_at:string}|null
+ */
+function sent_report_provider_response(int $auditId): ?array {
+    if ($auditId <= 0) return null;
+    try {
+        $st = db()->prepare('SELECT id, gateway_id, http_status, normalized_outcome, provider_error_code, provider_error_detail, raw_response, created_at
+                             FROM ellsms_provider_response_audit WHERE id = ?');
+        $st->execute([$auditId]);
+        $row = $st->fetch();
+    } catch (Throwable) {
+        return null;
+    }
+    if (!$row) return null;
+    $row['raw_response'] = sent_report_pretty_response((string)($row['raw_response'] ?? ''));
+    return $row;
+}
+
+/** Pure: a JSON body pretty-printed with readable Persian, anything else unchanged. */
+function sent_report_pretty_response(string $raw): string {
+    $decoded = json_decode($raw, true, 512, JSON_BIGINT_AS_STRING);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) return $raw;
+    return (string)json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
 
 function sent_report_lookup_name(string $table, int $id): ?string {

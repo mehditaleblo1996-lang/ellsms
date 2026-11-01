@@ -17,6 +17,13 @@ $deliveryAt = $m['delivered_at'] ?? null;
 $checkedAt = $m['delivery_checked_at'] ?? null;
 $error = trim((string)($m['error_message'] ?? ''));
 $errorCode = trim((string)($m['error_code'] ?? ''));
+// A recipient the gateway turned down carries the provider's own code and text. Customers get a plain
+// reason; admins get those plus the provider's full answer (provider_response) below.
+if (!$isAdmin && $failed && $m['source'] === 'attempt' && !empty($m['gateway_id'])) {
+    $error = 'سرویس‌دهنده‌ی پیامک این پیام را نپذیرفت.';
+    $errorCode = '';
+}
+$providerResponse = $isAdmin ? ($m['provider_response'] ?? null) : null;
 $hiddenSource = ['bulk' => 'bulk_job', 'attempt' => 'attempt', 'legacy' => 'outbound'][$m['source']];
 $hiddenId = $m['source'] === 'bulk' ? (int)$m['job_id'] : (int)$m['id'];
 $isHidden = $canHide && hidden_messages_is_hidden($hiddenSource, $hiddenId);
@@ -99,6 +106,21 @@ if ($status === 'delivered') {
   <section>
     <h3>علت خطا</h3>
     <p class="flash flash-error detail-error"><?= $errorCode !== '' ? '<span class="ltr">' . e($errorCode) . '</span> — ' : '' ?><?= e($error !== '' ? $error : 'جزئیاتی ثبت نشده است.') ?></p>
+  </section>
+  <?php endif; ?>
+
+  <?php if (is_array($providerResponse)): ?>
+  <section class="detail-provider-response">
+    <h3>پاسخ کامل سرویس‌دهنده <span class="badge">فقط مدیر</span></h3>
+    <dl class="detail-grid">
+      <?= $field('HTTP', '<span class="ltr">' . e((string)(int)$providerResponse['http_status']) . '</span>') ?>
+      <?= $field('نتیجه', '<span class="ltr">' . e((string)$providerResponse['normalized_outcome']) . '</span>') ?>
+      <?= $field('کد خطای سرویس‌دهنده', $text($providerResponse['provider_error_code'] ?? null, 'ltr')) ?>
+      <?= $field('شرح خطا', $text($providerResponse['provider_error_detail'] ?? null)) ?>
+      <?= $field('زمان پاسخ', e(sent_report_datetime($providerResponse['created_at'] ?? null) ?: '—')) ?>
+      <?= $field('شناسه‌ی ثبت', '<span class="ltr">#' . (int)$providerResponse['id'] . '</span>') ?>
+    </dl>
+    <pre class="ltr" dir="ltr" style="white-space:pre-wrap;word-break:break-all;max-height:320px;overflow:auto;padding:10px;border-radius:8px;background:var(--surface-2, rgba(127,127,127,.08));font-size:12px;"><?= e((string)$providerResponse['raw_response'] !== '' ? (string)$providerResponse['raw_response'] : '(پاسخ خالی — درخواست به سرویس‌دهنده نرسید)') ?></pre>
   </section>
   <?php endif; ?>
 
