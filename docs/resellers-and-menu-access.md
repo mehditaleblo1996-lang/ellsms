@@ -54,23 +54,42 @@ submit is a replay, not a second transfer.
 
 ## Tariff and reseller profit
 
-`tariff_bp` is a coefficient in basis points on the system price list (`app/Sms/Pricing.php`),
-10000 = 100%. `sms_pricing_price_messages()` takes the charged account (`$customerUserId`) and
-scales every unit price before computing the cost. The preview, the reservation, the snapshot and
-the settlement therefore all carry the account's price. Retries keep reusing the accepted snapshot
-price.
+Prices come from **named tariffs**, not from a percentage (since 2026-10-31):
 
-- The admin sets a reseller's coefficient, e.g. 80% (a discount).
-- The reseller sets each child's coefficient, never below its own (`tariff_below_parent`).
-- A sub-reseller cannot lower its own tariff below what its children are charged.
-- Every change is kept in `ellsms_customer_tariff_history`.
-- An account not under a reseller can also get exact Rial prices per gateway, operator and encoding from the admin,
-  which replaces the coefficient for that cell (`docs/gateway-price-matrix.md`).
+- The admin sets a top-level reseller's (or any direct account's) exact Rial prices per gateway,
+  operator and encoding in «تعرفه‌ی اختصاصی» on the user's page (`app/GatewayPrices.php`,
+  `docs/gateway-price-matrix.md`). An account without them pays the general price list.
+- A reseller puts **every** customer on one of its named tariffs (`app/ResellerTariffs.php`,
+  `docs/reseller-panel.md`), never below its own price. Creating a customer without a tariff is refused
+  (`tariff_required`, or `no_tariffs` when the reseller has none yet), and a customer can't be taken
+  off its tariff. Staff without `tariffs.manage` and sign-ups get the default (or first) tariff.
+- A sub-organization pays its parent organization's price.
+- The «درصد تعرفه» field is gone from the admin user page, the reseller panel and `/subaccounts.php`.
+  Tariff columns show the tariff's name (`customer_tariff_label()`).
+
+`tariff_bp` (a coefficient in basis points on the system price list, 10000 = 100%) remains in the
+schema and in the pricing/profit arithmetic only so older price snapshots keep their meaning. No panel
+sets it any more and every account stays at 100% (a sub-organization keeps its parent's). Every past
+change is kept in `ellsms_customer_tariff_history`.
+
+The preview, the reservation, the snapshot and the settlement all carry the account's price, and
+retries keep reusing the accepted snapshot price.
+
+### «تعرفه من» (`/my-tariff.php`)
+
+A customer sees its own price per segment, under «مالی» in the sidebar: one table per sending line,
+with a row per destination operator plus «سایر» and «بین‌الملل», Persian and Latin. The prices come
+from `customer_unit_prices()` (`app/ResellerTariffs.php`), the same precedence a send is charged with
+(own matrix cells, else the list price; or the reseller chain and its named tariff), so the page never
+disagrees with the charge. `reseller_own_prices()` uses the same function. Read-only; an admin sees a
+pointer to where prices are set.
 
 **Profit** (`customer_profit_run()`; the worker runs it hourly, also `make reseller-profit`, or the
 button on «سود نمایندگان»):
 
 - Each finished Tehran day is processed once, an hour after it ends.
+- Sends with chain prices in their snapshot are split by those exact prices (`docs/reseller-panel.md`, «Profit»).
+  The rest of this list is the legacy split for older charges without them.
 - For every `sms_debit` of an account that has a parent, the list price is `amount / tariff`.
 - Every reseller up the chain earns `(tariff of the account below it on the chain − its own tariff) × list price`.
   Example: a customer at 150% under a sub-reseller at 120% under a reseller at 100%. A 1500 charge

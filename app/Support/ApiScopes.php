@@ -32,6 +32,8 @@ final class ApiScopes
     public const VOICE_READ     = 'voice:read';
     public const OTP_SEND       = 'otp:send';
     public const SHARED_SEND    = 'shared:send';
+    public const TELEGRAM_SEND  = 'telegram:send';
+    public const TELEGRAM_READ  = 'telegram:read';
 
     /** Every scope constant this class defines — never hand-maintained twice (mirrors Permissions::all()). */
     public static function all(): array
@@ -45,6 +47,7 @@ final class ApiScopes
             self::VOICE_SEND, self::VOICE_READ,
             self::OTP_SEND,
             self::SHARED_SEND,
+            self::TELEGRAM_SEND, self::TELEGRAM_READ,
         ];
     }
 

@@ -41,6 +41,7 @@ require_once __DIR__ . '/LazyParts.php';
 require_once __DIR__ . '/LineOptouts.php';
 require_once __DIR__ . '/ContentPolicy.php';
 require_once __DIR__ . '/BaleChannel.php';
+require_once __DIR__ . '/TelegramUser.php';
 require_once __DIR__ . '/RegionalBulk.php';
 require_once __DIR__ . '/rbac.php';
 // Resellers / organizational customers (tariff, credit transfer, expiry) and per-user menu access.

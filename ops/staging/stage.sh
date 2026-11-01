@@ -100,6 +100,7 @@ cmd_env() {
     echo "ELLSMS_CONTAINER_PREFIX=ellsms-stage"
     echo "ELLSMS_APP_IMAGE=ellsms-stage-app:latest"
     echo "ELLSMS_SMPP_IMAGE=ellsms-stage-smpp-bridge:latest"
+    echo "ELLSMS_TG_IMAGE=ellsms-stage-tg-worker:latest"
     echo "BACKEND_NETWORK=ellsms_stage_net"
     echo "APP_PORT=${STAGE_APP_PORT:-8080}"
     echo
@@ -144,6 +145,9 @@ cmd_env() {
     echo "# --- alerts off ---"
     echo "TELEGRAM_BOT_TOKEN="
     echo "TELEGRAM_CHAT_ID="
+    echo "# Telegram user-account service: staging's own app from my.telegram.org (empty = worker idle)"
+    echo "TELEGRAM_API_ID="
+    echo "TELEGRAM_API_HASH="
     echo "ALERT_EMAIL_RECIPIENT="
     echo
     echo "# --- tuning, same as production ---"

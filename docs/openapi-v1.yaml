@@ -82,6 +82,20 @@ components:
         error: { type: string, nullable: true, description: "why it failed, or the reviewer's reason when rejected" }
         created_at: { type: string }
         sent_at: { type: string, nullable: true }
+    TelegramMessage:
+      type: object
+      properties:
+        id: { type: integer }
+        campaign_id: { type: integer }
+        to: { type: string }
+        status: { type: string, enum: [queued, sending, sent, read, failed, cancelled] }
+        error_code: { type: string, nullable: true, enum: [not_on_telegram, privacy_restricted, blocked, deactivated, account_limited, flood_wait, no_account, media_missing, interrupted, error] }
+        error: { type: string, nullable: true }
+        account_id: { type: integer, nullable: true }
+        cost: { type: integer }
+        sent_at: { type: string, nullable: true }
+        read_at: { type: string, nullable: true }
+        created_at: { type: string }
     WebEngageResult:
       type: object
       required: [status]
@@ -643,6 +657,79 @@ paths:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/SharedMessage' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /telegram/accounts:
+    get:
+      summary: The caller's connected Telegram accounts and today's usage (scope telegram:read) — see docs/telegram-user-service.md
+      responses:
+        "200": { description: OK }
+        "403": { description: The Telegram service is not enabled for this account }
+        "503": { description: The Telegram service is not enabled on this deployment }
+
+  /telegram/messages:
+    post:
+      summary: Queue one message from the customer's own Telegram account (scope telegram:send)
+      description: >
+        Asynchronous: answers 202 with the queued message; the tg-worker sends it within seconds (OTP first).
+        Follow it with GET /telegram/messages/{id} or the telegram.message.* webhooks. Charged only when sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, text]
+              properties:
+                to: { type: string }
+                text: { type: string, maxLength: 4096 }
+                kind: { type: string, enum: [otp, notify, promo], default: otp }
+                account_id: { type: integer, description: "optional: one of the caller's accounts; omitted = any active one" }
+                acknowledge_block_risk: { type: boolean, description: "required true for kind=promo" }
+                client_message_id: { type: string }
+      responses:
+        "202": { description: Queued, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/TelegramMessage' } } } } } }
+        "402": { description: Insufficient credit }
+        "409": { description: No active Telegram account (or a client_message_id conflict) }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+        "503": { description: The Telegram service is not enabled on this deployment }
+
+  /telegram/messages/{id}:
+    get:
+      summary: One Telegram message and its state (scope telegram:read)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/TelegramMessage' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /telegram/lookups:
+    post:
+      summary: Check which numbers have Telegram (scope telegram:send)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phones]
+              properties:
+                phones: { type: array, maxItems: 5000, items: { type: string } }
+                title: { type: string }
+                account_id: { type: integer }
+      responses:
+        "202": { description: "Queued: {id, status, total, max_cost}" }
+        "402": { description: Insufficient credit }
+        "409": { description: No active Telegram account }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+
+  /telegram/lookups/{id}:
+    get:
+      summary: A number check's progress and results (scope telegram:read)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: "OK: {id, status, total, counts, results: [{phone, status, has_telegram, username}]}" }
         "404": { $ref: '#/components/responses/NotFound' }
 
   /webengage/sms:
