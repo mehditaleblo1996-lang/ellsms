@@ -300,6 +300,71 @@ function backend_record_message_attempt_failure(
     )->execute([$organizationId, $userId, $referenceType, $referenceId, $idempotencyKey, $backendRequestId, 'failed', $errorCode, mb_strimwidth($errorMessage, 0, 500, '…')]);
 }
 
+/**
+ * A recipient the gateway was reached for and turned down (e.g. a positional provider's -11). Stored as a
+ * 'failed' attempt WITH its destination, originator and text, so it appears in the send report next to
+ * the accepted ones; no provider id, so the status poller and delivery billing never touch it.
+ */
+function backend_record_gateway_rejection(
+    ?int $organizationId,
+    int $userId,
+    string $referenceType,
+    string $referenceId,
+    string $destination,
+    array $transport
+): void {
+    try {
+        $withReportColumns = backend_message_attempts_have_report_columns();
+        $values = [
+            $organizationId, $userId, $referenceType, $referenceId,
+            $transport['request_id'] ?? null,
+            mb_strimwidth((string)($transport['error_code'] ?? 'rejected'), 0, 60, ''),
+            mb_strimwidth((string)($transport['error_message'] ?? ''), 0, 500, '…'),
+            isset($transport['gateway_id']) ? (int)$transport['gateway_id'] : null,
+            isset($transport['gateway_config_version']) ? (int)$transport['gateway_config_version'] : null,
+            isset($transport['route_id']) ? (int)$transport['route_id'] : null,
+            isset($transport['operator_id']) ? (int)$transport['operator_id'] : null,
+            mb_strimwidth($destination, 0, 32, ''),
+        ];
+        if ($withReportColumns) {
+            $values[] = isset($transport['originator']) ? mb_substr((string)$transport['originator'], 0, 20) : null;
+            $values[] = isset($transport['content']) ? (string)$transport['content'] : null;
+        }
+        $withAudit = provider_audit_link_available('ellsms_message_attempts');
+        if ($withAudit) {
+            $values[] = !empty($transport['provider_audit_id']) ? (int)$transport['provider_audit_id'] : null;
+        }
+        db()->prepare(
+            "INSERT INTO ellsms_message_attempts
+                (organization_id, user_id, reference_type, reference_id, backend_request_id, status,
+                 error_code, error_message, gateway_id, gateway_config_version, route_id, operator_id, destination,
+                 attempted_at, completed_at" . ($withReportColumns ? ', originator, content' : '') . ($withAudit ? ', provider_audit_id' : '') . ")
+             VALUES (?,?,?,?,?, 'failed', ?,?,?,?,?,?,?, NOW(), NOW()" . ($withReportColumns ? ',?,?' : '') . ($withAudit ? ',?' : '') . ")"
+        )->execute($values);
+    } catch (Throwable $t) {
+        // Reporting only: a failed insert must never turn into a send failure of its own.
+        Logger::warning('gateway.rejection_record_failed', ['user_id' => $userId, 'exception' => $t->getMessage()]);
+    }
+}
+
+/** Whether $table has provider_audit_id (db/migrations/2026_11_01_provider_response_link.sql). */
+function provider_audit_link_available(string $table): bool {
+    static $has = [];
+    if (!isset($has[$table])) {
+        try {
+            $st = db()->prepare(
+                "SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = ? AND column_name = 'provider_audit_id'"
+            );
+            $st->execute([$table]);
+            $has[$table] = (int)$st->fetchColumn() === 1;
+        } catch (Throwable) {
+            $has[$table] = false;
+        }
+    }
+    return $has[$table];
+}
+
 /** Whether ellsms_message_attempts has originator/content (2026_09_26_message_attempt_report_columns.sql). */
 function backend_message_attempts_have_report_columns(): bool {
     static $has = null;
