@@ -24,6 +24,10 @@ final class WebhookEvents
     public const MESSAGE_DELIVERED   = 'message.delivered';
     public const MESSAGE_UNDELIVERED = 'message.undelivered';
     public const MESSAGE_RECEIVED    = 'message.received';
+    // Telegram user-account service (app/TelegramUser.php): one event per message state change.
+    public const TELEGRAM_MESSAGE_SENT   = 'telegram.message.sent';
+    public const TELEGRAM_MESSAGE_READ   = 'telegram.message.read';
+    public const TELEGRAM_MESSAGE_FAILED = 'telegram.message.failed';
 
     public static function all(): array
     {
@@ -32,6 +36,7 @@ final class WebhookEvents
             self::MESSAGE_DELIVERED, self::MESSAGE_UNDELIVERED, self::MESSAGE_RECEIVED,
             self::BULK_COMPLETED, self::BULK_FAILED,
             self::PAYMENT_CREDITED,
+            self::TELEGRAM_MESSAGE_SENT, self::TELEGRAM_MESSAGE_READ, self::TELEGRAM_MESSAGE_FAILED,
         ];
     }
 

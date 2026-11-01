@@ -110,6 +110,17 @@ swapped by enabling and disabling lines, invisible to customers. Prohibited word
 yet approved for that customer, or any message of a customer under supervision, waits for a human
 reviewer. Each kind has its own row in the price matrix. See [`docs/shared-service.md`](docs/shared-service.md).
 
+## Telegram user-account service (ارسال با تلگرام)
+
+Customers connect their **own Telegram accounts** (phone, login code, 2FA password). The panel can then
+check which numbers of a list have Telegram, send OTP / notification / promotional messages (text, photo
+or file) from those accounts, and report every message as sent, read or failed. Reports are on the panel
+(with CSV), on `/api/v1/telegram/*` and in the `telegram.message.*` webhooks. Talking to Telegram is done by
+the `tg-worker` container (Python + Telethon); money, limits and webhooks stay in PHP
+(`app/TelegramUser.php`). Admins set prices (default 10 rial per message or number check), per-customer
+limits and activation on `/admin/telegram`. The worker needs `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` from
+my.telegram.org. See [`docs/telegram-user-service.md`](docs/telegram-user-service.md).
+
 ## Delivery-based billing (ارسال بر اساس تحویل)
 
 An admin can switch it on per user (**Users → user → ارسال بر اساس تحویل**) and set a refund percentage

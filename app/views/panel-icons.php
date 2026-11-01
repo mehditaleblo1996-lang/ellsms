@@ -61,7 +61,7 @@ function panel_icon(string $name): string {
         'new_send'=>'spark', 'send'=>'send', 'p2p'=>'users', 'smart'=>'spark', 'schedules'=>'clock',
         'autoreply'=>'message', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'sent_count_report'=>'chart', 'received_count_report'=>'inbox', 'inbox'=>'inbox',
         'contacts'=>'users', 'blacklist'=>'ban', 'line_optouts'=>'ban', 'tickets'=>'help',
-        'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe', 'lba'=>'globe', 'lba_gateways'=>'globe',
+        'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'telegram'=>'send', 'telegram_send'=>'send', 'telegram_check'=>'users', 'telegram_admin'=>'settings', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe', 'lba'=>'globe', 'lba_gateways'=>'globe',
         'api_keys'=>'key', 'otp_templates'=>'key', 'shared_otp'=>'key', 'shared_service'=>'send', 'shared_service_admin'=>'send', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',
         'number_forwards'=>'send', 'billing'=>'wallet', 'subaccounts'=>'users', 'menu_roles'=>'shield',
         'reseller_profits'=>'chart', 'user_send_policies'=>'shield', 'registration_requests'=>'user',

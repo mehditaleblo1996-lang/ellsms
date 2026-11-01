@@ -50,6 +50,12 @@ if ($me['role'] === 'admin') {
 if ($me['role'] === 'admin' || bale_configured()) {
     $nav['bale'] = ['/bale-messages.php', 'پیام‌رسان بله', '💬'];
 }
+// Telegram user-account service (app/TelegramUser.php): admins always, customers the admin enabled.
+if (tg_menu_visible($me)) {
+    $nav['telegram'] = ['/telegram-accounts.php', 'اکانت‌های تلگرام', '✈'];
+    $nav['telegram_send'] = ['/telegram-send.php', 'ارسال با تلگرام', '✈'];
+    $nav['telegram_check'] = ['/telegram-check.php', 'بررسی شماره‌ها در تلگرام', '✈'];
+}
 // Voice messages through ZarinCall, shown once the service is set up (admins always, to follow sends).
 if ($me['role'] === 'admin' || voice_configured()) {
     $nav['voice'] = ['/voice.php', 'پیام صوتی', '🔊'];
@@ -146,6 +152,7 @@ $adminNav = [
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
     'lba_gateways'          => ['/lba-gateways.php',          'درگاه‌های LBA',       '📍'],
     'voice_settings'        => ['/voice-settings.php',        'سرویس پیام صوتی',     '🔊'],
+    'telegram_admin'        => ['/telegram-admin.php',        'سرویس تلگرام',        '✈'],
     'shared_otp'            => ['/otp-templates.php',         'کد تایید اشتراکی',    '🔐'],
     'shared_service_admin'  => ['/shared-service.php',        'سرویس ارسال اشتراکی' . (($sharedHeld = shared_service_held_count()) > 0 ? ' (' . to_persian_digits((string)$sharedHeld) . ')' : ''), '📨'],
     'remote_db'             => ['/remote-db.php',             'اتصال به دیتابیس مشتری', '🗄'],
@@ -167,7 +174,7 @@ $adminNavGroups = menu_group_items($adminNav, [
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
     'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'lba_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
-    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'shared_service_admin', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
+    'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'shared_service_admin', 'telegram_admin', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],
     'admin_content'  => ['محتوا و تنظیمات',      ['landing_videos', 'guide_admin', 'settings']],
 ]);

@@ -44,6 +44,10 @@ function menu_catalog(): array {
         'invoices'      => ['فاکتورها',             '🧾', '/invoices.php',      ['invoices.php']],
         'financial_log' => ['تاریخچه مالی',         '📒', '/financial-log.php', ['financial-log.php']],
         'bale'          => ['پیام‌رسان بله',         '💬', '/bale-messages.php', ['bale-messages.php']],
+        // Telegram user-account service (app/TelegramUser.php).
+        'telegram'       => ['اکانت‌های تلگرام',       '✈', '/telegram-accounts.php', ['telegram-accounts.php']],
+        'telegram_send'  => ['ارسال با تلگرام',        '✈', '/telegram-send.php',     ['telegram-send.php']],
+        'telegram_check' => ['بررسی شماره‌ها در تلگرام', '✈', '/telegram-check.php',    ['telegram-check.php']],
         'voice'         => ['پیام صوتی',            '🔊', '/voice.php',         ['voice.php']],
         'voice_files'   => ['فایل‌های صوتی',         '🎙', '/voice-files.php',   ['voice-files.php']],
         'regional_bulk' => ['ارسال منطقه‌ای',        '🗺️', '/regional-bulk.php', ['regional-bulk.php']],
@@ -74,6 +78,7 @@ function menu_groups(): array {
         'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
         'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'shared_service', 'regional_bulk', 'lba', 'aimed_bulk', 'schedules', 'autoreply']],
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
+        'telegram'     => ['تلگرام',            ['telegram', 'telegram_send', 'telegram_check']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'sent_count_report', 'inbox', 'received_count_report', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
         'finance'      => ['مالی',              ['my_tariff', 'buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'billing']],
@@ -247,6 +252,8 @@ function menu_key_for_api_path(string $path): ?string {
         str_starts_with($path, '/api/v1/voice')     => 'voice',
         str_starts_with($path, '/api/v1/otp')       => 'otp_templates',
         str_starts_with($path, '/api/v1/shared')    => 'shared_service',
+        str_starts_with($path, '/api/v1/telegram/lookups') => 'telegram_check',
+        str_starts_with($path, '/api/v1/telegram')  => 'telegram_send',
         str_starts_with($path, '/api/v1/webhooks')  => 'webhooks',
         default => null,
     };

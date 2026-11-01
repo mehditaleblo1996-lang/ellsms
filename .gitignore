@@ -20,6 +20,9 @@ storage/exports/*
 !storage/exports/.gitkeep
 storage/imports/*
 !storage/imports/.gitkeep
+# Files customers attach to Telegram sends (app/TelegramUser.php) — customer content, never committed.
+storage/telegram-media/*
+!storage/telegram-media/.gitkeep
 # Vesal table exports for cron/aimed-mobiles-import.php: subscriber numbers, never committed.
 storage/aimed-import/
 public/assets/img/slides/*
