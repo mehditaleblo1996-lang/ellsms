@@ -188,6 +188,31 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                 $meta['attempt_ids'][$destination] = (int)db()->lastInsertId();
             }
         }
+        // The gateway was reached and turned these recipients down. Without a row of their own they
+        // were missing from the send report altogether although the failure message points there.
+        $sentSet = array_flip(array_map('strval', $result['sent']));
+        foreach ($destinations as $destination) {
+            $destination = (string)$destination;
+            if (isset($sentSet[$destination])) continue;
+            backend_record_gateway_rejection(
+                isset($user['organization_id']) ? (int)$user['organization_id'] : null,
+                (int)($user['id'] ?? 0),
+                $referenceType,
+                $referenceId,
+                $destination,
+                [
+                    'error_code'             => (string)($result['rejected'][$destination] ?? $result['provider_error_code'] ?? $result['error_class'] ?? 'rejected'),
+                    'error_message'          => (string)($result['provider_error_detail'] ?? $result['error'] ?? ''),
+                    'gateway_id'             => $meta['gateway_ids'][$destination] ?? $meta['gateway_id'],
+                    'gateway_config_version' => $meta['gateway_config_version'],
+                    'route_id'               => $meta['route_ids'][$destination] ?? $meta['route_id'],
+                    'operator_id'            => $result['operators'][$destination] ?? null,
+                    'request_id'             => Logger::currentRequestId(),
+                    'originator'             => $originator,
+                    'content'                => $content,
+                ]
+            );
+        }
     }
 
     if ($sentCount === $total) {
@@ -198,7 +223,10 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
     }
     // Reached and rejected everything, or a non-transport failure: retryable comes from the classified
     // error rather than being hardcoded, matching the legacy path's Phase 8 behaviour.
-    return [false, 'گیت‌وی همه‌ی مقصدها را رد کرد. جزئیات در گزارش موجود است.', 0, $total, $parts, (bool)$result['retryable'], [], $meta];
+    $codes = array_values(array_unique(array_filter(array_map('strval', (array)($result['rejected'] ?? [])))));
+    if ($codes === [] && !empty($result['provider_error_code'])) $codes = [(string)$result['provider_error_code']];
+    $codeNote = $codes !== [] ? ' (کد خطای سرویس‌دهنده: ' . implode('، ', array_slice($codes, 0, 3)) . ')' : '';
+    return [false, 'گیت‌وی همه‌ی مقصدها را رد کرد' . $codeNote . '. جزئیات در گزارش موجود است.', 0, $total, $parts, (bool)$result['retryable'], [], $meta];
 }
 
 /**
