@@ -8,6 +8,7 @@
  * is swapped by enabling and disabling lines), review held messages, and set each customer's trust level.
  */
 require_once __DIR__ . '/../app/backend.php';
+require_once __DIR__ . '/../app/xlsx_reader.php';
 $me = require_login();
 $isAdmin = is_admin();
 $pageTitle = $isAdmin ? 'سرویس ارسال اشتراکی' : 'ارسال با خط اشتراکی';
@@ -16,6 +17,29 @@ $rbacOrg = $isAdmin ? null : require_permission(Permissions::MESSAGES_SEND);
 $self = '/shared-service.php';
 $user = ['id' => (int)$me['id'], 'role' => $me['role'], 'organization_id' => $me['organization_id'] ?? null];
 $available = shared_service_available();
+
+// The browser cannot read an xlsx as text, so the upload tab posts it here and appends the column-A values
+// it gets back to the recipients box (same as public/new-send.php).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$isAdmin && ($_POST['action'] ?? '') === 'extract_recipients') {
+    csrf_check();
+    header('Content-Type: application/json; charset=utf-8');
+    $file = $_FILES['file'] ?? null;
+    if (!is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
+        http_response_code(400);
+        exit(json_encode(['ok' => false, 'error' => 'بارگذاری فایل ناموفق بود.'], JSON_UNESCAPED_UNICODE));
+    }
+    try {
+        $numbers = [];
+        foreach (read_spreadsheet_rows($file['tmp_name'], (string)$file['name']) as $row) {
+            $cell = trim((string)($row[0] ?? ''));
+            if ($cell !== '' && preg_match('/\d/', $cell)) $numbers[] = $cell;
+        }
+    } catch (RuntimeException $e) {
+        http_response_code(400);
+        exit(json_encode(['ok' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE));
+    }
+    exit(json_encode(['ok' => true, 'numbers' => $numbers], JSON_UNESCAPED_UNICODE));
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $available) {
     csrf_check();
@@ -70,19 +94,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $available) {
     } elseif ($isAdmin && $do === 'trust') {
         $r = shared_service_trust_set($adminId, (int)from_persian_digits((string)($_POST['user_id'] ?? '0')), (string)($_POST['trust'] ?? ''), (string)($_POST['note'] ?? ''));
         flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'سطح اعتماد ذخیره شد.' : (string)$r['error']);
+    } elseif ($isAdmin && $do === 'user_kind') {
+        $r = shared_service_user_kind_set($adminId, (int)from_persian_digits((string)($_POST['user_id'] ?? '0')), (string)($_POST['kind'] ?? ''));
+        flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'نوع ارسال کاربر ذخیره شد.' : (string)$r['error']);
     } elseif (!$isAdmin && $do === 'send') {
+        // The customer gives the line, the recipients and the text; the kind is the admin's (or the line's).
         $pickedLine = trim((string)($_POST['line'] ?? ''));
-        $r = shared_service_submit($user, (string)($_POST['kind'] ?? 'service'), (string)($_POST['destination'] ?? ''), (string)($_POST['text'] ?? ''), 'panel',
-            null, null, $pickedLine !== '' ? $pickedLine : null);
-        if (!$r['ok']) {
-            flash('error', (string)$r['error']);
+        $lineKinds = $pickedLine === ''
+            ? array_values(array_filter(array_keys(SHARED_SERVICE_KINDS), static fn(string $k): bool => shared_service_pool_for((int)$me['id'], $k) !== []))
+            : array_values(array_unique(array_map(static fn(array $nl): string => (string)$nl['kind'],
+                array_filter(shared_service_user_named_lines((int)$me['id']), static fn(array $nl): bool => (string)$nl['name'] === $pickedLine))));
+        $kind = shared_service_kind_for((int)$me['id'], $lineKinds);
+        $rawTokens = preg_split('/[\s,;،]+/u', from_persian_digits((string)($_POST['destinations'] ?? '')), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $dests = parse_destinations(implode("\n", $rawTokens));
+        $invalid = 0;
+        foreach ($rawTokens as $tok) if (normalize_msisdn($tok) === null) $invalid++;
+        if ($kind === null) {
+            flash('error', 'این خط برای نوع ارسالی که برای شما تعیین شده در دسترس نیست؛ خط دیگری انتخاب کنید یا با پشتیبانی تماس بگیرید.');
+        } elseif (!$dests) {
+            flash('error', 'شماره‌ی موبایل معتبری وارد نشده است.');
+        } elseif (count($dests) > SHARED_SERVICE_PANEL_MAX_RECIPIENTS) {
+            flash('error', 'در هر ارسال حداکثر ' . to_persian_digits((string)SHARED_SERVICE_PANEL_MAX_RECIPIENTS) . ' گیرنده مجاز است؛ شماره‌ها را در چند نوبت بفرستید.');
         } else {
-            flash(in_array($r['status'], ['sent', 'held', 'queued'], true) ? 'success' : 'error', match ($r['status']) {
-                'sent'   => 'پیام ارسال شد.',
-                'held'   => 'پیام ثبت شد و پس از بررسی کارشناس ارسال می‌شود (' . shared_service_hold_reason_label($r['hold_reason']) . ').',
-                'queued' => 'پیام ثبت شد و در ساعت مجاز ارسال تبلیغاتی (' . to_persian_digits(substr((string)$r['send_after'], 11, 5)) . ') فرستاده می‌شود.',
-                default  => 'ارسال ناموفق بود: ' . (string)($r['error'] ?? ''),
-            });
+            $counts = ['sent' => 0, 'held' => 0, 'queued' => 0, 'failed' => 0];
+            $errors = [];
+            foreach ($dests as $dest) {
+                $r = shared_service_submit($user, $kind, $dest, (string)($_POST['text'] ?? ''), 'panel',
+                    null, null, $pickedLine !== '' ? $pickedLine : null);
+                if (!$r['ok']) {
+                    $counts['failed']++;
+                    $errors[(string)$r['error']] = ($errors[(string)$r['error']] ?? 0) + 1;
+                    // Whole-message refusals are the same for every recipient: stop at the first.
+                    if (in_array($r['error_code'] ?? '', ['not_enabled', 'invalid_text', 'prohibited_content', 'text_rejected', 'line_not_available'], true)) break;
+                    continue;
+                }
+                $st = in_array($r['status'], ['sent', 'held', 'queued'], true) ? $r['status'] : 'failed';
+                $counts[$st]++;
+                if ($st === 'failed') $errors[(string)($r['error'] ?? '')] = ($errors[(string)($r['error'] ?? '')] ?? 0) + 1;
+                if ($st === 'held') $holdReason = $r['hold_reason'];
+                if ($st === 'queued') $sendAfter = (string)$r['send_after'];
+            }
+            $parts = [];
+            if ($counts['sent']) $parts[] = to_persian_digits((string)$counts['sent']) . ' پیام ارسال شد';
+            if ($counts['held']) $parts[] = to_persian_digits((string)$counts['held']) . ' پیام پس از بررسی کارشناس ارسال می‌شود (' . shared_service_hold_reason_label($holdReason ?? null) . ')';
+            if ($counts['queued']) $parts[] = to_persian_digits((string)$counts['queued']) . ' پیام در ساعت مجاز ارسال تبلیغاتی (' . to_persian_digits(substr((string)($sendAfter ?? ''), 11, 5)) . ') فرستاده می‌شود';
+            if ($counts['failed']) {
+                $why = [];
+                foreach ($errors as $msg => $n) $why[] = $msg . ($n > 1 ? ' (' . to_persian_digits((string)$n) . ')' : '');
+                $parts[] = to_persian_digits((string)$counts['failed']) . ' پیام ناموفق: ' . implode('؛ ', $why);
+            }
+            if ($invalid) $parts[] = to_persian_digits((string)$invalid) . ' شماره‌ی نامعتبر کنار گذاشته شد';
+            $ok = $counts['sent'] + $counts['held'] + $counts['queued'];
+            flash($ok > 0 ? 'success' : 'error', implode('. ', $parts) . '.');
         }
     }
     redirect($self);
@@ -356,6 +419,19 @@ require __DIR__ . '/../app/views/header.php';
   </div>
 </div>
 
+<div class="card" style="margin-top:18px" id="userKind">
+  <h2>نوع ارسال مشتریان</h2>
+  <p class="hint">مشتری نوع پیام (خدماتی / تبلیغاتی) را انتخاب نمی‌کند. اینجا برای هر مشتری تعیین کنید؛ بدون تعیین، اگر خط فقط یک نوع را پوشش دهد همان، وگرنه «خدماتی» در نظر گرفته می‌شود.</p>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="do" value="user_kind">
+    <label>شناسه‌ی کاربر <input type="text" name="user_id" required class="ltr" style="width:100px"></label>
+    <label>نوع
+      <select name="kind"><option value="">خودکار (بر اساس خط)</option><?php foreach (SHARED_SERVICE_KINDS as $k => $label): ?><option value="<?= $k ?>"><?= e($label) ?></option><?php endforeach; ?></select>
+    </label>
+    <button class="btn btn-primary">ذخیره</button>
+  </form>
+</div>
+
 <div class="card" style="margin-top:18px">
   <h2>متن‌های بررسی‌شده</h2>
   <form method="get" class="toolbar">
@@ -393,46 +469,107 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2>ارسال پیام</h2>
   <p class="hint">
-    فقط گیرنده و متن را وارد کنید؛ پیام با «خط اشتراکی» سامانه ارسال می‌شود و به خط اختصاصی نیازی ندارید. متنی که اولین بار ارسال می‌کنید
-    پیش از ارسال توسط کارشناس بررسی می‌شود. ارسال تبلیغاتی فقط از ساعت <?= to_persian_digits($promoStart) ?> تا <?= to_persian_digits($promoEnd) ?> انجام
-    می‌شود و پیامی که بیرون از این بازه ثبت شود در اولین فرصت ارسال می‌شود. هزینه هنگام ارسال از اعتبار شما کسر می‌شود.
+    گیرندگان و متن را وارد کنید؛ پیام با «خط اشتراکی» سامانه ارسال می‌شود و به خط اختصاصی نیازی ندارید. متنی که اولین بار ارسال می‌کنید
+    پیش از ارسال توسط کارشناس بررسی می‌شود. هزینه هنگام ارسال از اعتبار شما کسر می‌شود.
+    <?php if ($customerKinds === ['promo'] || shared_service_user_kind((int)$me['id']) === 'promo'): ?>
+      ارسال تبلیغاتی فقط از ساعت <?= to_persian_digits($promoStart) ?> تا <?= to_persian_digits($promoEnd) ?> انجام می‌شود و پیامی که بیرون از این بازه ثبت شود در اولین فرصت ارسال می‌شود.
+    <?php endif; ?>
   </p>
-  <form method="post">
+  <form method="post" id="sharedSendForm">
     <?= csrf_field() ?><input type="hidden" name="do" value="send">
+    <?php if (count($customerLineOptions) > 1): ?>
     <div class="toolbar">
-      <label>نوع پیام
-        <select name="kind">
-          <?php foreach (SHARED_SERVICE_KINDS as $k => $label): if (!in_array($k, $customerKinds, true)) continue; ?>
-            <option value="<?= $k ?>"><?= e($label) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
       <label>خط ارسال
-        <select name="line" data-shared-line>
+        <select name="line">
           <?php foreach ($customerLineOptions as $opt): ?>
-            <option value="<?= e($opt['value']) ?>" data-kinds="<?= e(implode(',', $opt['kinds'])) ?>"><?= e($opt['label']) ?></option>
+            <option value="<?= e($opt['value']) ?>"><?= e($opt['label']) ?></option>
           <?php endforeach; ?>
         </select>
       </label>
-      <label>موبایل گیرنده <input type="text" name="destination" required class="ltr" placeholder="09121234567"></label>
     </div>
+    <?php else: ?>
+      <input type="hidden" name="line" value="<?= e($customerLineOptions[0]['value']) ?>">
+    <?php endif; ?>
+
+    <div class="composer-tabs" role="group" aria-label="شیوه‌ی وارد کردن شماره‌ها" style="margin:8px 0">
+      <button type="button" class="btn btn-sm" data-shared-tab="manual" aria-pressed="true">⌨ دستی</button>
+      <button type="button" class="btn btn-sm" data-shared-tab="upload" aria-pressed="false">⬆ آپلود فایل</button>
+      <button type="button" class="btn btn-sm" data-shared-tab="clip" aria-pressed="false">📋 کلیپ‌بورد</button>
+    </div>
+    <div id="sharedUploadAux" hidden style="margin-bottom:8px">
+      <input type="file" id="sharedFileInput" accept=".xlsx,.txt,.csv">
+      <div class="hint">xlsx، csv یا txt — در فایل اکسل شماره‌ها را در ستون اول بنویسید. <a href="/assets/samples/recipients-sample.xlsx" download>دریافت فایل نمونه‌ی اکسل</a></div>
+    </div>
+    <div id="sharedClipAux" hidden style="margin-bottom:8px">
+      <button type="button" class="btn btn-sm" id="sharedClipPaste">چسباندن از کلیپ‌بورد</button>
+    </div>
+    <label>گیرندگان <span class="hint">— هر شماره در یک خط (یا جدا با کاما)؛ حداکثر <?= to_persian_digits((string)SHARED_SERVICE_PANEL_MAX_RECIPIENTS) ?> شماره، تکراری‌ها یک‌بار ارسال می‌شوند.</span>
+      <textarea name="destinations" id="sharedDestinations" rows="4" required class="ltr" style="width:100%" placeholder="09121234567&#10;09351234567"></textarea>
+    </label>
+    <div class="hint" id="sharedDestCount" aria-live="polite"></div>
     <p><textarea name="text" rows="4" required maxlength="<?= SHARED_SERVICE_MAX_CONTENT_CHARS ?>" style="width:100%" placeholder="متن پیام"></textarea></p>
     <button class="btn btn-primary">ارسال</button>
   </form>
   <script>
   (function () {
-    var kind = document.querySelector('select[name=kind]'), line = document.querySelector('[data-shared-line]');
-    if (!kind || !line) return;
-    function sync() {
-      var firstOk = null;
-      Array.prototype.forEach.call(line.options, function (o) {
-        var ok = o.getAttribute('data-kinds').split(',').indexOf(kind.value) !== -1;
-        o.hidden = !ok; o.disabled = !ok;
-        if (ok && firstOk === null) firstOk = o;
-      });
-      if (line.selectedOptions[0] && line.selectedOptions[0].disabled && firstOk) line.value = firstOk.value;
+    var form = document.getElementById('sharedSendForm');
+    var dest = document.getElementById('sharedDestinations');
+    var counter = document.getElementById('sharedDestCount');
+    if (!form || !dest) return;
+    function toLatin(s) {
+      return s.replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); })
+              .replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); });
     }
-    kind.addEventListener('change', sync); sync();
+    function refresh() {
+      var seen = {}, n = 0;
+      toLatin(dest.value).split(/[\s,;،]+/).forEach(function (t) {
+        var d = t.replace(/\D/g, '');
+        if (d.length >= 10 && !seen[d]) { seen[d] = 1; n++; }
+      });
+      counter.textContent = n ? n.toLocaleString('fa-IR') + ' گیرنده' : '';
+    }
+    function append(text) {
+      dest.value = (dest.value.trim() ? dest.value.replace(/\s+$/, '') + '\n' : '') + text;
+      refresh();
+    }
+    dest.addEventListener('input', refresh);
+    form.querySelectorAll('[data-shared-tab]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var tab = b.getAttribute('data-shared-tab');
+        document.getElementById('sharedUploadAux').hidden = tab !== 'upload';
+        document.getElementById('sharedClipAux').hidden = tab !== 'clip';
+        form.querySelectorAll('[data-shared-tab]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        if (tab === 'manual') dest.focus();
+      });
+    });
+    document.getElementById('sharedFileInput').addEventListener('change', function (ev) {
+      var file = ev.target.files[0];
+      if (!file) return;
+      if (/\.xlsx$/i.test(file.name)) {
+        var fd = new FormData();
+        fd.append('action', 'extract_recipients');
+        fd.append('_csrf', form.querySelector('[name=_csrf]').value);
+        fd.append('file', file);
+        fetch(location.pathname, { method: 'POST', body: fd, credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (res) {
+            if (!res.ok) { alert(res.error || 'خواندن فایل ممکن نشد.'); return; }
+            if (!res.numbers.length) { alert('شماره‌ای در ستون اول فایل پیدا نشد.'); return; }
+            append(res.numbers.join('\n'));
+          })
+          .catch(function () { alert('خواندن فایل ممکن نشد.'); })
+          .finally(function () { ev.target.value = ''; });
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function (e) { append(String(e.target.result)); ev.target.value = ''; };
+      reader.readAsText(file, 'UTF-8');
+    });
+    document.getElementById('sharedClipPaste').addEventListener('click', function () {
+      if (!navigator.clipboard || !navigator.clipboard.readText) { alert('مرورگر شما از این قابلیت پشتیبانی نمی‌کند؛ با Ctrl+V در کادر گیرندگان بچسبانید.'); return; }
+      navigator.clipboard.readText().then(append).catch(function () { alert('اجازه‌ی دسترسی به کلیپ‌بورد داده نشد.'); });
+    });
+    refresh();
   })();
   </script>
 </div>
