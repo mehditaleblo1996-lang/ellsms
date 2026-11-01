@@ -1,0 +1,7 @@
+# Pinned: the worker talks MTProto through Telethon; PyMySQL reaches the shared database;
+# cryptography seals sessions (format shared with app/TelegramUser.php); python-socks enables TELEGRAM_PROXY.
+telethon==1.42.0
+PyMySQL==1.1.1
+cryptography==44.0.0
+python-socks[asyncio]==2.7.1
+tzdata==2025.2

@@ -34,6 +34,11 @@ failure is logged (`scheduler.job.failed`, with the end of its output), counted
 alerting settings); the job's next success resolves the alert. `every` jobs simply retry at their
 next turn; a failed daily job waits for its next day, or `make scheduler-run JOB=<name>`.
 
+**Not scheduler jobs, but periodic too:** the `worker` container runs `tg_settle_pass()` on every loop
+(charges, finishes and releases Telegram campaigns/lookups, emits `telegram.message.*` webhooks, fails
+stuck or undeliverable Telegram messages), and the separate `tg-worker` container polls its queue every
+second (`docs/telegram-user-service.md`).
+
 **Maintenance mode** pauses the scheduler entirely, like the workers.
 
 **Only one scheduler runs jobs** (MySQL named lock `ellsms_scheduler`); never scale the service.

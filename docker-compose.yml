@@ -42,6 +42,9 @@ services:
       SMS_GATEWAY_TRANSPORT: ${SMS_GATEWAY_TRANSPORT:-0}
       # Bale messenger channel (#42): the access key is only ever read from the environment.
       BALE_API_ACCESS_KEY: ${BALE_API_ACCESS_KEY:-}
+      # Telegram user-account service: the key sealing login secrets (falls back to a key derived
+      # from SMS_GATEWAY_MASTER_KEY when unset). Must match the tg-worker's.
+      TELEGRAM_SESSION_KEY: ${TELEGRAM_SESSION_KEY:-}
       # Regional bulk through Vesal (#43): the password is only ever read from the environment.
       VESAL_BULK_PASSWORD: ${VESAL_BULK_PASSWORD:-}
       SMS_LEGACY_BACKEND_ENABLED: ${SMS_LEGACY_BACKEND_ENABLED:-}
@@ -658,6 +661,38 @@ services:
     networks:
       - backend_net
     # Unbinding every session cleanly before exit (the SMSC otherwise holds the binds until timeout).
+    stop_grace_period: 20s
+
+  # Telegram user-account service (tg-worker/, docs/telegram-user-service.md): logs customers' own
+  # Telegram accounts in, checks numbers, sends messages and follows read receipts. Talks only to
+  # Telegram and the shared database; money, limits and webhooks stay in PHP (app/TelegramUser.php,
+  # settled by `worker`). Idle until TELEGRAM_API_ID / TELEGRAM_API_HASH (my.telegram.org) are set.
+  # Exactly ONE instance — per-account pacing assumes a single process, so never scale it.
+  tg-worker:
+    logging: *default-logging
+    build:
+      context: ./tg-worker
+    image: ${ELLSMS_TG_IMAGE:-ellsms-tg-worker:latest}
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-tg-worker
+    restart: unless-stopped
+    environment:
+      BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
+      BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
+      BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}
+      BACKEND_DB_USER: ${BACKEND_DB_USER:?set BACKEND_DB_USER in .env}
+      BACKEND_DB_PASS: ${BACKEND_DB_PASS:?set BACKEND_DB_PASS in .env}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID:-}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH:-}
+      # Optional outbound proxy for Telegram, e.g. socks5://user:pass@host:1080
+      TELEGRAM_PROXY: ${TELEGRAM_PROXY:-}
+      TELEGRAM_SESSION_KEY: ${TELEGRAM_SESSION_KEY:-}
+      SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      TG_MEDIA_DIR: /data/media
+      TG_LOG_LEVEL: ${TG_LOG_LEVEL:-INFO}
+    volumes:
+      - ./storage/telegram-media:/data/media:ro
+    networks:
+      - backend_net
     stop_grace_period: 20s
 
   # Issue #14 — Prometheus + Grafana observability stack. Behind the "observability" profile so a

@@ -53,6 +53,8 @@ const SHARED_SERVICE_MESSAGE_TYPES = ['service' => 'transactional', 'promo' => '
 const SHARED_SERVICE_PRICE_ROWS = ['service' => GATEWAY_PRICE_SHARED_SERVICE, 'promo' => GATEWAY_PRICE_SHARED_PROMO];
 const SHARED_SERVICE_TRUST_LEVELS = ['supervised' => 'تحت نظر — همه‌ی پیام‌ها بررسی می‌شود', 'trusted' => 'مورد اعتماد — فقط متن جدید بررسی می‌شود'];
 const SHARED_SERVICE_MAX_CONTENT_CHARS = 1000;
+/** Recipients one panel send may name (each is its own message, sent or held right away). */
+const SHARED_SERVICE_PANEL_MAX_RECIPIENTS = 500;
 const SHARED_SERVICE_MESSAGE_STATUSES = ['held', 'queued', 'sending', 'sent', 'failed', 'rejected', 'expired'];
 /** Messages one worker pass (or one approval) sends at most; the rest wait for the next pass. */
 const SHARED_SERVICE_BATCH = 200;
@@ -446,6 +448,36 @@ function shared_service_trust_set(int $adminId, int $userId, string $trust, stri
         return ['ok' => false, 'error' => 'سطح اعتماد نامعتبر است.'];
     }
     audit($adminId, 'shared_service.trust', "#{$userId} " . ($trust ?: 'default'));
+    return ['ok' => true];
+}
+
+/**
+ * The kind a customer's panel messages are sent as. The customer never picks it: the admin sets it per
+ * customer (setting shared_service_kind_u{id}); otherwise the kinds the chosen line serves decide —
+ * the only one it serves, or خدماتی when it serves both.
+ */
+function shared_service_user_kind(int $userId): ?string {
+    $kind = shared_service_setting('shared_service_kind_u' . $userId, '');
+    return shared_service_kind_valid($kind) ? $kind : null;
+}
+
+/**
+ * @param string[] $lineKinds kinds the chosen line serves the customer
+ * @return ?string null when the admin's kind is not served by that line
+ */
+function shared_service_kind_for(int $userId, array $lineKinds): ?string {
+    if (!$lineKinds) return null;
+    $set = shared_service_user_kind($userId);
+    if ($set !== null) return in_array($set, $lineKinds, true) ? $set : null;
+    return in_array('service', $lineKinds, true) ? 'service' : (string)$lineKinds[0];
+}
+
+/** $kind '' removes the admin's choice (the line decides again). */
+function shared_service_user_kind_set(int $adminId, int $userId, string $kind): array {
+    if (resolve_ellsms_managed_user($userId) === null) return ['ok' => false, 'error' => 'کاربر پیدا نشد.'];
+    if ($kind !== '' && !shared_service_kind_valid($kind)) return ['ok' => false, 'error' => 'نوع ارسال نامعتبر است.'];
+    set_setting('shared_service_kind_u' . $userId, $kind);
+    audit($adminId, 'shared_service.user_kind', "#{$userId} " . ($kind ?: 'auto'));
     return ['ok' => true];
 }
 

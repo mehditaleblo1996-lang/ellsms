@@ -394,6 +394,22 @@ review; a promotional message outside the allowed hours waits for them. Full beh
   (`prohibited_content`, `text_rejected`, `blacklisted`, `opted_out`, …); `402` not sent; `503` service off
 - `GET /shared/messages/{id}` — the same object, to follow a held or queued message
 
+### Telegram user-account service — scopes `telegram:send` / `telegram:read`
+Messages and number checks sent from the customer's **own** connected Telegram accounts (panel
+«تلگرام»). Available only while an admin has the service switched on and enabled it for the key's owner
+(otherwise `503` / `403 feature_not_available`). Sending is asynchronous; follow a message with `GET` or
+the `telegram.message.sent` / `.read` / `.failed` webhooks. Full behaviour: `docs/telegram-user-service.md`.
+- `GET /telegram/accounts` (`telegram:read`) — `[{"id", "phone" (masked), "username", "status", "limited_until", "sent_today", "daily_send_limit", "checked_today", "daily_check_limit"}]`, with prices in `meta`
+- `POST /telegram/messages` (`telegram:send`) — `{"to": "0912…", "text": "…", "kind": "otp"|"notify"|"promo", "account_id": n, "client_message_id": "…", "acknowledge_block_risk": true}`
+  (`kind` defaults to `otp`; `promo` needs `acknowledge_block_risk`) → `202` with the message (`status: queued`).
+  `402` insufficient credit, `409` no active Telegram account, `422` validation / prohibited content.
+- `GET /telegram/messages/{id}` (`telegram:read`) — `{"id", "campaign_id", "to", "status": queued|sending|sent|read|failed|cancelled, "error_code", "error", "account_id", "cost", "sent_at", "read_at", "created_at"}`
+- `POST /telegram/lookups` (`telegram:send`) — `{"phones": ["0912…", …]}` (≤ 5000) → `202` `{"id", "status", "total", "max_cost"}`
+- `GET /telegram/lookups/{id}` (`telegram:read`) — `{"id", "status", "total", "counts", "results": [{"phone", "status", "has_telegram": true|false|null, "username"}]}`
+
+An OTP that fails (any `error_code`, e.g. `account_limited`, `not_on_telegram`) or is not `sent` within
+your timeout should be sent by SMS instead.
+
 ### WebEngage — scope `messages:send`
 `POST /webengage/sms` is the SMS Service Provider endpoint WebEngage calls. It accepts WebEngage's own
 payload and answers in WebEngage's own shape (`{"status":"sms_accepted"}` or

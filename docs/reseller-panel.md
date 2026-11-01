@@ -62,10 +62,12 @@ destination column (each operator, «سایر», «بین‌الملل») and en
 How a send by an account with a parent is priced (`sms_pricing_with_chain_price()` →
 `customer_chain_prices()`), from the top of its chain down:
 
-1. the top account pays its own exact price (the admin's per-account matrix) for that cell, else the
-   list price × its tariff percentage — exactly as before;
-2. each account below pays its named tariff's cell, else the list price × its own tariff
-   percentage; a sub-organization pays its parent organization's price;
+1. the top account pays its own exact price (the admin's per-account matrix, «تعرفه‌ی اختصاصی») for
+   that cell, else the list price;
+2. each account below pays its named tariff's cell, else the list price; a sub-organization pays its
+   parent organization's price. Every customer of a reseller is on one of its tariffs — creating one
+   without a tariff is refused (`tariff_required` / `no_tariffs`) and it can't be taken off its tariff.
+   The old percentage coefficient (`tariff_bp`) is no longer set from any panel and stays at 100%;
 3. never less than the reseller directly above it pays for the same message
    (`price_source = 'reseller_floor'` when this lifts the price).
 
@@ -143,8 +145,8 @@ platform's own sign-up is closed. After the mobile is verified the reseller is n
 platform admins) and approves it on `/reseller/registrations` (the national id can be corrected
 there) or rejects it with a reason. Approval creates the account in the reseller's domain
 (`registration_activate_account()`), then `reseller_registration_attach()` makes it the reseller's
-direct customer with its sign-up defaults: customer type, tariff percentage, named tariff (or the
-default tariff), validity in days, and an optional welcome package. A platform admin activating the
+direct customer with its sign-up defaults: customer type, named tariff (the default tariff, else
+the first one), validity in days, and an optional welcome package. A platform admin activating the
 same request from the admin pages attaches it the same way. Sign-up SMS use the reseller's brand
 name and, for the final one, its own host's login URL.
 

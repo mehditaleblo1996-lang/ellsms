@@ -191,6 +191,16 @@ do {
             Metrics::increment('worker.pass.failed', 1, ['pass' => 'aimed_bulk']);
         }
 
+        // Telegram user-account service (app/TelegramUser.php): charge what the tg-worker container
+        // sent or checked, finish and release campaigns/lookups, emit webhooks. Cheap when idle.
+        try {
+            $tg = Metrics::time('worker.pass.telegram_settle', fn() => tg_settle_pass());
+            if ($tg['charged'] > 0 || $tg['finished'] > 0) Logger::info('worker.telegram.settled', $tg);
+        } catch (Throwable $t) {
+            Logger::error('worker.telegram_settle.failed', ['exception' => $t]);
+            Metrics::increment('worker.pass.failed', 1, ['pass' => 'telegram_settle']);
+        }
+
         // Regional bulk (#43): poll Vesal for confirmed requests and settle finished ones. Each request
         // is polled at most once a minute (claimed by last_polled_at), so this pass is cheap when idle.
         static $regionalBulkLastRunAt = 0.0;

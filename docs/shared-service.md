@@ -149,8 +149,18 @@ unchanged, so the same customer sending free text from that line on any other pa
 ## Customer side
 
 Sidebar → ارسال پیامک → **ارسال با خط اشتراکی**, shown once the service is on and a pool has a line.
-The form takes the kind (only kinds with an enabled line are offered), the recipient and the text; the
-list shows each message's status (`held` with the reason, `queued` with its time, `sent`, `failed`,
+The form takes the line («خط اشتراکی» or a named line, shown only when there is a choice), the
+recipients and the text. Recipients are typed, pasted from the clipboard, or read from a file (xlsx —
+first column —, csv or txt), up to `SHARED_SERVICE_PANEL_MAX_RECIPIENTS` (500) per send; duplicates are
+sent once and each recipient becomes its own message (own review, status and charge).
+
+The customer **does not pick the kind** (خدماتی / تبلیغاتی). The admin sets it per customer under
+**نوع ارسال مشتریان** on the admin page (setting `shared_service_kind_u{id}`, `shared_service_kind_for()`);
+unset, it is the only kind the chosen line serves the customer, or خدماتی when it serves both. A line
+that does not serve the admin's kind is refused rather than sent as the other kind. The API still takes
+`line_type`.
+
+The list shows each message's status (`held` with the reason, `queued` with its time, `sent`, `failed`,
 `rejected` with the reviewer's reason, `expired`). An account whose menus are restricted
 (`docs/resellers-and-menu-access.md`) needs the «ارسال با خط اشتراکی» menu opened for it, and the
 API follows the same menu.

@@ -40,6 +40,7 @@ require_once __DIR__ . '/../../app/Api/Handlers/Voice.php';
 require_once __DIR__ . '/../../app/Api/Handlers/WebEngage.php';
 require_once __DIR__ . '/../../app/Api/Handlers/SharedOtp.php';
 require_once __DIR__ . '/../../app/Api/Handlers/SharedService.php';
+require_once __DIR__ . '/../../app/Api/Handlers/Telegram.php';
 
 Logger::setCliMirror(false); // pure JSON stdout even if this ever runs under `php -S` for testing (Phase 11 precedent)
 
@@ -103,6 +104,12 @@ $router->map('GET',   '/api/v1/otp/{id}',                    'api_handle_shared_
 // Shared sending service: recipient + text, the platform picks the line (app/Api/Handlers/SharedService.php).
 $router->map('POST',  '/api/v1/shared/messages',             'api_handle_shared_service_send', ApiScopes::SHARED_SEND);
 $router->map('GET',   '/api/v1/shared/messages/{id}',        'api_handle_shared_service_get', ApiScopes::SHARED_SEND);
+// Telegram user-account service (app/Api/Handlers/Telegram.php, docs/telegram-user-service.md).
+$router->map('GET',   '/api/v1/telegram/accounts',            'api_handle_telegram_accounts', ApiScopes::TELEGRAM_READ);
+$router->map('POST',  '/api/v1/telegram/messages',            'api_handle_telegram_send', ApiScopes::TELEGRAM_SEND);
+$router->map('GET',   '/api/v1/telegram/messages/{id}',       'api_handle_telegram_message_get', ApiScopes::TELEGRAM_READ);
+$router->map('POST',  '/api/v1/telegram/lookups',             'api_handle_telegram_lookup_create', ApiScopes::TELEGRAM_SEND);
+$router->map('GET',   '/api/v1/telegram/lookups/{id}',        'api_handle_telegram_lookup_get', ApiScopes::TELEGRAM_READ);
 // WebEngage SMS service provider endpoint (app/Api/Handlers/WebEngage.php, docs/webengage.md).
 $router->map('POST',  WEBENGAGE_API_PATH,                    'api_handle_webengage_sms', ApiScopes::MESSAGES_SEND);
 

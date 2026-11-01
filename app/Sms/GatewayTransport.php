@@ -306,8 +306,8 @@ function gateway_provider_response_raw_for_storage(string $raw): string {
 }
 
 /** Best-effort evidence persistence: an audit failure must never turn a provider send into a send failure. */
-function gateway_provider_response_audit(int $gatewayId, string $connectorKind, string $requestId, int $http, array $normalized): void {
-    if ($gatewayId <= 0 || !in_array($connectorKind, ['send','status'], true)) return;
+function gateway_provider_response_audit(int $gatewayId, string $connectorKind, string $requestId, int $http, array $normalized): ?int {
+    if ($gatewayId <= 0 || !in_array($connectorKind, ['send','status'], true)) return null;
     try {
         db()->prepare(
             'INSERT INTO ellsms_provider_response_audit
@@ -325,9 +325,11 @@ function gateway_provider_response_audit(int $gatewayId, string $connectorKind, 
             isset($normalized['provider_error_detail']) ? mb_strimwidth((string)$normalized['provider_error_detail'], 0, 500, '…') : null,
             gateway_provider_response_raw_for_storage((string)($normalized['raw_response'] ?? '')),
         ]);
+        return (int)db()->lastInsertId() ?: null;
     } catch (Throwable $t) {
         Logger::warning('gateway.response_audit_failed', ['gateway_id'=>$gatewayId,'connector'=>$connectorKind,'exception_class'=>get_class($t)]);
         Metrics::increment('gateway.response_audit_failure', 1, ['connector'=>$connectorKind]);
+        return null;
     }
 }
 
@@ -346,10 +348,10 @@ function gateway_execute(array $connector, string $connectorKind, array $request
     if($raw===false){
         $errorClass=$curlErrno===CURLE_OPERATION_TIMEDOUT?BackendError::TIMEOUT:BackendError::UNAVAILABLE;
         $normalized=gateway_normalize_provider_response($section,0,'',null,false,$connectorKind==='send'&&$connector['send_mode']!=='batch',$errorClass,$curlError?:'connection failed');
-        gateway_provider_response_audit((int)$connector['gateway_id'],$connectorKind,$requestId,0,$normalized);
+        $auditId=gateway_provider_response_audit((int)$connector['gateway_id'],$connectorKind,$requestId,0,$normalized);
         Logger::error('gateway.request_failed',['gateway_id'=>$connector['gateway_id'],'config_version'=>$connector['config_version'],'connector'=>$connectorKind,'curl_errno'=>$curlErrno,'error_class'=>$errorClass,'normalized_outcome'=>$normalized['outcome'],'elapsed_ms'=>$elapsedMs,'request_id'=>$requestId]);
         Metrics::increment('gateway_send_failure',1,$metricTags+['error_class'=>$errorClass]);
-        return ['ok'=>false,'http'=>0,'data'=>null,'error'=>$curlError?:'connection failed','error_class'=>$errorClass,'request_id'=>$requestId,'raw'=>'','normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>null,'provider_error_code'=>null,'provider_error_detail'=>$normalized['provider_error_detail']];
+        return ['ok'=>false,'http'=>0,'data'=>null,'error'=>$curlError?:'connection failed','error_class'=>$errorClass,'request_id'=>$requestId,'audit_id'=>$auditId,'raw'=>'','normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>null,'provider_error_code'=>null,'provider_error_detail'=>$normalized['provider_error_detail']];
     }
     $raw=(string)$raw;
     $decoded=json_decode($raw,true,512,JSON_BIGINT_AS_STRING); $bodyIsJson=json_last_error()===JSON_ERROR_NONE;
@@ -368,13 +370,13 @@ function gateway_execute(array $connector, string $connectorKind, array $request
             'raw_response'=>$raw,
         ];
     }
-    gateway_provider_response_audit((int)$connector['gateway_id'],$connectorKind,$requestId,$http,$normalized);
+    $auditId=gateway_provider_response_audit((int)$connector['gateway_id'],$connectorKind,$requestId,$http,$normalized);
     Logger::info('gateway.request_completed',['gateway_id'=>$connector['gateway_id'],'config_version'=>$connector['config_version'],'connector'=>$connectorKind,'http'=>$http,'success'=>$success,'normalized_outcome'=>$normalized['outcome'],'elapsed_ms'=>$elapsedMs,'request_id'=>$requestId]);
     Metrics::timing('gateway_request',$elapsedMs,$metricTags+['result'=>strtolower((string)$normalized['outcome'])]); Metrics::increment(match($connectorKind){'status'=>'gateway_status_poll_total','receive'=>'gateway_receive_poll_total',default=>'gateway_send_total'},1,$metricTags);
-    if($success)return ['ok'=>true,'http'=>$http,'data'=>$decoded,'error'=>null,'error_class'=>null,'request_id'=>$requestId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>$normalized['provider_message_id'],'provider_error_code'=>null,'provider_error_detail'=>null];
+    if($success)return ['ok'=>true,'http'=>$http,'data'=>$decoded,'error'=>null,'error_class'=>null,'request_id'=>$requestId,'audit_id'=>$auditId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>$normalized['provider_message_id'],'provider_error_code'=>null,'provider_error_detail'=>null];
     $errorClass=(string)($normalized['error_class']??gateway_classify_failure($section,$http,$decoded,$bodyIsJson)); Metrics::increment(match($connectorKind){'status'=>'gateway_status_poll_failure','receive'=>'gateway_receive_poll_failure',default=>'gateway_send_failure'},1,$metricTags+['error_class'=>$errorClass]);
     $error=$normalized['provider_error_detail']??mb_strimwidth($raw,0,1000,'…');
-    return ['ok'=>false,'http'=>$http,'data'=>$decoded,'error'=>$error,'error_class'=>$errorClass,'request_id'=>$requestId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>null,'provider_error_code'=>$normalized['provider_error_code'],'provider_error_detail'=>$normalized['provider_error_detail']];
+    return ['ok'=>false,'http'=>$http,'data'=>$decoded,'error'=>$error,'error_class'=>$errorClass,'request_id'=>$requestId,'audit_id'=>$auditId,'raw'=>$raw,'normalized_outcome'=>$normalized['outcome'],'provider_message_id'=>null,'provider_error_code'=>$normalized['provider_error_code'],'provider_error_detail'=>$normalized['provider_error_detail']];
 }
 
 function gateway_classify_failure(array $section,int $http,mixed $decoded,bool $bodyIsJson):string{
@@ -413,24 +415,24 @@ function gateway_send(array $connector,array $input,?int $routeId,?int $operator
     // each compatible group is split into requests of at most that many destinations. 0/absent = no cap.
     $cap=(int)($connector['send']['batch']['max_recipients']??0);
     if($cap>0){$chunked=[];foreach($groups as $groupKey=>$group){foreach(array_chunk($group['destinations'],$cap) as $chunkIndex=>$chunk)$chunked[$groupKey.'#'.$chunkIndex]=['operator'=>$group['operator'],'destinations'=>$chunk];}$groups=$chunked;}
-    $sent=[];$messageIds=[];$rejected=[];$lastError=null;$lastClass=null;$lastHttp=0;$retryable=false;$lastOutcome=PROVIDER_RESPONSE_FAILED;$lastProviderErrorCode=null;$lastProviderErrorDetail=null;
+    $sent=[];$messageIds=[];$rejected=[];$auditIds=[];$lastError=null;$lastClass=null;$lastHttp=0;$retryable=false;$lastOutcome=PROVIDER_RESPONSE_FAILED;$lastProviderErrorCode=null;$lastProviderErrorDetail=null;
     foreach($groups as $group){
         $groupDestinations=$group['destinations'];$operator=$group['operator'];
         $context=gateway_send_context(array_merge($input,['recipients'=>$groupDestinations,'recipient'=>$groupDestinations[0],'operator_code'=>$operator['operator_code']]));
         $request=gateway_build_request($connector,'send',$context,$routeId,$operator['operator_id']);$response=gateway_execute($connector,'send',$request);
         $lastOutcome=(string)($response['normalized_outcome']??PROVIDER_RESPONSE_FAILED);$lastProviderErrorCode=$response['provider_error_code']??null;$lastProviderErrorDetail=$response['provider_error_detail']??null;
-        if(!$response['ok']){$lastError=$response['error'];$lastClass=$response['error_class'];$lastHttp=$response['http'];$retryable=$retryable||BackendError::isRetryable((string)$response['error_class']);foreach($groupDestinations as $destination)$rejected[$destination]=(string)($response['provider_error_code']??$response['error_class']??'rejected');continue;}
+        if(!$response['ok']){$lastError=$response['error'];$lastClass=$response['error_class'];$lastHttp=$response['http'];$retryable=$retryable||BackendError::isRetryable((string)$response['error_class']);foreach($groupDestinations as $destination){$rejected[$destination]=(string)($response['provider_error_code']??$response['error_class']??'rejected');if(!empty($response['audit_id']))$auditIds[$destination]=(int)$response['audit_id'];}continue;}
         $lastHttp=$response['http'];[$groupSent,$groupIds,$groupRejected]=array_pad(gateway_read_send_response($connector,$response,$groupDestinations),3,[]);
         // Each recipient the provider did not accept keeps its own reason (a positional provider's
         // negative per-recipient code such as -11), so the send report can show why it failed.
-        foreach(array_diff($groupDestinations,$groupSent) as $destination)$rejected[$destination]=(string)($groupRejected[$destination]??BackendError::INVALID_RESPONSE);
+        foreach(array_diff($groupDestinations,$groupSent) as $destination){$rejected[$destination]=(string)($groupRejected[$destination]??BackendError::INVALID_RESPONSE);if(!empty($response['audit_id']))$auditIds[$destination]=(int)$response['audit_id'];}
         if($groupSent===[]){$lastError='provider response did not contain valid per-recipient message ids';$lastClass=BackendError::INVALID_RESPONSE;$lastOutcome=PROVIDER_RESPONSE_FAILED;if($groupRejected!==[]){$lastProviderErrorCode=(string)reset($groupRejected);$lastError='provider rejected the recipient(s) with code '.$lastProviderErrorCode;$lastClass=BackendError::REJECTED;}continue;}
         foreach($groupSent as $destination)$sent[]=$destination;foreach($groupIds as $destination=>$messageId)$messageIds[$destination]=$messageId;
     }
     foreach($unsupported as $destination)$rejected[$destination]='operator_not_carried';
     if($unsupported!==[]){Logger::warning('gateway.send.operator_not_carried',['gateway_id'=>$connector['gateway_id'],'destination_count'=>count($unsupported)]);if($sent===[]&&$lastClass===null){$lastError='gateway does not carry this operator';$lastClass=BackendError::REJECTED;}}
     if($sent===[]&&$lastClass===null){$lastError='gateway rejected every destination';$lastClass=BackendError::REJECTED;}
-    return ['ok'=>$sent!==[],'sent'=>$sent,'message_ids'=>$messageIds,'rejected'=>$rejected,'error'=>$sent===[]?$lastError:null,'error_class'=>$sent===[]?$lastClass:null,'http'=>$lastHttp,'retryable'=>$sent===[]?$retryable:false,'groups'=>count($groups),'operators'=>$resolvedOperators,'normalized_outcome'=>$sent!==[]?PROVIDER_RESPONSE_SUCCESS:$lastOutcome,'provider_error_code'=>$sent===[]?$lastProviderErrorCode:null,'provider_error_detail'=>$sent===[]?$lastProviderErrorDetail:null];
+    return ['ok'=>$sent!==[],'sent'=>$sent,'message_ids'=>$messageIds,'rejected'=>$rejected,'provider_audit_ids'=>$auditIds,'error'=>$sent===[]?$lastError:null,'error_class'=>$sent===[]?$lastClass:null,'http'=>$lastHttp,'retryable'=>$sent===[]?$retryable:false,'groups'=>count($groups),'operators'=>$resolvedOperators,'normalized_outcome'=>$sent!==[]?PROVIDER_RESPONSE_SUCCESS:$lastOutcome,'provider_error_code'=>$sent===[]?$lastProviderErrorCode:null,'provider_error_detail'=>$sent===[]?$lastProviderErrorDetail:null];
 }
 
 function gateway_send_failure(string $error,string $errorClass):array{return ['ok'=>false,'sent'=>[],'message_ids'=>[],'error'=>$error,'error_class'=>$errorClass,'http'=>0,'retryable'=>false,'groups'=>0,'operators'=>[],'normalized_outcome'=>PROVIDER_RESPONSE_FAILED,'provider_error_code'=>null,'provider_error_detail'=>$error];}
@@ -540,7 +542,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         $groupResults[] = ['destinations' => $group['destinations'], 'result' => $result];
     }
 
-    $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = []; $rejected = [];
+    $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = []; $rejected = []; $auditIds = [];
     $anyOk = false; $lastError = null; $lastErrorClass = null; $lastHttp = 0; $retryable = false;
     $lastGatewayId = null; $lastRouteId = null; $lastConfigVersion = null; $lastOutcome = PROVIDER_RESPONSE_FAILED; $lastProviderErrorCode = null; $lastProviderErrorDetail = null;
     foreach ($groupResults as $g) {
@@ -550,6 +552,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         foreach ($result['message_ids'] as $destination => $id) { $messageIds[$destination] = $id; }
         foreach ($result['operators'] as $destination => $operatorId) { $operators[$destination] = $operatorId; }
         foreach (($result['rejected'] ?? []) as $destination => $code) { $rejected[$destination] = $code; }
+        foreach (($result['provider_audit_ids'] ?? []) as $destination => $auditId) { $auditIds[$destination] = $auditId; }
         foreach ($g['destinations'] as $destination) { $routeIds[$destination] = $result['route_id']; $gatewayIds[$destination] = $result['gateway_id']; }
         $lastGatewayId = $result['gateway_id']; $lastRouteId = $result['route_id']; $lastConfigVersion = $result['gateway_config_version'];
         $lastOutcome = (string)($result['normalized_outcome'] ?? $lastOutcome);
@@ -559,7 +562,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
     }
 
     return [
-        'ok' => $anyOk, 'sent' => $sent, 'message_ids' => $messageIds, 'operators' => $operators, 'rejected' => $rejected,
+        'ok' => $anyOk, 'sent' => $sent, 'message_ids' => $messageIds, 'operators' => $operators, 'rejected' => $rejected, 'provider_audit_ids' => $auditIds,
         'route_ids' => $routeIds, 'gateway_ids' => $gatewayIds,
         'error' => $anyOk ? null : $lastError, 'error_class' => $anyOk ? null : $lastErrorClass,
         'http' => $lastHttp, 'retryable' => $anyOk ? false : $retryable, 'groups' => count($groupResults),

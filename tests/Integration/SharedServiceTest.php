@@ -504,5 +504,23 @@ final class SharedServiceTest extends IntegrationTestCase
         $this->assertFalse($r['ok']);
         $this->assertSame('line_not_available', $r['error_code']);
     }
-}
 
+    public function testTheCustomersKindIsSetByTheAdminNotPicked(): void
+    {
+        $admin = $this->admin();
+        // Not set: the line's only kind, or خدماتی when it serves both.
+        $this->assertSame('service', shared_service_kind_for($this->userId, ['service', 'promo']));
+        $this->assertSame('promo', shared_service_kind_for($this->userId, ['promo']));
+        $this->assertNull(shared_service_kind_for($this->userId, []));
+
+        $this->assertTrue(shared_service_user_kind_set($admin, $this->userId, 'promo')['ok']);
+        $this->assertSame('promo', shared_service_user_kind($this->userId));
+        $this->assertSame('promo', shared_service_kind_for($this->userId, ['service', 'promo']));
+        // A line that does not serve the admin's kind is refused, never sent as the other kind.
+        $this->assertNull(shared_service_kind_for($this->userId, ['service']));
+
+        $this->assertFalse(shared_service_user_kind_set($admin, $this->userId, 'bogus')['ok']);
+        $this->assertTrue(shared_service_user_kind_set($admin, $this->userId, '')['ok']);
+        $this->assertNull(shared_service_user_kind($this->userId));
+    }
+}
