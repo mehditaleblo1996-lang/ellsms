@@ -2,11 +2,11 @@
 
 Customers connect **their own Telegram accounts** to the panel, then use them to:
 
-- **check numbers**: find out which numbers in a list have Telegram (`/telegram-check.php`),
-- **send messages**: OTP codes, notifications or (with a warning) promotions, as text and/or one photo or file (`/telegram-send.php`),
+- **check numbers**: find out which numbers in a list have Telegram (`/telegram/check`),
+- **send messages**: OTP codes, notifications or (with a warning) promotions, as text and/or one photo or file (`/telegram/send`),
 - **follow delivery**: every message goes queued → sent → **read**, or failed with a reason. Reports can be downloaded as CSV, and the same states are exposed through the public API and webhooks.
 
-Platform admins switch the service on, set prices and limits, and choose which customers may use it (`/telegram-admin.php`).
+Platform admins switch the service on, set prices and limits, and choose which customers may use it (`/admin/telegram`); customers connect accounts on `/telegram/accounts`.
 
 ## Architecture
 
@@ -73,9 +73,20 @@ Read receipts are tracked for 48 hours after sending (`TG_READ_WINDOW_HOURS`).
    TELEGRAM_PROXY=socks5://user:pass@host:1080
    ```
 2. Deploy. `./deploy.sh` applies the migration, builds `tg-worker` and starts it. Run only one instance.
-3. Open **مدیریت › سرویس تلگرام** (`/telegram-admin.php`). The status card should show the worker online and both keys set. Then switch the service on, check the prices (defaults: text 10, media 20, check 10 rial) and the default limits.
+3. Open **مدیریت › سرویس تلگرام** (`/admin/telegram`). The status card should show the worker online and both keys set. Then switch the service on (it is **off** by default — until it is on, every page and the API answer «سرویس تلگرام خاموش است»), check the prices (defaults: text 10, media 20, check 10 rial) and the default limits.
 4. Under «فعال‌سازی برای کاربر», enable the service for each customer, optionally with their own limits and prices.
 5. The customer connects an account under **تلگرام › اکانت‌های تلگرام** (phone → login code in their Telegram app → 2FA password if they have one).
+
+## Troubleshooting
+
+| What you see | Cause and fix |
+|---|---|
+| «سرویس تلگرام خاموش است…» on the customer pages, or when connecting an account | The global switch is off. Tick «سرویس فعال باشد» under «تنظیمات عمومی» on `/admin/telegram` and save. The status card shows «سوییچ سرویس». |
+| «جدول‌های سرویس تلگرام هنوز ساخته نشده‌اند» | Migration `db/migrations/2026_11_01_telegram_user_service.sql` is not applied: `make db-migrations-apply` (or redeploy). |
+| «سرویس ارسال با تلگرام برای حساب شما فعال نیست» | The switch is on but this customer is not enabled: add them under «فعال‌سازی برای کاربر». |
+| Status card: worker «خاموش» | The `tg-worker` container is not running: `docker compose up -d tg-worker`, then `docker compose logs tg-worker`. |
+| Status card: API «تنظیم نشده» | `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` missing from `.env`. Add them, then run `docker compose up -d tg-worker`. |
+| A login stays on «در حال درخواست کد…» | The worker is offline, has no API credentials, or cannot reach Telegram (set `TELEGRAM_PROXY`). |
 
 ## Public API (`telegram:send` / `telegram:read` scopes)
 

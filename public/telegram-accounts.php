@@ -71,6 +71,7 @@ $connectedCount = tg_connected_account_count($userId);
 
 require __DIR__ . '/../app/views/header.php';
 ?>
+<?= tg_unavailable_banner($me) ?>
 <?php if (!$worker['online']): ?>
   <div class="flash flash-error"><span class="flash-text">سرویس پردازش تلگرام در حال حاضر در دسترس نیست؛ درخواست‌ها در صف می‌مانند و به محض راه‌اندازی انجام می‌شوند.</span></div>
 <?php endif; ?>

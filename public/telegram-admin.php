@@ -130,6 +130,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card" style="margin-top:18px">
   <h2>وضعیت راه‌اندازی</h2>
   <ul>
+    <li>سوییچ سرویس: <b><?= tg_setting('tg_enabled', '0') === '1' ? 'روشن' : 'خاموش — در «تنظیمات عمومی» پایین همین صفحه تیک «سرویس فعال باشد» را بزنید و ذخیره کنید' ?></b></li>
     <li>کلید رمزنگاری در پنل (<span class="ltr">TELEGRAM_SESSION_KEY</span> یا <span class="ltr">SMS_GATEWAY_MASTER_KEY</span>): <b><?= tg_crypto_key() !== null ? 'تنظیم شده' : 'تنظیم نشده' ?></b></li>
     <li>کلید رمزنگاری در worker: <b><?= $worker['crypto_ready'] ? 'تنظیم شده' : 'نامشخص / تنظیم نشده' ?></b></li>
     <li>مشخصات API تلگرام (<span class="ltr">TELEGRAM_API_ID</span> و <span class="ltr">TELEGRAM_API_HASH</span> از <span class="ltr">my.telegram.org</span>): <b><?= $worker['api_configured'] ? 'تنظیم شده' : 'تنظیم نشده' ?></b></li>

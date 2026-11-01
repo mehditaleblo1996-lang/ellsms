@@ -17,6 +17,9 @@ with automatic retries and a dead-letter state for endpoints that stay broken.
 | `message.delivered` | The provider reported a message **delivered** (final state) — any send path, gateway mode (#39) |
 | `message.undelivered` | The provider reported a final **failed / rejected / expired** state (#39) |
 | `message.received` | An inbound SMS arrived on one of the organization's lines — either inbound store (#39) |
+| `telegram.message.sent` | A message of the Telegram user-account service was sent from the customer's Telegram account (`docs/telegram-user-service.md`) |
+| `telegram.message.read` | That message was read by its recipient (tracked for 48 h after sending) |
+| `telegram.message.failed` | That message failed — `error_code` says why (`not_on_telegram`, `account_limited`, …) |
 
 This is a deliberately small, stable catalog (STEP 28) — each event is wired to a real, already-
 existing domain action, never speculative. `message.sent`/`message.failed` currently cover

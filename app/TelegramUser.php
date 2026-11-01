@@ -78,6 +78,24 @@ function tg_defaults(): array {
     ];
 }
 
+/**
+ * Why the service cannot be used right now, in words an admin can act on — or null when it can.
+ * Shown instead of a bare «not active» so the cause (migration missing, switch off) is obvious.
+ */
+function tg_unavailable_reason(): ?string {
+    if (!tg_schema_ready()) {
+        return 'جدول‌های سرویس تلگرام هنوز ساخته نشده‌اند (مایگریشن 2026_11_01_telegram_user_service.sql اعمال نشده است).';
+    }
+    try {
+        if (tg_setting('tg_enabled', '0') !== '1') {
+            return 'سرویس تلگرام خاموش است: مدیر سامانه باید در «مدیریت › سرویس تلگرام» تیک «سرویس فعال باشد» را بزند و ذخیره کند.';
+        }
+    } catch (Throwable) {
+        return 'تنظیمات سرویس تلگرام خوانده نشد.';
+    }
+    return null;
+}
+
 /** The service is switched on by a platform admin (and its schema exists). */
 function tg_service_enabled(): bool {
     try {
@@ -209,6 +227,14 @@ function tg_menu_visible(array $user): bool {
     }
 }
 
+/** A notice for the top of the Telegram pages while the service cannot be used (admins get the link). */
+function tg_unavailable_banner(array $user): string {
+    $reason = tg_unavailable_reason();
+    if ($reason === null) return '';
+    $link = ($user['role'] ?? null) === 'admin' ? ' <a href="/admin/telegram">رفتن به تنظیمات سرویس تلگرام</a>' : '';
+    return '<div class="flash flash-error"><span class="flash-text">' . e($reason) . $link . '</span></div>';
+}
+
 /** Ends a page request for a customer the service is not open to. */
 function tg_require_user(array $user): void {
     if (!tg_schema_ready()) {
@@ -333,7 +359,7 @@ function tg_connected_account_count(int $userId): int {
  * app. @return array{ok:bool, id?:int, error?:string}
  */
 function tg_login_start(array $user, string $rawPhone): array {
-    if (!tg_service_enabled()) return ['ok' => false, 'error' => 'سرویس تلگرام فعال نیست.'];
+    if (($reason = tg_unavailable_reason()) !== null) return ['ok' => false, 'error' => $reason];
     if (tg_crypto_key() === null) return ['ok' => false, 'error' => 'کلید رمزنگاری سرویس تلگرام تنظیم نشده است؛ به مدیر سامانه اطلاع دهید.'];
     if (!impersonation_action_allowed('send.direct')) {
         return ['ok' => false, 'error' => 'در حالت پشتیبانی نمی‌توان اکانت تلگرام متصل کرد.'];
@@ -488,7 +514,7 @@ function tg_send_needs_ack(string $kind, int $count): bool {
  */
 function tg_campaign_create(array $user, array $opts): array {
     $fail = static fn(string $code, string $error): array => ['ok' => false, 'code' => $code, 'error' => $error];
-    if (!tg_service_enabled()) return $fail('not_enabled', 'سرویس تلگرام فعال نیست.');
+    if (($reason = tg_unavailable_reason()) !== null) return $fail('not_enabled', $reason);
     $config = tg_user_config($user);
     if (!$config['enabled']) return $fail('not_enabled', 'سرویس تلگرام برای حساب شما فعال نیست.');
     if (!impersonation_action_allowed('send.direct')) {
@@ -642,7 +668,7 @@ function tg_message_public(array $row): array {
 /** @return array{ok:bool, id?:int, cost?:int, error?:string, code?:string} */
 function tg_lookup_create(array $user, array $phones, string $title = '', int $accountId = 0): array {
     $fail = static fn(string $code, string $error): array => ['ok' => false, 'code' => $code, 'error' => $error];
-    if (!tg_service_enabled()) return $fail('not_enabled', 'سرویس تلگرام فعال نیست.');
+    if (($reason = tg_unavailable_reason()) !== null) return $fail('not_enabled', $reason);
     $config = tg_user_config($user);
     if (!$config['enabled']) return $fail('not_enabled', 'سرویس تلگرام برای حساب شما فعال نیست.');
     if (!impersonation_action_allowed('send.direct')) {

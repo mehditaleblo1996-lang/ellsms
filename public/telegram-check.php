@@ -153,6 +153,7 @@ $dailyCapacity = $config['daily_check_limit'] * max(1, count($accounts));
 
 require __DIR__ . '/../app/views/header.php';
 ?>
+<?= tg_unavailable_banner($me) ?>
 <div class="card">
   <h2>بررسی جدید</h2>
   <?php if (!$accounts): ?>

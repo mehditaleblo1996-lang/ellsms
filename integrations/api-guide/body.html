@@ -60,6 +60,7 @@ Content-Type: application/json
   <tr><td><span class="c">balance:read</span></td><td>مشاهده‌ی موجودی اعتبار</td></tr>
   <tr><td><span class="c">webhooks:read</span> / <span class="c">webhooks:write</span></td><td>مدیریت وبهوک‌ها</td></tr>
   <tr><td><span class="c">shared:send</span></td><td>ارسال با خط اشتراکی و پیگیری آن (بخش ۸)</td></tr>
+  <tr><td><span class="c">telegram:send</span> / <span class="c">telegram:read</span></td><td>ارسال و بررسی شماره با اکانت تلگرام خودتان / خواندن وضعیت‌ها (بخش ۸)</td></tr>
 </table>
 
 <h3>محدودیت آی‌پی (اختیاری)</h3>
@@ -261,6 +262,11 @@ curl -X POST https://datisrayan.com/api/v1/bulk-jobs \
   <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/webhooks/{id}/test</span></td><td><span class="c">webhooks:write</span></td><td>ارسال یک رویداد آزمایشی.</td></tr>
   <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/shared/messages</span></td><td><span class="c">shared:send</span></td><td>ارسال با خط اشتراکی (پایین).</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/shared/messages/{id}</span></td><td><span class="c">shared:send</span></td><td>وضعیت یک پیام خط اشتراکی.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/telegram/accounts</span></td><td><span class="c">telegram:read</span></td><td>اکانت‌های تلگرام متصل و مصرف امروز.</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/telegram/messages</span></td><td><span class="c">telegram:send</span></td><td>ارسال با اکانت تلگرام خودتان (پایین).</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/telegram/messages/{id}</span></td><td><span class="c">telegram:read</span></td><td>وضعیت یک پیام تلگرام.</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/telegram/lookups</span></td><td><span class="c">telegram:send</span></td><td>بررسی اینکه کدام شماره‌ها تلگرام دارند.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/telegram/lookups/{id}</span></td><td><span class="c">telegram:read</span></td><td>نتیجه‌ی بررسی شماره‌ها.</td></tr>
 </table>
 
 <h3>ارسال با خط اشتراکی</h3>
@@ -289,6 +295,25 @@ curl -X POST https://datisrayan.com/api/v1/shared/messages \
 </table>
 <p class="note">متنی که برای اولین بار می‌فرستید ممکن است تا تأیید کارشناس منتظر بماند و اگر در مهلت بررسی نشود منقضی می‌شود. هزینه فقط هنگام ارسال واقعی کم می‌شود.</p>
 
+<h3>ارسال با اکانت تلگرام خودتان</h3>
+<p>اکانت تلگرامتان را در پنل («تلگرام ← اکانت‌های تلگرام») وصل کنید؛ سپس پیام (به‌ویژه کد تایید) از همان اکانت به تلگرام گیرنده فرستاده می‌شود. ارسال غیرهمزمان است: پاسخ <span class="c">202</span> با وضعیت <span class="c">queued</span> می‌آید و پیام چند ثانیه بعد ارسال می‌شود. وضعیت را با <span class="c">GET /telegram/messages/{id}</span> یا وبهوک‌های <span class="c">telegram.message.*</span> پیگیری کنید. سرویس باید برای حساب شما فعال باشد.</p>
+<table class="t">
+  <tr><th style="width:24%">فیلد</th><th style="width:13%">وضعیت</th><th>توضیح</th></tr>
+  <tr><td><span class="c">to</span></td><td class="req">اجباری</td><td>یک شماره‌ی گیرنده.</td></tr>
+  <tr><td><span class="c">text</span></td><td class="req">اجباری</td><td>متن پیام (تا ۴۰۹۶ نویسه).</td></tr>
+  <tr><td><span class="c">kind</span></td><td class="opt">اختیاری</td><td><span class="c">otp</span> (پیش‌فرض، جلوی صف)، <span class="c">notify</span> یا <span class="c">promo</span> (همراه <span class="c">"acknowledge_block_risk": true</span>).</td></tr>
+  <tr><td><span class="c">account_id</span></td><td class="opt">اختیاری</td><td>یکی از اکانت‌های شما؛ نفرستید تا هر اکانت فعالی استفاده شود.</td></tr>
+  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>مثل بخش ۷.</td></tr>
+</table>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl -X POST https://datisrayan.com/api/v1/telegram/messages \
+  -H "Authorization: Bearer $DATIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "to": "09121234567", "text": "کد تایید شما: 4821", "kind": "otp" }'
+</pre></div>
+<p>وضعیت‌ها: <span class="c">queued</span>، <span class="c">sending</span>، <span class="c">sent</span>، <span class="c">read</span> (خوانده شد)، <span class="c">failed</span> (با <span class="c">error_code</span> مثل <span class="c">not_on_telegram</span>، <span class="c">privacy_restricted</span>، <span class="c">account_limited</span>). کد خطای <span class="c">402</span> یعنی اعتبار کافی نیست و <span class="c">409</span> یعنی اکانت تلگرام فعالی ندارید.</p>
+<p class="note">اگر کد تایید ناموفق شد یا در زمان مورد نظر شما <span class="c">sent</span> نشد، آن را با پیامک بفرستید. ارسال انبوه یا تبلیغاتی از اکانت شخصی ممکن است باعث مسدود شدن آن اکانت از طرف تلگرام شود. هزینه فقط بابت پیام‌های ارسال‌شده کم می‌شود.</p>
+
 <h3>نمونه: موجودی اعتبار</h3>
 <div class="code"><div class="lbl">GET /BALANCE · 200</div><pre>
 { "data": { "available": 6876380, "reserved": 12500, "total": 6888880, "unit": "credits" } }
@@ -308,6 +333,7 @@ curl -X POST https://datisrayan.com/api/v1/shared/messages \
   <tr><td><span class="c">message.undelivered</span></td><td>اپراتور اعلام کرد پیامک تحویل نشد.</td></tr>
   <tr><td><span class="c">message.received</span></td><td>پیامکی به یکی از خطوط شما رسید.</td></tr>
   <tr><td><span class="c">bulk.completed</span> / <span class="c">bulk.failed</span></td><td>یک ارسال انبوه تمام شد / متوقف شد.</td></tr>
+  <tr><td><span class="c">telegram.message.sent</span> / <span class="c">.read</span> / <span class="c">.failed</span></td><td>پیام تلگرام ارسال شد / خوانده شد / ناموفق بود.</td></tr>
   <tr><td><span class="c">payment.credited</span></td><td>اعتبار حساب شارژ شد.</td></tr>
 </table>
 

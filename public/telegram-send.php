@@ -201,6 +201,7 @@ $threshold = tg_setting_int('tg_promo_warn_threshold', 30);
 
 require __DIR__ . '/../app/views/header.php';
 ?>
+<?= tg_unavailable_banner($me) ?>
 <div class="card">
   <h2>ارسال جدید با تلگرام</h2>
   <?php if (!$accounts): ?>
