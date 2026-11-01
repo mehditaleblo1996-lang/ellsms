@@ -180,6 +180,16 @@ final class ProviderResponseNormalizerTest extends TestCase
         self::assertSame([], $ids);
     }
 
+    public function testBatchPositionKeepsEachRejectedRecipientsProviderCode(): void
+    {
+        // The send report shows why a recipient failed, so its own negative code must survive.
+        $section = ['batch' => ['provider_ids_path' => gateway_path_compile('ids')]];
+
+        [$sent, , $rejected] = gateway_extract_positional_result($section, ['ids' => ['1001', -11]], ['989121111111', '989121111112']);
+        self::assertSame(['989121111111'], $sent);
+        self::assertSame(['989121111112' => '-11'], $rejected);
+    }
+
     public function testBatchPositionCountMismatchStillRejectsTheWholeGroup(): void
     {
         // With a missing entry, positions no longer line up with destinations, so no id can be trusted.
