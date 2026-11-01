@@ -126,6 +126,9 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         'route_ids'              => $result['route_ids'] ?? null,
         'gateway_ids'            => $result['gateway_ids'] ?? null,
         'operators'              => $result['operators'] ?? [],
+        // Recipient => the ellsms_provider_response_audit row holding the provider's exact answer to the
+        // request that turned it down. Shown to admins only (sent_report_provider_response()).
+        'provider_audit_ids'     => $result['provider_audit_ids'] ?? [],
         'attempt_ids'            => [],
     ];
 
@@ -208,6 +211,7 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                     'route_id'               => $meta['route_ids'][$destination] ?? $meta['route_id'],
                     'operator_id'            => $result['operators'][$destination] ?? null,
                     'request_id'             => Logger::currentRequestId(),
+                    'provider_audit_id'      => $meta['provider_audit_ids'][$destination] ?? null,
                     'originator'             => $originator,
                     'content'                => $content,
                 ]
@@ -223,10 +227,9 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
     }
     // Reached and rejected everything, or a non-transport failure: retryable comes from the classified
     // error rather than being hardcoded, matching the legacy path's Phase 8 behaviour.
-    $codes = array_values(array_unique(array_filter(array_map('strval', (array)($result['rejected'] ?? [])))));
-    if ($codes === [] && !empty($result['provider_error_code'])) $codes = [(string)$result['provider_error_code']];
-    $codeNote = $codes !== [] ? ' (کد خطای سرویس‌دهنده: ' . implode('، ', array_slice($codes, 0, 3)) . ')' : '';
-    return [false, 'گیت‌وی همه‌ی مقصدها را رد کرد' . $codeNote . '. جزئیات در گزارش موجود است.', 0, $total, $parts, (bool)$result['retryable'], [], $meta];
+    // Deliberately no provider code here: this text reaches the customer. Admins read the provider's
+    // exact answer in the send report's message detail.
+    return [false, 'گیت‌وی همه‌ی مقصدها را رد کرد. جزئیات در گزارش موجود است.', 0, $total, $parts, (bool)$result['retryable'], [], $meta];
 }
 
 /**
@@ -2125,6 +2128,12 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
         $db->prepare('UPDATE ellsms_bulk_jobs SET sent_rows = sent_rows + 1 WHERE id=?')->execute([$item['job_id']]);
         Logger::info('job.completed', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId]);
         return true;
+    }
+
+    // The provider's exact answer for this recipient, for the admin view of the send report.
+    $auditId = (int)($gatewayMeta['provider_audit_ids'][$destination] ?? 0);
+    if ($auditId > 0 && provider_audit_link_available('ellsms_bulk_items')) {
+        $db->prepare('UPDATE ellsms_bulk_items SET provider_audit_id = ? WHERE id = ?')->execute([$auditId, $item['id']]);
     }
 
     if ($retryable && $attemptCount < job_max_attempts()) {
