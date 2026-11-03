@@ -387,13 +387,30 @@ final class CustomerProfileTest extends IntegrationTestCase
 
     /* ================= Impersonation (STEP 26/45) ================= */
 
-    public function testProfileAndDocumentMutationsAreBlockedDuringSupportImpersonation(): void
+    public function testProfileMutationsAreOpenToAPlatformAdminSupportSession(): void
     {
         $adminId = $this->makeUser(['is_admin' => 1]);
         $_SESSION = ['uid' => $adminId, '_created_at' => time(), '_last_activity' => time()];
         $admin = backend_find_user_by_id($adminId);
         $admin['role'] = 'admin';
         $this->assertTrue(impersonation_start($admin, $this->ownerId, 'profile support', '/users.php')['ok']);
+
+        foreach (['profile.personal', 'profile.organization', 'profile.documents'] as $action) {
+            $this->assertTrue(impersonation_action_allowed($action), "{$action} must be allowed for a platform admin");
+        }
+    }
+
+    public function testProfileAndDocumentMutationsAreBlockedDuringANonAdminSupportSession(): void
+    {
+        $parentId = $this->makeUser([]);
+        $_SESSION = [
+            'uid' => $this->ownerId, '_created_at' => time(), '_last_activity' => time(),
+            'impersonation' => [
+                'actor_user_id' => $parentId, 'target_user_id' => $this->ownerId, 'started_at' => time(),
+                'reason' => 'parent support', 'mode' => IMPERSONATION_MODE_SUPPORT,
+                'original_organization_id' => 0, 'return_to' => '/subaccounts.php',
+            ],
+        ];
 
         foreach (['profile.personal', 'profile.organization', 'profile.documents'] as $action) {
             $this->assertFalse(impersonation_action_allowed($action), "{$action} must be blocked in support mode");

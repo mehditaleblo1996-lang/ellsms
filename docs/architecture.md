@@ -379,7 +379,8 @@ The real actor is preserved beside it in the session and used for exactly three 
 rendered on every authenticated page, the audit trail
 (`ellsms_audit_log.impersonator_user_id`, populated automatically by `audit()`), and the exit control.
 
-Support mode is read-mostly: one central deny-list blocks sending, credential changes, integration
+A platform admin's support session is unrestricted inside the customer's panel. A reseller /
+parent session is read-mostly: one central deny-list blocks sending, credential changes, integration
 secrets, billing/wallet mutations and destructive deletions, enforced server-side at the existing
 choke points. Cost preview and all reading stay available. The feature lives entirely in `$_SESSION`,
 so the public API and the workers are structurally unaffected by it.
@@ -404,7 +405,7 @@ inspection, carry a database `CHECK` guaranteeing exactly one owner, and are rea
 `public/profile-document.php`, which authorizes every read and 404s on refusal. Replacement archives
 rather than overwrites. Uploaded FILES are not part of the database backup — see TD-071.
 
-Editing reuses `settings.manage` rather than minting new permissions. Support impersonation may read
-a profile but never change one.
+Editing reuses `settings.manage` rather than minting new permissions. A platform-admin support session may
+read and change a profile; a reseller/parent support session may only read it.
 
 See `docs/customer-profile.md`.

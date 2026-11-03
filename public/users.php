@@ -1002,6 +1002,9 @@ if ($editOrganizationId > 0) {
         <td><span class="badge badge-<?= ($u['active'] && !$u['deleted']) ? 'ok' : 'off' ?>"><?= ($u['active'] && !$u['deleted']) ? 'فعال' : 'غیرفعال' ?></span></td>
         <td style="white-space:nowrap">
           <a class="btn btn-sm" href="/users.php?edit=<?= $u['id'] ?>">ویرایش</a>
+          <?php if (impersonation_target_refusal($u, (int)$me['id']) === null): ?>
+            <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$u['id'] ?>&amp;from=list">ورود به پنل مشتری</a>
+          <?php endif; ?>
           <?php if ((int)$u['id'] !== (int)$me['id']): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('دسترسی داتیس رایان گستر ایرانیان برای <?= e($u['username']) ?> لغو شود؟')">
             <?= csrf_field() ?>

@@ -257,7 +257,8 @@ $deliveryRefunds = ($deliveryPolicy['enabled'] || $deliveryTotals['count'] > 0) 
 require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'profile.personal';
 require __DIR__ . '/../app/views/impersonation_notice.php';
-$profileReadOnly = is_impersonating();
+// Read-only only for a reseller/parent support session; a platform admin's session is unrestricted.
+$profileReadOnly = is_impersonating() && !impersonation_actor_is_platform_admin();
 $showPersonal = $accountType !== 'legal' || $organizationId === 0;
 $showCompany  = $organizationId > 0 && ($accountType === 'legal' || $hasLegalData);
 ?>

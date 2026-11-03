@@ -370,36 +370,34 @@ final class ImpersonationHttpTest extends TestCase
         $this->assertStringContainsString('uid|i:' . $this->targetId, $this->sessionPayload($impersonated), 'still the original target');
     }
 
-    /* ================= Blocked actions over HTTP ================= */
+    /* ================= A platform admin's support session is unrestricted ================= */
 
-    public function testAPasswordChangeIsRefusedOverHttpDuringImpersonation(): void
+    public function testAPasswordChangeIsNotBlockedBySupportModeForAPlatformAdmin(): void
     {
         $adminSession = $this->sessionFor($this->adminId);
         $impersonated = $this->startImpersonation($adminSession)['session_cookie'];
 
         $csrf = $this->csrfFor($impersonated);
-        $r = $this->request('POST', '/profile.php', $impersonated, [
+        $this->request('POST', '/profile.php', $impersonated, [
             '_csrf' => $csrf, 'do' => 'password', 'current_password' => 'x', 'password' => 'newpassword1', 'password2' => 'newpassword1',
         ]);
-        $this->assertSame(302, $r['code']);
 
         $follow = $this->request('GET', '/profile.php', $impersonated);
-        $this->assertStringContainsString('تغییر رمز عبور در حالت پشتیبانی غیرفعال است', $follow['body']);
-
+        $this->assertStringNotContainsString('در حالت پشتیبانی غیرفعال است', $follow['body']);
         $blocked = (int)db()->query(
-            "SELECT COUNT(*) FROM ellsms_audit_log WHERE action = 'impersonation.blocked_sensitive_action' AND details = 'account.password' AND user_id = {$this->targetId}"
+            "SELECT COUNT(*) FROM ellsms_audit_log WHERE action = 'impersonation.blocked_sensitive_action' AND user_id = {$this->targetId}"
         )->fetchColumn();
-        $this->assertSame(1, $blocked, 'the refused attempt is audited');
+        $this->assertSame(0, $blocked, 'nothing is blocked for a platform admin');
     }
 
-    public function testTheSendPageShowsTheBlockedNoticeDuringImpersonation(): void
+    public function testTheSendPageShowsNoBlockedNoticeForAPlatformAdmin(): void
     {
         $adminSession = $this->sessionFor($this->adminId);
         $impersonated = $this->startImpersonation($adminSession)['session_cookie'];
 
         $page = $this->request('GET', '/send.php', $impersonated);
-        $this->assertSame(200, $page['code'], 'the page itself stays viewable — that is the point of support mode');
-        $this->assertStringContainsString('ارسال واقعی در حالت پشتیبانی غیرفعال است', $page['body']);
+        $this->assertSame(200, $page['code']);
+        $this->assertStringNotContainsString('ارسال واقعی در حالت پشتیبانی غیرفعال است', $page['body']);
     }
 
     /* ================= Logout semantics (STEP 11) ================= */

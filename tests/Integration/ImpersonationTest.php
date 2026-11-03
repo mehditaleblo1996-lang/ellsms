@@ -62,6 +62,26 @@ final class ImpersonationTest extends IntegrationTestCase
         return impersonation_start($this->adminRow(), $this->targetId, $reason, '/users.php?edit=' . $this->targetId);
     }
 
+    /**
+     * A support session whose real actor is NOT a platform admin — the shape a reseller / parent
+     * organization's session has. Only these sessions are subject to the blocked-action catalog;
+     * a platform admin's session is unrestricted (impersonation_actor_is_platform_admin()).
+     */
+    private function startNonAdminImpersonation(): int
+    {
+        $parentId = $this->makeUser(['originator' => '5001']);
+        $_SESSION = [
+            'uid' => $this->targetId, '_created_at' => time(), '_last_activity' => time(),
+            'impersonation' => [
+                'actor_user_id' => $parentId, 'target_user_id' => $this->targetId, 'started_at' => time(),
+                'reason' => 'parent support', 'mode' => IMPERSONATION_MODE_SUPPORT,
+                'original_organization_id' => 0, 'return_to' => '/subaccounts.php',
+            ],
+        ];
+        $this->assertTrue(is_impersonating());
+        return $parentId;
+    }
+
     /* ================= Starting ================= */
 
     public function testAPlatformAdminCanStartImpersonatingACustomer(): void
@@ -339,10 +359,22 @@ final class ImpersonationTest extends IntegrationTestCase
 
     /* ================= Blocked actions (STEP 7/23) ================= */
 
-    public function testEverySensitiveActionInTheCatalogIsBlockedWhileImpersonating(): void
+    public function testAPlatformAdminsSupportSessionIsUnrestricted(): void
     {
         $this->loginAs($this->adminId);
         $this->assertTrue($this->startImpersonation()['ok']);
+
+        $this->assertTrue(impersonation_actor_is_platform_admin());
+        foreach (array_keys(impersonation_blocked_actions()) as $action) {
+            $this->assertTrue(impersonation_action_allowed($action), "{$action} must be allowed for a platform admin");
+        }
+        $this->assertFalse(impersonation_guard_post('send.direct'), 'the form guard never blocks an admin');
+    }
+
+    public function testEverySensitiveActionInTheCatalogIsBlockedForANonAdminSupportSession(): void
+    {
+        $this->startNonAdminImpersonation();
+        $this->assertFalse(impersonation_actor_is_platform_admin());
 
         foreach (array_keys(impersonation_blocked_actions()) as $action) {
             $this->assertFalse(impersonation_action_allowed($action), "{$action} must be blocked in support mode");
@@ -373,8 +405,7 @@ final class ImpersonationTest extends IntegrationTestCase
 
     public function testTheHardGuardThrowsAndTheFormGuardFlagsAndAudits(): void
     {
-        $this->loginAs($this->adminId);
-        $this->assertTrue($this->startImpersonation()['ok']);
+        $this->startNonAdminImpersonation();
 
         $this->assertTrue(impersonation_guard_post('send.direct'), 'the form guard reports "blocked"');
         $blocked = db()->query(
@@ -388,10 +419,9 @@ final class ImpersonationTest extends IntegrationTestCase
 
     /* ================= Real send blocking (STEP 8) ================= */
 
-    public function testDispatchAndBulkQueueRefuseToSendWhileImpersonating(): void
+    public function testDispatchAndBulkQueueRefuseToSendForANonAdminSupportSession(): void
     {
-        $this->loginAs($this->adminId);
-        $this->assertTrue($this->startImpersonation()['ok']);
+        $this->startNonAdminImpersonation();
 
         $user = ['id' => $this->targetId, 'role' => 'user', 'organization_id' => $this->organizationId, 'originator' => '5000'];
 
@@ -455,8 +485,7 @@ final class ImpersonationTest extends IntegrationTestCase
     {
         $this->loginAs($this->adminId);
         $this->assertTrue($this->startImpersonation('ticket #77')['ok']);
-        impersonation_guard_post('send.direct');            // a blocked attempt
-        audit($this->targetId, 'test.allowed_action', 'ok'); // an allowed action
+        audit($this->targetId, 'test.allowed_action', 'ok'); // an action inside the session
         $this->assertTrue(impersonation_exit()['ok']);
 
         $actions = db()->query(
@@ -469,7 +498,6 @@ final class ImpersonationTest extends IntegrationTestCase
         }
 
         $this->assertArrayHasKey('impersonation.started', $byAction);
-        $this->assertArrayHasKey('impersonation.blocked_sensitive_action', $byAction);
         $this->assertArrayHasKey('test.allowed_action', $byAction);
         $this->assertArrayHasKey('impersonation.ended', $byAction);
 
@@ -480,7 +508,7 @@ final class ImpersonationTest extends IntegrationTestCase
         $this->assertSame($this->adminId, (int)$byAction['impersonation.ended']['user_id']);
 
         // Everything performed INSIDE the session names the customer AND the admin.
-        foreach (['impersonation.blocked_sensitive_action', 'test.allowed_action'] as $action) {
+        foreach (['test.allowed_action'] as $action) {
             $this->assertSame($this->targetId, (int)$byAction[$action]['user_id'], $action);
             $this->assertSame($this->adminId, (int)$byAction[$action]['impersonator_user_id'], $action);
         }

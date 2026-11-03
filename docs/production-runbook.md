@@ -282,9 +282,12 @@ Operationally:
 
 - **A reason is mandatory** and is stored in the audit trail. Write the ticket number.
 - The session is bounded to **60 minutes** and then returns the operator to the admin panel.
-- **Real sending is blocked**, as are password/2FA changes, API-key and webhook secret operations,
-  subscription/payment/wallet changes, and destructive deletions. Cost preview and all reading remain
-  available.
+- The «ورود به پنل مشتری» button is on every row of مدیریت → کاربران as well as on the customer's
+  detail page.
+- **No functional restrictions for a platform admin**: real sends, password/2FA, API keys, webhooks,
+  billing and deletions all work and really affect the customer's account. Each action is audited
+  with the admin as `impersonator_user_id`. (Reseller/parent sessions into a child keep the blocked
+  list.)
 - The platform-admin area is **unreachable** until the operator exits — that is expected, not a bug.
 - «خروج» during a support session logs out entirely; «بازگشت به پنل مدیریت» is the exit control.
 

@@ -3,8 +3,16 @@
 A platform administrator can open a customer's panel to reproduce a support issue, without knowing,
 resetting, or touching that customer's password or 2FA.
 
-Code: `app/impersonation.php` · Endpoint: `public/impersonate.php` · Entry point: **مدیریت →
-کاربران → <customer> → ورود به پنل مشتری**
+Code: `app/impersonation.php` · Endpoint: `public/impersonate.php` · Entry points: **مدیریت →
+کاربران → «ورود به پنل مشتری»** on each row of the accounts list (`/users.php`), or the same button on
+a customer's detail page (`/users.php?edit=<id>`).
+
+**A platform administrator's support session has no functional restrictions.** Everything the
+customer can do in their own panel — sending, schedules, API keys, webhooks, password/2FA, billing,
+profile and documents, deletions — the admin can do too while inside it. The blocked-action catalog
+in §4 applies only to a **reseller / parent organization** that enters a child's panel
+(«ورود به پنل زیرمجموعه»). The admin session is still audited with both identities, still bounded to
+60 minutes, and the admin area itself stays closed until the operator exits.
 
 ---
 
@@ -50,7 +58,7 @@ $_SESSION = [
 | Forged session | `impersonation_state()` requires the recorded target to *be* the session's effective user, plus a distinct, existing, still-privileged actor. Anything else destroys the session. |
 | Nesting | Refused twice: the service checks, and `require_admin()` denies during an impersonation. |
 | Cross-tenant access | The target's own memberships resolve the organization; a crafted `organization_id` fails exactly as it would for the customer alone. |
-| Silent support activity | Start, exit, every blocked attempt, and every action inside the session are audited with **both** identities. |
+| Silent support activity | Start, exit, every blocked attempt (parent sessions), and every action inside the session are audited with **both** identities. |
 | Stale privilege | The actor's platform-admin status is re-read from the database on every request, never trusted from the session. |
 | Enumeration of user ids | Starts are rate-limited per actor and per IP. |
 | Unbounded access | A support session expires after 60 minutes and returns the operator to the admin panel. |
@@ -67,6 +75,13 @@ $_SESSION = [
 Security and audit code asks these helpers; nothing reads `$_SESSION['impersonation']` directly.
 
 ## 4. Support mode: what is blocked
+
+**Platform admins: nothing.** `impersonation_action_allowed()` returns true for every action when
+`impersonation_actor_is_platform_admin()` — the session's real actor, re-validated from the database
+on every call, is a current platform admin. `public/profile.php` is likewise editable, and no
+«… در حالت پشتیبانی غیرفعال است» notice is shown.
+
+**Reseller / parent sessions** are governed by the catalog below.
 
 One catalog, `impersonation_blocked_actions()`, is the whole policy. It is a **deny-list**: unknown
 actions are allowed, so a typo can never silently disable an ordinary page, and blocking is always
@@ -143,7 +158,7 @@ A target may be impersonated only if it is an ELLSMS-managed account
 
 An **inactive but present** account *is* impersonable, deliberately: "the customer cannot log in" is
 a primary support case, and refusing it would remove the feature's main use. Nothing is reactivated
-— the account state is read, never written, and every sensitive action stays blocked.
+by entering the panel.
 
 ## 7. RBAC and tenancy
 
@@ -189,11 +204,12 @@ of this.
 
 ## 10. Operational use
 
-1. مدیریت → کاربران → open the customer → **ورود به پنل مشتری**.
+1. مدیریت → کاربران → **ورود به پنل مشتری** on the customer's row (or on their detail page).
 2. Confirm the username, organization and account status on the confirmation page.
 3. Enter a **reason** — required. It is stored in the audit trail; write the ticket number.
 4. Work in the customer's panel. The red banner names the account and shows the time remaining.
-5. **بازگشت به پنل مدیریت** returns you to the customer's admin page.
+5. **بازگشت به پنل مدیریت** returns you to where you started — the accounts list or the customer's
+   admin page.
 
 To review support access afterwards:
 
@@ -207,9 +223,10 @@ ORDER BY id DESC;
 ## 11. Known limitations
 
 - **Support mode is the only mode.** There is no arbitrary per-session permission set, by design.
-- **Read-mostly, not read-only.** Non-destructive writes an ordinary user may perform (adding a
-  contact, saving a campaign template, sending a webhook test ping) are allowed. The blocked list is
-  the exhaustive statement of what is not.
+- **Admin sessions are full-access.** Anything done inside an admin support session (a real send,
+  a credit purchase, a password change) really happens on the customer's account; the audit trail
+  is the control. Parent sessions remain read-mostly: non-destructive writes are allowed and the
+  blocked list is the exhaustive statement of what is not.
 - **The banner depends on the shared header.** A page that renders its own layout without
   `app/views/header.php` would not show it. Every authenticated page currently uses the shared header.
 - **An operator can still see customer data.** That is the feature. The control is that access is

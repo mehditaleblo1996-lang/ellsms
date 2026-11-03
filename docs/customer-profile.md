@@ -130,9 +130,11 @@ A user type filed against an organization (or the reverse) is refused.
 
 ## 6. Impersonation
 
-A support session may **read** a profile, address, alert settings and any document the target could
-normally see. It may **not** change any of them: `profile.personal`, `profile.organization` and
-`profile.documents` are on the blocked-action list in `app/impersonation.php`.
+A **platform admin's** support session may read **and change** the profile, address, alert settings
+and documents — it has no functional restrictions (docs/admin-impersonation.md). A **reseller /
+parent** support session may only read them: `profile.personal`, `profile.organization` and
+`profile.documents` are on the blocked-action list in `app/impersonation.php`, which applies only to
+non-admin actors.
 
 The real actor's platform-admin document reach is deliberately **not** combined with the target's
 view context (STEP 27): while impersonating, an administrator sees exactly what the customer sees. An
