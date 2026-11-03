@@ -9,6 +9,28 @@ admin) · Downloads: `public/profile-document.php` · Schema:
 
 ---
 
+## Admin form «مشخصات مشتری» (`public/users.php`)
+
+The admin captures everything about a customer in **one form**
+(`app/views/customer_identity_fields.php`), used both by «ساخت حساب تازه» and, on the edit page, in
+the «حساب و اعتبار» tab (the old «اطلاعات فردی», «سازمان», «آدرس» and «اطلاعات هویتی (KYC)» tabs are
+gone). A «حقیقی / حقوقی» switch at the top picks the account type:
+
+- **حقیقی** — the person (name, national code, father's name, birth certificate no., birth date,
+  gender), contact details, address, login and account settings. The address is also kept as the
+  user's personal address. The form has no «منطقه / محله» field; a district already on file is kept.
+- **حقوقی** — the same, plus the company: legal name, company type, registration no., company
+  national id, economic code, landline, start/expiry dates. The managing-director fields are not
+  asked here (they stay editable from the customer's own profile page).
+
+Everything is validated **before** the backend account is created (`profile_identity_validate()`), so
+a typo never leaves a half-registered customer. On create, national code and (for legal accounts)
+legal name, registration no., company national id and economic code are required; on edit nothing is
+required, so an older, half-filled account can still be saved. The company fields sit in a
+`<fieldset>` that is disabled while «حقیقی» is chosen, so an individual's save never blanks company
+data kept from an earlier legal period. Saving runs `profile_identity_save()` — user profile,
+organization profile and address in one transaction (POST `do=profile_identity`).
+
 ## 1. Ownership — the rule everything else follows from
 
 **Personal identity belongs to the USER. Company and legal data belongs to the ORGANIZATION.**
@@ -108,9 +130,11 @@ A user type filed against an organization (or the reverse) is refused.
 
 ## 6. Impersonation
 
-A support session may **read** a profile, address, alert settings and any document the target could
-normally see. It may **not** change any of them: `profile.personal`, `profile.organization` and
-`profile.documents` are on the blocked-action list in `app/impersonation.php`.
+A **platform admin's** support session may read **and change** the profile, address, alert settings
+and documents — it has no functional restrictions (docs/admin-impersonation.md). A **reseller /
+parent** support session may only read them: `profile.personal`, `profile.organization` and
+`profile.documents` are on the blocked-action list in `app/impersonation.php`, which applies only to
+non-admin actors.
 
 The real actor's platform-admin document reach is deliberately **not** combined with the target's
 view context (STEP 27): while impersonating, an administrator sees exactly what the customer sees. An

@@ -11,6 +11,9 @@
  *  4. Fill down ([data-fill-down] buttons, the price matrix): copies the value of the matching
  *     [data-fill-source] input into every [data-fill-target] input of the same key in its form; an
  *     empty source clears the column back to its defaults ([data-default], shown as placeholders).
+ *  5. «حقیقی / حقوقی» ([data-account-type-switch], app/views/customer_identity_fields.php): the
+ *     account_type radios of a form show the form's [data-when-type] parts of that type and hide the
+ *     rest. A hidden <fieldset> is also disabled, so its fields are neither required nor submitted.
  */
 (function () {
   'use strict';
@@ -179,7 +182,26 @@
     if (event.target.matches && event.target.matches('input[data-default]')) markDefault(event.target);
   });
 
+  // 5. Account type switch.
+  function initAccountType(form) {
+    var radios = form.querySelectorAll('input[type="radio"][name="account_type"]');
+    function sync() {
+      var checked = form.querySelector('input[type="radio"][name="account_type"]:checked');
+      var type = checked ? checked.value : 'individual';
+      form.querySelectorAll('[data-when-type]').forEach(function (el) {
+        var on = el.getAttribute('data-when-type') === type;
+        el.hidden = !on;
+        if (el.tagName === 'FIELDSET') el.disabled = !on;
+      });
+    }
+    Array.prototype.forEach.call(radios, function (r) { r.addEventListener('change', sync); });
+    sync();
+  }
+
   document.querySelectorAll('.tabs').forEach(initTabs);
+  document.querySelectorAll('form').forEach(function (form) {
+    if (form.querySelector('[data-account-type-switch]')) initAccountType(form);
+  });
   document.querySelectorAll('[data-jdate]').forEach(initDate);
   document.querySelectorAll('form').forEach(function (form) {
     if (form.querySelector('select[data-geo]')) initGeo(form);

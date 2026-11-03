@@ -21,6 +21,18 @@ Each change is audited (`user.delivery_billing`) and recorded as a period in
 period; turning it on, or saving a new percentage, opens a new one. Saving the settings already in
 force changes nothing.
 
+## Who sees delivery states in reports
+
+Only admins and customers with delivery-based billing switched on see messages by their **delivery**
+state (`delivery_status_visible()` in `app/DeliveryRefunds.php`). Every other customer sees a message
+as «ارسال‌شده» once the provider took it, «ناموفق» only when the send itself failed, or «در صف» — with
+no «تحویل‌شده» / «منتظر گزارش تحویل», delivery times, delivery rate or status-check counts. This
+applies to «لیست پیام‌های ارسالی» and its detail drawer (`sent_report_show_delivery()`), «گزارش ارسال
+حجیم» and each bulk send's page, the dashboard (cards and 7-day chart), «گزارش اپراتورها» (the
+«تحویل گرفته‌شده» column), the reseller and sub-account send summaries, and CSV exports (the flag is
+stored with the export as `show_delivery`, and the delivery columns are dropped). The delivery history
+page `message-detail.php` redirects such a customer to the report.
+
 ## What is refunded
 
 | Final delivery state | Refunded? |

@@ -467,7 +467,7 @@ function operator_report_fold(array $rows, array $operatorNames): array {
     $out = [];
     $byPrefix = [];
     foreach ($rows as $r) {
-        $name = operator_report_row_operator($r, $operatorNames, $byPrefix);
+        $name = operator_display_name(operator_report_row_operator($r, $operatorNames, $byPrefix));
         $enc = isset(OPERATOR_REPORT_ENCODINGS[$r['enc']]) ? (string)$r['enc'] : 'na';
         $st = isset(OPERATOR_REPORT_STATUSES[$r['st']]) ? (string)$r['st'] : 'unknown';
         $out[$name][$enc][$st] = ($out[$name][$enc][$st] ?? 0) + (int)$r['c'];
@@ -488,25 +488,45 @@ function operator_report_operator_names(): array {
 }
 
 /**
- * The operators the report lists, in order: every active configured operator (even with no
- * messages, so the table always shows the full set), then any other operator that has messages, and
- * «نامشخص» last when it has any.
+ * The operators the report lists, in order: همراه اول، ایرانسل، رایتل first, then every other active
+ * configured operator (even with no messages, so the table always shows the full set), then any
+ * other operator that has messages, then «سایر اپراتورها» (the mock operator), and «نامشخص» last
+ * when it has any.
  *
  * @param array<string,mixed> $counts operator name => …
  * @return list<string>
  */
 function operator_report_operator_order(array $counts): array {
-    $names = [];
+    $rows = [];
     try {
-        $names = db()->query("SELECT name FROM ellsms_sms_operators WHERE status = 'active' ORDER BY priority DESC, id ASC")->fetchAll(PDO::FETCH_COLUMN);
+        $rows = db()->query("SELECT code, name FROM ellsms_sms_operators WHERE status = 'active' ORDER BY priority DESC, id ASC")->fetchAll();
     } catch (Throwable) {
     }
-    if (!$names) $names = array_values(array_unique(OPERATOR_PREFIX_MAP));
-    $names = array_map('strval', $names);
-    foreach (array_keys($counts) as $name) {
-        if ($name !== OPERATOR_REPORT_UNKNOWN && !in_array($name, $names, true)) $names[] = (string)$name;
+    $names = [];
+    foreach ($rows as $r) $names[] = ['code' => (string)$r['code'], 'name' => operator_display_name((string)$r['name'])];
+    if (!$names) {
+        foreach (array_values(array_unique(OPERATOR_PREFIX_MAP)) as $n) $names[] = ['code' => '', 'name' => (string)$n];
     }
-    if (isset($counts[OPERATOR_REPORT_UNKNOWN])) $names[] = OPERATOR_REPORT_UNKNOWN;
+    foreach (array_keys($counts) as $name) {
+        $name = operator_display_name((string)$name);
+        if ($name !== OPERATOR_REPORT_UNKNOWN && !in_array($name, array_column($names, 'name'), true)) $names[] = ['code' => '', 'name' => $name];
+    }
+    return operator_report_sort_operators($names, isset($counts[OPERATOR_REPORT_UNKNOWN]));
+}
+
+/**
+ * Orders operators for display: همراه اول، ایرانسل، رایتل (by code, else by Persian name), then the
+ * rest in their given order, then «سایر اپراتورها», then «نامشخص» when $withUnknown.
+ *
+ * @param list<array{code:string,name:string}> $operators
+ * @return list<string>
+ */
+function operator_report_sort_operators(array $operators, bool $withUnknown): array {
+    $indexed = [];
+    foreach (array_values($operators) as $i => $o) $indexed[] = [operator_display_rank($o['code'] !== '' ? $o['code'] : null, $o['name']), $i, $o['name']];
+    usort($indexed, static fn(array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+    $names = array_values(array_unique(array_column($indexed, 2)));
+    if ($withUnknown) $names[] = OPERATOR_REPORT_UNKNOWN;
     return $names;
 }
 

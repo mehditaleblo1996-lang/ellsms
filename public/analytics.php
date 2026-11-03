@@ -125,7 +125,7 @@ if (lazy_part_begin('traffic')) {
         $operatorOf[$probe] ??= detect_operator($probe);
         analytics_add($byNumber, (string)$g['originator'] !== '' ? (string)$g['originator'] : '—', $status, $n, $units);
         analytics_add($byUser, (string)$g['sender_user_id'], $status, $n, $units);
-        analytics_add($byOperator, $operatorOf[$probe], $status, $n, $units);
+        analytics_add($byOperator, operator_display_name($operatorOf[$probe]), $status, $n, $units);
         analytics_add($overallBucket, '_', $status, $n, $units);
     }
     $overall = $overallBucket['_'] ?? ['total' => 0, 'sent' => 0, 'delivered' => 0, 'failed' => 0, 'pending' => 0, 'units' => 0];
@@ -139,7 +139,8 @@ if (lazy_part_begin('traffic')) {
     $sortByTotal = function (array &$a) { uasort($a, fn($x, $y) => $y['total'] <=> $x['total']); };
     $sortByTotal($byNumber);
     $sortByTotal($byUser);
-    $sortByTotal($byOperator);
+    // Operators in a fixed order — همراه اول، ایرانسل، رایتل، then the rest by total.
+    uksort($byOperator, fn($a, $b) => [operator_display_rank(null, (string)$a), $byOperator[$b]['total']] <=> [operator_display_rank(null, (string)$b), $byOperator[$a]['total']]);
     ?>
 <div class="grid grid-4">
   <div class="stat stat-accent"><div class="stat-label">کل پیام‌ها</div><div class="stat-value"><?= to_persian_digits(number_format($overall['total'])) ?></div></div>

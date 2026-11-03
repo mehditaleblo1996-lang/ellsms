@@ -59,9 +59,12 @@ const IMPERSONATION_REASON_MAX_LENGTH = 200;
  * Pages consult it through impersonation_guard_post()/impersonation_action_allowed(); hiding a
  * button is a courtesy, never the enforcement (STEP 23).
  *
- * The policy is deliberately conservative — a support session exists to LOOK at a customer's panel,
- * not to act for them. Anything that spends money, sends a message, changes credentials, or destroys
- * data is blocked. Reads, navigation and cost previews are not.
+ * The policy is deliberately conservative — a parent's support session exists to LOOK at a child's
+ * panel, not to act for them. Anything that spends money, sends a message, changes credentials, or
+ * destroys data is blocked. Reads, navigation and cost previews are not.
+ *
+ * This list applies ONLY to reseller / parent-organization sessions. A platform administrator's
+ * support session bypasses it entirely — see impersonation_actor_is_platform_admin().
  */
 function impersonation_blocked_actions(): array {
     return [
@@ -117,9 +120,26 @@ function impersonation_blocked_actions(): array {
     ];
 }
 
-/** True when $action may proceed. Unknown actions are ALLOWED — the catalog is a deny-list, and a typo must not silently disable an ordinary page. Blocking is only ever the result of an explicit entry. */
+/**
+ * True when the real actor of the current support session is a (still valid) platform administrator.
+ *
+ * A platform admin's support session is UNRESTRICTED: the deny-list below applies only to a reseller /
+ * parent organization that entered a child's panel. The admin already has full authority over every
+ * customer from the admin area, so blocking the same actions inside the customer's panel only got in
+ * the way of support work. The session is still audited (every audit row carries the impersonator),
+ * still time-bounded, and still re-validated on every request by impersonation_enforce().
+ */
+function impersonation_actor_is_platform_admin(): bool {
+    $state = impersonation_state();
+    return $state !== null && impersonation_resolve_admin($state['actor_user_id']) !== null;
+}
+
+/** True when $action may proceed. Unknown actions are ALLOWED — the catalog is a deny-list, and a typo must not silently disable an ordinary page. Blocking is only ever the result of an explicit entry. A platform admin's support session is never blocked (impersonation_actor_is_platform_admin()). */
 function impersonation_action_allowed(string $action): bool {
     if (!is_impersonating()) {
+        return true;
+    }
+    if (impersonation_actor_is_platform_admin()) {
         return true;
     }
     return !array_key_exists($action, impersonation_blocked_actions());

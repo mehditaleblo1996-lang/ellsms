@@ -353,8 +353,10 @@ require __DIR__ . '/../app/views/reseller_header.php';
     <h2>گزارش ارسال</h2>
     <div class="summary-grid">
       <div class="summary-item"><div class="summary-label">ارسال امروز</div><div class="summary-value num"><?= to_persian_digits(number_format($today['sent'])) ?></div></div>
+      <?php if (delivery_status_visible($me)): ?>
       <div class="summary-item"><div class="summary-label">تحویل‌شده امروز</div><div class="summary-value num"><?= to_persian_digits(number_format($today['delivered'])) ?></div></div>
-      <div class="summary-item"><div class="summary-label">ناموفق امروز</div><div class="summary-value num"><?= to_persian_digits(number_format($today['failed'])) ?></div></div>
+      <?php endif; ?>
+      <div class="summary-item"><div class="summary-label">ناموفق امروز</div><div class="summary-value num"><?= to_persian_digits(number_format($today[delivery_status_visible($me) ? 'failed' : 'send_failed'])) ?></div></div>
     </div>
     <h3 style="margin-top:var(--sp-4)">ارسال روزانه (۱۴ روز اخیر)</h3>
     <div class="table-wrap">

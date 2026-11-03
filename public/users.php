@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'kyc_save', 'ensure_organization', 'account_type', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -117,29 +117,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Logger::info('user.password_reset', ['actor_id' => $me['id'], 'target_id' => $id]);
                 flash('success', 'رمز عبور تغییر کرد. توجه: این رمز همه‌جا برای این حساب استفاده می‌شود، نه فقط در داتیس رایان گستر ایرانیان.');
             }
-        } elseif ($do === 'kyc_save') {
-            try {
-                $idCardFile = kyc_store_upload('id_card_photo', $id);
-                $secondFile = kyc_store_upload('second_doc_photo', $id);
-                $fatherName = trim($_POST['father_name'] ?? '');
-                $address    = trim($_POST['address'] ?? '');
-
-                db()->prepare('INSERT IGNORE INTO ellsms_user_kyc (user_id) VALUES (?)')->execute([$id]);
-
-                $sets = ['father_name = ?', 'address = ?'];
-                $params = [$fatherName, $address];
-                if ($idCardFile) { $sets[] = 'id_card_photo = ?'; $params[] = $idCardFile; }
-                if ($secondFile) { $sets[] = 'second_doc_photo = ?'; $params[] = $secondFile; }
-                $params[] = $id;
-
-                db()->prepare('UPDATE ellsms_user_kyc SET ' . implode(', ', $sets) . ' WHERE user_id = ?')
-                   ->execute($params);
-
-                audit((int)$me['id'], 'user.kyc_save', "#{$id}");
-                flash('success', 'اطلاعات هویتی ذخیره شد.');
-            } catch (RuntimeException $e) {
-                flash('error', $e->getMessage());
-            }
         } elseif ($do === 'ensure_organization') {
             // Admin repair path for requirement §6 — safe ONLY because ensure_user_has_organization()
             // itself refuses to act on anyone who already has a membership (ambiguous or not); this
@@ -195,25 +172,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $roleId = (int)($_POST['menu_role_id'] ?? 0) ?: null;
             $result = menu_user_access_save($id, $roleId, (array)($_POST['menu_override'] ?? []), null, (int)$me['id']);
             flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'دسترسی منوها ذخیره شد.' : menu_access_error_message((string)$result['reason']));
-        } elseif ($do === 'account_type') {
-            // Mirrors public/profile.php's own standalone account_type action exactly: resolve the
-            // CURRENT full profile row and overlay only account_type, so profile_organization_save()'s
-            // merge-safe contract can never blank any other field on this organization (§13 — no
-            // silent data loss).
-            $targetOrganizationId = (int)($_POST['organization_id'] ?? 0);
-            $targetOrganizationId = $targetOrganizationId > 0 && can_access_organization($id, $targetOrganizationId)
-                ? $targetOrganizationId
-                : (user_primary_organization_id_for_display($id) ?? 0);
-            if ($targetOrganizationId <= 0) {
-                flash('error', 'این کاربر عضو هیچ سازمانی نیست — ابتدا سازمان پیش‌فرض را بسازید.');
-            } else {
-                $current = profile_organization_get($targetOrganizationId);
-                $current['account_type'] = $_POST['account_type'] ?? $current['account_type'];
-                $result = profile_organization_save($targetOrganizationId, $current, (int)$me['id']);
-                flash($result['ok'] ? 'success' : 'error', $result['ok']
-                    ? 'نوع حساب به‌روزرسانی شد.'
-                    : profile_error_message((string)$result['reason']));
-            }
         }
     }
 
@@ -224,18 +182,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lastName   = trim($_POST['last_name'] ?? '');
         $email      = trim($_POST['email'] ?? '');
         $mobile     = normalize_msisdn($_POST['mobile'] ?? '');
-        $nationalId = trim(from_persian_digits($_POST['national_id'] ?? ''));
         $domainId   = (int)($_POST['domain_id'] ?? 0);
-        $gender     = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
         $dailyLimit = max(1, (int)($_POST['daily_limit'] ?? 1000));
-        // نوع حساب — defaults safely to 'individual' for anything missing/unrecognized, matching
-        // db/migrations/2026_08_17_kyc_workflow.sql's own backfill default; never trusts a raw string.
-        $accountType = in_array($_POST['account_type'] ?? '', array_keys(PROFILE_ACCOUNT_TYPES), true)
-            ? $_POST['account_type'] : 'individual';
+        // Everything about who the customer is — the person, and for a «حقوقی» account the company and
+        // its managing director, plus the address — comes from the one form
+        // (app/views/customer_identity_fields.php) and is checked BEFORE the account is made, so a
+        // typo never leaves a half-registered customer behind.
+        $identity   = profile_identity_from_request($_POST);
+        $nationalId = profile_normalize_national_code($identity['user']['national_code']);
+        $gender     = $identity['user']['gender'] === 'female' ? 'FEMALE' : 'MALE';
+        $identityError = profile_identity_validate($identity, true);
 
         if ($username === '' || strlen($password) < 6 || $firstName === '' || $lastName === ''
-            || $email === '' || !$mobile || strlen($nationalId) !== 10 || !$domainId) {
-            flash('error', 'همه‌ی فیلدهای ستاره‌دار را به‌درستی پر کنید (کد ملی باید دقیقاً ۱۰ رقم باشد).');
+            || $email === '' || !$mobile || !$domainId) {
+            flash('error', 'همه‌ی فیلدهای ستاره‌دار را به‌درستی پر کنید.');
+        } elseif ($identityError !== null) {
+            flash('error', profile_error_message($identityError));
         } else {
             [$ok, $info, $created] = backend_create_account([
                 'username'         => $username,
@@ -257,26 +219,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($ok && $created && !empty($created['id'])) {
                 $newUserId = (int)$created['id'];
                 // Everything ELLSMS itself owns for this brand-new user — panel access, its default
-                // organization, and that organization's account_type — is written as one local
-                // transaction (backend_create_account() above already made its own, separate,
-                // external call to the shared backend and cannot be folded into this one; see
-                // app/backend.php's own docblock on that boundary). ensure_user_has_organization() is
-                // lock-protected and idempotent on its own, so a retried/duplicated POST here still
-                // never creates a second organization for the same user_id.
-                db_transaction(function () use ($newUserId, $username, $firstName, $lastName, $accountType, $me): void {
+                // organization, and that organization's profile — is written as one local transaction
+                // (backend_create_account() above already made its own, separate, external call to the
+                // shared backend and cannot be folded into this one; see app/backend.php's own docblock
+                // on that boundary). ensure_user_has_organization() is lock-protected and idempotent on
+                // its own, so a retried/duplicated POST here still never creates a second organization.
+                $profileResult = db_transaction(function () use ($newUserId, $username, $firstName, $lastName, $identity, $me): array {
                     db()->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator)
                                    VALUES (?,1,0,?)
                                    ON DUPLICATE KEY UPDATE panel_access=1')
                        ->execute([$newUserId, '']); // no sender until a line is assigned (system_default_originator())
 
-                    $displayName = trim($firstName . ' ' . $lastName) ?: $username;
-                    $orgResult = ensure_user_has_organization($newUserId, $displayName . "'s Workspace");
-                    if ($orgResult['ok'] && $orgResult['organization_id']) {
-                        profile_organization_save($orgResult['organization_id'], ['account_type' => $accountType], (int)$me['id']);
-                    }
+                    $displayName = $identity['account_type'] === 'legal' && $identity['organization']['legal_name'] !== ''
+                        ? $identity['organization']['legal_name']
+                        : (trim($firstName . ' ' . $lastName) ?: $username) . "'s Workspace";
+                    $orgResult = ensure_user_has_organization($newUserId, $displayName);
+                    return $orgResult['ok'] && $orgResult['organization_id']
+                        ? profile_identity_save($newUserId, (int)$orgResult['organization_id'], $identity, (int)$me['id'])
+                        : ['ok' => false, 'reason' => 'invalid_organization'];
                 });
-                audit((int)$me['id'], 'user.create_account', $username);
-                flash('success', 'حساب «' . $username . '» ساخته شد و دسترسی داتیس رایان گستر ایرانیان نیز فعال شد.');
+                audit((int)$me['id'], 'user.create_account', $username . ' type=' . $identity['account_type']);
+                if ($profileResult['ok']) {
+                    flash('success', 'حساب «' . $username . '» ساخته شد و دسترسی داتیس رایان گستر ایرانیان نیز فعال شد.');
+                } else {
+                    flash('error', 'حساب «' . $username . '» ساخته شد، اما مشخصات آن ذخیره نشد: ' . profile_error_message((string)$profileResult['reason']) . ' — از همین صفحه تکمیل کنید.');
+                }
                 redirect('/users.php?edit=' . $newUserId);
             } else {
                 flash('error', 'ساخت حساب ناموفق بود: ' . $info);
@@ -287,7 +254,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Customer/organization profile (docs/customer-profile.md). Kept in its own branch rather than
     // folded into the list above because these actions are scoped differently: the personal profile
     // targets the USER being edited, while company/address/alerts target that user's ORGANIZATION.
-    if (in_array($do, ['profile_personal', 'profile_organization', 'profile_address', 'profile_notifications', 'profile_document_upload', 'profile_document_archive'], true)) {
+    if (in_array($do, ['profile_identity', 'profile_notifications', 'profile_document_upload', 'profile_document_archive'], true)) {
         $target = resolve_ellsms_managed_user($id);
         if (!$target) {
             flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان گستر ایرانیان نیست یا یافت نشد.');
@@ -300,37 +267,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? $targetOrganizationId
                 : (int)(user_default_organization_id($id) ?? 0);
 
-            if ($do === 'profile_personal') {
-                $result = profile_user_save($id, [
-                    'father_name'          => $_POST['father_name'] ?? '',
-                    'national_code'        => $_POST['national_code'] ?? '',
-                    'birth_certificate_no' => $_POST['birth_certificate_no'] ?? '',
-                    'birth_date'           => profile_date_from_request('birth_date'),
-                    'gender'               => $_POST['gender'] ?? 'unspecified',
-                    'personal_address'     => $_POST['personal_address'] ?? '',
-                ], (int)$me['id']);
-                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'اطلاعات فردی ذخیره شد.' : profile_error_message((string)$result['reason']));
-            } elseif ($targetOrganizationId <= 0) {
-                flash('error', 'این کاربر عضو هیچ سازمانی نیست، بنابراین اطلاعات سازمانی قابل ثبت نیست.');
-            } elseif ($do === 'profile_organization') {
-                $result = profile_organization_save($targetOrganizationId, [
-                    'legal_name'                   => $_POST['legal_name'] ?? '',
-                    'company_type'                 => $_POST['company_type'] ?? 'unspecified',
-                    'registration_number'          => $_POST['registration_number'] ?? '',
-                    'national_id'                  => $_POST['national_id'] ?? '',
-                    'economic_code'                => $_POST['economic_code'] ?? '',
-                    'ceo_name'                     => $_POST['ceo_name'] ?? '',
-                    'ceo_father_name'              => $_POST['ceo_father_name'] ?? '',
-                    'ceo_national_code'            => $_POST['ceo_national_code'] ?? '',
-                    'ceo_birth_date'               => profile_date_from_request('ceo_birth_date'),
-                    'company_start_date'           => profile_date_from_request('company_start_date'),
-                    'company_expiry_date'          => profile_date_from_request('company_expiry_date'),
-                    'legal_representative_user_id' => $_POST['legal_representative_user_id'] ?? 0,
-                ], (int)$me['id']);
-                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'اطلاعات سازمان ذخیره شد.' : profile_error_message((string)$result['reason']));
-            } elseif ($do === 'profile_address') {
-                $result = profile_address_save($targetOrganizationId, $_POST, (int)$me['id']);
-                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'آدرس ذخیره شد.' : profile_error_message((string)$result['reason']));
+            if ($targetOrganizationId <= 0) {
+                flash('error', 'این کاربر عضو هیچ سازمانی نیست، بنابراین مشخصات آن قابل ثبت نیست — ابتدا سازمان پیش‌فرض را بسازید.');
+            } elseif ($do === 'profile_identity') {
+                // «مشخصات مشتری» — person, account type, company and address in one form.
+                $identity = profile_identity_from_request($_POST);
+                $reason = profile_identity_validate($identity, false);
+                $result = $reason === null ? profile_identity_save($id, $targetOrganizationId, $identity, (int)$me['id']) : ['ok' => false, 'reason' => $reason];
+                flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'مشخصات مشتری ذخیره شد.' : profile_error_message((string)$result['reason']));
             } elseif ($do === 'profile_notifications') {
                 $result = profile_notifications_save($targetOrganizationId, $_POST, (int)$me['id']);
                 flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'تنظیمات اعلان ذخیره شد.' : profile_error_message((string)$result['reason']));
@@ -355,7 +299,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $editUser = null;
-$editKyc  = null;
 if (!empty($_GET['edit'])) {
     // resolve_ellsms_managed_user() (app/authorization.php) — same gate
     // every mutating action above uses. Previously this queried user_
@@ -367,10 +310,6 @@ if (!empty($_GET['edit'])) {
     if (!$editUser) {
         flash('error', 'این حساب در محدوده‌ی مدیریت داتیس رایان گستر ایرانیان نیست یا یافت نشد.');
     } else {
-        $kst = db()->prepare('SELECT * FROM ellsms_user_kyc WHERE user_id = ?');
-        $kst->execute([$editUser['id']]);
-        $editKyc = $kst->fetch() ?: ['father_name' => '', 'address' => '', 'id_card_photo' => null, 'second_doc_photo' => null];
-
         // Customer/organization profile. The organization comes from the TARGET's memberships —
         // this page never accepts one from the request (docs/customer-profile.md).
         $editUserId = (int)$editUser['id'];
@@ -572,14 +511,10 @@ require __DIR__ . '/../app/views/header.php';
 <div class="tabs" data-tabs="user-edit">
 <nav class="tabs-nav" role="tablist" aria-label="بخش‌های ویرایش کاربر">
   <button type="button" role="tab" data-tab="account">حساب و اعتبار</button>
-  <button type="button" role="tab" data-tab="personal">اطلاعات فردی</button>
-  <button type="button" role="tab" data-tab="organization">سازمان</button>
   <?php if ($editOrganizationId > 0): ?>
-    <button type="button" role="tab" data-tab="address">آدرس</button>
     <button type="button" role="tab" data-tab="alerts">هشدار اعتبار</button>
   <?php endif; ?>
   <button type="button" role="tab" data-tab="documents">مدارک</button>
-  <button type="button" role="tab" data-tab="kyc">اطلاعات هویتی (KYC)</button>
   <button type="button" role="tab" data-tab="hierarchy">نمایندگی و دسترسی منو</button>
   <button type="button" role="tab" data-tab="operator-prices">تعرفه‌ی اختصاصی</button>
   <button type="button" role="tab" data-tab="delivery-billing">ارسال بر اساس تحویل</button>
@@ -587,6 +522,47 @@ require __DIR__ . '/../app/views/header.php';
 </nav>
 
 <section class="tab-panel" data-panel="account" role="tabpanel">
+<?php if ($editOrganizationId === 0): ?>
+<div class="card">
+  <h2>مشخصات مشتری</h2>
+  <div class="flash flash-error">
+    این کاربر به هیچ سازمانی متصل نیست، بنابراین نوع حساب (حقیقی/حقوقی)، مشخصات و آدرس آن قابل نمایش یا ثبت نیستند.
+    این وضعیت معمولاً برای حساب‌های قدیمی‌تر از فعال‌سازی خودکار سازمان رخ می‌دهد و با یک کلیک قابل رفع است.
+  </div>
+  <form method="post" style="margin-top:10px">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="ensure_organization">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="back" value="1">
+    <button class="btn btn-primary btn-sm">ساخت سازمان پیش‌فرض برای این کاربر</button>
+  </form>
+  <p class="hint">این عملیات فقط وقتی کاربر عضو هیچ سازمانی نباشد اثر می‌کند؛ هرگز کاربر را به سازمان دیگری متصل نمی‌کند.</p>
+</div>
+<?php else: ?>
+<div class="card">
+  <div class="card-head">
+    <div>
+      <h2>مشخصات مشتری</h2>
+      <p class="hint">نام، نام‌خانوادگی، موبایل و ایمیل از سامانه‌ی مرکزی می‌آید (بالای صفحه). نوع حساب را «حقیقی» یا «حقوقی» انتخاب کنید؛ برای حساب حقوقی مشخصات شرکت هم نمایش داده می‌شود.</p>
+      <?php if (count($editMemberships) > 1): ?>
+        <p class="hint">این کاربر عضو <?= to_persian_digits((string)count($editMemberships)) ?> سازمان است؛ مشخصات زیر مربوط به سازمان «<?= e((string)($editOrganization['name'] ?? '')) ?>» است.</p>
+      <?php endif; ?>
+    </div>
+  </div>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="profile_identity">
+    <input type="hidden" name="id" value="<?= $editUserId ?>">
+    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
+    <?php
+    $idf = ['mode' => 'edit', 'account_type' => (string)($editOrgProfile['account_type'] ?? 'individual'),
+            'user' => $editProfile, 'org' => $editOrgProfile, 'address' => $editAddress, 'id' => 'edit_account'];
+    require __DIR__ . '/../app/views/customer_identity_fields.php';
+    ?>
+    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی مشخصات مشتری</button></div>
+  </form>
+</div>
+<?php endif; ?>
 <div class="card">
     <h2>خطوط ارسال</h2>
     <p class="hint">
@@ -653,154 +629,7 @@ require __DIR__ . '/../app/views/header.php';
 </div>
 </section>
 
-<section class="tab-panel" data-panel="personal" role="tabpanel">
-<div class="card">
-  <h2>اطلاعات فردی مشتری</h2>
-  <form method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="profile_personal">
-    <input type="hidden" name="id" value="<?= $editUserId ?>">
-    <div class="form-section">
-      <h3 class="subsection-title">مشخصات هویتی</h3>
-      <div class="form-grid">
-        <label>نام پدر <input type="text" name="father_name" value="<?= e((string)$editProfile['father_name']) ?>" maxlength="120"></label>
-        <label>کد ملی <input type="text" name="national_code" class="ltr" inputmode="numeric" value="<?= e((string)$editProfile['national_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
-        <label>شماره شناسنامه <input type="text" name="birth_certificate_no" class="ltr" inputmode="numeric" value="<?= e((string)$editProfile['birth_certificate_no']) ?>" maxlength="30"></label>
-        <label>تاریخ تولد <?= jalali_date_select('birth_date', $editProfile['birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
-        <label>جنسیت
-          <select name="gender">
-            <?php foreach (PROFILE_GENDERS as $value => $label): ?>
-              <option value="<?= e($value) ?>"<?= ($editProfile['gender'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </label>
-      </div>
-    </div>
-    <div class="form-section">
-      <h3 class="subsection-title">آدرس شخصی</h3>
-      <div class="form-grid">
-        <label class="span-full">آدرس <input type="text" name="personal_address" value="<?= e((string)($editProfile['personal_address'] ?? '')) ?>" maxlength="500"></label>
-      </div>
-    </div>
-    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات فردی</button></div>
-  </form>
-</div>
-</section>
-
-<?php if ($editOrganizationId === 0): ?>
-<section class="tab-panel" data-panel="organization" role="tabpanel">
-<div class="card">
-  <h2>سازمان</h2>
-  <div class="flash flash-error">
-    این کاربر به هیچ سازمانی متصل نیست، بنابراین نوع حساب (حقیقی/حقوقی)، اطلاعات شرکت، آدرس و مدارک سازمانی قابل نمایش یا ثبت نیستند.
-    این وضعیت معمولاً برای حساب‌های قدیمی‌تر از فعال‌سازی خودکار سازمان رخ می‌دهد و با یک کلیک قابل رفع است.
-  </div>
-  <form method="post" style="margin-top:10px">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="ensure_organization">
-    <input type="hidden" name="id" value="<?= $editUserId ?>">
-    <input type="hidden" name="back" value="1">
-    <button class="btn btn-primary btn-sm">ساخت سازمان پیش‌فرض برای این کاربر</button>
-  </form>
-  <p class="hint">این عملیات فقط وقتی کاربر عضو هیچ سازمانی نباشد اثر می‌کند؛ هرگز کاربر را به سازمان دیگری متصل نمی‌کند.</p>
-</div>
-</section>
-<?php else: ?>
-<section class="tab-panel" data-panel="organization" role="tabpanel">
-<div class="card">
-  <div class="card-head">
-    <div>
-      <h2>اطلاعات سازمان — <?= e((string)($editOrganization['name'] ?? '')) ?></h2>
-      <?php if (count($editMemberships) > 1): ?>
-        <p class="hint">این کاربر عضو <?= to_persian_digits((string)count($editMemberships)) ?> سازمان است؛ اطلاعات زیر مربوط به سازمان نمایش‌داده‌شده است.</p>
-      <?php endif; ?>
-    </div>
-    <form method="post" class="toolbar" style="margin:0">
-      <?= csrf_field() ?>
-      <input type="hidden" name="do" value="account_type">
-      <input type="hidden" name="id" value="<?= $editUserId ?>">
-      <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
-      <input type="hidden" name="back" value="1">
-      <div class="segmented" role="radiogroup" aria-label="نوع حساب">
-        <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
-          <input type="radio" id="edit_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= ($editOrgProfile['account_type'] ?? 'individual') === $value ? ' checked' : '' ?>>
-          <label for="edit_account_type_<?= e($value) ?>"><?= e($label) ?></label>
-        <?php endforeach; ?>
-      </div>
-      <button class="btn btn-sm">اعمال نوع حساب</button>
-    </form>
-  </div>
-
-  <form method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="profile_organization">
-    <input type="hidden" name="id" value="<?= $editUserId ?>">
-    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
-    <div class="form-section">
-      <h3 class="subsection-title">اطلاعات شرکت</h3>
-      <div class="form-grid">
-        <label>نام حقوقی <input type="text" name="legal_name" value="<?= e((string)$editOrgProfile['legal_name']) ?>" maxlength="190"></label>
-        <label>نوع شرکت
-          <select name="company_type">
-            <?php foreach (PROFILE_COMPANY_TYPES as $value => $label): ?>
-              <option value="<?= e($value) ?>"<?= ($editOrgProfile['company_type'] ?? 'unspecified') === $value ? ' selected' : '' ?>><?= e($label) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </label>
-        <label>شماره ثبت <input type="text" name="registration_number" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['registration_number']) ?>" maxlength="40"></label>
-        <label>شناسه ملی شرکت <input type="text" name="national_id" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['national_id']) ?>" maxlength="20"></label>
-        <label>کد اقتصادی <input type="text" name="economic_code" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['economic_code']) ?>" maxlength="30"></label>
-        <label>تاریخ شروع فعالیت <?= jalali_date_select('company_start_date', $editOrgProfile['company_start_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
-        <label>تاریخ انقضا <?= jalali_date_select('company_expiry_date', $editOrgProfile['company_expiry_date'] ?? null, yearsAhead: 15, yearsBack: 10, allowEmpty: true) ?></label>
-      </div>
-    </div>
-    <div class="form-section">
-      <h3 class="subsection-title">مدیرعامل</h3>
-      <div class="form-grid">
-        <label>نام مدیرعامل <input type="text" name="ceo_name" value="<?= e((string)$editOrgProfile['ceo_name']) ?>" maxlength="160"></label>
-        <label>نام پدر مدیرعامل <input type="text" name="ceo_father_name" value="<?= e((string)$editOrgProfile['ceo_father_name']) ?>" maxlength="120"></label>
-        <label>کد ملی مدیرعامل <input type="text" name="ceo_national_code" class="ltr" inputmode="numeric" value="<?= e((string)$editOrgProfile['ceo_national_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
-        <label>تاریخ تولد مدیرعامل <?= jalali_date_select('ceo_birth_date', $editOrgProfile['ceo_birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
-      </div>
-    </div>
-    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات سازمان</button></div>
-  </form>
-</div>
-</section>
-
-<section class="tab-panel" data-panel="address" role="tabpanel">
-<div class="card">
-  <h2>آدرس سازمان</h2>
-  <form method="post">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="profile_address">
-    <input type="hidden" name="id" value="<?= $editUserId ?>">
-    <input type="hidden" name="organization_id" value="<?= $editOrganizationId ?>">
-    <div class="form-section">
-      <h3 class="subsection-title">موقعیت</h3>
-      <div class="form-grid cols-4">
-        <label>کشور <?= geo_country_select('country', (string)($editAddress['country'] ?: GEO_DEFAULT_COUNTRY)) ?></label>
-        <label>استان <?= geo_province_select('province', (string)$editAddress['province']) ?></label>
-        <label>شهر <?= geo_city_select('city', (string)$editAddress['city'], (string)$editAddress['province']) ?></label>
-        <label>منطقه / محله <input type="text" name="district" value="<?= e((string)($editAddress['district'] ?? '')) ?>" maxlength="60"></label>
-      </div>
-    </div>
-    <div class="form-section">
-      <h3 class="subsection-title">نشانی</h3>
-      <div class="form-grid cols-4">
-        <label class="span-2">خیابان <input type="text" name="street" value="<?= e((string)$editAddress['street']) ?>" maxlength="190"></label>
-        <label class="span-2">کوچه <input type="text" name="alley" value="<?= e((string)$editAddress['alley']) ?>" maxlength="120"></label>
-        <label>پلاک <input type="text" name="building_no" class="ltr" value="<?= e((string)$editAddress['building_no']) ?>" maxlength="20"></label>
-        <label>واحد <input type="text" name="unit_no" class="ltr" value="<?= e((string)$editAddress['unit_no']) ?>" maxlength="20"></label>
-        <label class="span-2">کد پستی <input type="text" name="postal_code" class="ltr" inputmode="numeric" value="<?= e((string)$editAddress['postal_code']) ?>" maxlength="20" placeholder="۱۰ رقم"></label>
-        <label class="span-full">توضیح آدرس <input type="text" name="address_text" value="<?= e((string)($editAddress['address_text'] ?? '')) ?>" maxlength="500"></label>
-      </div>
-    </div>
-    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی آدرس</button></div>
-  </form>
-</div>
-</section>
-
+<?php if ($editOrganizationId > 0): ?>
 <section class="tab-panel" data-panel="alerts" role="tabpanel">
 <div class="card">
   <h2>تنظیمات اعتبار سازمان</h2>
@@ -893,42 +722,6 @@ if ($editOrganizationId > 0) {
 <?php endforeach; ?>
 </section>
 
-<section class="tab-panel" data-panel="kyc" role="tabpanel">
-<div class="card">
-  <h2>اطلاعات هویتی (KYC)</h2>
-  <p class="hint">نام، نام‌خانوادگی و موبایل از سامانه‌ی مرکزی می‌آید (بالا نمایش داده شد). فیلدهای زیر فقط در داتیس رایان گستر ایرانیان نگهداری می‌شوند.</p>
-  <form method="post" enctype="multipart/form-data" style="margin-top:var(--sp-3)">
-    <?= csrf_field() ?>
-    <input type="hidden" name="do" value="kyc_save">
-    <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
-    <input type="hidden" name="back" value="1">
-    <div class="form-section">
-      <div class="form-grid">
-        <label>نام پدر <input type="text" name="father_name" value="<?= e($editKyc['father_name']) ?>"></label>
-        <label class="span-2">آدرس <input type="text" name="address" value="<?= e((string)$editKyc['address']) ?>"></label>
-      </div>
-    </div>
-    <div class="form-section">
-      <h3 class="subsection-title">تصاویر مدارک</h3>
-      <div class="form-grid cols-2">
-        <label>تصویر کارت ملی
-          <input type="file" name="id_card_photo" accept=".jpg,.jpeg,.png,.webp,.pdf">
-          <?php if ($editKyc['id_card_photo']): ?>
-            <span class="hint" style="display:block"><a href="/kyc-photo.php?user=<?= $editUser['id'] ?>&type=id_card" target="_blank">مشاهده‌ی فایل فعلی</a></span>
-          <?php endif; ?>
-        </label>
-        <label>تصویر مدرک دوم (شناسنامه یا پاسپورت)
-          <input type="file" name="second_doc_photo" accept=".jpg,.jpeg,.png,.webp,.pdf">
-          <?php if ($editKyc['second_doc_photo']): ?>
-            <span class="hint" style="display:block"><a href="/kyc-photo.php?user=<?= $editUser['id'] ?>&type=second_doc" target="_blank">مشاهده‌ی فایل فعلی</a></span>
-          <?php endif; ?>
-        </label>
-      </div>
-    </div>
-    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی اطلاعات هویتی</button></div>
-  </form>
-</div>
-</section>
 
 <section class="tab-panel" data-panel="remote-db" role="tabpanel">
 <div class="card">
@@ -1209,6 +1002,9 @@ if ($editOrganizationId > 0) {
         <td><span class="badge badge-<?= ($u['active'] && !$u['deleted']) ? 'ok' : 'off' ?>"><?= ($u['active'] && !$u['deleted']) ? 'فعال' : 'غیرفعال' ?></span></td>
         <td style="white-space:nowrap">
           <a class="btn btn-sm" href="/users.php?edit=<?= $u['id'] ?>">ویرایش</a>
+          <?php if (impersonation_target_refusal($u, (int)$me['id']) === null): ?>
+            <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$u['id'] ?>&amp;from=list">ورود به پنل مشتری</a>
+          <?php endif; ?>
           <?php if ((int)$u['id'] !== (int)$me['id']): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('دسترسی داتیس رایان گستر ایرانیان برای <?= e($u['username']) ?> لغو شود؟')">
             <?= csrf_field() ?>
@@ -1231,7 +1027,7 @@ if ($editOrganizationId > 0) {
   <div class="card-head">
     <div>
       <h2>ساخت حساب تازه</h2>
-      <p class="hint">پس از ساخت، دسترسی داتیس رایان گستر ایرانیان خودکار فعال می‌شود و می‌توانید بلافاصله اعتبار، شماره و اطلاعات هویتی را تنظیم کنید. کد کاربری (code) خودکار و یکتا تولید می‌شود.</p>
+      <p class="hint">همه‌ی مشخصات مشتری همین‌جا گرفته می‌شود: نوع حساب را «حقیقی» یا «حقوقی» انتخاب کنید؛ برای حساب حقوقی مشخصات شرکت هم نمایش داده می‌شود. پس از ساخت، دسترسی داتیس رایان گستر ایرانیان خودکار فعال می‌شود. کد کاربری (code) خودکار و یکتا تولید می‌شود.</p>
     </div>
   </div>
   <?php if (!$domains): ?>
@@ -1240,27 +1036,10 @@ if ($editOrganizationId > 0) {
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="create_account">
-    <div class="form-section">
-      <h3 class="subsection-title">مشخصات فردی</h3>
-      <div class="form-grid cols-4">
-        <label>نام <span class="req">*</span> <input type="text" name="first_name" required></label>
-        <label>نام‌خانوادگی <span class="req">*</span> <input type="text" name="last_name" required></label>
-        <label>کد ملی <span class="req">*</span> <input type="text" name="national_id" required maxlength="10" class="ltr" inputmode="numeric" placeholder="۱۰ رقم"></label>
-        <label>جنسیت
-          <select name="gender">
-            <option value="MALE">مرد</option>
-            <option value="FEMALE">زن</option>
-          </select>
-        </label>
-      </div>
-    </div>
-    <div class="form-section">
-      <h3 class="subsection-title">اطلاعات تماس</h3>
-      <div class="form-grid cols-4">
-        <label>موبایل <span class="req">*</span> <input type="text" name="mobile" required class="ltr" inputmode="tel" placeholder="0912…"></label>
-        <label class="span-2">ایمیل <span class="req">*</span> <input type="email" name="email" required class="ltr"></label>
-      </div>
-    </div>
+    <?php
+    $idf = ['mode' => 'create', 'account_type' => 'individual', 'user' => [], 'org' => [], 'address' => [], 'id' => 'new_account'];
+    require __DIR__ . '/../app/views/customer_identity_fields.php';
+    ?>
     <div class="form-section">
       <h3 class="subsection-title">اطلاعات ورود</h3>
       <div class="form-grid cols-4">
@@ -1277,15 +1056,6 @@ if ($editOrganizationId > 0) {
           </select>
         </label>
         <label>سقف ارسال روزانه <input type="number" name="daily_limit" value="1000" min="1"></label>
-        <div class="field span-2">
-          <span class="field-label" id="new_account_type_label">نوع حساب</span>
-          <div class="segmented" role="radiogroup" aria-labelledby="new_account_type_label">
-            <?php foreach (PROFILE_ACCOUNT_TYPES as $value => $label): ?>
-              <input type="radio" id="new_account_type_<?= e($value) ?>" name="account_type" value="<?= e($value) ?>"<?= $value === 'individual' ? ' checked' : '' ?>>
-              <label for="new_account_type_<?= e($value) ?>"><?= e($label) ?></label>
-            <?php endforeach; ?>
-          </div>
-        </div>
       </div>
     </div>
     <div class="form-actions"><button class="btn btn-primary">ساخت حساب</button></div>

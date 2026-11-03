@@ -68,9 +68,17 @@ $dest = trim((string)($_GET['dest'] ?? ''));
 $per = (int)($_GET['per_page'] ?? 100);
 if (!in_array($per, [50,100,200], true)) $per = 100;
 
-$canonicalStatusSql = "CASE
+// Delivery states only for admins and customers on delivery-based billing (delivery_status_visible());
+// for anyone else a sent message stays «ارسال‌شده» and only a failed send is «ناموفق».
+$showDelivery = delivery_status_visible($me);
+$reportStatuses = $showDelivery ? ['pending', 'sent', 'delivered', 'failed'] : ['pending', 'sent', 'failed'];
+$canonicalStatusSql = $showDelivery ? "CASE
     WHEN bi.delivery_status = 'delivered' THEN 'delivered'
     WHEN bi.delivery_status IN ('failed','rejected','expired') OR bi.status IN ('failed','cancelled') THEN 'failed'
+    WHEN bi.status = 'sent' THEN 'sent'
+    ELSE 'pending'
+END" : "CASE
+    WHEN bi.status IN ('failed','cancelled') THEN 'failed'
     WHEN bi.status = 'sent' THEN 'sent'
     ELSE 'pending'
 END";
@@ -87,7 +95,7 @@ $summary = $sumSt->fetch() ?: ['total'=>0,'pending_count'=>0,'sent_count'=>0,'de
 
 $where = ['bi.job_id=?'];
 $params = [$jobId];
-if ($status !== '' && in_array($status, ['pending','sent','delivered','failed'], true)) {
+if ($status !== '' && in_array($status, $reportStatuses, true)) {
     $where[] = "{$canonicalStatusSql}=?";
     $params[] = $status;
 }
@@ -103,7 +111,7 @@ if ($dest !== '') {
 }
 
 // The rows matching the filter: the summary already counts them unless a number is searched.
-$statusFilter = in_array($status, ['pending','sent','delivered','failed'], true) ? $status : '';
+$statusFilter = in_array($status, $reportStatuses, true) ? $status : '';
 if (count($where) === 1) {
     $listTotal = (int)$summary['total'];
 } elseif ($dest === '' || preg_replace('/\D/', '', $dest) === '') {
@@ -175,7 +183,7 @@ require __DIR__ . '/../app/views/header.php';
   <?php endif; ?>
   <div class="grid grid-4">
     <div class="stat"><div class="stat-label">کل</div><div class="stat-value"><?= to_persian_digits(number_format($total)) ?></div></div>
-    <div class="stat"><div class="stat-label">ارسال/تحویل</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['sent_count'] + (int)$summary['delivered_count'])) ?></div></div>
+    <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال/تحویل' : 'ارسال‌شده' ?></div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['sent_count'] + (int)$summary['delivered_count'])) ?></div></div>
     <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['failed_count'])) ?></div></div>
     <div class="stat"><div class="stat-label">باقی‌مانده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['pending_count'])) ?></div></div>
   </div>
@@ -195,7 +203,7 @@ require __DIR__ . '/../app/views/header.php';
     <label>وضعیت
       <select name="status">
         <option value="">همه</option>
-        <?php foreach (['pending','sent','delivered','failed'] as $s): ?>
+        <?php foreach ($reportStatuses as $s): ?>
           <option value="<?= $s ?>" <?= $status === $s ? 'selected' : '' ?>><?= e($statusFa[$s]) ?></option>
         <?php endforeach; ?>
       </select>
@@ -208,7 +216,7 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 
   <div class="table-wrap"><table>
-    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>Provider ID</th><th>دفعات استعلام</th><th>زمان ثبت</th><th>آخرین استعلام</th></tr>
+    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>Provider ID</th><?php if ($showDelivery): ?><th>دفعات استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
     <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
@@ -216,12 +224,12 @@ require __DIR__ . '/../app/views/header.php';
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,80,'…')) ?></td>
         <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
         <td class="ltr num"><?= !empty($r['provider_message_id']) ? e((string)$r['provider_message_id']) : '—' ?></td>
-        <td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td>
+        <?php if ($showDelivery): ?><td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td><?php endif; ?>
         <td class="num"><?= jdate((string)$r['created_at']) ?></td>
-        <td class="num"><?= !empty($r['delivery_checked_at']) ? jdate((string)$r['delivery_checked_at']) : '—' ?></td>
+        <?php if ($showDelivery): ?><td class="num"><?= !empty($r['delivery_checked_at']) ? jdate((string)$r['delivery_checked_at']) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="8" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= $showDelivery ? 8 : 6 ?>" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
   </table></div>
 
   <?= pager_links($page, pager_pages($listTotal, $per), array_filter(array_diff_key($_GET, ['before_id' => 1, 'after_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $listTotal) ?>

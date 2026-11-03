@@ -390,7 +390,7 @@ final class AccountTypeUserManagementHttpTest extends TestCase
 
     /* ---------- Impersonation visibility / read-only (§7) ---------- */
 
-    public function testImpersonationShowsAccountTypeCardButCannotChangeIt(): void
+    public function testAdminImpersonationShowsAccountTypeCardAndCanChangeIt(): void
     {
         $targetUserId = $this->makeCommittedUser(false, 'imp_target_');
         $result = $this->simulateAccountCreationLocalSide($targetUserId, 'Impersonated User', 'individual');
@@ -409,13 +409,13 @@ final class AccountTypeUserManagementHttpTest extends TestCase
         $page = $this->request('GET', '/profile.php', $impersonated);
         $this->assertSame(200, $page['code']);
         $this->assertStringContainsString('class="segmented"', $page['body'], 'the account-type card stays visible while impersonating');
-        $this->assertStringContainsString('disabled', $page['body']);
 
+        // A platform admin's support session is unrestricted — it may change the account type.
         $csrf = $this->csrfFor('/profile.php', $impersonated);
         $this->request('POST', '/profile.php', $impersonated, [
             '_csrf' => $csrf, 'do' => 'account_type', 'account_type' => 'legal',
         ]);
-        $this->assertSame('individual', \profile_organization_get($organizationId)['account_type'],
-            'a support session must not be able to change the account type');
+        $this->assertSame('legal', \profile_organization_get($organizationId)['account_type'],
+            'a platform admin support session may change the account type');
     }
 }

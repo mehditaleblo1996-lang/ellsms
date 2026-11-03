@@ -35,8 +35,10 @@ require __DIR__ . '/../app/views/reseller_header.php';
     <h2>ارسال زیرمجموعه‌ها</h2>
     <div class="summary-grid">
       <div class="summary-item"><div class="summary-label">ارسال امروز</div><div class="summary-value num"><?= $num($stats['today']['sent']) ?></div></div>
+      <?php if (delivery_status_visible($me)): ?>
       <div class="summary-item"><div class="summary-label">تحویل‌شده</div><div class="summary-value num"><?= $num($stats['today']['delivered']) ?></div></div>
-      <div class="summary-item"><div class="summary-label">ناموفق</div><div class="summary-value num"><?= $num($stats['today']['failed']) ?></div></div>
+      <?php endif; ?>
+      <div class="summary-item"><div class="summary-label">ناموفق</div><div class="summary-value num"><?= $num($stats['today'][delivery_status_visible($me) ? 'failed' : 'send_failed']) ?></div></div>
     </div>
     <?php if ($stats['daily']): $max = max(1, max($stats['daily'])); ?>
     <div class="bars" style="margin-top:14px" aria-label="ارسال روزانه‌ی ۱۴ روز اخیر">

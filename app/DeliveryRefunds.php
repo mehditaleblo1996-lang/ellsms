@@ -85,6 +85,25 @@ function delivery_billing_policy(int $userId): array {
     return $policy;
 }
 
+/**
+ * Whether $viewer may see messages by their DELIVERY state («تحویل‌شده» / «تحویل نشده» / «منتظر گزارش
+ * تحویل», delivery times, delivery rates) in the reports. Only customers on delivery-based billing
+ * buy a message by its delivery, so only they — and admins — see it; everyone else sees a message as
+ * sent («ارسال‌شده»), failed only when the send itself failed, or still queued.
+ */
+function delivery_status_visible(?array $viewer = null): bool {
+    static $cache = [];
+    $viewer ??= current_user();
+    if (!$viewer) {
+        return false;
+    }
+    if (($viewer['role'] ?? '') === 'admin') {
+        return true;
+    }
+    $userId = (int)($viewer['id'] ?? 0);
+    return $cache[$userId] ??= $userId > 0 && delivery_billing_policy($userId)['enabled'];
+}
+
 /** Parses the admin's percentage input (Persian digits allowed). Null when it is not 1..100. */
 function delivery_billing_parse_percent(mixed $raw): ?int {
     $text = trim(from_persian_digits((string)$raw));

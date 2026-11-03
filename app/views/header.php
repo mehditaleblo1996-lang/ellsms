@@ -369,7 +369,7 @@ $userLabel = $me['full_name'] ?: $me['username'];
           <span>
             <strong>حالت پشتیبانی فعال است</strong> — شما در حال مشاهده حساب
             «<?= e(trim(($impersonationBanner['organization_name'] !== '' ? $impersonationBanner['organization_name'] . ' / ' : '') . $impersonationBanner['target_username'])) ?>»
-            هستید. عملیات حساس غیرفعال است و این نشست ممیزی می‌شود.
+            هستید. <?= $impersonationBanner['actor_is_admin'] ? 'همه‌ی امکانات پنل فعال است' : 'عملیات حساس غیرفعال است' ?> و این نشست ممیزی می‌شود.
             <span class="hint" style="display:inline">(<?= to_persian_digits((string)(int)ceil($impersonationBanner['expires_in'] / 60)) ?> دقیقه باقی‌مانده)</span>
           </span>
           <form method="post" action="/impersonate.php" style="margin:0">

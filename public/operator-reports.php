@@ -12,9 +12,11 @@ if (!is_admin()) {
  *   all    — every message in the range: operator share, encoding, status
  *   number — the status table for one sender line
  *   route  — the status table for one provider, over all its routes (admins only: providers are platform configuration)
- * A customer sees only the two summary columns of the status table (مجموع ارسال‌شده / تحویل گرفته‌شده).
+ * A customer sees only the two summary columns of the status table (مجموع ارسال‌شده / تحویل گرفته‌شده),
+ * and the delivery one only when on delivery-based billing (delivery_status_visible()).
  */
 $admin = is_admin();
+$showDelivery = delivery_status_visible($me);
 $view = (string)($_GET['view'] ?? 'all');
 if (!in_array($view, ['all', 'number', 'route'], true) || ($view === 'route' && !$admin)) $view = 'all';
 [$pageTitle, $active] = match ($view) {
@@ -182,11 +184,11 @@ if (lazy_part_begin('report')) {
 
   <?php else: ?>
   <div class="table-wrap"><table class="op-table op-status-table">
-    <tr><th>اپراتور</th><th class="op-key">مجموع ارسال‌شده</th><th class="op-key">تحویل گرفته‌شده</th></tr>
+    <tr><th>اپراتور</th><th class="op-key">مجموع ارسال‌شده</th><?php if ($showDelivery): ?><th class="op-key">تحویل گرفته‌شده</th><?php endif; ?></tr>
     <?php foreach ($operators as $op): ?>
-    <tr><td><?= $opCell($op) ?></td><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['received']) ?></td></tr>
+    <tr><td><?= $opCell($op) ?></td><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td><?php if ($showDelivery): ?><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['received']) ?></td><?php endif; ?></tr>
     <?php endforeach; ?>
-    <tr class="op-total"><td>جمع کل</td><td class="num op-key"><?= operator_report_num($derivedTotal['total_sent']) ?></td><td class="num op-key"><?= operator_report_num($derivedTotal['received']) ?></td></tr>
+    <tr class="op-total"><td>جمع کل</td><td class="num op-key"><?= operator_report_num($derivedTotal['total_sent']) ?></td><?php if ($showDelivery): ?><td class="num op-key"><?= operator_report_num($derivedTotal['received']) ?></td><?php endif; ?></tr>
   </table></div>
   <?php endif; ?>
 </div>

@@ -60,4 +60,22 @@ final class OperatorReportTest extends TestCase
         $due = operator_report_days_due('2026-10-26', ['2026-10-26' => ['built_at' => 100, 'queued' => 0]], 150, 5, 300);
         self::assertSame(['2026-10-25', '2026-10-24', '2026-10-23', '2026-10-22'], $due);
     }
+
+    public function testOperatorsAreOrderedMciIrancellRightelThenOthers(): void
+    {
+        $ops = [
+            ['code' => 'rightel', 'name' => 'رایتل'],
+            ['code' => 'mock', 'name' => \operator_display_name('Mock Operator')],
+            ['code' => '', 'name' => 'اپراتور دیگر'],
+            ['code' => 'mtn', 'name' => 'ایرانسل'],
+            ['code' => 'mci', 'name' => 'همراه اول'],
+        ];
+        $this->assertSame(
+            ['همراه اول', 'ایرانسل', 'رایتل', 'اپراتور دیگر', 'سایر اپراتورها', \OPERATOR_REPORT_UNKNOWN],
+            \operator_report_sort_operators($ops, true)
+        );
+        $this->assertSame('سایر اپراتورها', \operator_display_name('Mock Operator'));
+        $this->assertSame('ایرانسل', \operator_display_name('ایرانسل'));
+        $this->assertSame('سایر اپراتورها', \operator_label('mock', 'Mock Operator'));
+    }
 }

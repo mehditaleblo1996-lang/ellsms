@@ -42,6 +42,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['do'] ?? '') === 'e
 }
 
 $isAdmin = is_admin();
+// Delivery states only for admins and customers on delivery-based billing (delivery_status_visible()).
+$showDelivery = sent_report_show_delivery(delivery_status_visible($me));
 $today = (new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d');
 $f = sent_report_filters($_GET, $isAdmin, $today);
 $scope = dashboard_scope_user_ids($me);
@@ -55,10 +57,15 @@ $filterQuery = array_filter(array_intersect_key($_GET, array_flip($filterKeys)),
 
 if (lazy_part_begin('summary')) {
     $s = sent_report_summary($f, $scope, $hideRemoved);
-    $cards = [
+    $cards = $showDelivery ? [
         ''          => ['کل پیام‌ها', 'stat-accent'],
         'delivered' => ['تحویل‌شده', ''],
         'sent'      => ['منتظر گزارش تحویل', ''],
+        'failed'    => ['ناموفق', ''],
+        'queued'    => ['در صف ارسال', ''],
+    ] : [
+        ''          => ['کل پیام‌ها', 'stat-accent'],
+        'sent'      => ['ارسال‌شده', ''],
         'failed'    => ['ناموفق', ''],
         'queued'    => ['در صف ارسال', ''],
     ];
@@ -95,7 +102,7 @@ if (lazy_part_begin('list')) {
   <div class="table-wrap"><table data-cards class="report-table">
     <thead><tr>
       <th>ردیف</th><th>شناسه</th><th>فرستنده</th><?php if ($showUser): ?><th>نام کاربری</th><?php endif; ?><th>اپراتور</th>
-      <th>گیرنده</th><th>محتوا</th><th>فرمت</th><th>تعداد پیام</th><th>نوع درخواست</th><th>زمان درخواست</th><th>زمان تحویل</th><th>وضعیت</th><th><span class="sr-only">جزئیات</span></th>
+      <th>گیرنده</th><th>محتوا</th><th>فرمت</th><th>تعداد پیام</th><th>نوع درخواست</th><th>زمان درخواست</th><?php if ($showDelivery): ?><th>زمان تحویل</th><?php endif; ?><th>وضعیت</th><th><span class="sr-only">جزئیات</span></th>
     </tr></thead>
     <tbody>
     <?php foreach ($rows as $n => $r):
@@ -112,13 +119,13 @@ if (lazy_part_begin('list')) {
         <td class="num"><?= to_persian_digits((string)$r['parts']) ?></td>
         <td><?= e($r['type_label']) ?></td>
         <td class="num"><?= sent_report_datetime($r['requested_at']) ?></td>
-        <td class="num"><?= !empty($r['delivered_at']) ? sent_report_datetime($r['delivered_at']) : '—' ?></td>
+        <?php if ($showDelivery): ?><td class="num"><?= !empty($r['delivered_at']) ? sent_report_datetime($r['delivered_at']) : '—' ?></td><?php endif; ?>
         <td><span class="badge badge-<?= e(sent_report_status_class($r['report_status'])) ?>"><?= e($r['status_label']) ?></span></td>
         <td><button type="button" class="icon-button report-eye" data-detail="<?= e($r['ref']) ?>" aria-label="جزئیات پیام <?= e($r['ref']) ?>" title="جزئیات"><?= panel_icon('eye') ?></button></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$rows): ?>
-      <tr><td colspan="<?= $showUser ? 14 : 13 ?>" class="empty-cell"><?= panel_empty_state('پیامی با این فیلترها پیدا نشد', 'بازه‌ی تاریخ را بزرگ‌تر کنید یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr>
+      <tr><td colspan="<?= ($showUser ? 14 : 13) - ($showDelivery ? 0 : 1) ?>" class="empty-cell"><?= panel_empty_state('پیامی با این فیلترها پیدا نشد', 'بازه‌ی تاریخ را بزرگ‌تر کنید یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr>
     <?php endif; ?>
     </tbody>
   </table></div>

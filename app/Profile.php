@@ -854,6 +854,7 @@ function profile_error_message(string $reason): string {
         'invalid_email'               => 'ایمیل اعلان معتبر نیست.',
         'expiry_before_start'         => 'تاریخ انقضا نمی‌تواند پیش از تاریخ شروع فعالیت باشد.',
         'representative_not_a_member' => 'نماینده‌ی قانونی باید عضو همین سازمان باشد.',
+        'legal_fields_required'       => 'برای حساب حقوقی نام شرکت، شماره ثبت، شناسه ملی و کد اقتصادی لازم است.',
     ][$reason] ?? 'ذخیره‌سازی ممکن نشد.';
 }
 
@@ -937,4 +938,123 @@ function profile_account_completeness(string $accountType, array $userProfile, a
     }
     $total = 4 /* profile_user_completeness's own field count */ + count($addressLabels);
     return ['percent' => (int)round((($total - count($missing)) / $total) * 100), 'missing' => $missing];
+}
+
+/* ==========================================================================
+   «مشخصات مشتری» — the one admin form (app/views/customer_identity_fields.php)
+   ========================================================================== */
+
+// No «منطقه / محله» on this form; a district already on file is kept (profile_identity_save()).
+const PROFILE_ADDRESS_FIELDS = ['country', 'province', 'city', 'street', 'alley', 'building_no', 'unit_no', 'postal_code', 'address_text'];
+
+/**
+ * Pure apart from reading the Jalali date triples: the posted form split into what each save function
+ * takes. The company part is read only for a legal account — for an individual those keys stay
+ * ABSENT, so profile_organization_save()'s merge keeps whatever company data is already on file.
+ *
+ * @return array{account_type:string, user:array, organization:array, address:array}
+ */
+function profile_identity_from_request(array $post): array {
+    $type = ($post['account_type'] ?? '') === 'legal' ? 'legal' : 'individual';
+    $text = static fn(string $key): string => trim((string)($post[$key] ?? ''));
+    $user = [
+        'father_name'          => $text('father_name'),
+        'national_code'        => $text('national_code'),
+        'birth_certificate_no' => $text('birth_certificate_no'),
+        'birth_date'           => profile_date_from_request('birth_date'),
+        'gender'               => $text('gender') ?: 'unspecified',
+    ];
+    $organization = ['account_type' => $type];
+    if ($type === 'legal') {
+        $organization += [
+            'legal_name'          => $text('legal_name'),
+            'company_type'        => $text('company_type') ?: 'unspecified',
+            'registration_number' => $text('registration_number'),
+            'national_id'         => $text('company_national_id'),
+            'economic_code'       => $text('economic_code'),
+            'landline_phone'      => $text('landline_phone'),
+            'company_start_date'  => profile_date_from_request('company_start_date'),
+            'company_expiry_date' => profile_date_from_request('company_expiry_date'),
+        ];
+    }
+    $address = [];
+    foreach (PROFILE_ADDRESS_FIELDS as $key) {
+        $address[$key] = $text($key);
+    }
+    return ['account_type' => $type, 'user' => $user, 'organization' => $organization, 'address' => $address];
+}
+
+/**
+ * Checks the form before anything is written — for a new account, before the account itself is made,
+ * so a typo never leaves a half-registered customer behind. $creating also enforces the fields the
+ * create form marks required (an existing account may be saved half-filled, STEP 32).
+ * Returns a profile_error_message() reason, or null when the form is acceptable.
+ */
+function profile_identity_validate(array $identity, bool $creating): ?string {
+    $user = $identity['user'];
+    $org = $identity['organization'];
+    $address = $identity['address'];
+    if ($user['national_code'] !== '' || $creating) {
+        if (profile_normalize_national_code($user['national_code']) === '') return 'invalid_national_code';
+    }
+    if ($user['birth_date'] !== null && $user['birth_date'] > date('Y-m-d')) return 'birth_date_in_future';
+    if ($identity['account_type'] === 'legal') {
+        if ($creating) {
+            // The form asks for the company itself, not its managing director (the account holder's own
+            // details above stand for the person), so ceo_name is not required here.
+            foreach (array_diff(PROFILE_LEGAL_ENTITY_REQUIRED_FIELDS, ['ceo_name']) as $field) {
+                if (trim((string)($org[$field] ?? '')) === '') return 'legal_fields_required';
+            }
+        }
+        if ($org['company_start_date'] !== null && $org['company_expiry_date'] !== null && $org['company_expiry_date'] < $org['company_start_date']) return 'expiry_before_start';
+    }
+    if ($address['postal_code'] !== '' && profile_normalize_postal_code($address['postal_code']) === '') return 'invalid_postal_code';
+    if (($address['country'] ?: GEO_DEFAULT_COUNTRY) === GEO_DEFAULT_COUNTRY) {
+        if ($address['province'] !== '' && !geo_is_province($address['province'])) return 'invalid_province';
+        if ($address['city'] !== '' && !geo_is_city($address['city'], $address['province'] !== '' ? $address['province'] : null)) return 'city_not_in_province';
+    }
+    return null;
+}
+
+/**
+ * Saves the whole form: the person to the USER's profile, the account type / company to the
+ * ORGANIZATION's profile, and the address to the organization's address (an individual's address is
+ * also kept as their personal address). All or nothing: any refusal rolls every part back.
+ *
+ * @return array{ok:bool, reason?:string}
+ */
+function profile_identity_save(int $userId, int $organizationId, array $identity, int $actorUserId): array {
+    if ($organizationId <= 0) {
+        return ['ok' => false, 'reason' => 'invalid_organization'];
+    }
+    $user = $identity['user'];
+    if ($identity['account_type'] === 'individual') {
+        $a = $identity['address'];
+        $user['personal_address'] = implode('، ', array_filter([
+            $a['province'], $a['city'], $a['street'], $a['alley'],
+            $a['building_no'] !== '' ? 'پلاک ' . $a['building_no'] : '',
+            $a['unit_no'] !== '' ? 'واحد ' . $a['unit_no'] : '',
+            $a['address_text'],
+        ], static fn(string $part): bool => $part !== ''));
+    }
+    // profile_address_save() writes every column, so the district this form no longer asks for is
+    // passed through unchanged.
+    $identity['address']['district'] = (string)(profile_address_get($organizationId)['district'] ?? '');
+    try {
+        db_transaction(static function () use ($userId, $organizationId, $identity, $user, $actorUserId): void {
+            foreach ([
+                static fn(): array => profile_user_save($userId, $user, $actorUserId),
+                static fn(): array => profile_organization_save($organizationId, $identity['organization'], $actorUserId),
+                static fn(): array => profile_address_save($organizationId, $identity['address'], $actorUserId),
+            ] as $step) {
+                $result = $step();
+                if (!$result['ok']) {
+                    throw new DomainException((string)$result['reason']);
+                }
+            }
+        });
+    } catch (DomainException $e) {
+        return ['ok' => false, 'reason' => $e->getMessage()];
+    }
+    return ['ok' => true];
 }

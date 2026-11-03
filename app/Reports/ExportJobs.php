@@ -95,13 +95,17 @@ function report_export_filter_sql(array $filters): array {
     }
 
     // The report page's grouping: send_failed counts as failed, anything not yet final as pending.
-    $statusSql = [
+    $statusSql = (report_export_show_delivery($filters) ? [
         'delivered'   => "m.status = 'delivered'",
         'sent'        => "m.status = 'sent'",
         'failed'      => "m.status IN ('send_failed','failed')",
         'send_failed' => "m.status = 'send_failed'",
         'pending'     => "m.status NOT IN ('delivered','sent','send_failed','failed')",
-    ][(string)($filters['status'] ?? '')] ?? null;
+    ] : [
+        'sent'        => "m.status IN ('sent','delivered')",
+        'failed'      => "m.status IN ('send_failed','failed')",
+        'pending'     => "m.status NOT IN ('delivered','sent','send_failed','failed')",
+    ])[(string)($filters['status'] ?? '')] ?? null;
     if ($statusSql !== null) {
         $where[] = $statusSql;
     }
@@ -176,12 +180,15 @@ function report_export_gateway_filter_sql(array $filters): array {
     } else {
         report_export_member_clause('a.user_id', $filters, $where, $params);
     }
-    $statusSql = [
+    $statusSql = (report_export_show_delivery($filters) ? [
         'delivered' => "a.delivery_status = 'delivered'",
         'failed'    => "a.delivery_status IN ('failed','rejected','expired')",
         'sent'      => "(a.delivery_status IS NULL OR a.delivery_status NOT IN ('delivered','failed','rejected','expired'))",
         'pending'   => '1 = 0', // an accepted attempt has left; it is never pending
-    ][(string)($filters['status'] ?? '')] ?? null;
+    ] : [
+        'failed'    => '1 = 0', // only accepted attempts are exported; without delivery states they are all «sent»
+        'pending'   => '1 = 0',
+    ])[(string)($filters['status'] ?? '')] ?? null;
     if ($statusSql !== null) {
         $where[] = $statusSql;
     }
@@ -209,12 +216,16 @@ function report_export_bulk_filter_sql(array $filters): array {
     } else {
         report_export_member_clause('bj.user_id', $filters, $where, $params);
     }
-    $statusSql = [
+    $statusSql = (report_export_show_delivery($filters) ? [
         'delivered' => "bi.delivery_status = 'delivered'",
         'failed'    => "(bi.status = 'failed' OR bi.delivery_status IN ('failed','rejected','expired'))",
         'sent'      => "(bi.status = 'sent' AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN ('delivered','failed','rejected','expired')))",
         'pending'   => "bi.status IN ('pending','processing')",
-    ][(string)($filters['status'] ?? '')] ?? null;
+    ] : [
+        'failed'    => "bi.status IN ('failed','cancelled')",
+        'sent'      => "bi.status = 'sent'",
+        'pending'   => "bi.status IN ('pending','processing')",
+    ])[(string)($filters['status'] ?? '')] ?? null;
     if ($statusSql !== null) {
         $where[] = $statusSql;
     }
@@ -280,6 +291,14 @@ function report_export_bulk_page(string $whereSql, array $params, int $limit, in
 }
 
 /**
+ * Whether an export carries delivery states (delivery_status_visible() of whoever requested it,
+ * captured into the stored filters). Exports queued before this existed have no flag and keep them.
+ */
+function report_export_show_delivery(array $filters): bool {
+    return ($filters['show_delivery'] ?? true) !== false;
+}
+
+/**
  * The stored filter set for the report page's current filters ($query = its GET parameters), with
  * the requester's scope captured now: its organization, the organization's members, admin-ness.
  */
@@ -309,6 +328,7 @@ function report_export_filters_from_request(array $me, array $query, bool $isAdm
         'member_ids'      => $memberIds,
         'organization_id' => $orgId,
         'is_admin'        => $isAdmin,
+        'show_delivery'   => $isAdmin || delivery_status_visible($me),
     ];
 }
 

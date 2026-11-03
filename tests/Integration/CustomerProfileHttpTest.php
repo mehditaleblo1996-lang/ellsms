@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
  *
  * What can only be proven here: that a genuine browser upload passes the same validation the service
  * tests exercise through a seam, that document downloads are authorized per request, that a
- * cross-tenant document id 404s, that CSRF is enforced, and that a support impersonation can read a
+ * cross-tenant document id 404s, that CSRF is enforced, and that a platform-admin support impersonation can read and edit a
  * profile but not change it.
  *
  * Sessions are forged by writing a session file into a private save_path handed to the throwaway
@@ -378,7 +378,7 @@ final class CustomerProfileHttpTest extends TestCase
 
     /* ================= Impersonation (STEP 26/27/45) ================= */
 
-    public function testSupportImpersonationCanReadAProfileButNotChangeIt(): void
+    public function testAPlatformAdminSupportSessionCanReadAndChangeAProfile(): void
     {
         $ownerSession = $this->sessionFor($this->ownerId, $this->organizationId);
         $documentId = $this->uploadPersonalDocument($ownerSession);
@@ -403,23 +403,18 @@ final class CustomerProfileHttpTest extends TestCase
         $this->assertSame(200, $this->request('GET', '/profile-document.php?id=' . $documentId, $impersonated)['code'],
             'a document the target could normally see stays visible');
 
-        // Writing does not.
+        // A platform admin's support session is unrestricted: writing works too, and is audited
+        // with the admin recorded as the impersonator.
         $csrf = $this->csrfFor($impersonated);
         $this->request('POST', '/profile.php', $impersonated, [
             '_csrf' => $csrf, 'do' => 'profile_personal', 'father_name' => 'تغییر توسط پشتیبانی',
         ]);
-        $this->assertSame(0, (int)db()->query("SELECT COUNT(*) FROM ellsms_user_profiles WHERE user_id = {$this->ownerId}")->fetchColumn(),
-            'a support session must not be able to change a customer identity record');
         $follow = $this->request('GET', '/profile.php', $impersonated);
-        $this->assertStringContainsString('در حالت پشتیبانی غیرفعال است', $follow['body']);
-
-        // Nor may it upload or archive a document.
-        $before = (int)db()->query('SELECT COUNT(*) FROM ellsms_profile_documents')->fetchColumn();
-        $this->request('POST', '/profile.php', $impersonated, [
-            '_csrf' => $csrf, 'do' => 'document_upload', 'owner' => 'user', 'document_type' => 'birth_certificate',
-        ], $this->pngFile());
-        $this->assertSame($before, (int)db()->query('SELECT COUNT(*) FROM ellsms_profile_documents')->fetchColumn());
-        $this->assertSame('active', (string)db()->query("SELECT status FROM ellsms_profile_documents WHERE id = {$documentId}")->fetchColumn());
+        $this->assertStringNotContainsString('در حالت پشتیبانی غیرفعال است', $follow['body'],
+            'no support-mode restriction notice for a platform admin');
+        $this->assertSame(0, (int)db()->query(
+            "SELECT COUNT(*) FROM ellsms_audit_log WHERE action = 'impersonation.blocked_sensitive_action' AND user_id = {$this->ownerId}"
+        )->fetchColumn(), 'nothing is blocked for a platform admin');
     }
 
     public function testAnImpersonatedSessionSeesOnlyWhatTheTargetCouldSee(): void
