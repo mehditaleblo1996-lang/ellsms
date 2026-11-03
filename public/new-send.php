@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../app/backend.php';
 require_once __DIR__ . '/../app/xlsx_reader.php';
 $me = require_login();
-$pageTitle = 'پنل جدید ارسال';
+$pageTitle = 'ارسال پیامک';
 $active = 'new_send';
 
 // Phase 7: this page's whole purpose is composing and dispatching a message (direct/recurring/

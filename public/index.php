@@ -210,7 +210,7 @@ $resellerAnnouncements = $me['role'] !== 'admin' ? reseller_announcements_for_cu
 require __DIR__ . '/../app/views/header.php';
 // Shortcuts to the everyday jobs, each only when its menu is open for this account ($nav: header.php).
 $quickActions = array_filter([
-    isset($nav['send'])       ? ['/send.php', 'ارسال سریع', 'send', true] : null,
+    isset($nav['new_send'])   ? ['/new-send.php', 'ارسال سریع', 'send', true] : null,
     isset($nav['contacts'])   ? ['/contacts.php#add', 'افزودن مخاطب', 'users', false] : null,
     isset($nav['buy_credit']) ? ['/buy-credit.php', 'خرید اعتبار', 'wallet', false] : null,
     isset($nav['reports'])    ? ['/reports.php', 'گزارش ارسال', 'chart', false] : null,

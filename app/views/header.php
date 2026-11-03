@@ -12,8 +12,7 @@ if ($me['role'] !== 'admin' && setting('onboarding_enabled', '1') !== '0') {
     $nav['onboarding'] = ['/onboarding.php', 'شروع کار', '✓'];
 }
 $nav += [
-    'new_send'   => ['/new-send.php',    'پنل جدید ارسال',  '🆕'],
-    'send'       => ['/send.php',        'ارسال پیامک',     '➤'],
+    'new_send'   => ['/new-send.php',    'ارسال پیامک',     '🆕'],
     'p2p'        => ['/p2p-send.php',    'نظیر به نظیر',    '⇄'],
     'smart'      => ['/smart-send.php',  'پیامک هوشمند',    '✦'],
     'schedules'  => ['/schedules.php',   'زمان‌بندی‌شده',    '◷'],
