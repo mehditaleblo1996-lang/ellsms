@@ -120,17 +120,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$signupOpen) {
             }
 
             if ($rateAllowed) {
-                $nationalId = trim(from_persian_digits((string)($_POST['national_id'] ?? '')));
+                // The same «مشخصات مشتری» form as the admin's «ساخت حساب تازه» (users.php), checked the
+                // same way, so a self-registered customer arrives with the full person / company /
+                // address profile. Domain, daily limit and every other account setting stay with the
+                // admin who approves the request (public/registration-request.php).
+                $identity = profile_identity_from_request($_POST);
+                $nationalId = profile_normalize_national_code($identity['user']['national_code']);
                 $email = trim((string)($_POST['email'] ?? ''));
-                $gender = ($_POST['gender'] ?? 'MALE') === 'FEMALE' ? 'FEMALE' : 'MALE';
+                $gender = $identity['user']['gender'] === 'female' ? 'FEMALE' : 'MALE';
+                $identityError = profile_identity_validate($identity, true);
                 if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
                     $error = 'ایمیل معتبر برای ساخت حساب الزامی است.';
                     $errorField = 'email';
-                } elseif (strlen($nationalId) !== 10 || !ctype_digit($nationalId)) {
-                    $error = 'کد ملی باید دقیقاً ۱۰ رقم باشد.';
-                    $errorField = 'national_id';
+                } elseif ($identityError !== null) {
+                    $error = profile_error_message($identityError);
                 } else {
-                    $result = registration_request_create($_POST, $signupResellerId);
+                    $result = registration_request_create($_POST, $signupResellerId, $identity);
                     if (!empty($result['ok'])) {
                         $registrationId = (int)$result['id'];
                         // Phase 4 needs the backend platform's own legacy verifier. It is derived here
@@ -178,10 +183,10 @@ function reg_error_attrs(string $field, ?string $errorField): string {
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 </head>
 <body class="login-body">
-  <main class="login-card" style="max-width:680px;width:min(680px,calc(100% - 30px))">
+  <main class="login-card" style="max-width:960px;width:min(960px,calc(100% - 30px))">
     <?php if ($brand['logo'] !== ''): ?><img src="<?= e($brand['logo']) ?>" alt="<?= e($brand['name']) ?>" class="login-logo"><?php endif; ?>
     <h1 style="font-size:1.35rem;margin:0 0 10px">ثبت‌نام در <?= e($signupBrand) ?></h1>
-    <p class="login-sub">اطلاعات اولیه را وارد کنید. یک کد ۶ رقمی برای تأیید شماره موبایل شما ارسال می‌شود و پس از تأیید، درخواست برای <?= $signupResellerId !== null ? 'نماینده' : 'مدیر' ?> می‌رود.</p>
+    <p class="login-sub">مشخصات خود را کامل وارد کنید؛ برای حساب حقوقی، مشخصات شرکت هم پرسیده می‌شود. یک کد ۶ رقمی برای تأیید شماره موبایل شما ارسال می‌شود و پس از تأیید، درخواست برای <?= $signupResellerId !== null ? 'نماینده' : 'مدیر' ?> می‌رود.</p>
 
     <?php if (!$signupOpen): ?>
       <div class="flash flash-error">ثبت‌نام در حال حاضر غیرفعال است.</div>
@@ -195,39 +200,26 @@ function reg_error_attrs(string $field, ?string $errorField): string {
           <label>Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
         </div>
 
-        <div class="form-section">
-          <h3 class="subsection-title">مشخصات فردی</h3>
-          <div class="form-grid cols-2">
-            <label>نام <span class="req">*</span>
-              <input type="text" name="first_name" maxlength="100" value="<?= e($_POST['first_name'] ?? '') ?>" required<?= $error ? '' : ' autofocus' ?><?= reg_error_attrs('first_name', $errorField) ?>>
-            </label>
-            <label>نام خانوادگی <span class="req">*</span>
-              <input type="text" name="last_name" maxlength="100" value="<?= e($_POST['last_name'] ?? '') ?>" required<?= reg_error_attrs('last_name', $errorField) ?>>
-            </label>
-            <label>کد ملی <span class="req">*</span>
-              <input type="text" name="national_id" class="ltr" inputmode="numeric" maxlength="10" placeholder="۱۰ رقم" value="<?= e($_POST['national_id'] ?? '') ?>" required aria-describedby="nationalIdHint<?= $errorField === 'national_id' ? ' formError' : '' ?>"<?= $errorField === 'national_id' ? ' aria-invalid="true"' : '' ?>>
-              <span class="hint" id="nationalIdHint">فقط برای احراز هویت صاحب حساب، که ارائه‌ی خدمات پیامکی آن را لازم دارد.</span>
-            </label>
-            <label>جنسیت
-              <select name="gender">
-                <option value="MALE"<?= ($_POST['gender'] ?? 'MALE') === 'MALE' ? ' selected' : '' ?>>مرد</option>
-                <option value="FEMALE"<?= ($_POST['gender'] ?? '') === 'FEMALE' ? ' selected' : '' ?>>زن</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <h3 class="subsection-title">اطلاعات تماس</h3>
-          <div class="form-grid cols-2">
-            <label>شماره موبایل <span class="req">*</span>
-              <input type="tel" name="mobile" class="ltr" maxlength="20" placeholder="0912..." value="<?= e($_POST['mobile'] ?? '') ?>" required autocomplete="tel"<?= reg_error_attrs('mobile', $errorField) ?>>
-            </label>
-            <label>ایمیل <span class="req">*</span>
-              <input type="email" name="email" class="ltr" maxlength="190" value="<?= e($_POST['email'] ?? '') ?>" required autocomplete="email"<?= reg_error_attrs('email', $errorField) ?>>
-            </label>
-          </div>
-        </div>
+        <?php
+        // «مشخصات مشتری» — the admin's «ساخت حساب تازه» form (app/views/customer_identity_fields.php),
+        // refilled with what was typed when a submit is refused.
+        $posted = $_SERVER['REQUEST_METHOD'] === 'POST' ? profile_identity_from_request($_POST) : null;
+        $idf = [
+            'mode'         => 'create',
+            'account_type' => $posted['account_type'] ?? 'individual',
+            'user'         => $posted['user'] ?? [],
+            'org'          => $posted['organization'] ?? [],
+            'address'      => $posted['address'] ?? [],
+            'id'           => 'signup',
+            'contact'      => $posted !== null ? [
+                'first_name' => (string)($_POST['first_name'] ?? ''),
+                'last_name'  => (string)($_POST['last_name'] ?? ''),
+                'mobile'     => (string)($_POST['mobile'] ?? ''),
+                'email'      => (string)($_POST['email'] ?? ''),
+            ] : [],
+        ];
+        require __DIR__ . '/../app/views/customer_identity_fields.php';
+        ?>
 
         <div class="form-section">
           <h3 class="subsection-title">اطلاعات ورود</h3>
@@ -240,21 +232,6 @@ function reg_error_attrs(string $field, ?string $errorField): string {
             </label>
             <label>تکرار رمز عبور <span class="req">*</span>
               <input type="password" name="password_repeat" minlength="8" autocomplete="new-password" required<?= reg_error_attrs('password_repeat', $errorField) ?>>
-            </label>
-          </div>
-        </div>
-
-        <div class="form-section">
-          <h3 class="subsection-title">نوع حساب</h3>
-          <div class="form-grid cols-2">
-            <label>نوع حساب
-              <select name="account_type" id="accountType">
-                <option value="individual"<?= ($_POST['account_type'] ?? 'individual') === 'individual' ? ' selected' : '' ?>>حقیقی</option>
-                <option value="legal"<?= ($_POST['account_type'] ?? '') === 'legal' ? ' selected' : '' ?>>حقوقی</option>
-              </select>
-            </label>
-            <label id="companyNameWrap">نام شرکت
-              <input type="text" name="company_name" maxlength="190" value="<?= e($_POST['company_name'] ?? '') ?>"<?= reg_error_attrs('company_name', $errorField) ?>>
             </label>
           </div>
         </div>
@@ -281,14 +258,6 @@ function reg_error_attrs(string $field, ?string $errorField): string {
       <p class="login-foot">حساب دارید؟ <a href="/login.php">وارد شوید</a></p>
     <?php endif; ?>
   </main>
-<script>
-(function(){
-  const type=document.getElementById('accountType');
-  const wrap=document.getElementById('companyNameWrap');
-  if(!type||!wrap)return;
-  function sync(){ wrap.style.display=type.value==='legal'?'':'none'; }
-  type.addEventListener('change',sync); sync();
-})();
-</script>
+<script src="<?= e(asset_url('/assets/js/forms.js')) ?>"></script>
 </body>
 </html>

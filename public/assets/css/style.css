@@ -479,6 +479,8 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
 /* ---------- Profile — sub-sections within one card ---------- */
 .subsection { margin-bottom: 22px; }
 .subsection:last-child { margin-bottom: 0; }
+/* «حقیقی / حقوقی» parts (app/views/customer_identity_fields.php) — also outside .panel, e.g. /register. */
+[data-when-type][hidden] { display: none !important; }
 .subsection-title {
   font-size: var(--fs-sm); font-weight: 800; color: var(--indigo); margin: 0 0 14px;
   display: flex; align-items: center; gap: 8px;

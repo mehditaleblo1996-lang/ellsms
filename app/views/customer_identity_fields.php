@@ -17,7 +17,13 @@
  *   'org'          => profile_organization_get() row (edit) or [] (create),
  *   'address'      => profile_address_get() row (edit) or [] (create),
  *   'id'           => a short unique prefix for element ids,
+ *   'contact'      => optional, create mode only: first_name / last_name / mobile / email to refill
+ *                     after a refused submit (public/register.php re-shows the form with what was typed),
  * ]
+ *
+ * The public sign-up page (public/register.php) uses this same form in 'create' mode, so a customer
+ * who registers on their own gives exactly what an admin would enter. Account settings that only an
+ * admin decides (domain, daily limit, customer type, prices, …) are NOT part of this form.
  */
 $idfMode    = $idf['mode'];
 $idfCreate  = $idfMode === 'create';
@@ -26,6 +32,7 @@ $idfUser    = $idf['user'] ?? [];
 $idfOrg     = $idf['org'] ?? [];
 $idfAddress = $idf['address'] ?? [];
 $idfId      = (string)$idf['id'];
+$idfContact = $idf['contact'] ?? [];
 $idfVal     = static fn(array $row, string $key): string => e((string)($row[$key] ?? ''));
 $req        = '<span class="req">*</span>';
 // Required only when the account is being made; an older account being edited may still lack some
@@ -51,8 +58,8 @@ $mustAttr   = $idfCreate ? ' required' : '';
   <h3 class="subsection-title" data-when-type="legal"<?= $idfType === 'legal' ? '' : ' hidden' ?>>مشخصات نماینده‌ی شرکت (صاحب حساب)</h3>
   <div class="form-grid cols-4">
     <?php if ($idfCreate): ?>
-      <label>نام <?= $req ?> <input type="text" name="first_name" required maxlength="100"></label>
-      <label>نام‌خانوادگی <?= $req ?> <input type="text" name="last_name" required maxlength="100"></label>
+      <label>نام <?= $req ?> <input type="text" name="first_name" required maxlength="100" value="<?= $idfVal($idfContact, 'first_name') ?>"></label>
+      <label>نام‌خانوادگی <?= $req ?> <input type="text" name="last_name" required maxlength="100" value="<?= $idfVal($idfContact, 'last_name') ?>"></label>
     <?php endif; ?>
     <label>کد ملی <?= $must ?> <input type="text" name="national_code" class="ltr" inputmode="numeric" value="<?= $idfVal($idfUser, 'national_code') ?>" maxlength="10" placeholder="۱۰ رقم"<?= $mustAttr ?>></label>
     <label>نام پدر <input type="text" name="father_name" value="<?= $idfVal($idfUser, 'father_name') ?>" maxlength="120"></label>
@@ -73,8 +80,8 @@ $mustAttr   = $idfCreate ? ' required' : '';
 <div class="form-section">
   <h3 class="subsection-title">اطلاعات تماس</h3>
   <div class="form-grid cols-4">
-    <label>موبایل <?= $req ?> <input type="text" name="mobile" required class="ltr" inputmode="tel" placeholder="0912…"></label>
-    <label class="span-2">ایمیل <?= $req ?> <input type="email" name="email" required class="ltr"></label>
+    <label>موبایل <?= $req ?> <input type="text" name="mobile" required class="ltr" inputmode="tel" placeholder="0912…" value="<?= $idfVal($idfContact, 'mobile') ?>" autocomplete="tel"></label>
+    <label class="span-2">ایمیل <?= $req ?> <input type="email" name="email" required class="ltr" maxlength="190" value="<?= $idfVal($idfContact, 'email') ?>" autocomplete="email"></label>
   </div>
 </div>
 <?php endif; ?>

@@ -65,7 +65,15 @@ function registration_activate_account(int $registrationId, int $adminUserId, ar
 
         backend_update_user_password($userId, $backendHash);
 
-        $organizationId = db_transaction(function (PDO $db) use ($row, $userId, $adminUserId): int {
+        // The «مشخصات مشتری» the applicant filled on /register (same form as the admin's «ساخت حساب تازه»).
+        // The national code / gender the admin confirms on the review page win over what was typed.
+        $identity = registration_request_identity($row);
+        if ($identity !== null) {
+            $identity['user']['national_code'] = $nationalId;
+            $identity['user']['gender'] = $gender === 'FEMALE' ? 'female' : 'male';
+        }
+
+        $organizationId = db_transaction(function (PDO $db) use ($row, $userId, $adminUserId, $identity): int {
             $db->prepare('INSERT INTO ellsms_meta (user_id, panel_access, is_admin, originator) VALUES (?,1,0,?) ON DUPLICATE KEY UPDATE panel_access=1, is_admin=0')
                ->execute([$userId, '']); // no sender until a line is assigned (system_default_originator())
 
@@ -75,9 +83,15 @@ function registration_activate_account(int $registrationId, int $adminUserId, ar
             if (empty($orgResult['ok']) || empty($orgResult['organization_id'])) throw new RuntimeException('organization_create_failed');
             $organizationId = (int)$orgResult['organization_id'];
 
-            $profile = ['account_type' => (string)$row['account_type']];
-            if ($row['account_type'] === 'legal' && trim((string)$row['company_name']) !== '') $profile['legal_name'] = trim((string)$row['company_name']);
-            $profileResult = profile_organization_save($organizationId, $profile, $adminUserId);
+            if ($identity !== null) {
+                // Person, company and address — exactly what «ساخت حساب تازه» saves (app/Profile.php).
+                $profileResult = profile_identity_save($userId, $organizationId, $identity, $adminUserId);
+            } else {
+                // A request from before the sign-up form asked for the full profile.
+                $profile = ['account_type' => (string)$row['account_type']];
+                if ($row['account_type'] === 'legal' && trim((string)$row['company_name']) !== '') $profile['legal_name'] = trim((string)$row['company_name']);
+                $profileResult = profile_organization_save($organizationId, $profile, $adminUserId);
+            }
             if (isset($profileResult['ok']) && !$profileResult['ok']) throw new RuntimeException('organization_profile_failed');
 
             if (billing_enabled() && subscription_for_organization($organizationId) === null) {
