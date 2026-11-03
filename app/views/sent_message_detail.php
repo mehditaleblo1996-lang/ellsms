@@ -11,6 +11,8 @@ if ($m === null): ?>
 <?php return; endif;
 
 $status = (string)$m['report_status'];
+// Delivery states only for admins and customers on delivery-based billing (sent_report_show_delivery()).
+$showDelivery = sent_report_show_delivery();
 $content = (string)($m['content'] ?? '');
 $failed = $status === 'failed';
 $deliveryAt = $m['delivered_at'] ?? null;
@@ -42,7 +44,13 @@ if ($m['source'] === 'bulk') {
 } else {
     $steps[] = ['تحویل به سرویس‌دهنده', sent_report_datetime($m['sent_at'] ?? $m['requested_at'] ?? null), $status !== 'queued'];
 }
-if ($status === 'delivered') {
+if (!$showDelivery) {
+    if ($failed) {
+        $steps[] = ['ناموفق', sent_report_datetime($m['sent_at'] ?? $m['requested_at'] ?? null), true];
+    } elseif ($status === 'cancelled') {
+        $steps[] = ['لغو شد', '', true];
+    }
+} elseif ($status === 'delivered') {
     $steps[] = ['تحویل به گوشی گیرنده', sent_report_datetime($deliveryAt), true];
 } elseif ($failed) {
     $steps[] = ['ناموفق', sent_report_datetime($checkedAt ?? $m['sent_at'] ?? null), true];
@@ -83,8 +91,10 @@ if ($status === 'delivered') {
         <?= $field('مسیر', $text($m['route_name'])) ?>
       <?php endif; ?>
       <?= $field('شناسه نزد سرویس‌دهنده', $text(isset($m['provider_message_id']) ? (string)$m['provider_message_id'] : null, 'ltr')) ?>
+      <?php if ($showDelivery): ?>
       <?= $field('وضعیت اعلام‌شده‌ی سرویس‌دهنده', !empty($m['provider_status']) ? $text((string)$m['provider_status'], 'ltr')
           : (!empty($m['delivery_status']) ? e(report_delivery_status_label((string)$m['delivery_status'])) : '<span class="muted">—</span>')) ?>
+      <?php endif; ?>
     </dl>
   </section>
 
@@ -97,7 +107,7 @@ if ($status === 'delivered') {
         </li>
       <?php endforeach; ?>
     </ol>
-    <?php if (isset($m['delivery_attempts']) && (int)$m['delivery_attempts'] > 0): ?>
+    <?php if ($showDelivery && isset($m['delivery_attempts']) && (int)$m['delivery_attempts'] > 0): ?>
       <p class="hint">وضعیت تحویل <?= to_persian_digits((string)(int)$m['delivery_attempts']) ?> بار از سرویس‌دهنده استعلام شده؛ آخرین بار <?= sent_report_datetime($checkedAt) ?: '—' ?>.</p>
     <?php endif; ?>
   </section>
@@ -133,7 +143,7 @@ if ($status === 'delivered') {
       <?php elseif ($m['source'] === 'attempt' && ($m['reference_type'] ?? '') === 'schedule'): ?>
         <?= $field('زمان‌بندی', '<a href="/schedules.php">#' . e((string)($m['reference_id'] ?? '')) . '</a>') ?>
       <?php endif; ?>
-      <?php if ($m['dlr_forward'] !== null): $fw = $m['dlr_forward']; ?>
+      <?php if ($showDelivery && $m['dlr_forward'] !== null): $fw = $m['dlr_forward']; ?>
         <?= $field('ارسال گزارش تحویل به URL شما', e($forwardLabels[$fw['status']] ?? (string)$fw['status'])
             . ((int)$fw['http_status'] > 0 ? ' <span class="muted ltr">HTTP ' . (int)$fw['http_status'] . '</span>' : '')
             . ((int)$fw['attempt_count'] > 1 ? ' <span class="muted">(' . to_persian_digits((string)(int)$fw['attempt_count']) . ' تلاش)</span>' : '')) ?>
@@ -142,8 +152,8 @@ if ($status === 'delivered') {
   </section>
 
   <footer class="report-detail-actions">
-    <?php if ($m['source'] === 'attempt'): ?><a class="btn btn-sm" href="/message-detail.php?attempt=<?= (int)$m['id'] ?>">تاریخچه‌ی کامل تحویل</a><?php endif; ?>
-    <?php if ($m['source'] === 'bulk'): ?><a class="btn btn-sm" href="/message-detail.php?job=<?= (int)$m['job_id'] ?>">تاریخچه‌ی تحویل این ارسال حجیم</a><?php endif; ?>
+    <?php if ($showDelivery && $m['source'] === 'attempt'): ?><a class="btn btn-sm" href="/message-detail.php?attempt=<?= (int)$m['id'] ?>">تاریخچه‌ی کامل تحویل</a><?php endif; ?>
+    <?php if ($showDelivery && $m['source'] === 'bulk'): ?><a class="btn btn-sm" href="/message-detail.php?job=<?= (int)$m['job_id'] ?>">تاریخچه‌ی تحویل این ارسال حجیم</a><?php endif; ?>
     <?php if ($canHide): ?>
       <?= hidden_messages_admin_button($hiddenSource, $hiddenId, $isHidden) ?>
       <?php if ($m['source'] === 'bulk'): ?><span class="hint">حذف و بازگردانی برای کل این ارسال حجیم انجام می‌شود.</span><?php endif; ?>

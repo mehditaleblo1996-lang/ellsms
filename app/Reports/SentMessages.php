@@ -47,8 +47,28 @@ function sent_report_types(): array {
     ];
 }
 
+/**
+ * Whether this request's report shows messages by their DELIVERY state. Off for a customer who is not
+ * on delivery-based billing (delivery_status_visible()): their messages read «ارسال‌شده» once the
+ * provider took them, «ناموفق» only when the send itself failed, with no delivery time. On by default
+ * (admins, background jobs); a page sets it once for its viewer before building the report.
+ */
+function sent_report_show_delivery(?bool $set = null): bool {
+    static $show = true;
+    if ($set !== null) $show = $set;
+    return $show;
+}
+
 /** Report statuses: key => label. The badge class is sent_report_status_class(). */
 function sent_report_statuses(): array {
+    if (!sent_report_show_delivery()) {
+        return [
+            'queued'    => 'در صف ارسال',
+            'sent'      => 'ارسال‌شده',
+            'failed'    => 'ناموفق',
+            'cancelled' => 'لغوشده',
+        ];
+    }
     return [
         'queued'    => 'در صف ارسال',
         'sent'      => 'ارسال‌شده، منتظر گزارش',
@@ -93,10 +113,11 @@ function report_latin_digits(string $value): string {
  */
 function sent_report_status(string $source, ?string $status, ?string $deliveryStatus): string {
     $status = (string)$status;
-    $delivery = (string)$deliveryStatus;
+    // Without delivery states, the provider's report is simply not consulted (sent_report_show_delivery()).
+    $delivery = sent_report_show_delivery() ? (string)$deliveryStatus : '';
     if ($source === 'legacy') {
         return match ($status) {
-            'delivered' => 'delivered',
+            'delivered' => sent_report_show_delivery() ? 'delivered' : 'sent',
             'sent' => 'sent',
             'send_failed', 'failed' => 'failed',
             default => 'queued',
@@ -248,6 +269,15 @@ function sent_report_filters(array $query, bool $isAdmin, string $today): array 
 /** SQL CASE giving the report status of a $source row (the SQL twin of sent_report_status()). */
 function sent_report_status_sql(string $source): string {
     $undelivered = "'" . implode("','", SENT_REPORT_UNDELIVERED) . "'";
+    if (!sent_report_show_delivery()) {
+        return match ($source) {
+            'bulk' => "(CASE WHEN i.status IN ('pending','processing') THEN 'queued' WHEN i.status = 'cancelled' THEN 'cancelled'
+                             WHEN i.status = 'failed' THEN 'failed' ELSE 'sent' END)",
+            'attempt' => "(CASE WHEN a.status = 'failed' THEN 'failed' ELSE 'sent' END)",
+            default => "(CASE WHEN m.status IN ('delivered','sent') THEN 'sent'
+                              WHEN m.status IN ('send_failed','failed') THEN 'failed' ELSE 'queued' END)",
+        };
+    }
     return match ($source) {
         'bulk' => "(CASE WHEN i.status IN ('pending','processing') THEN 'queued' WHEN i.status = 'cancelled' THEN 'cancelled'
                          WHEN i.status = 'failed' THEN 'failed' WHEN i.delivery_status = 'delivered' THEN 'delivered'
@@ -465,6 +495,9 @@ function sent_report_decorate(array $rows): array {
         $row['ref'] = sent_report_ref($row['source'], (int)$row['id']);
         $row['type_label'] = $types[$row['report_type']] ?? $row['report_type'];
         $row['status_label'] = $statuses[$row['report_status']] ?? $row['report_status'];
+        if (!sent_report_show_delivery()) {
+            $row['delivered_at'] = null;
+        }
     }
     unset($row);
     return $rows;

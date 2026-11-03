@@ -34,9 +34,17 @@ $userId = is_admin() ? (int)($_GET['user_id'] ?? 0) : 0;
 $per    = (int)($_GET['per_page'] ?? 50);
 if (!in_array($per, [25, 50, 100, 200], true)) $per = 50;
 
-$canonicalStatusSql = "CASE
+// Delivery states (تحویل‌شده / تحویل نشده, delivery checks) only for admins and customers on
+// delivery-based billing (delivery_status_visible()); anyone else sees a message as sent or failed.
+$showDelivery = delivery_status_visible($me);
+$reportStatuses = $showDelivery ? ['sent', 'delivered', 'failed', 'pending'] : ['sent', 'failed', 'pending'];
+$canonicalStatusSql = $showDelivery ? "CASE
     WHEN bi.delivery_status = 'delivered' THEN 'delivered'
     WHEN bi.delivery_status IN ('failed','rejected','expired') OR bi.status IN ('failed','cancelled') THEN 'failed'
+    WHEN bi.status = 'sent' THEN 'sent'
+    ELSE 'pending'
+END" : "CASE
+    WHEN bi.status IN ('failed','cancelled') THEN 'failed'
     WHEN bi.status = 'sent' THEN 'sent'
     ELSE 'pending'
 END";
@@ -60,7 +68,7 @@ if (is_admin()) {
         $params[] = (int)$me['id'];
     }
 }
-if ($status !== '' && in_array($status, ['pending','sent','delivered','failed'], true)) {
+if ($status !== '' && in_array($status, $reportStatuses, true)) {
     $where[] = "{$canonicalStatusSql} = ?";
     $params[] = $status;
 }
@@ -103,9 +111,13 @@ if (lazy_part_begin('summary')) {
     ?>
 <div class="grid grid-4">
   <div class="stat"><div class="stat-label">تعداد پیام‌های حجیم</div><div class="stat-value"><?= to_persian_digits(number_format($cnt)) ?></div></div>
-  <div class="stat"><div class="stat-label">ارسال‌شده / تحویل‌شده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['ok_count'])) ?></div></div>
+  <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال‌شده / تحویل‌شده' : 'ارسال‌شده' ?></div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['ok_count'])) ?></div></div>
   <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['failed_count'])) ?></div></div>
+  <?php if ($showDelivery): ?>
   <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['delivered_count'])) ?></div></div>
+  <?php else: ?>
+  <div class="stat"><div class="stat-label">در انتظار ارسال</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['pending_count'])) ?></div></div>
+  <?php endif; ?>
 </div>
 
 <?php
@@ -141,7 +153,7 @@ if (lazy_part_begin('breakdown')) {
   <p class="muted">داده‌ی از پیش تجمیع‌شده‌ی روزانه (issue #12) — بدون اسکن مستقیم پیام‌ها.</p>
   <div class="table-wrap"><table>
     <tr><th>نوع پیام</th><th>خط ارسال‌کننده</th><th>ارائه‌دهنده</th><th>اپراتور مقصد</th><th>وضعیت</th><th>تعداد</th></tr>
-    <?php foreach ($dimensionBreakdown as $d): ?>
+    <?php foreach ($dimensionBreakdown as $d): if (!$showDelivery && $d['status'] === 'delivered') $d['status'] = 'sent'; ?>
     <tr>
       <td><?= e((string)$d['message_type']) ?></td>
       <td class="ltr"><?= e((string)$d['sender_number']) ?></td>
@@ -183,7 +195,7 @@ if (lazy_part_begin('rows')) {
 
     ?>
   <div class="table-wrap"><table data-cards>
-    <tr><th>#</th><th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>مرجع اپراتور</th><th>استعلام</th><th>زمان ثبت</th><th>آخرین استعلام</th></tr>
+    <tr><th>#</th><th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>مرجع اپراتور</th><?php if ($showDelivery): ?><th>استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
     <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
@@ -194,12 +206,12 @@ if (lazy_part_begin('rows')) {
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,60,'…')) ?></td>
         <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
         <td class="num ltr"><?= $r['provider_message_id'] !== null && $r['provider_message_id'] !== '' ? e((string)$r['provider_message_id']) : '—' ?></td>
-        <td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td>
+        <?php if ($showDelivery): ?><td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td><?php endif; ?>
         <td class="num"><?= bulk_report_jdate((string)$r['created_at']) ?></td>
-        <td class="num"><?= !empty($r['delivery_checked_at']) ? bulk_report_jdate((string)$r['delivery_checked_at']) : '—' ?></td>
+        <?php if ($showDelivery): ?><td class="num"><?= !empty($r['delivery_checked_at']) ? bulk_report_jdate((string)$r['delivery_checked_at']) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= is_admin()?11:10 ?>" class="empty-cell"><?= panel_empty_state('هیچ پیام حجیمی با این فیلترها یافت نشد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= (is_admin() ? 11 : 10) - ($showDelivery ? 0 : 2) ?>" class="empty-cell"><?= panel_empty_state('هیچ پیام حجیمی با این فیلترها یافت نشد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr><?php endif; ?>
   </table></div>
 
   <?= pager_links($page, pager_pages($cnt, $per), array_filter(array_diff_key($_GET, ['before_bulk_id' => 1, 'after_bulk_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $cnt) ?>
@@ -227,7 +239,7 @@ require __DIR__ . '/../app/views/header.php';
     <label>وضعیت
       <select name="status">
         <option value="">همه</option>
-        <?php foreach (['sent','delivered','failed','pending'] as $s): ?>
+        <?php foreach ($reportStatuses as $s): ?>
           <option value="<?= $s ?>" <?= $status === $s ? 'selected' : '' ?>><?= e($statusFa[$s]) ?></option>
         <?php endforeach; ?>
       </select>

@@ -119,8 +119,9 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
 
     try {
         fwrite($out, "\xEF\xBB\xBF"); // BOM so Excel reads UTF-8 Persian correctly
-        fputcsv($out, ['نوع ارسال','شناسه','کاربر','خط ارسال','گیرنده','متن پیام','تعداد پارت','وضعیت','شناسه‌ی مرجع',
-                       'مرجع اپراتور','وضعیت خام درگاه','تعداد تلاش استعلام','کد خطا','زمان ارسال','آخرین استعلام','زمان تحویل']);
+        $showDelivery = report_export_show_delivery($filters);
+        fputcsv($out, export_csv_columns(['نوع ارسال','شناسه','کاربر','خط ارسال','گیرنده','متن پیام','تعداد پارت','وضعیت','شناسه‌ی مرجع',
+                       'مرجع اپراتور','وضعیت خام درگاه','تعداد تلاش استعلام','کد خطا','زمان ارسال','آخرین استعلام','زمان تحویل'], 1, $showDelivery));
 
         $written   = 0;
         $truncated = false;
@@ -134,7 +135,7 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
                     break;
                 }
                 $usernames = $kind === 'outbound' ? [] : backend_usernames_by_ids(array_column($rows, 'user_id'));
-                $delivery  = $kind === 'outbound' ? export_delivery_for_page($db, $rows) : [];
+                $delivery  = $kind === 'outbound' && $showDelivery ? export_delivery_for_page($db, $rows) : [];
 
                 foreach ($rows as $r) {
                     // Aimed-bulk rows: the customer's file carries the masked number, as the panel does.
@@ -145,7 +146,11 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
                     if (array_key_exists('originator', $r)) {
                         $r['originator'] = shared_line_mask((string)$r['originator'], !empty($filters['is_admin']));
                     }
-                    fputcsv($out, array_merge([$source['label']], export_csv_row($kind, $r, $usernames, $delivery)));
+                    $csvRow = export_csv_row($kind, $r, $usernames, $delivery);
+                    if (!$showDelivery) {
+                        $csvRow[6] = export_send_status($kind, $r);
+                    }
+                    fputcsv($out, array_merge([$source['label']], export_csv_columns($csvRow, 0, $showDelivery)));
                     $cursor = (int)$r['id'];
                     $written++;
 
@@ -201,6 +206,27 @@ function export_local_time(?string $utc): string {
     } catch (Throwable) {
         return $utc;
     }
+}
+
+/**
+ * Without delivery states (report_export_show_delivery()) the file drops the delivery columns —
+ * raw gateway state, status checks, last check, delivery time. $offset is 1 for the header (it has
+ * the source column first), 0 for export_csv_row()'s output.
+ */
+function export_csv_columns(array $row, int $offset, bool $showDelivery): array {
+    if ($showDelivery) return $row;
+    foreach ([9, 10, 13, 14] as $i) unset($row[$i + $offset]);
+    return array_values($row);
+}
+
+/** The status a customer without delivery-based billing sees: sent / failed / pending, from the send alone. */
+function export_send_status(string $kind, array $r): string {
+    $status = (string)($r['status'] ?? '');
+    return match (true) {
+        $kind === 'gateway', in_array($status, ['sent', 'delivered', 'accepted'], true) => 'sent',
+        in_array($status, ['failed', 'send_failed', 'cancelled'], true) => 'failed',
+        default => 'pending',
+    };
 }
 
 /**

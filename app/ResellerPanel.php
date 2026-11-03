@@ -349,7 +349,7 @@ function reseller_dashboard_stats(int $resellerId): array {
         'child_balance'  => $childBalance,
         'profit_30'      => (int)$profit->fetchColumn(),
         'profit_days'    => $profitDays->fetchAll(),
-        'today'          => $tree ? dashboard_today_counts($tree) : ['sent' => 0, 'delivered' => 0, 'failed' => 0],
+        'today'          => $tree ? dashboard_today_counts($tree) : ['sent' => 0, 'delivered' => 0, 'failed' => 0, 'send_failed' => 0],
         'daily'          => $tree ? dashboard_daily_sent($tree, 14) : [],
         'open_tickets'   => reseller_ticket_count($resellerId, 'open'),
         'registrations'  => reseller_registration_count($resellerId),

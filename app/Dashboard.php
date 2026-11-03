@@ -66,17 +66,20 @@ function dashboard_yesterday_counts_so_far(?array $userIds): array {
 
 /**
  * dashboard_today_counts() for any UTC [from, to) window.
- * @return array{sent:int,delivered:int,failed:int}
+ * @return array{sent:int,delivered:int,failed:int,send_failed:int}
  */
 function dashboard_counts_between(?array $userIds, string $from, string $to): array {
     $undelivered = "'" . implode("','", DASHBOARD_UNDELIVERED) . "'";
-    $out = ['sent' => 0, 'delivered' => 0, 'failed' => 0];
+    // send_failed: refused at send time only — what a customer without delivery-based billing sees as
+    // «ناموفق» (delivery_status_visible()), where 'failed' also counts messages reported undelivered.
+    $out = ['sent' => 0, 'delivered' => 0, 'failed' => 0, 'send_failed' => 0];
 
     [$scope, $scopeParams] = dashboard_bulk_scope($userIds);
     $st = db()->prepare(
         "SELECT COALESCE(SUM(i.status = 'sent'), 0) sent,
                 COALESCE(SUM(i.status = 'sent' AND i.delivery_status = 'delivered'), 0) delivered,
-                COALESCE(SUM(i.status = 'failed' OR (i.status = 'sent' AND i.delivery_status IN ({$undelivered}))), 0) failed
+                COALESCE(SUM(i.status = 'failed' OR (i.status = 'sent' AND i.delivery_status IN ({$undelivered}))), 0) failed,
+                COALESCE(SUM(i.status = 'failed'), 0) send_failed
          FROM ellsms_bulk_items i
          WHERE i.claimed_at >= ? AND i.claimed_at < ?{$scope}"
     );
@@ -89,7 +92,8 @@ function dashboard_counts_between(?array $userIds, string $from, string $to): ar
     $st = db()->prepare(
         "SELECT COALESCE(SUM(a.status = 'accepted'), 0) sent,
                 COALESCE(SUM(a.status = 'accepted' AND a.delivery_status = 'delivered'), 0) delivered,
-                COALESCE(SUM(a.status = 'failed' OR (a.status = 'accepted' AND a.delivery_status IN ({$undelivered}))), 0) failed
+                COALESCE(SUM(a.status = 'failed' OR (a.status = 'accepted' AND a.delivery_status IN ({$undelivered}))), 0) failed,
+                COALESCE(SUM(a.status = 'failed'), 0) send_failed
          FROM ellsms_message_attempts a
          WHERE a.status IN ('accepted', 'failed') AND a.attempted_at >= ? AND a.attempted_at < ?
            AND a.reference_type IN ({$types}){$scope}"
@@ -155,7 +159,7 @@ function dashboard_daily_sent(?array $userIds, int $days = 7): array {
  * Per Tehran day for the last $days days, oldest first: sent (accepted by the provider), and of all
  * attempts how many were delivered, failed (rejected at send time or reported undelivered) and are
  * still waiting for their delivery report — the three parts of the dashboard chart's bars.
- * @return array<string, array{sent:int, delivered:int, failed:int, pending:int}> 'Y-m-d' => counts
+ * @return array<string, array{sent:int, delivered:int, failed:int, pending:int, send_failed:int}> 'Y-m-d' => counts
  */
 function dashboard_daily_breakdown(?array $userIds, int $days = 7): array {
     $tz = new DateTimeZone('Asia/Tehran');
@@ -208,6 +212,7 @@ function dashboard_daily_breakdown(?array $userIds, int $days = 7): array {
         'delivered' => $d['delivered'],
         'failed'    => $d['undelivered'] + $d['send_failed'],
         'pending'   => max(0, $d['sent'] - $d['delivered'] - $d['undelivered']),
+        'send_failed' => $d['send_failed'],
     ], $raw);
 }
 
@@ -254,6 +259,7 @@ function dashboard_recent_messages(?array $userIds, int $limit = 10): array {
         $rows[] = [
             'source' => 'bulk', 'user_id' => (int)$r['user_id'], 'destination' => bulk_recipient_display((string)$r['mobile'], !empty($r['recipients_masked'])),
             'content' => (string)$r['content'], 'status' => report_canonical_status($r['delivery_status'], (string)$r['status']),
+            'send_status' => (string)$r['status'],
             'at' => (string)$r['claimed_at'], 'job_id' => (int)$r['job_id'], 'job_title' => (string)$r['title'],
             'reference_type' => 'bulk_job',
         ];
@@ -275,6 +281,7 @@ function dashboard_recent_messages(?array $userIds, int $limit = 10): array {
             'source' => 'direct', 'user_id' => (int)$r['user_id'], 'destination' => (string)($r['destination'] ?? ''),
             'content' => (string)($r['content'] ?? ''),
             'status' => report_canonical_status($r['delivery_status'], $r['status'] === 'accepted' ? 'sent' : 'failed'),
+            'send_status' => $r['status'] === 'accepted' ? 'sent' : 'failed',
             'at' => (string)$r['attempted_at'], 'job_id' => null, 'job_title' => null,
             'reference_type' => (string)$r['reference_type'],
         ];

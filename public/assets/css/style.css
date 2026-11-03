@@ -494,6 +494,8 @@ select:disabled { background: var(--canvas); color: var(--muted); cursor: not-al
 .card-head h2 { margin: 0; }
 .card-head .hint { margin: var(--sp-1) 0 0; }
 .form-section + .form-section { margin-top: var(--sp-5); padding-top: var(--sp-5); border-top: 1px solid var(--line); }
+/* A section that is a <fieldset> (so it can be disabled as a whole) looks like any other section. */
+fieldset.form-section { border: 0; padding: 0; margin-inline: 0; min-width: 0; }
 .form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4) var(--sp-5); }
 .form-grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .form-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }

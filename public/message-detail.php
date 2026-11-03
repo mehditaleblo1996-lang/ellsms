@@ -20,6 +20,11 @@ $active = 'reports';
 if (!is_admin()) {
     require_permission(Permissions::REPORTS_VIEW);
 }
+// The whole page is the message's delivery history, so a customer who is not on delivery-based billing
+// (delivery_status_visible()) is sent back to the report, which shows their messages as sent / failed.
+if (!delivery_status_visible($me)) {
+    redirect('/reports.php');
+}
 
 // null for a platform admin (no scope restriction), the org id for everyone else. This single value
 // is what every query below is scoped by — there is no second, looser path.

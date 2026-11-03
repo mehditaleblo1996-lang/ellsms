@@ -18,6 +18,9 @@ require_once __DIR__ . '/../app/views/panel-icons.php'; // the fragments' empty 
 // app/Dashboard.php. The legacy backend's outbound_message is not used any more. Each section is a
 // lazily loaded part (app/LazyParts.php): the page itself answers at once and the sections fill in.
 $scopeUserIds = dashboard_scope_user_ids($me);
+// Delivery figures (تحویل‌شده, نرخ تحویل, در انتظار گزارش) only for admins and customers on
+// delivery-based billing (delivery_status_visible()); for anyone else «ناموفق» means a failed send.
+$showDelivery = delivery_status_visible($me);
 
 if (lazy_part_begin('today')) {
     $today      = dashboard_today_counts($scopeUserIds);
@@ -42,6 +45,7 @@ if (lazy_part_begin('today')) {
     <div class="stat-value"><?= to_persian_digits(number_format($today['sent'])) ?></div>
     <div class="stat-foot"><?= $delta($today['sent'], $yesterday['sent']) ?></div>
   </div>
+  <?php if ($showDelivery): ?>
   <div class="stat">
     <div class="stat-label">تحویل‌شده امروز</div>
     <div class="stat-value"><?= to_persian_digits(number_format($today['delivered'])) ?></div>
@@ -50,10 +54,12 @@ if (lazy_part_begin('today')) {
       <?= $delta($today['delivered'], $yesterday['delivered']) ?>
     </div>
   </div>
+  <?php endif; ?>
+  <?php $failedKey = $showDelivery ? 'failed' : 'send_failed'; ?>
   <div class="stat">
     <div class="stat-label">ناموفق امروز</div>
-    <div class="stat-value"><?= to_persian_digits(number_format($today['failed'])) ?></div>
-    <div class="stat-foot"><?= $delta($today['failed'], $yesterday['failed'], true) ?></div>
+    <div class="stat-value"><?= to_persian_digits(number_format($today[$failedKey])) ?></div>
+    <div class="stat-foot"><?= $delta($today[$failedKey], $yesterday[$failedKey], true) ?></div>
   </div>
   <div class="stat">
     <div class="stat-label">در صف ارسال</div>
@@ -68,11 +74,17 @@ if (lazy_part_begin('today')) {
 
 if (lazy_part_begin('chart')) {
     $days = dashboard_daily_breakdown($scopeUserIds, 7);
+    if (!$showDelivery) {
+        // Without delivery states a bar is what the provider took (ارسال‌شده) and what it refused.
+        $days = array_map(static fn(array $d): array => ['sent' => $d['sent'], 'delivered' => $d['sent'], 'pending' => 0, 'failed' => $d['send_failed']], $days);
+    }
     $scale = dashboard_chart_scale(max(array_map(static fn(array $d): int => $d['delivered'] + $d['pending'] + $d['failed'], $days)));
     $weekdayShort = ['شنبه'=>'ش','یک‌شنبه'=>'ی','دوشنبه'=>'د','سه‌شنبه'=>'س','چهارشنبه'=>'چ','پنج‌شنبه'=>'پ','جمعه'=>'ج'];
     $todayKey = array_key_last($days);
     $percent = static fn(int $v): string => rtrim(rtrim(number_format($v / $scale['top'] * 100, 2, '.', ''), '0'), '.') . '%';
-    $parts = ['delivered' => 'تحویل‌شده', 'pending' => 'در انتظار گزارش', 'failed' => 'ناموفق'];
+    $parts = $showDelivery
+        ? ['delivered' => 'تحویل‌شده', 'pending' => 'در انتظار گزارش', 'failed' => 'ناموفق']
+        : ['delivered' => 'ارسال‌شده', 'failed' => 'ناموفق'];
     ?>
 <div class="card dash-chart-card" style="margin-top:22px">
   <div class="dash-chart-head">
@@ -92,8 +104,8 @@ if (lazy_part_begin('chart')) {
           $wd = (int)date('w', strtotime($d)); // 0=Sun..6=Sat (PHP)
           $faWeekday = JALALI_WEEKDAYS[($wd + 1) % 7];
           $dayLabel = $faWeekday . ' ' . jdate_long($d) . ($d === $todayKey ? ' (امروز)' : '');
-          $summary = $dayLabel . '؛ ارسال‌شده ' . to_persian_digits(number_format($c['sent']));
-          foreach ($parts as $key => $label) $summary .= '، ' . $label . ' ' . to_persian_digits(number_format($c[$key]));
+          $summary = $dayLabel . ($showDelivery ? '؛ ارسال‌شده ' . to_persian_digits(number_format($c['sent'])) : '');
+          foreach ($parts as $key => $label) $summary .= ($showDelivery ? '، ' : '؛ ') . $label . ' ' . to_persian_digits(number_format($c[$key]));
       ?>
         <li class="dash-bar<?= $d === $todayKey ? ' is-today' : '' ?>" tabindex="0" aria-label="<?= e($summary) ?>">
           <div class="dash-bar-track">
@@ -102,7 +114,7 @@ if (lazy_part_begin('chart')) {
             </div>
             <div class="dash-tip" aria-hidden="true">
               <strong><?= e($dayLabel) ?></strong>
-              <span class="dash-tip-row"><span>ارسال‌شده</span><b><?= to_persian_digits(number_format($c['sent'])) ?></b></span>
+              <?php if ($showDelivery): ?><span class="dash-tip-row"><span>ارسال‌شده</span><b><?= to_persian_digits(number_format($c['sent'])) ?></b></span><?php endif; ?>
               <?php foreach ($parts as $key => $label): ?>
                 <span class="dash-tip-row"><span><span class="dash-swatch is-<?= $key ?>"></span><?= $label ?></span><b><?= to_persian_digits(number_format($c[$key])) ?></b></span>
               <?php endforeach; ?>
@@ -139,7 +151,8 @@ if (lazy_part_begin('recent')) {
         <td class="msisdn"><?= e($m['destination'] !== '' ? $m['destination'] : '—') ?></td>
         <td class="msg-preview" title="<?= e($m['content']) ?>"><?= e($m['content'] !== '' ? mb_strimwidth($m['content'], 0, 60, '…') : '—') ?></td>
         <td><?php if ($m['source'] === 'bulk'): ?><a href="/messages/bulk-jobs?id=<?= (int)$m['job_id'] ?>"><?= e($m['job_title'] ?: ('ارسال #' . $m['job_id'])) ?></a><?php else: ?><?= e(report_reference_type_label($m['reference_type'])) ?><?php endif; ?></td>
-        <td><span class="badge badge-<?= e($m['status']['class']) ?>"><?= e($m['status']['label']) ?></span></td>
+        <?php $mStatus = $showDelivery ? $m['status'] : report_canonical_status(null, $m['send_status']); ?>
+        <td><span class="badge badge-<?= e($mStatus['class']) ?>"><?= e($mStatus['label']) ?></span></td>
         <td class="num"><?= jdate_from_utc($m['at']) ?></td>
       </tr>
     <?php endforeach; ?>
