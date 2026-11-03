@@ -31,6 +31,10 @@ required, so an older, half-filled account can still be saved. The company field
 data kept from an earlier legal period. Saving runs `profile_identity_save()` — user profile,
 organization profile and address in one transaction (POST `do=profile_identity`).
 
+The public sign-up page `/register` renders this same form (create mode) and validates it the same
+way; the answers are kept on the registration request and saved with `profile_identity_save()` when
+the admin activates it — see `docs/registration.md`.
+
 ## 1. Ownership — the rule everything else follows from
 
 **Personal identity belongs to the USER. Company and legal data belongs to the ORGANIZATION.**

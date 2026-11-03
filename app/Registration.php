@@ -32,6 +32,22 @@ function registration_request_get(int $id): ?array {
 }
 
 /**
+ * The «مشخصات مشتری» the applicant gave at sign-up (the profile_identity_from_request() shape), or
+ * null for a request made before the sign-up form asked for it (profile_json NULL).
+ */
+function registration_request_identity(array $row): ?array {
+    $raw = (string)($row['profile_json'] ?? '');
+    if ($raw === '') return null;
+    $identity = json_decode($raw, true);
+    if (!is_array($identity) || !isset($identity['user'], $identity['organization'], $identity['address'])
+        || !is_array($identity['user']) || !is_array($identity['organization']) || !is_array($identity['address'])) {
+        return null;
+    }
+    $identity['account_type'] = ($identity['account_type'] ?? '') === 'legal' ? 'legal' : 'individual';
+    return $identity;
+}
+
+/**
  * The display name sign-up messages use: the reseller's brand for a request made through a
  * reseller's link or host (app/ResellerPanel.php), else the platform's.
  */
@@ -58,8 +74,12 @@ function registration_login_url(?array $row): string {
  * $resellerId: the reseller whose sign-up link or host the request came through (resolved by the
  * caller from the link code or the host, never from the form). Such a request is accepted even while
  * the platform's own sign-up is closed, and goes to that reseller for approval.
+ *
+ * $identity: the «مشخصات مشتری» form (profile_identity_from_request(), already checked with
+ * profile_identity_validate()) — the same person / company / address an admin enters on
+ * «ساخت حساب تازه». It is kept on the request as JSON and written to the profile on activation.
  */
-function registration_request_create(array $input, ?int $resellerId = null): array {
+function registration_request_create(array $input, ?int $resellerId = null, ?array $identity = null): array {
     $firstName = trim((string)($input['first_name'] ?? ''));
     $lastName = trim((string)($input['last_name'] ?? ''));
     $mobile = normalize_msisdn((string)($input['mobile'] ?? ''));
@@ -69,6 +89,13 @@ function registration_request_create(array $input, ?int $resellerId = null): arr
     $passwordRepeat = (string)($input['password_repeat'] ?? '');
     $accountType = ($input['account_type'] ?? 'individual') === 'legal' ? 'legal' : 'individual';
     $companyName = trim((string)($input['company_name'] ?? ''));
+    $profileJson = null;
+    if ($identity !== null) {
+        $accountType = $identity['account_type'] === 'legal' ? 'legal' : 'individual';
+        $companyName = $accountType === 'legal' ? trim((string)($identity['organization']['legal_name'] ?? '')) : '';
+        $profileJson = json_encode($identity, JSON_UNESCAPED_UNICODE);
+        if ($profileJson === false) return ['ok' => false, 'error' => 'ثبت مشخصات ممکن نشد. دوباره تلاش کنید.'];
+    }
 
     if (!registration_enabled() && $resellerId === null) return ['ok' => false, 'error' => 'ثبت‌نام در حال حاضر غیرفعال است.'];
     if ($firstName === '' || $lastName === '') return ['ok' => false, 'error' => 'نام و نام خانوادگی الزامی است.', 'field' => $firstName === '' ? 'first_name' : 'last_name'];
@@ -77,7 +104,7 @@ function registration_request_create(array $input, ?int $resellerId = null): arr
     if (preg_match('/^[a-zA-Z0-9_.-]{3,120}$/', $username) !== 1) return ['ok' => false, 'error' => 'نام کاربری باید حداقل ۳ نویسه و شامل حروف لاتین، عدد، نقطه، خط تیره یا زیرخط باشد.', 'field' => 'username'];
     if (strlen($password) < 8) return ['ok' => false, 'error' => 'رمز عبور باید حداقل ۸ نویسه باشد.', 'field' => 'password'];
     if ($password !== $passwordRepeat) return ['ok' => false, 'error' => 'تکرار رمز عبور با رمز عبور یکسان نیست.', 'field' => 'password_repeat'];
-    if ($accountType === 'legal' && $companyName === '') return ['ok' => false, 'error' => 'برای حساب حقوقی نام شرکت را وارد کنید.', 'field' => 'company_name'];
+    if ($accountType === 'legal' && $companyName === '') return ['ok' => false, 'error' => 'برای حساب حقوقی نام شرکت را وارد کنید.', 'field' => $identity !== null ? 'legal_name' : 'company_name'];
     if (($input['accept_terms'] ?? '') !== '1') return ['ok' => false, 'error' => 'برای ثبت‌نام باید قوانین و مقررات و سیاست حریم خصوصی را بپذیرید.', 'field' => 'accept_terms'];
 
     if (function_exists('backend_find_user_for_login') && backend_find_user_for_login($username)) {
@@ -97,10 +124,10 @@ function registration_request_create(array $input, ?int $resellerId = null): arr
     $ua = mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500, 'UTF-8');
     $st = db()->prepare(
         "INSERT INTO ellsms_registration_requests
-          (first_name,last_name,mobile,email,username,password_verifier,account_type,company_name,state,signup_ip,signup_user_agent,terms_version,terms_accepted_at)
-         VALUES (?,?,?,?,?,?,?,?,'pending_mobile_verification',?,?,?,NOW())"
+          (first_name,last_name,mobile,email,username,password_verifier,account_type,company_name,profile_json,state,signup_ip,signup_user_agent,terms_version,terms_accepted_at)
+         VALUES (?,?,?,?,?,?,?,?,?,'pending_mobile_verification',?,?,?,NOW())"
     );
-    $st->execute([$firstName, $lastName, $mobile, $email, $username, $verifier, $accountType, $companyName, $ip, $ua, LEGAL_TERMS_VERSION]);
+    $st->execute([$firstName, $lastName, $mobile, $email, $username, $verifier, $accountType, $companyName, $profileJson, $ip, $ua, LEGAL_TERMS_VERSION]);
     $id = (int)db()->lastInsertId();
     if ($resellerId !== null) {
         db()->prepare('UPDATE ellsms_registration_requests SET reseller_user_id = ? WHERE id = ?')->execute([$resellerId, $id]);

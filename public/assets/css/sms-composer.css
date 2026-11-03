@@ -18,8 +18,15 @@
 
 .composer-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0 14px; }
 .composer-tools label.check { margin: 0; font-weight: 500; }
-.composer-emoji { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
-.composer-emoji .btn { min-inline-size: 44px; font-size: 18px; padding: 4px 8px; }
+.composer-emoji { padding: 8px 10px 10px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.composer-emoji-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--line); }
+.composer-emoji-tab { border: 0; background: none; font-size: 20px; line-height: 1; padding: 6px 8px; border-radius: 8px; cursor: pointer; opacity: .55; }
+.composer-emoji-tab:hover { opacity: 1; background: rgba(0,0,0,.05); }
+.composer-emoji-tab.is-active { opacity: 1; background: rgba(0,0,0,.08); }
+.composer-emoji-panel { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 2px; max-block-size: 220px; overflow-y: auto; }
+.composer-emoji-panel[hidden] { display: none; }
+.composer-emoji-btn { border: 0; background: none; font-size: 22px; line-height: 1; block-size: 40px; border-radius: 8px; cursor: pointer; }
+.composer-emoji-btn:hover, .composer-emoji-btn:focus-visible { background: rgba(0,0,0,.07); }
 
 .composer-line-hint { margin: -6px 0 12px; }
 .panel label.check.composer-check { margin-bottom: 12px; font-weight: 500; flex-wrap: wrap; }

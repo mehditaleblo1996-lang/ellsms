@@ -114,6 +114,51 @@ require __DIR__ . '/../app/views/header.php';
   </div>
 </div>
 
+<?php $identity = registration_request_identity($row); ?>
+<?php if ($identity !== null):
+    $idUser = $identity['user'];
+    $idOrg = $identity['organization'];
+    $idAddr = $identity['address'];
+    $show = static fn($v): string => trim((string)$v) !== '' ? e((string)$v) : '—';
+    $showDate = static fn($v): string => !empty($v) ? e(jdate((string)$v, false)) : '—';
+?>
+<div class="card">
+  <h2>مشخصات ثبت‌شده توسط متقاضی</h2>
+  <p class="hint">همان فرم «ساخت حساب تازه»؛ با فعال‌سازی، این مشخصات در پروفایل کاربر و سازمان او ذخیره می‌شود و بعداً از صفحه‌ی ویرایش کاربر قابل اصلاح است.</p>
+  <h3 class="subsection-title">مشخصات فردی</h3>
+  <div class="form-row">
+    <div><strong>نام پدر</strong><div><?= $show($idUser['father_name'] ?? '') ?></div></div>
+    <div><strong>شماره شناسنامه</strong><div class="ltr"><?= $show($idUser['birth_certificate_no'] ?? '') ?></div></div>
+    <div><strong>تاریخ تولد</strong><div><?= $showDate($idUser['birth_date'] ?? null) ?></div></div>
+  </div>
+  <?php if ($identity['account_type'] === 'legal'): ?>
+  <h3 class="subsection-title" style="margin-top:16px">اطلاعات شرکت</h3>
+  <div class="form-row">
+    <div><strong>نام شرکت</strong><div><?= $show($idOrg['legal_name'] ?? '') ?></div></div>
+    <div><strong>نوع شرکت</strong><div><?= e(profile_company_type_label((string)($idOrg['company_type'] ?? 'unspecified'))) ?></div></div>
+    <div><strong>شماره ثبت</strong><div class="ltr"><?= $show($idOrg['registration_number'] ?? '') ?></div></div>
+    <div><strong>شناسه ملی شرکت</strong><div class="ltr"><?= $show($idOrg['national_id'] ?? '') ?></div></div>
+  </div>
+  <div class="form-row" style="margin-top:12px">
+    <div><strong>کد اقتصادی</strong><div class="ltr"><?= $show($idOrg['economic_code'] ?? '') ?></div></div>
+    <div><strong>تلفن ثابت</strong><div class="ltr"><?= $show($idOrg['landline_phone'] ?? '') ?></div></div>
+    <div><strong>شروع فعالیت</strong><div><?= $showDate($idOrg['company_start_date'] ?? null) ?></div></div>
+    <div><strong>تاریخ انقضا</strong><div><?= $showDate($idOrg['company_expiry_date'] ?? null) ?></div></div>
+  </div>
+  <?php endif; ?>
+  <h3 class="subsection-title" style="margin-top:16px"><?= $identity['account_type'] === 'legal' ? 'آدرس شرکت' : 'آدرس' ?></h3>
+  <div class="form-row">
+    <div><strong>کشور / استان / شهر</strong><div><?= e(implode(' / ', array_filter([(string)($idAddr['country'] ?? ''), (string)($idAddr['province'] ?? ''), (string)($idAddr['city'] ?? '')], 'strlen')) ?: '—') ?></div></div>
+    <div><strong>خیابان / کوچه</strong><div><?= e(implode('، ', array_filter([(string)($idAddr['street'] ?? ''), (string)($idAddr['alley'] ?? '')], 'strlen')) ?: '—') ?></div></div>
+    <div><strong>پلاک / واحد</strong><div><?= e(implode(' / ', array_filter([(string)($idAddr['building_no'] ?? ''), (string)($idAddr['unit_no'] ?? '')], 'strlen')) ?: '—') ?></div></div>
+    <div><strong>کد پستی</strong><div class="ltr"><?= $show($idAddr['postal_code'] ?? '') ?></div></div>
+  </div>
+  <?php if (trim((string)($idAddr['address_text'] ?? '')) !== ''): ?>
+    <p style="margin-top:12px"><strong>نشانی کامل:</strong> <?= e((string)$idAddr['address_text']) ?></p>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <div class="card">
   <h2>اعلان مدیر</h2>
   <div class="form-row">

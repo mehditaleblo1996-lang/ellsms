@@ -137,6 +137,8 @@ ELLSMS does **not** have its own user database. It authenticates against the sha
 
 An account only gets into the ELLSMS panel once an admin **grants access** or **creates it** (Users page). Creating a new account calls the backend's own `POST /api/users/` endpoint (the same one that already existed for this purpose) rather than ELLSMS writing directly into `user_` — that endpoint already knows the exact required columns and applies the backend's own password hashing and uniqueness rules, so ELLSMS doesn't have to guess at any of it. A domain (multi-tenant scope) must already exist on the backend side; ELLSMS lets you pick one but doesn't create domains.
 
+**Self-registration («ثبت‌نام», `/register`)** asks for the same «مشخصات مشتری» as the admin's «ساخت حساب تازه» form — person, «حقیقی / حقوقی», company details for a legal account, and address — plus login details. After SMS verification an admin (or the reseller) reviews it on «درخواست‌های ثبت‌نام», picks the **domain** (admin-only, like the daily limit and every other account setting) and approves; the profile is then saved exactly as the admin form would. Needs `db/migrations/2026_11_03_registration_profile.sql`. See `docs/registration.md`.
+
 ## Quick start
 
 Requirements: the backend platform's own stack already running (so its Docker network and database exist).
@@ -485,6 +487,7 @@ updated in the same change** — see `CLAUDE.md`.
 [resellers-and-menu-access](docs/resellers-and-menu-access.md) ·
 [reseller-panel](docs/reseller-panel.md) ·
 [customer-profile](docs/customer-profile.md) ·
+[registration](docs/registration.md) ·
 [profile-kyc](docs/profile-kyc.md) ·
 [admin-impersonation](docs/admin-impersonation.md)
 
