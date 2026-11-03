@@ -113,10 +113,37 @@ model.
 message: outcome, latency, HTTP status, error, and token counts. **No prompt or reply text is
 stored.**
 
-## Next phases
+## Phases
 
 - **Phase 2 (done):** the AI SMS secretary. See [docs/ai-secretary.md](ai-secretary.md).
 - **Phase 3 (done):** AI tariffs through the existing pricing chain, and wallet charges. See
   [docs/ai-billing.md](ai-billing.md).
-- **Phase 4:** customer data tables with tool calling.
-- **Phase 5:** relay, RAG, and the Bale/Telegram channels.
+- **Phase 4 (done):** customer data tables, record lookup (tool calls or automatic search), hand-off
+  to a human. See [docs/ai-data.md](ai-data.md).
+- **Phase 5 (done):** «پیام اول» by SMS/Bale ([docs/ai-outreach.md](ai-outreach.md)), the
+  secretary on Telegram ([docs/ai-secretary.md](ai-secretary.md) §Telegram), documents
+  ([docs/ai-data.md](ai-data.md) §Documents), proxy/relay and prompt caching (below).
+
+## Proxy and relay (phase 5)
+
+OpenAI, Anthropic and OpenRouter refuse Iranian addresses. There are two ways around this, set per
+provider:
+
+- **«پراکسی / relay خارج از کشور»** (provider → «اتصال و کلید»): an `http(s)://` or
+  `socks5://user:pass@host:port` proxy. Its URL is kept in the AI vault (`proxy_url`) and never
+  shown. Every request of that provider goes through it. `socks5` is sent as `socks5h`, so the proxy
+  resolves the provider's name. The proxy overrides any `NO_PROXY` in the container. With a proxy
+  there is no local address to check or pin; the https-only rule still applies unless
+  «اجازه‌ی آدرس داخلی» is on.
+- **A relay** on a server abroad: `ops/ai-relay/` (nginx + docker compose, protected by a shared
+  `X-Relay-Key` header). Set the provider's base URL to the relay, for example
+  `https://relay.example.com/openai/v1`, and add the header as an extra header. See
+  [ops/ai-relay/README.md](../ops/ai-relay/README.md).
+
+## Prompt caching
+
+For Anthropic, a system prompt of 4,000 characters or more (long business information) is sent as a
+cacheable block (`cache_control: ephemeral`). Cached and cache-write tokens are counted as input
+tokens in usage and billing. OpenAI caches long prompts automatically. Found records travel with the
+customer's message and never change the system prompt, so the cache keeps hitting
+([docs/ai-data.md](ai-data.md)).

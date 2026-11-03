@@ -29,9 +29,13 @@ if (!$isAdmin) {
 }
 
 /** Lines this user may manage: null = every line (admin). */
-$myLines = $isAdmin ? null : array_values(array_map('strval', allowed_originators($me)));
+$myTgLines = $isAdmin ? [] : ai_tg_lines_for($me);
+$myLines = $isAdmin ? null : array_values(array_merge(array_map('strval', allowed_originators($me)), array_keys($myTgLines)));
 $myAccess = $isAdmin ? null : ai_access_effective((int)$me['id']);
-$selectedLine = normalize_originator((string)($_GET['line'] ?? $_POST['line'] ?? '')) ?? '';
+$rawLine = trim((string)($_GET['line'] ?? $_POST['line'] ?? ''));
+// A line is an SMS number, or 'tg:<account id>' for one of the user's Telegram accounts.
+$selectedLine = preg_match('/^tg:\d+$/', $rawLine) === 1 ? $rawLine : (normalize_originator($rawLine) ?? '');
+$lineLabel = static fn(string $line): string => str_starts_with($line, 'tg:') ? (string)(ai_tg_line_label($line) ?? $line) : $line;
 if ($selectedLine !== '' && $myLines !== null && !in_array($selectedLine, $myLines, true)) {
     flash('error', 'این خط متعلق به حساب شما نیست.');
     redirect('/ai-secretary.php');
@@ -45,6 +49,12 @@ $ownerFor = static function (string $line) use ($me, $isAdmin): ?int {
     if (!$isAdmin) return (int)$me['id'];
     $existing = ai_assistant_for_line($line);
     if ($existing !== null) return (int)$existing['user_id'];
+    if (($accountId = ai_tg_account_of($line)) !== null) {
+        $st = db()->prepare('SELECT user_id FROM ellsms_tg_accounts WHERE id = ?');
+        $st->execute([$accountId]);
+        $owner = $st->fetchColumn();
+        return $owner ? (int)$owner : null;
+    }
     $st = db()->prepare('SELECT assigned_user_id FROM ellsms_numbers WHERE number = ?');
     $st->execute([$line]);
     $owner = $st->fetchColumn();
@@ -52,6 +62,7 @@ $ownerFor = static function (string $line) use ($me, $isAdmin): ?int {
 };
 
 $simulation = null;
+$outreachPreview = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = (string)($_POST['do'] ?? '');
@@ -110,6 +121,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', 'منشی هوشمند دوباره به این شماره پاسخ می‌دهد.');
                 redirect('/ai-secretary.php?line=' . $selectedLine . '#handoffs');
             }
+            case 'outreach_preview':
+            case 'outreach_start': {
+                $assistant = ai_assistant_for_line($selectedLine) ?? throw new AppException('ابتدا منشی این خط را راه‌اندازی کنید.');
+                $args = [(int)($_POST['dataset_id'] ?? 0), (string)($_POST['query'] ?? ''), (string)($_POST['instruction'] ?? ''), (string)($_POST['channel'] ?? 'sms')];
+                if ($do === 'outreach_preview') {
+                    $stay = true;
+                    $outreachPreview = ai_outreach_preview($assistant, $args[0], $args[1], $args[2], $args[3], $actor, !$isAdmin);
+                    break;
+                }
+                if (empty($_POST['confirm'])) throw new AppException('برای شروع، تأیید ارسال را تیک بزنید.');
+                $id = ai_outreach_create($assistant, $args[0], (string)($_POST['title'] ?? ''), $args[1], $args[2], $args[3], (string)($_POST['message_type'] ?? 'transactional'), $actor);
+                flash('success', '«پیام اول» در صف ارسال قرار گرفت (#' . $id . ').');
+                redirect('/ai-secretary.php?line=' . rawurlencode($selectedLine) . '#outreach');
+            }
+            case 'outreach_cancel':
+                ai_outreach_cancel((int)($_POST['outreach_id'] ?? 0), (int)($ownerFor($selectedLine) ?? 0), $actor);
+                flash('success', 'ارسال لغو شد؛ پیام‌های ارسال‌نشده فرستاده نمی‌شوند.');
+                redirect('/ai-secretary.php?line=' . rawurlencode($selectedLine) . '#outreach');
             case 'settings_save':
                 if (!$isAdmin) throw new AppException('دسترسی ندارید.');
                 ai_secretary_settings_save($_POST, $actor);
@@ -182,7 +211,7 @@ require __DIR__ . '/../app/views/header.php';
     <tbody>
     <?php foreach ($lineRows as $line): $a = $assistants[$line] ?? null; ?>
       <tr<?= $line === $selectedLine ? ' style="background:var(--surface-2, #f5f5ff)"' : '' ?>>
-        <td class="mono"><?= e($line) ?></td>
+        <td class="mono"><?= e($lineLabel($line)) ?></td>
         <td><?= $a === null ? '<span class="muted">تنظیم نشده</span>' : ((int)$a['enabled'] ? '<strong style="color:#15803d">روشن</strong>' : '<span class="muted">خاموش</span>') ?></td>
         <td><?= $a === null ? '—' : ($a['mode'] === 'general' ? 'دستیار عمومی' : 'منشی کسب‌وکار') ?></td>
         <td><?= e((string)($a['business_name'] ?? '')) ?></td>
@@ -212,7 +241,7 @@ require __DIR__ . '/../app/views/header.php';
 
 <?php if ($editing !== null && $hasAccess): ?>
 <div class="card">
-  <h2>منشی خط <span class="mono"><?= e($selectedLine) ?></span></h2>
+  <h2>منشی خط <span class="mono"><?= e($lineLabel($selectedLine)) ?></span></h2>
   <?php if ($isAdmin && $editingOwner === null): ?>
     <p class="muted">این خط به حسابی تخصیص داده نشده است؛ مالک (حسابی که هزینه‌ی پاسخ‌ها را می‌پردازد) را مشخص کنید.</p>
   <?php elseif ($isAdmin): ?>
@@ -333,6 +362,76 @@ require __DIR__ . '/../app/views/header.php';
   });
 })();
 </script>
+
+<?php if (isset($assistants[$selectedLine]) && ai_outreach_available() && !str_starts_with($selectedLine, 'tg:')):
+    $phoneTables = array_values(array_filter(ai_datasets_for((int)$assistants[$selectedLine]['user_id']), static fn(array $d): bool => $d['phone_column'] !== null));
+    $campaigns = ai_outreach_list([$selectedLine]); ?>
+<div class="card" id="outreach">
+  <h2>پیام اول (ارسال با هوش مصنوعی)</h2>
+  <p class="muted">منشی برای هر ردیف یک جدول (مثلاً سفارش‌های ارسال‌شده یا نوبت‌های فردا) پیامی شخصی از روی اطلاعات همان ردیف می‌نویسد و از این خط می‌فرستد؛
+    پاسخ مشتری مثل همیشه به منشی می‌رسد. جدول باید «ستون موبایل» داشته باشد. هزینه: پیامک (یا بله) هر پیام، به‌علاوه‌ی هزینه‌ی هوش مصنوعی هر پیام.
+    شماره‌هایی که لغو عضویت کرده‌اند پیام نمی‌گیرند و سقف روزانه‌ی خط هم رعایت می‌شود.</p>
+  <?php if ($phoneTables === []): ?>
+    <p><strong>جدولی با «ستون موبایل» ندارید.</strong> <a href="/ai-data.php">از جدول‌های داده</a> یکی بسازید (مثلاً از الگوی «سفارش‌ها»).</p>
+  <?php else: ?>
+  <form method="post">
+    <?= csrf_field() ?><input type="hidden" name="line" value="<?= e($selectedLine) ?>">
+    <div class="toolbar">
+      <label>جدول
+        <select name="dataset_id"><?php foreach ($phoneTables as $t): ?><option value="<?= $t['id'] ?>"<?= (int)($_POST['dataset_id'] ?? 0) === $t['id'] ? ' selected' : '' ?>><?= e($t['name']) ?> (<?= to_persian_digits(number_format((int)$t['row_count'])) ?> ردیف)</option><?php endforeach; ?></select>
+      </label>
+      <label>فقط ردیف‌های شامل (اختیاری) <input type="text" name="query" value="<?= e((string)($_POST['query'] ?? '')) ?>" placeholder="مثلاً ارسال شده"></label>
+      <label>روش ارسال
+        <select name="channel"><?php foreach (ai_outreach_channels() as $k => $l): ?><option value="<?= $k ?>"<?= ($_POST['channel'] ?? 'sms') === $k ? ' selected' : '' ?>><?= e($l) ?></option><?php endforeach; ?></select>
+      </label>
+      <label>نوع پیام
+        <select name="message_type"><?php foreach (AI_OUTREACH_MESSAGE_TYPES as $k => $l): ?><option value="<?= $k ?>"><?= e($l) ?></option><?php endforeach; ?></select>
+      </label>
+      <label>عنوان (برای خودتان) <input type="text" name="title" maxlength="120" value="<?= e((string)($_POST['title'] ?? '')) ?>"></label>
+    </div>
+    <label style="display:block">پیام چه کاری انجام دهد؟
+      <textarea name="instruction" rows="3" style="width:100%" required placeholder="به مشتری خبر بده سفارشش ارسال شد و کد رهگیری پستی را بده."><?= e((string)($_POST['instruction'] ?? '')) ?></textarea>
+    </label>
+    <div class="toolbar" style="margin-top:6px">
+      <button class="btn" name="do" value="outreach_preview">پیش‌نمایش دو پیام اول</button>
+      <label><input type="checkbox" name="confirm" value="1"> پیام‌ها ارسال شوند و هزینه‌شان کسر شود</label>
+      <button class="btn btn-primary" name="do" value="outreach_start">شروع ارسال</button>
+    </div>
+  </form>
+  <?php if ($outreachPreview !== null): ?>
+    <h3>پیش‌نمایش (از <?= to_persian_digits(number_format($outreachPreview['total'])) ?> شماره)</h3>
+    <?php foreach ($outreachPreview['messages'] as $m): ?>
+      <p><span class="mono"><?= e($m['phone']) ?></span>:
+        <?= isset($m['text']) ? '<span style="white-space:pre-wrap">' . e($m['text']) . '</span>' : '<strong style="color:#b91c1c">' . e($m['error']) . '</strong>' ?></p>
+    <?php endforeach; ?>
+    <p class="muted"><?= $isAdmin ? '' : 'هزینه‌ی هوش مصنوعیِ پیش‌نمایش کسر شد؛ پیامکی ارسال نشد.' ?></p>
+  <?php endif; ?>
+  <?php endif; ?>
+  <?php if ($campaigns !== []): ?>
+    <h3>ارسال‌ها</h3>
+    <table class="table">
+      <thead><tr><th>زمان</th><th>عنوان / جدول</th><th>روش</th><th>پیشرفت</th><th>هزینه‌ی هوش مصنوعی</th><th></th></tr></thead>
+      <tbody>
+      <?php foreach ($campaigns as $c): ?>
+        <tr>
+          <td><?= jdate((string)$c['created_at']) ?></td>
+          <td><?= e($c['title'] !== '' ? $c['title'] : (string)$c['dataset_name']) ?><br><span class="muted"><?= e(mb_strimwidth((string)$c['instruction'], 0, 80, '…')) ?></span></td>
+          <td><?= e(AI_OUTREACH_CHANNELS[$c['channel']] ?? $c['channel']) ?></td>
+          <td><?= to_persian_digits((string)$c['sent']) ?> ارسال‌شده، <?= to_persian_digits((string)$c['not_sent']) ?> بدون ارسال، از <?= to_persian_digits((string)$c['total']) ?>
+            <br><span class="muted"><?= ['queued' => 'در صف', 'running' => 'در حال ارسال', 'done' => 'تمام شد', 'cancelled' => 'لغو شد'][$c['status']] ?? e($c['status']) ?></span></td>
+          <td><?= to_persian_digits(number_format((int)$c['ai_cost'])) ?> ریال</td>
+          <td><?php if (in_array($c['status'], ['queued', 'running'], true)): ?>
+            <form method="post" onsubmit="return confirm('ارسال‌های باقی‌مانده لغو شود؟');">
+              <?= csrf_field() ?><input type="hidden" name="do" value="outreach_cancel"><input type="hidden" name="line" value="<?= e($selectedLine) ?>"><input type="hidden" name="outreach_id" value="<?= (int)$c['id'] ?>">
+              <button class="btn">لغو</button>
+            </form><?php endif; ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <?php if (isset($assistants[$selectedLine])): ?>
 <div class="card">

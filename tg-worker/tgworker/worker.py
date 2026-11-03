@@ -264,6 +264,8 @@ class AccountRunner:
         self._limits: tuple[float, bool, dict] | None = None
         self.last_sweep = 0.0
         self.idle_since = time.monotonic()
+        self.ai_listening = False
+        self.last_ai_check = 0.0
 
     async def run(self) -> None:
         try:
@@ -293,6 +295,35 @@ class AccountRunner:
         if not await self.client.is_user_authorized():
             raise AccountGone("disconnected", "نشست از طرف تلگرام یا کاربر پایان یافته است — دوباره متصل شوید.")
         self.client.add_event_handler(self._on_read, events.MessageRead(inbox=False))
+        self._sync_ai_listener()
+
+    def _sync_ai_listener(self) -> None:
+        """Receives private messages only while this account's AI secretary is on (re-checked every 20 s)."""
+        self.last_ai_check = time.monotonic()
+        wanted = self.store.ai_listening(self.account_id)
+        if wanted and not self.ai_listening:
+            self.client.add_event_handler(self._on_message, events.NewMessage(incoming=True))
+            log.info("account %s: AI secretary on, receiving messages", self.account_id)
+        elif not wanted and self.ai_listening:
+            self.client.remove_event_handler(self._on_message)
+            log.info("account %s: AI secretary off", self.account_id)
+        self.ai_listening = wanted
+
+    async def _on_message(self, event) -> None:
+        """A private text message from a person: stored for the ai-worker (app/Ai/AiTelegram.php)."""
+        if not event.is_private or event.out:
+            return
+        text = (event.raw_text or "").strip()
+        if not text:
+            return
+        sender = await event.get_sender()
+        if sender is None or getattr(sender, "bot", False) or getattr(sender, "is_self", False) or getattr(sender, "access_hash", None) is None:
+            return
+        name = " ".join(p for p in (getattr(sender, "first_name", None), getattr(sender, "last_name", None)) if p) or getattr(sender, "username", None)
+        phone = getattr(sender, "phone", None)
+        self.store.inbound_insert(self.account_id, self.user_id, int(sender.id), int(sender.access_hash), int(event.id),
+                                  phone if phone and phone.isdigit() else None, name, text)
+        self.idle_since = time.monotonic()
 
     async def _on_read(self, event) -> None:
         peer = getattr(event.original_update, "peer", None)
@@ -323,12 +354,15 @@ class AccountRunner:
             if service_on and limits["enabled"] and account["status"] == "active":
                 did_work = await self._send_next(limits) or did_work
                 did_work = await self._lookup_next(limits) or did_work
+            if time.monotonic() - self.last_ai_check >= 20:
+                self._sync_ai_listener()
             if time.monotonic() - self.last_sweep >= 180:
                 self.last_sweep = time.monotonic()
                 await self._sweep_reads()
             if did_work:
                 self.idle_since = time.monotonic()
             elif (time.monotonic() - self.idle_since >= self.config.idle_seconds
+                  and not self.ai_listening
                   and not self.store.has_unread(self.account_id, self.config.read_window_hours)
                   and not (service_on and limits["enabled"] and self.store.has_pending_work(self.account_id, self.user_id))):
                 # Work that is only waiting (daily cap, interval, temporary limit) keeps the connection;
@@ -371,7 +405,11 @@ class AccountRunner:
         mid = int(message["id"])
         phone = str(message["phone"])
         try:
-            peer = await self._resolve(phone)
+            # An AI secretary answer is addressed to the stored peer of whoever wrote (phone usually hidden).
+            if message.get("tg_peer_id") and message.get("tg_access_hash"):
+                peer = types.InputPeerUser(int(message["tg_peer_id"]), int(message["tg_access_hash"]))
+            else:
+                peer = await self._resolve(phone)
             if peer is None:
                 self.store.message_failed(mid, "not_on_telegram")
                 return True

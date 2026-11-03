@@ -479,6 +479,117 @@ final class AiSecretaryFlowTest extends IntegrationTestCase
         ai_data_import(ai_dataset_find($orders['id'], $this->ownerId), [['چیز دیگر'], ['1']], 'append', $this->ownerId);
     }
 
+        /* ================= phase 5: «پیام اول», Telegram, documents, proxy ================= */
+
+    public function testOutreachWritesAndSendsOneMessagePerMatchingNumber(): void
+    {
+        $orders = $this->ordersTable();
+        ai_data_row_save($orders, null, ['c1' => '5555', 'c2' => '09121234567', 'c3' => 'ارسال شده']); // same number: one message
+        $orders = ai_dataset_find($orders['id'], $this->ownerId);
+        $assistant = ai_assistant_find($this->assistant());
+
+        $preview = ai_outreach_preview($assistant, $orders['id'], 'ارسال شده', 'به مشتری خبر بده سفارشش ارسال شد.', 'sms', $this->ownerId, false);
+        $this->assertSame(1, $preview['total'], 'only the matching row, once per number');
+        $this->assertNotSame('', $preview['messages'][0]['text'] ?? '');
+        $this->assertSame([], $this->gatewayRequests(), 'a preview sends nothing');
+
+        $id = ai_outreach_create($assistant, $orders['id'], 'ارسال‌ها', 'ارسال شده', 'به مشتری خبر بده سفارشش ارسال شد.', 'sms', 'transactional', $this->ownerId);
+        ai_secretary_run_pass(5);
+        $job = db()->query("SELECT * FROM ellsms_ai_jobs WHERE outreach_id = $id")->fetch();
+        $this->assertSame(['sent', '989121234567'], [$job['status'], $job['sender']]);
+        $request = end($this->aiRequests());
+        $this->assertStringContainsString('FIRST message', $request['messages'][1]['content']);
+        $this->assertStringContainsString('RT998877', $request['messages'][1]['content'], 'written from the row');
+        $this->assertCount(1, $this->gatewayRequests());
+        $this->assertSame('done', db()->query("SELECT status FROM ellsms_ai_outreach WHERE id = $id")->fetchColumn());
+
+        // The customer's reply continues the conversation, which starts with the business's message.
+        $this->inbound($this->customer, 'ممنون، کی می‌رسه؟');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $this->assertSame(['system', 'assistant', 'user'], array_column(end($this->aiRequests())['messages'], 'role'));
+    }
+
+    public function testOutreachSkipsOptedOutNumbersAndCanBeCancelled(): void
+    {
+        $orders = $this->ordersTable();
+        $assistant = ai_assistant_find($this->assistant());
+        db()->prepare('INSERT INTO ellsms_line_optouts (originator, mobile) VALUES (?, ?)')->execute([$this->line, '989121234567']);
+        $id = ai_outreach_create($assistant, $orders['id'], '', '', 'یادآوری کن.', 'sms', 'transactional', $this->ownerId);
+        ai_outreach_cancel($id, $this->ownerId, $this->ownerId);
+        $this->assertSame(['skipped' => 2], array_count_values(array_column(db()->query("SELECT status FROM ellsms_ai_jobs WHERE outreach_id = $id")->fetchAll(), 'status')));
+
+        $id = ai_outreach_create($assistant, $orders['id'], '', '4512', 'یادآوری کن.', 'sms', 'transactional', $this->ownerId);
+        ai_secretary_run_pass(5);
+        $this->assertSame(['skipped', 'opted_out'], array_values(db()->query("SELECT status, skip_reason FROM ellsms_ai_jobs WHERE outreach_id = $id")->fetch(\PDO::FETCH_NUM) ?: []));
+        $this->assertSame([], $this->aiRequests(), 'the model is not asked for an opted-out number');
+    }
+
+    public function testATelegramMessageIsAnsweredOnTheSameAccount(): void
+    {
+        set_setting('tg_enabled', '1');
+        db()->prepare('INSERT INTO ellsms_tg_user_settings (user_id, enabled) VALUES (?, 1)')->execute([$this->ownerId]);
+        db()->prepare("INSERT INTO ellsms_tg_accounts (user_id, phone, status, session_enc, created_at) VALUES (?, '989100000009', 'active', 'v1:x', NOW())")->execute([$this->ownerId]);
+        $accountId = (int)db()->lastInsertId();
+        ai_tg_available(true);
+        $this->assertArrayHasKey('tg:' . $accountId, ai_tg_lines_for(['id' => $this->ownerId, 'role' => 'user']));
+        ai_assistant_save('tg:' . $accountId, $this->ownerId, null, ['enabled' => '1', 'mode' => 'general', 'max_parts' => '2'], $this->ownerId);
+        ai_secretary_cache_reset();
+        db()->prepare("INSERT INTO ellsms_tg_inbound (account_id, user_id, tg_peer_id, tg_access_hash, tg_message_id, sender_phone, sender_name, text, received_at)
+                       VALUES (?, ?, 888, 9, 55, NULL, 'علی', 'سلام از تلگرام', NOW())")->execute([$accountId, $this->ownerId]);
+
+        ai_secretary_run_pass(5); // enqueues and answers
+        $job = db()->query("SELECT * FROM ellsms_ai_jobs WHERE kind = 'telegram'")->fetch();
+        $this->assertSame(['sent', 'tgu:888', 'پاسخ آزمایشی: سلام از تلگرام'], [$job['status'], $job['sender'], $job['reply_text']]);
+        $message = db()->query("SELECT m.phone, m.tg_peer_id, m.tg_access_hash, c.content, c.account_id FROM ellsms_tg_messages m JOIN ellsms_tg_campaigns c ON c.id = m.campaign_id")->fetch();
+        $this->assertSame(['tgu:888', 888, 9, 'پاسخ آزمایشی: سلام از تلگرام', $accountId],
+            [$message['phone'], (int)$message['tg_peer_id'], (int)$message['tg_access_hash'], $message['content'], (int)$message['account_id']]);
+        $this->assertSame([], $this->gatewayRequests(), 'no SMS');
+        $this->assertSame((int)$job['id'], (int)db()->query('SELECT job_id FROM ellsms_tg_inbound')->fetchColumn());
+    }
+
+    public function testADocumentIsSplitAndItsRelevantPartReachesTheModel(): void
+    {
+        $text = "شرایط گارانتی\n\nگارانتی همه‌ی محصولات ۱۸ ماه است و فقط با فاکتور خرید معتبر است.\n\n"
+              . str_repeat("بخش‌های دیگر درباره‌ی ارسال، پرداخت و تحویل در محل. ", 40) . "\n\nبازگشت کالا تا ۷ روز پس از تحویل ممکن است.";
+        $doc = ai_document_save($this->ownerId, null, 'قوانین فروشگاه', $text, $this->ownerId);
+        $this->assertGreaterThan(2, $doc['chunks']);
+        $assistantId = $this->assistant();
+        ai_assistant_set_datasets($assistantId, $this->ownerId, [$doc['id']]);
+        $this->inbound($this->customer, 'گارانتی چند ماهه؟');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $prompt = end($this->aiRequests()[0]['messages'])['content'];
+        $this->assertStringContainsString('۱۸ ماه', $prompt);
+        $this->assertStringNotContainsString('بازگشت کالا', $prompt, 'only the relevant part');
+    }
+
+    public function testAProviderIsReachedThroughItsProxy(): void
+    {
+        $socket = stream_socket_server('tcp://127.0.0.1:0');
+        $name = stream_socket_get_name($socket, false);
+        $port = (int)substr($name, strrpos($name, ':') + 1);
+        fclose($socket);
+        $log = sys_get_temp_dir() . '/ellsms_proxy_' . bin2hex(random_bytes(4)) . '.log';
+        $proc = proc_open([PHP_BINARY, '-S', '127.0.0.1:' . $port, dirname(__DIR__) . '/fixtures/http-forward-proxy.php'],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, getenv() + ['PROXY_LOG' => $log]);
+        for ($i = 0; $i < 40 && !@fsockopen('127.0.0.1', $port); $i++) usleep(100000);
+        try {
+            putenv('AI_MASTER_KEY=ai-proxy-test-master-key-0123456789abcdef');
+            ai_secret_key_reset();
+            ai_secret_put($this->providerId, 'proxy_url', 'http://127.0.0.1:' . $port);
+            $result = ai_model_test($this->modelId, $this->ownerId);
+            $this->assertTrue($result['ok'], (string)($result['message'] ?? ''));
+            $this->assertStringContainsString('/v1/chat/completions', (string)@file_get_contents($log), 'the request went through the proxy');
+        } finally {
+            proc_terminate($proc);
+            proc_close($proc);
+            @unlink($log);
+            putenv('AI_MASTER_KEY');
+            ai_secret_key_reset();
+        }
+    }
+
         /* ================= helpers ================= */
 
     private function assistant(array $overrides = []): int

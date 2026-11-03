@@ -556,3 +556,123 @@ function ai_assistant_set_datasets(int $assistantId, int $ownerId, array $datase
         foreach ($ids as $id) $ins->execute([$assistantId, $id, $ownerId]);
     });
 }
+
+/* ==========================================================================
+   Documents (phase 5): long text made searchable
+   ========================================================================== */
+
+/** Characters per searchable piece of a document. */
+const AI_DOCUMENT_CHUNK_CHARS = 700;
+const AI_DOCUMENT_MAX_CHARS = 2000000;
+const AI_DOCUMENT_EXTENSIONS = ['txt', 'md', 'csv', 'docx', 'pdf'];
+
+/**
+ * Pure: a long text cut into pieces of at most $size characters — on paragraph boundaries where
+ * possible, then sentences, then words. Blank pieces are dropped.
+ * @return list<string>
+ */
+function ai_document_chunks(string $text, int $size = AI_DOCUMENT_CHUNK_CHARS): array {
+    $text = trim(preg_replace("/\n{3,}/u", "\n\n", str_replace(["\r\n", "\r"], "\n", $text)) ?? $text);
+    $units = [];
+    foreach (preg_split("/\n\s*\n/u", $text) ?: [] as $para) {
+        $para = trim(preg_replace('/[ \t]+/u', ' ', $para) ?? $para);
+        if ($para === '') continue;
+        if (mb_strlen($para) <= $size) { $units[] = $para; continue; }
+        // A long paragraph: its sentences, and a sentence longer than a piece by words.
+        foreach (preg_split('/(?<=[.!?؟])\s+/u', $para) ?: [] as $sentence) {
+            while (mb_strlen($sentence) > $size) {
+                $cut = mb_strrpos(mb_substr($sentence, 0, $size), ' ');
+                $cut = $cut !== false && $cut > $size / 2 ? $cut : $size;
+                $units[] = trim(mb_substr($sentence, 0, $cut));
+                $sentence = trim(mb_substr($sentence, $cut));
+            }
+            if ($sentence !== '') $units[] = $sentence;
+        }
+    }
+    $chunks = [];
+    $current = '';
+    foreach ($units as $unit) {
+        if ($current !== '' && mb_strlen($current) + 1 + mb_strlen($unit) > $size) {
+            $chunks[] = $current;
+            $current = '';
+        }
+        $current = $current === '' ? $unit : $current . "\n" . $unit;
+    }
+    if ($current !== '') $chunks[] = $current;
+    return $chunks;
+}
+
+/** Pure: the text of a .docx's word/document.xml (paragraphs on their own lines). */
+function ai_document_docx_text(string $xml): string {
+    $xml = preg_replace('#</w:p>#', "\n", $xml) ?? $xml;
+    $xml = preg_replace('#<w:tab/>#', ' ', $xml) ?? $xml;
+    $xml = preg_replace('#<w:br[^>]*/>#', "\n", $xml) ?? $xml;
+    return html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
+}
+
+/** The text of an uploaded document file (.txt/.md/.csv, .docx, .pdf). Throws AppException. */
+function ai_document_text_from_file(string $path, string $originalName): string {
+    $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+    if (!in_array($ext, AI_DOCUMENT_EXTENSIONS, true)) {
+        throw new AppException('فرمت سند باید یکی از ' . implode('، ', AI_DOCUMENT_EXTENSIONS) . ' باشد.');
+    }
+    if ($ext === 'docx') {
+        $zip = new ZipArchive();
+        if ($zip->open($path) !== true) throw new AppException('فایل Word قابل خواندن نیست.');
+        $stat = $zip->statName('word/document.xml');
+        if ($stat === false || $stat['size'] > 50 * 1024 * 1024) { $zip->close(); throw new AppException('فایل Word قابل خواندن نیست.'); }
+        $xml = (string)$zip->getFromName('word/document.xml');
+        $zip->close();
+        return ai_document_docx_text($xml);
+    }
+    if ($ext === 'pdf') {
+        $bin = trim((string)shell_exec('command -v pdftotext 2>/dev/null'));
+        if ($bin === '') throw new AppException('خواندن PDF روی این سرور ممکن نیست؛ متن سند را کپی کنید یا فایل Word/متنی بفرستید.');
+        $out = [];
+        $code = 0;
+        exec(escapeshellarg($bin) . ' -enc UTF-8 -nopgbrk ' . escapeshellarg($path) . ' - 2>/dev/null', $out, $code);
+        if ($code !== 0) throw new AppException('متن این PDF خوانده نشد (شاید تصویری یا رمزدار است).');
+        return implode("\n", $out);
+    }
+    $text = (string)file_get_contents($path);
+    if (!mb_check_encoding($text, 'UTF-8')) {
+        // Old Persian text files are often Windows-1256.
+        $converted = @iconv('WINDOWS-1256', 'UTF-8//IGNORE', $text);
+        $text = $converted !== false ? $converted : mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+    }
+    return preg_replace('/^\xEF\xBB\xBF/', '', $text) ?? $text;
+}
+
+/** The single column of a document table. */
+function ai_document_columns(): array {
+    return [['key' => 'c1', 'label' => 'متن', 'type' => 'text', 'default' => '']];
+}
+
+/**
+ * Creates a document table — or, with $datasetId, replaces a document's text — from $text.
+ * @return array{id:int, chunks:int}
+ */
+function ai_document_save(int $userId, ?int $datasetId, string $name, string $text, int $actorId): array {
+    $text = trim($text);
+    if ($text === '') throw new AppException('متن سند خالی است.');
+    if (mb_strlen($text) > AI_DOCUMENT_MAX_CHARS) throw new AppException('سند حداکثر ' . number_format(AI_DOCUMENT_MAX_CHARS) . ' نویسه می‌تواند باشد.');
+    $chunks = ai_document_chunks($text);
+    if (count($chunks) > AI_DATA_MAX_ROWS) throw new AppException('سند بیش از حد طولانی است.');
+    if ($datasetId === null) {
+        $name = trim($name) !== '' ? trim($name) : 'سند ' . jdate(gmdate('Y-m-d H:i:s'), false);
+        $datasetId = ai_dataset_save($userId, null, $name, 'سند: ' . mb_substr($name, 0, 480), ai_document_columns(), '', '', 'document', $actorId);
+    } elseif (($existing = ai_dataset_find($datasetId, $userId)) === null || $existing['template'] !== 'document') {
+        throw new AppException('سند پیدا نشد.');
+    }
+    $dataset = ai_dataset_find($datasetId, $userId);
+    db_transaction(function (PDO $db) use ($dataset, $chunks): void {
+        $db->prepare('DELETE FROM ellsms_ai_dataset_rows WHERE dataset_id = ?')->execute([$dataset['id']]);
+        $ins = $db->prepare('INSERT INTO ellsms_ai_dataset_rows (dataset_id, data_json, search_text) VALUES (?,?,?)');
+        foreach ($chunks as $chunk) {
+            $ins->execute([$dataset['id'], json_encode(['c1' => $chunk], JSON_UNESCAPED_UNICODE), ai_data_normalize($chunk)]);
+        }
+    });
+    ai_dataset_count($datasetId);
+    audit($actorId, 'ai.document.save', json_encode(['dataset_id' => $datasetId, 'chunks' => count($chunks)]) ?: '');
+    return ['id' => $datasetId, 'chunks' => count($chunks)];
+}

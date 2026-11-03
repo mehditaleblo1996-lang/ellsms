@@ -199,6 +199,8 @@ function ai_provider_config(array $provider): array {
     if (ai_config_missing_key($cfg)) {
         throw new AiProviderException('no_api_key');
     }
+    // A proxy / relay outside the country (phase 5): its URL may carry credentials, so it is a secret.
+    $cfg['proxy'] = ai_secret_get((int)$provider['id'], 'proxy_url');
     return $cfg;
 }
 

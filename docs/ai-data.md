@@ -74,3 +74,16 @@ Then:
    «ادامه با منشی هوشمند». A reply is sent from the line as an ordinary SMS of the owner (wallet
    reference `ai_manual`), only to a number that already has a conversation on that line. It is
    kept as a `manual` job, so the AI sees it in the conversation memory afterwards.
+
+## Documents (phase 5)
+
+Long text, such as warranty terms, a manual, policies or a long FAQ, can be added as a **document**
+under «جدول جدید» → «سند». Paste the text, or upload a `.txt`, `.md`, `.csv`, `.docx` or `.pdf` file
+(up to 20 MB). It is split into pieces of about 700 characters, on paragraph, then sentence, then
+word boundaries, and stored as a table with one column «متن» (template `document`). The same lookup
+then finds only the pieces relevant to the customer's message, and those go to the model, so the
+whole document never has to fit in a prompt. A document can have up to 2,000,000 characters.
+«جایگزینی متن سند» replaces the whole text.
+
+PDF text comes from `pdftotext` (the `poppler-utils` package, now in the app image). An image-only
+or encrypted PDF has no text to read. Old Persian `.txt` files in Windows-1256 are converted to UTF-8.

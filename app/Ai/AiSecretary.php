@@ -77,6 +77,7 @@ const AI_SECRETARY_SKIP_REASONS = [
     'no_model'         => 'هیچ مدل هوش مصنوعی برای این حساب فعال نیست',
     'insufficient_credit' => 'اعتبار حساب برای هزینه‌ی پاسخ هوشمند کافی نیست',
     'human_handoff'    => 'گفتگو به اپراتور سپرده شده است (منشی هوشمند متوقف است)',
+    'outreach_cancelled' => 'ارسال «پیام اول» لغو شد',
 ];
 
 /**
@@ -550,6 +551,12 @@ function ai_secretary_claim(int $limit): array {
 function ai_secretary_run_pass(int $limit = 10): int {
     if (!ai_secretary_available() || !ai_secretary_enabled()) return 0;
     ai_secretary_recover_stale();
+    // Telegram messages the tg-worker stored become jobs here (phase 5).
+    try {
+        ai_tg_enqueue_pass();
+    } catch (Throwable $t) {
+        Logger::error('ai.telegram.enqueue_failed', ['exception' => $t]);
+    }
     $jobs = ai_secretary_claim($limit);
     foreach ($jobs as $job) {
         try {
@@ -559,6 +566,7 @@ function ai_secretary_run_pass(int $limit = 10): int {
             ai_secretary_finish((int)$job['id'], 'failed', ['error_code' => 'internal_error', 'info' => 'خطای داخلی هنگام پردازش']);
         }
     }
+    if (function_exists('ai_outreach_settle')) ai_outreach_settle();
     return count($jobs);
 }
 
@@ -741,8 +749,17 @@ function ai_secretary_process_job(array $job): void {
         'id' => $owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit'],
         'originator' => $owner['originator'], 'organization_id' => $orgId,
     ];
+    // A Telegram «line» is one of the owner's Telegram accounts (checked in ai_tg_process_job()).
+    if (($job['kind'] ?? '') === 'telegram' || str_starts_with((string)$job['line'], 'tg:')) {
+        ai_tg_process_job($job, $assistant, $user);
+        return;
+    }
     if ($user['role'] !== 'admin' && !in_array((string)$job['line'], allowed_originators($user), true)) {
         ai_secretary_finish($jobId, 'skipped', ['skip_reason' => 'line_not_owned']);
+        return;
+    }
+    if (($job['kind'] ?? '') === 'outreach') {
+        ai_outreach_process_job($job, $assistant, $user);
         return;
     }
 
@@ -1016,5 +1033,6 @@ function ai_secretary_today_counts(?array $lines): array {
 function ai_secretary_menu_visible(array $user): bool {
     if (!ai_secretary_available()) return false;
     if (($user['role'] ?? '') === 'admin') return true;
-    return allowed_originators($user) !== [] && ai_access_effective((int)$user['id'])['models'] !== [];
+    $hasLine = allowed_originators($user) !== [] || (function_exists('ai_tg_lines_for') && ai_tg_lines_for($user) !== []);
+    return $hasLine && ai_access_effective((int)$user['id'])['models'] !== [];
 }

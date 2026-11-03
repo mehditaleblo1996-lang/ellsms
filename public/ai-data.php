@@ -53,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $actor = (int)$me['id'];
     /** The owner of a new table: the customer itself, or the account an admin names. */
     $ownerId = $actor;
-    if ($isAdmin && in_array($do, ['create_template', 'create_blank', 'create_file'], true)) {
+    if ($isAdmin && in_array($do, ['create_template', 'create_blank', 'create_file', 'create_document'], true)) {
         $name = trim((string)($_POST['owner'] ?? ''));
         $ownerId = $name === '' ? $actor : (ctype_digit($name) ? (int)$name : (int)backend_find_user_id_by_username($name));
         if ($ownerId <= 0 || backend_usernames_by_ids([$ownerId]) === []) {
@@ -77,6 +77,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'create_file': {
                 $r = ai_dataset_from_file($ownerId, trim((string)($_POST['name'] ?? '')), $readUpload(), $actor);
                 flash('success', 'جدول از فایل ساخته شد: ' . to_persian_digits((string)$r['added']) . ' ردیف. ستون کلید و ستون موبایل را در «تعریف جدول» تعیین کنید.');
+                redirect($back($r['id']));
+            }
+            case 'create_document':
+            case 'document_replace': {
+                $text = (string)($_POST['text'] ?? '');
+                $file = $_FILES['file'] ?? null;
+                if (is_array($file) && ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK && is_uploaded_file((string)$file['tmp_name'])) {
+                    if ((int)$file['size'] > 20 * 1024 * 1024) throw new AppException('حجم سند حداکثر ۲۰ مگابایت است.');
+                    $text = ai_document_text_from_file((string)$file['tmp_name'], (string)$file['name']);
+                }
+                $r = $do === 'create_document'
+                    ? ai_document_save($ownerId, null, (string)($_POST['name'] ?? ''), $text, $actor)
+                    : ai_document_save((int)($dataset['user_id'] ?? 0), (int)($dataset['id'] ?? 0), '', $text, $actor);
+                flash('success', 'سند ذخیره شد: ' . to_persian_digits((string)$r['chunks']) . ' بخش قابل جست‌وجو. آن را در تنظیمات منشی خط تیک بزنید.');
                 redirect($back($r['id']));
             }
             case 'update': {
@@ -191,6 +205,17 @@ require __DIR__ . '/../app/views/header.php';
       <label>فایل (ردیف اول = نام ستون‌ها) <input type="file" name="file" accept=".xlsx,.csv" required></label>
       <button class="btn btn-primary">ساخت از فایل</button>
     </form>
+    <h3>سند (متن طولانی: قوانین، راهنما، سؤال‌های پرتکرار ...)</h3>
+    <p class="muted">متن سند به بخش‌های کوچک تقسیم می‌شود و منشی فقط بخش‌های مرتبط با سؤال مشتری را می‌خواند. فایل txt، md، csv، docx یا pdf (حداکثر ۲۰ مگابایت) یا متن را بچسبانید.</p>
+    <form method="post" enctype="multipart/form-data">
+      <?= csrf_field() ?><input type="hidden" name="do" value="create_document">
+      <div class="toolbar"><?= $ownerField ?>
+        <label>نام سند <input type="text" name="name" maxlength="80" placeholder="مثلاً شرایط گارانتی"></label>
+        <label>فایل <input type="file" name="file" accept=".txt,.md,.csv,.docx,.pdf"></label>
+      </div>
+      <label style="display:block">یا متن سند <textarea name="text" rows="4" style="width:100%"></textarea></label>
+      <button class="btn btn-primary" style="margin-top:6px">ساخت سند</button>
+    </form>
     <h3>خالی</h3>
     <form method="post">
       <?= csrf_field() ?><input type="hidden" name="do" value="create_blank">
@@ -209,7 +234,20 @@ require __DIR__ . '/../app/views/header.php';
   </details>
 </div>
 
-<?php if ($dataset !== null): $cols = $dataset['columns']; ?>
+<?php if ($dataset !== null && $dataset['template'] === 'document'): ?>
+<div class="card">
+  <h2>سند «<?= e($dataset['name']) ?>»</h2>
+  <p class="muted"><?= to_persian_digits(number_format((int)$dataset['row_count'])) ?> بخش قابل جست‌وجو. برای به‌روزرسانی، متن یا فایل جدید را بفرستید؛ متن قبلی کامل جایگزین می‌شود.</p>
+  <form method="post" enctype="multipart/form-data">
+    <?= csrf_field() ?><input type="hidden" name="do" value="document_replace"><input type="hidden" name="dataset_id" value="<?= $dataset['id'] ?>">
+    <div class="toolbar"><label>فایل <input type="file" name="file" accept=".txt,.md,.csv,.docx,.pdf"></label></div>
+    <label style="display:block">یا متن جدید <textarea name="text" rows="4" style="width:100%"></textarea></label>
+    <button class="btn btn-primary" style="margin-top:6px">جایگزینی متن سند</button>
+  </form>
+</div>
+<?php endif; ?>
+
+<?php if ($dataset !== null && $dataset['template'] !== 'document'): $cols = $dataset['columns']; ?>
 <div class="card">
   <h2>تعریف جدول «<?= e($dataset['name']) ?>»</h2>
   <form method="post">
@@ -264,6 +302,8 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 </div>
 
+<?php endif; ?>
+<?php if ($dataset !== null): $cols = $dataset['columns']; ?>
 <div class="card" id="rows">
   <h2>ردیف‌ها (<?= to_persian_digits(number_format($rows['total'])) ?>)</h2>
   <form method="get" class="toolbar">

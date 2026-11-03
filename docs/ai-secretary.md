@@ -114,3 +114,28 @@ On the same page, platform admins only:
 | Log retention | 90 days |
 
 Old finished jobs are pruned by the worker about once an hour.
+
+## Telegram (phase 5)
+
+A customer who connected its own Telegram account in «ارسال با تلگرام»
+([docs/telegram-user-service.md](telegram-user-service.md)) sees that account as a line on this
+page, labelled «تلگرام @username» (internally `tg:<account id>`). With an assistant switched on
+there:
+
+- the `tg-worker` keeps the account connected and stores every **private text message from a
+  person** it receives in `ellsms_tg_inbound`. Bots, groups, channels and media-only messages are
+  ignored;
+- the `ai-worker` turns each message into a job (kind `telegram`, sender `tgu:<Telegram user id>`)
+  and answers it like an SMS: same instructions, tables, memory, hand-off, caps and burst/repeat
+  guards. The SMS-only guards (mobile number, own line, «۱۱» opt-out) do not apply;
+- the answer is queued as a one-recipient Telegram message on the same account, addressed to the
+  stored peer (Telegram usually hides the sender's phone). It is priced and charged by the Telegram
+  service; the AI part is charged by the AI tariff;
+- tables restricted to the sender's number answer only when Telegram shared the sender's phone.
+
+Schema: `db/migrations/2026_11_07_ai_phase5.sql`.
+
+## «پیام اول»
+
+The secretary can also send the first message itself, one personalized message per row of a table.
+See [docs/ai-outreach.md](ai-outreach.md).

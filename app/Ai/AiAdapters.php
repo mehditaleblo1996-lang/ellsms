@@ -543,6 +543,23 @@ function ai_check_url_policy(string $url, bool $allowPrivate): array {
 }
 
 /**
+ * Pure: the error of a proxy URL, or null when it is usable. http(s):// and socks5(h):// with a host;
+ * credentials may be in the URL (it is stored in the AI vault, never shown).
+ */
+function ai_proxy_error(string $url): ?string {
+    $parts = parse_url($url);
+    if ($parts === false || empty($parts['host']) || !in_array(strtolower((string)($parts['scheme'] ?? '')), ['http', 'https', 'socks5', 'socks5h'], true)) {
+        return 'آدرس پراکسی باید به شکل http://host:port یا socks5://user:pass@host:port باشد.';
+    }
+    return null;
+}
+
+/** Pure: the proxy URL curl gets — socks5 becomes socks5h, so the proxy resolves the provider's name. */
+function ai_proxy_for_curl(string $url): string {
+    return preg_replace('#^socks5://#i', 'socks5h://', $url) ?? $url;
+}
+
+/**
  * Sends one request built by ai_build_*_request() under the outbound policy and returns the parsed
  * JSON body. Throws AiProviderException for every failure, with the secret scrubbed.
  *
@@ -558,6 +575,14 @@ function ai_http_send(array $request, array $cfg): array {
     $transport = $GLOBALS['__ai_http_transport'] ?? null;
     if (is_callable($transport)) {
         $raw = $transport($request, $cfg);
+    } elseif (!empty($cfg['proxy'])) {
+        // Through a proxy (a relay outside the country, for providers that refuse local addresses):
+        // the proxy resolves and connects, so there is no address here to check or pin. The admin
+        // who set the proxy chose where traffic goes; the scheme rule still applies.
+        $scheme = strtolower((string)parse_url($request['url'], PHP_URL_SCHEME));
+        if (!in_array($scheme, ['http', 'https'], true)) throw new AiProviderException('url_invalid');
+        if ($scheme !== 'https' && empty($cfg['allow_private_network'])) throw new AiProviderException('https_required');
+        $raw = ai_http_curl($request, $cfg, ['ip' => null, 'proxy' => ai_proxy_for_curl((string)$cfg['proxy'])]);
     } else {
         $policy = ai_check_url_policy($request['url'], !empty($cfg['allow_private_network']));
         if (!$policy['ok']) {
@@ -618,6 +643,11 @@ function ai_http_curl(array $request, array $cfg, array $policy): array {
     ];
     if ($request['body'] !== null) {
         $options[CURLOPT_POSTFIELDS] = $request['body'];
+    }
+    if (($policy['proxy'] ?? null) !== null) {
+        $options[CURLOPT_PROXY] = $policy['proxy'];
+        // The admin's proxy wins over a NO_PROXY in the container's environment.
+        $options[CURLOPT_NOPROXY] = '';
     }
     if (($policy['ip'] ?? null) !== null) {
         $pin = str_contains((string)$policy['ip'], ':') ? '[' . $policy['ip'] . ']' : $policy['ip'];

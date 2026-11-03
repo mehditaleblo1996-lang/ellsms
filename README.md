@@ -147,9 +147,17 @@ customer writes, and the answer is sent from the same line.
   tool calls or an automatic search. A table with a phone column only ever shows a sender its own
   rows. The AI can hand a conversation to a human: it is paused, the owner is notified, and the
   operator replies from the panel and resumes the AI. See [`docs/ai-data.md`](docs/ai-data.md).
+- **Phase 5:**
+  - «پیام اول»: the AI writes and sends one personalized first message per row of a table, by SMS,
+    Bale or Bale-then-SMS ([`docs/ai-outreach.md`](docs/ai-outreach.md)).
+  - The secretary also answers messages received on the customer's own Telegram accounts
+    ([`docs/ai-secretary.md`](docs/ai-secretary.md) §Telegram).
+  - Long documents (txt/docx/pdf) become searchable.
+  - AI providers can be reached through a proxy or the relay kit in `ops/ai-relay/`.
+  - Anthropic prompt caching.
 
 Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
-`2026_11_06_ai_datasets.sql`.
+`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`.
 No public API routes.
 
 ## Delivery-based billing (ارسال بر اساس تحویل)
@@ -502,6 +510,7 @@ updated in the same change** — see `CLAUDE.md`.
 [ai-engines](docs/ai-engines.md) ·
 [ai-secretary](docs/ai-secretary.md) ·
 [ai-data](docs/ai-data.md) ·
+[ai-outreach](docs/ai-outreach.md) ·
 [webengage](docs/webengage.md) ·
 [telegram-invoice-bot](docs/telegram-invoice-bot.md)
 

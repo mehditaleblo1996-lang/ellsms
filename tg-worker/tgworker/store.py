@@ -127,7 +127,38 @@ class Store:
             "    OR EXISTS (SELECT 1 FROM ellsms_tg_messages m WHERE m.account_id = a.id AND m.status = 'sent' AND m.sent_at > %s)"
             "  ))"
             ")", (since,))
+        ids = [int(r["id"]) for r in rows]
+        # Accounts whose AI secretary is on stay connected to receive messages (app/Ai/AiTelegram.php).
+        for account_id in self.ai_listening_accounts():
+            if account_id not in ids:
+                ids.append(account_id)
+        return ids
+
+    # ---- AI secretary (phase 5): messages received by an account with a switched-on assistant ----------
+    def ai_listening_accounts(self) -> list[int]:
+        """Active accounts whose assistant (line 'tg:<id>') is switched on. Empty until the AI migrations
+        are applied (the tables do not exist yet)."""
+        try:
+            rows = self.db.all(
+                "SELECT a.id FROM ellsms_tg_accounts a JOIN ellsms_ai_assistants s ON s.line = CONCAT('tg:', a.id) AND s.enabled = 1"
+                " WHERE a.session_enc IS NOT NULL AND a.status IN ('active','limited') AND a.logout_requested = 0")
+        except Exception:
+            return []
         return [int(r["id"]) for r in rows]
+
+    def ai_listening(self, account_id: int) -> bool:
+        try:
+            return self.db.one("SELECT 1 AS x FROM ellsms_ai_assistants WHERE line = %s AND enabled = 1", (f"tg:{account_id}",)) is not None
+        except Exception:
+            return False
+
+    def inbound_insert(self, account_id: int, user_id: int, peer_id: int, access_hash: int, tg_message_id: int,
+                       phone: str | None, name: str | None, text: str) -> int:
+        """Stores a received private message for the ai-worker; a repeat of the same message is ignored."""
+        return self.db.execute(
+            "INSERT IGNORE INTO ellsms_tg_inbound (account_id, user_id, tg_peer_id, tg_access_hash, tg_message_id, sender_phone,"
+            " sender_name, text, received_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (account_id, user_id, peer_id, access_hash, tg_message_id, phone, (name or "")[:190] or None, text[:4000], self.now()))
 
     def account_update(self, account_id: int, **fields) -> None:
         fields["updated_at"] = self.now()
@@ -167,7 +198,7 @@ class Store:
     # ---- messages -------------------------------------------------------------------------------
     def claim_message(self, account_id: int, user_id: int) -> dict | None:
         row = self.db.one(
-            "SELECT m.id, m.phone, m.campaign_id, c.kind, c.content, c.media_path, c.media_kind, c.media_name"
+            "SELECT m.id, m.phone, m.campaign_id, m.tg_peer_id, m.tg_access_hash, c.kind, c.content, c.media_path, c.media_kind, c.media_name"
             " FROM ellsms_tg_messages m JOIN ellsms_tg_campaigns c ON c.id = m.campaign_id"
             f" WHERE m.user_id = %s AND m.status = 'queued' AND c.status IN {ACTIVE_CAMPAIGN}"
             " AND (c.account_id IS NULL OR c.account_id = %s)"

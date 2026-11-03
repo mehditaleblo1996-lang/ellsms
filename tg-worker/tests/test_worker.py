@@ -166,6 +166,41 @@ class RunnerTest(unittest.TestCase):
         self.assertTrue(self.send())
         self.assertEqual(self.statuses(cid)["989123333333"], ("failed", "not_on_telegram"))
 
+    # ---- AI secretary (phase 5) -------------------------------------------------------------------
+    def test_an_ai_answer_goes_to_the_stored_peer_without_a_phone_lookup(self):
+        fake = FakeClient({})  # nobody is findable by phone: only the stored peer can work
+        self.runner.client = fake
+        cid = self.campaign(["tgu:777"], content="پاسخ منشی")
+        self.db.execute("UPDATE ellsms_tg_messages SET tg_peer_id = 777, tg_access_hash = 5 WHERE campaign_id = %s", (cid,))
+        self.assertTrue(self.send())
+        self.assertEqual(fake.sent, [(777, "پاسخ منشی")])
+        self.assertEqual(self.statuses(cid)["tgu:777"], ("sent", None))
+
+    def test_a_private_message_from_a_person_is_stored_for_the_ai(self):
+        def event(sender, out=False, private=True, text="سلام، سفارشم کجاست؟", mid=55):
+            async def get_sender():
+                return sender
+            return SimpleNamespace(is_private=private, out=out, raw_text=text, id=mid, get_sender=get_sender)
+
+        person = types.User(id=888, access_hash=9, first_name="علی", last_name="رضایی", phone="989121234567")
+        asyncio.run(self.runner._on_message(event(person)))
+        asyncio.run(self.runner._on_message(event(person)))  # the same message again: ignored
+        asyncio.run(self.runner._on_message(event(types.User(id=889, access_hash=1, bot=True), mid=56)))
+        asyncio.run(self.runner._on_message(event(person, out=True, mid=57)))
+        asyncio.run(self.runner._on_message(event(person, private=False, mid=58)))
+        asyncio.run(self.runner._on_message(event(person, text="   ", mid=59)))
+        rows = self.db.all("SELECT tg_peer_id, tg_access_hash, sender_phone, sender_name, text FROM ellsms_tg_inbound WHERE account_id = %s", (self.account_id,))
+        self.assertEqual(rows, [{"tg_peer_id": 888, "tg_access_hash": 9, "sender_phone": "989121234567",
+                                 "sender_name": "علی رضایی", "text": "سلام، سفارشم کجاست؟"}])
+
+    def test_an_account_with_its_assistant_on_listens_and_stays_connected(self):
+        self.assertFalse(self.store.ai_listening(self.account_id))
+        self.assertNotIn(self.account_id, self.store.accounts_needing_runner(48, True), "nothing to do yet")
+        self.db.execute("INSERT INTO ellsms_ai_assistants (line, user_id, enabled, mode) VALUES (%s, %s, 1, 'general')",
+                        (f"tg:{self.account_id}", self.user_id))
+        self.assertTrue(self.store.ai_listening(self.account_id))
+        self.assertIn(self.account_id, self.store.accounts_needing_runner(48, True))
+
     def test_otp_goes_first(self):
         self.runner.client = FakeClient({"989121111111": 501, "989122222222": 502})
         notify = self.campaign(["989121111111"])

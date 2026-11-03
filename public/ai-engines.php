@@ -51,7 +51,7 @@ $accessUser = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = (string)($_POST['do'] ?? '');
-    if (impersonation_guard_post($do === 'secret_save' || $do === 'secret_delete' ? 'ai.secret' : 'ai.config')) {
+    if (impersonation_guard_post(in_array($do, ['secret_save', 'secret_delete', 'proxy_save', 'proxy_delete'], true) ? 'ai.secret' : 'ai.config')) {
         redirect($self());
     }
     $actor = (int)$me['id'];
@@ -92,6 +92,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ai_secret_delete($providerId, 'api_key');
                 audit($actor, 'ai.provider.secret', json_encode(['provider_id' => $providerId, 'deleted' => true]) ?: '');
                 flash('success', 'کلید API حذف شد.');
+                break;
+
+            case 'proxy_save': {
+                $url = trim((string)($_POST['proxy_url'] ?? ''));
+                if (($error = ai_proxy_error($url)) !== null) throw new AppException($error);
+                ai_provider_find($providerId) ?? throw new AppException('ارائه‌دهنده پیدا نشد.');
+                ai_secret_put($providerId, 'proxy_url', $url);
+                audit($actor, 'ai.provider.proxy', json_encode(['provider_id' => $providerId, 'changed' => true]) ?: '');
+                flash('success', 'پراکسی ذخیره شد؛ همه‌ی درخواست‌های این ارائه‌دهنده از آن عبور می‌کنند. «تست اتصال» را بزنید.');
+                break;
+            }
+
+            case 'proxy_delete':
+                ai_secret_delete($providerId, 'proxy_url');
+                audit($actor, 'ai.provider.proxy', json_encode(['provider_id' => $providerId, 'deleted' => true]) ?: '');
+                flash('success', 'پراکسی حذف شد؛ اتصال مستقیم است.');
                 break;
 
             case 'provider_test': {
@@ -435,6 +451,26 @@ require __DIR__ . '/../app/views/header.php';
     <form method="post" style="display:inline" onsubmit="return confirm('کلید API حذف شود؟');">
       <?= csrf_field() ?><input type="hidden" name="do" value="secret_delete"><input type="hidden" name="provider_id" value="<?= $pid ?>"><input type="hidden" name="tab" value="settings">
       <button class="btn">حذف کلید</button>
+    </form>
+  <?php endif; ?>
+</div>
+
+<?php $proxySet = ai_secret_is_set($pid, 'proxy_url'); ?>
+<div class="card">
+  <h2>پراکسی / relay خارج از کشور</h2>
+  <p class="muted">برای ارائه‌دهنده‌هایی که از ایران در دسترس نیستند (مثل OpenAI و Anthropic). همه‌ی درخواست‌های این ارائه‌دهنده از پراکسی عبور می‌کند
+    و نام سرور هم در خود پراکسی resolve می‌شود. راه دیگر، relay معکوس است: «آدرس پایه» را آدرس relay بگذارید
+    (راهنما: <span class="mono">ops/ai-relay/README.md</span>).</p>
+  <p>وضعیت: <?= $proxySet ? '<strong>فعال</strong> <span class="mono">••••••••</span>' : '<span class="muted">اتصال مستقیم</span>' ?></p>
+  <form method="post" class="toolbar" autocomplete="off">
+    <?= csrf_field() ?><input type="hidden" name="do" value="proxy_save"><input type="hidden" name="provider_id" value="<?= $pid ?>"><input type="hidden" name="tab" value="settings">
+    <label>آدرس پراکسی <input type="password" name="proxy_url" class="mono" placeholder="socks5://user:pass@host:1080" autocomplete="new-password"<?= $secretsReady ? '' : ' disabled' ?>></label>
+    <button class="btn btn-primary"<?= $secretsReady ? '' : ' disabled' ?>>ذخیره‌ی پراکسی</button>
+  </form>
+  <?php if ($proxySet): ?>
+    <form method="post" style="display:inline">
+      <?= csrf_field() ?><input type="hidden" name="do" value="proxy_delete"><input type="hidden" name="provider_id" value="<?= $pid ?>"><input type="hidden" name="tab" value="settings">
+      <button class="btn">حذف پراکسی</button>
     </form>
   <?php endif; ?>
 </div>
