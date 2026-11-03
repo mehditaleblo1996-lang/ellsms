@@ -326,9 +326,28 @@ $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'grad
       <label class="check"><input type="checkbox" id="digitConvert"> تبدیل ارقام فارسی به لاتین</label>
     </div>
     <div id="emojiBox" class="composer-emoji" hidden>
-      <?php foreach (['😀','😁','😊','👍','🙏','🎉','❤️','✅','⏰','📌','🔥','⭐'] as $em): ?>
-        <button type="button" class="btn btn-sm btn-ghost" data-emoji="<?= $em ?>" aria-label="درج <?= $em ?>"><?= $em ?></button>
-      <?php endforeach; ?>
+      <?php $emojiGroups = [
+          'smileys' => ['😀', 'شکلک‌ها', '😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃 😉 😊 😇 🥰 😍 🤩 😘 😗 ☺️ 😚 😙 🥲 😋 😛 😜 🤪 😝 🤑 🤗 🤭 🤫 🤔 🤐 🤨 😐 😑 😶 😏 😒 🙄 😬 😌 😔 😪 🤤 😴 😷 🤒 🤕 🤢 🤮 🥵 🥶 🥴 😵 🤯 🤠 🥳 😎 🤓 🧐 😕 😟 🙁 ☹️ 😮 😯 😲 😳 🥺 😦 😧 😨 😰 😥 😢 😭 😱 😖 😣 😞 😓 😩 😫 🥱 😤 😡 😠 🤬 😈 👿 💀 🤡 👻 👽 🤖 😺 😸 😹 😻 😼 😽 🙀 😿 😾'],
+          'people' => ['👍', 'دست و افراد', '👋 🤚 🖐️ ✋ 🖖 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 👇 ☝️ 👍 👎 ✊ 👊 🤛 🤜 👏 🙌 👐 🤲 🤝 🙏 ✍️ 💅 💪 🦾 👀 👁️ 👄 🧠 👶 🧒 👦 👧 🧑 👨 👩 🧔 👱 🧓 👴 👵 🙍 🙎 🙅 🙆 💁 🙋 🙇 🤦 🤷 👮 🕵️ 💂 👷 🤴 👸 👳 🧕 🤵 👰 🤰 🤱 👼 🎅 🤶 🧑‍🎓 🧑‍🏫 🧑‍⚕️ 🧑‍🍳 🧑‍💻 🧑‍💼 🧑‍🔧 🧑‍🚀 👨‍👩‍👧 👪 💑 💏 🗣️ 👤 👥'],
+          'hearts' => ['❤️', 'قلب و احساس', '❤️ 🧡 💛 💚 💙 💜 🤎 🖤 🤍 💔 ❣️ 💕 💞 💓 💗 💖 💘 💝 💟 💌 💋 💯 💢 💥 💫 💦 💨 🕳️ 💬 🗨️ 💭 💤 ✨ 🌟 ⭐ 🔥 ⚡ 🎯'],
+          'nature' => ['🌸', 'طبیعت', '🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐸 🐵 🐔 🐧 🐦 🐤 🦆 🦅 🦉 🐺 🐴 🦄 🐝 🦋 🐌 🐞 🐢 🐍 🐙 🐠 🐟 🐬 🐳 🦈 🐘 🦒 🐪 🐎 🐑 🐐 🦌 🐕 🐈 🌵 🎄 🌲 🌳 🌴 🌱 🌿 ☘️ 🍀 🍃 🍂 🍁 🌾 💐 🌷 🌹 🥀 🌺 🌸 🌼 🌻 🌞 🌝 🌛 🌙 🌎 🪐 ⭐ ☀️ 🌤️ ⛅ 🌥️ ☁️ 🌧️ ⛈️ 🌩️ ❄️ ☃️ ⛄ 🌈 ☔ 💧 🌊'],
+          'food' => ['🍎', 'غذا و نوشیدنی', '🍏 🍎 🍐 🍊 🍋 🍌 🍉 🍇 🍓 🫐 🍈 🍒 🍑 🥭 🍍 🥥 🥝 🍅 🍆 🥑 🥦 🥬 🥒 🌶️ 🌽 🥕 🧄 🧅 🥔 🍠 🥐 🍞 🥖 🧀 🥚 🍳 🥞 🥓 🥩 🍗 🍖 🌭 🍔 🍟 🍕 🥪 🌮 🌯 🥗 🍝 🍜 🍲 🍛 🍣 🍱 🍚 🍙 🍘 🍢 🍡 🍧 🍨 🍦 🥧 🧁 🍰 🎂 🍮 🍭 🍬 🍫 🍿 🍩 🍪 🌰 🥜 🍯 🥛 ☕ 🍵 🧃 🥤 🧋 🧊 🍽️'],
+          'activity' => ['🎉', 'فعالیت و مناسبت', '🎉 🎊 🎈 🎁 🎀 🎂 🎄 🎃 🎆 🎇 🧨 🪔 🕯️ 🏆 🥇 🥈 🥉 🏅 🎖️ 🎗️ 🎫 🎟️ ⚽ 🏀 🏈 ⚾ 🎾 🏐 🏉 🎱 🏓 🏸 🥊 🥋 ⛳ 🎣 🏊 🚴 🏃 🧘 🏋️ 🎮 🎲 🧩 ♟️ 🎯 🎳 🎨 🎭 🎤 🎧 🎼 🎹 🥁 🎷 🎺 🎸 🎻 🎬 📸'],
+          'travel' => ['✈️', 'سفر و مکان', '🚗 🚕 🚙 🚌 🚎 🏎️ 🚓 🚑 🚒 🚐 🚚 🚛 🚜 🛵 🏍️ 🚲 🛴 🚨 🚦 🚥 🚧 ⛽ 🚏 🚂 🚆 🚇 🚊 🚝 🚄 ✈️ 🛫 🛬 🚁 🚀 🛸 ⛵ 🚤 🛳️ ⚓ 🗺️ 🧭 🏔️ ⛰️ 🏕️ 🏖️ 🏝️ 🏜️ 🏟️ 🏛️ 🏗️ 🏠 🏡 🏢 🏬 🏥 🏦 🏨 🏪 🏫 🏭 🕌 🕋 ⛪ 🏰 🗼 🗽 🌉 🌃 🌆 🌇 🎡 🎢'],
+          'objects' => ['💡', 'اشیا', '⌚ 📱 📲 💻 ⌨️ 🖥️ 🖨️ 🖱️ 💾 💿 📷 📹 🎥 📞 ☎️ 📟 📠 📺 📻 ⏰ ⏱️ ⏳ ⌛ 🔋 🔌 💡 🔦 🕯️ 💸 💵 💶 💷 💴 💰 💳 💎 ⚖️ 🔧 🔨 🛠️ ⚙️ 🔩 🧰 🧲 🔑 🗝️ 🔒 🔓 🔐 🚪 🛋️ 🛏️ 🛒 🎁 📦 📫 📮 ✉️ 📧 📨 📩 📤 📥 📄 📃 📑 📊 📈 📉 📆 📅 🗓️ 📇 📋 📁 📂 🗂️ 📰 📓 📔 📒 📕 📗 📘 📙 📚 📖 🔖 🔗 📎 🖇️ 📐 📏 📌 📍 ✂️ 🖊️ 🖋️ ✒️ 🖌️ 🖍️ 📝 ✏️ 🔍 🔎 💊 💉 🩺 🧴 🧼 🧹 🧺 🛍️ 🎒 👓 🕶️ 👔 👕 👖 👗 👠 👟 🧢 👑 💍'],
+          'symbols' => ['✅', 'نمادها', '✅ ☑️ ✔️ ❌ ❎ ➕ ➖ ➗ ✖️ ♾️ ‼️ ⁉️ ❓ ❔ ❕ ❗ ⚠️ 🚫 ⛔ 📛 🔞 📵 🚭 ♻️ ⚜️ 🔰 ⭕ 🛑 🆕 🆓 🆒 🆗 🆙 🆘 🆔 🔝 🔜 🔛 🔙 🔚 ℹ️ Ⓜ️ 🅿️ 🔤 🔢 #️⃣ *️⃣ 0️⃣ 1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣ 6️⃣ 7️⃣ 8️⃣ 9️⃣ 🔟 ▶️ ⏸️ ⏹️ ⏺️ ⏭️ ⏮️ ⏩ ⏪ 🔀 🔁 🔂 ◀️ 🔼 🔽 ⬆️ ⬇️ ⬅️ ➡️ ↗️ ↘️ ↙️ ↖️ ↕️ ↔️ ↩️ ↪️ 🔃 🔄 💲 ©️ ®️ ™️ 🔔 🔕 📣 📢 🔊 🔇 🔴 🟠 🟡 🟢 🔵 🟣 🟤 ⚫ ⚪ 🟥 🟧 🟨 🟩 🟦 🟪 🟫 ⬛ ⬜ 🔶 🔷 🔸 🔹 🔺 🔻 💠 🔘 ☪️ ☮️ ☯️ ♈ ♉ ♊ ♋ ♌ ♍ ♎ ♏ ♐ ♑ ♒ ♓'],
+          'flags' => ['🏳️', 'پرچم‌ها', '🏁 🚩 🎌 🏴 🏳️ 🏳️‍🌈 🇮🇷 🇦🇫 🇹🇯 🇮🇶 🇹🇷 🇦🇪 🇸🇦 🇶🇦 🇰🇼 🇴🇲 🇧🇭 🇦🇿 🇦🇲 🇬🇪 🇵🇰 🇮🇳 🇨🇳 🇯🇵 🇰🇷 🇷🇺 🇩🇪 🇫🇷 🇬🇧 🇮🇹 🇪🇸 🇳🇱 🇸🇪 🇳🇴 🇨🇭 🇦🇹 🇧🇪 🇨🇦 🇺🇸 🇧🇷 🇦🇷 🇦🇺 🇪🇬 🇲🇦 🇿🇦'],
+      ]; ?>
+      <div class="composer-emoji-tabs" role="tablist">
+        <?php $first = true; foreach ($emojiGroups as $key => [$icon, $label]): ?>
+          <button type="button" class="composer-emoji-tab<?= $first ? ' is-active' : '' ?>" role="tab" aria-selected="<?= $first ? 'true' : 'false' ?>" data-emoji-tab="<?= $key ?>" title="<?= e($label) ?>"><?= $icon ?></button>
+        <?php $first = false; endforeach; ?>
+      </div>
+      <?php $first = true; foreach ($emojiGroups as $key => [, $label, $list]): ?>
+        <div class="composer-emoji-panel" data-emoji-panel="<?= $key ?>" role="tabpanel" aria-label="<?= e($label) ?>"<?= $first ? '' : ' hidden' ?>>
+          <?php foreach (explode(' ', $list) as $em): ?><button type="button" class="composer-emoji-btn" data-emoji="<?= $em ?>" aria-label="درج <?= $em ?>"><?= $em ?></button><?php endforeach; ?>
+        </div>
+      <?php $first = false; endforeach; ?>
     </div>
 
     <label class="check composer-check">
@@ -481,6 +500,10 @@ $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'grad
     emojiToggle.setAttribute('aria-expanded', String(!box.hidden));
   });
   document.querySelectorAll('[data-emoji]').forEach(b => b.addEventListener('click', () => insertAtCursor(b.dataset.emoji)));
+  document.querySelectorAll('[data-emoji-tab]').forEach(tab => tab.addEventListener('click', () => {
+    document.querySelectorAll('[data-emoji-tab]').forEach(t => { const on = t === tab; t.classList.toggle('is-active', on); t.setAttribute('aria-selected', String(on)); });
+    document.querySelectorAll('[data-emoji-panel]').forEach(p => { p.hidden = p.dataset.emojiPanel !== tab.dataset.emojiTab; });
+  }));
 
   document.getElementById('saveCampaignChk').addEventListener('change', e => show('campaignNameField', e.target.checked));
 
