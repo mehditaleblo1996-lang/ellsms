@@ -149,6 +149,7 @@ $adminNav = [
     'price_quote'           => ['/price-quote.php',           'فاکتور / لیست قیمت', '🧾'],
     'sms_pricing'           => ['/sms-pricing.php',           'تعرفه‌ی پیامک',       '💱'],
     'sms_gateways'          => ['/sms-gateways.php',          'درگاه‌های پیامک',     '🔌'],
+    'ai_engines'            => ['/ai-engines.php',            'موتورهای هوش مصنوعی', '✦'],
     'lba_gateways'          => ['/lba-gateways.php',          'درگاه‌های LBA',       '📍'],
     'voice_settings'        => ['/voice-settings.php',        'سرویس پیام صوتی',     '🔊'],
     'telegram_admin'        => ['/telegram-admin.php',        'سرویس تلگرام',        '✈'],
@@ -167,11 +168,14 @@ $adminNav = [
     'manual_payments'       => ['/manual-payments.php',       'پرداخت‌های دستی',     '💵'],
     'settings'              => ['/settings.php',              'تنظیمات',             '⚙'],
 ];
+// AI engines (app/Ai/AiEngines.php): only once 2026_11_03_ai_engines.sql is applied.
+if ($me['role'] === 'admin' && !ai_engines_available()) unset($adminNav['ai_engines']);
 // Admin-only groups, shown under the customer groups (menu_groups()).
 $adminNavGroups = menu_group_items($adminNav, [
     'admin_users'    => ['کاربران و نمایندگان', ['users', 'registration_requests', 'menu_roles', 'reseller_profits', 'user_send_policies']],
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
     'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'lba_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
+    'admin_ai'       => ['هوش مصنوعی',          ['ai_engines']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
     'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'shared_service_admin', 'telegram_admin', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],
     'admin_monitor'  => ['نظارت و گزارش',        ['queue_monitor', 'analytics', 'logs', 'alerts']],

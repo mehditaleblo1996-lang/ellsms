@@ -116,6 +116,7 @@ if (PHP_SAPI !== 'cli') {
                 '/number-categories.php' => '/admin/numbers/categories',
                 '/sms-pricing.php' => '/admin/sms/pricing',
                 '/sms-gateways.php' => '/admin/sms/gateways',
+                '/ai-engines.php' => '/admin/ai/engines',
                 '/sms-gateway-clone.php' => '/admin/sms/gateways/clone',
                 '/billing-admin.php' => '/admin/billing/plans',
                 '/financial-admin.php' => '/admin/billing/finance',

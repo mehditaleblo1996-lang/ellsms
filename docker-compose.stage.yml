@@ -2,6 +2,13 @@
 # production's database. Pulled in by COMPOSE_FILE in the staging .env, which
 # ops/staging/stage.sh env writes -- production never loads this file.
 services:
+  # AI engines on staging (docs/ai-engines.md): lets the panel reach a Hermes (or Ollama) server
+  # running on the staging host itself at http://host.docker.internal:<port>/v1 -- Docker on Linux
+  # does not define that name by default.
+  app:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   mysql:
     image: mysql:8.0.40
     container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-mysql

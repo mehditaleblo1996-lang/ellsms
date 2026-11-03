@@ -50,6 +50,9 @@ services:
       SMS_LEGACY_BACKEND_ENABLED: ${SMS_LEGACY_BACKEND_ENABLED:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
+      # AI engines (docs/ai-engines.md): root key of the AI-provider key vault. Optional -- empty falls
+      # back to SMS_GATEWAY_MASTER_KEY (with a different derived key either way).
+      AI_MASTER_KEY: ${AI_MASTER_KEY:-}
       SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
       # Guard for the provider push callbacks /mo and /delivery (app/Sms/GatewayCallbacks.php).
       SMS_CALLBACK_TOKEN: ${SMS_CALLBACK_TOKEN:-}
