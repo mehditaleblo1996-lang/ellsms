@@ -60,12 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/users.php');
     }
 
-    // Required in practice, not merely encouraged: an unexplained support session is exactly the
-    // kind of access a later review cannot evaluate (STEP 17).
-    if (trim($reason) === '') {
-        flash('error', 'ثبت دلیل ورود به حالت پشتیبانی الزامی است.');
-        redirect('/impersonate.php?target=' . $targetUserId);
-    }
+    // The reason is optional: when given it is stored (sanitized) in the audit trail; when empty the
+    // start is still audited with the actor and target, and the reason recorded as '-'.
 
     $result = impersonation_start($me, $targetUserId, $reason, $returnTo);
     if (!$result['ok']) {
@@ -133,8 +129,8 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="do" value="start">
       <input type="hidden" name="target_user_id" value="<?= (int)$target['id'] ?>">
       <input type="hidden" name="return_to" value="<?= ($_GET['from'] ?? '') === 'list' ? '/users.php' : '/users.php?edit=' . (int)$target['id'] ?>">
-      <label>دلیل ورود (الزامی)
-        <input type="text" name="reason" required maxlength="<?= IMPERSONATION_REASON_MAX_LENGTH ?>"
+      <label>دلیل ورود (اختیاری)
+        <input type="text" name="reason" maxlength="<?= IMPERSONATION_REASON_MAX_LENGTH ?>"
                placeholder="مثلاً: بررسی تیکت #۱۲۳۴ — گزارش مشتری درباره‌ی ارسال ناموفق">
       </label>
       <button class="btn btn-primary">ورود به حالت پشتیبانی</button>

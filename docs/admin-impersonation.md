@@ -206,7 +206,8 @@ of this.
 
 1. مدیریت → کاربران → **ورود به پنل مشتری** on the customer's row (or on their detail page).
 2. Confirm the username, organization and account status on the confirmation page.
-3. Enter a **reason** — required. It is stored in the audit trail; write the ticket number.
+3. Optionally enter a **reason** (e.g. the ticket number). When given it is stored in the audit
+   trail; when left empty the start is still audited (actor, target, organization) with `reason=-`.
 4. Work in the customer's panel. The red banner names the account and shows the time remaining.
 5. **بازگشت به پنل مدیریت** returns you to where you started — the accounts list or the customer's
    admin page.
@@ -230,7 +231,7 @@ ORDER BY id DESC;
 - **The banner depends on the shared header.** A page that renders its own layout without
   `app/views/header.php` would not show it. Every authenticated page currently uses the shared header.
 - **An operator can still see customer data.** That is the feature. The control is that access is
-  bounded, reasoned, audited, and attributed to a named administrator — not that it is prevented.
+  bounded, audited, and attributed to a named administrator — not that it is prevented.
 - **No per-field redaction.** Message bodies and contact lists are visible exactly as the customer
   sees them.
 

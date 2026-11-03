@@ -280,7 +280,8 @@ make db-migrations-apply          # adds ellsms_audit_log.impersonator_user_id (
 
 Operationally:
 
-- **A reason is mandatory** and is stored in the audit trail. Write the ticket number.
+- **A reason is optional.** When entered (e.g. the ticket number) it is stored in the audit trail;
+  without one the start is still audited with `reason=-`.
 - The session is bounded to **60 minutes** and then returns the operator to the admin panel.
 - The «ورود به پنل مشتری» button is on every row of مدیریت → کاربران as well as on the customer's
   detail page.
