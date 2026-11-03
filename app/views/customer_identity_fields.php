@@ -5,7 +5,7 @@
  * KYC tabs).
  *
  * The «حقیقی / حقوقی» switch at the top decides which part is filled: the person's own details always,
- * and the company's details (with its managing director) only for a legal account. The company part
+ * and the company's details only for a legal account. The company part
  * is a <fieldset> that the switch disables while «حقیقی» is chosen, so its fields are neither required
  * nor submitted then — and on the edit page an individual's save therefore never blanks company data
  * kept from an earlier «حقوقی» period (profile_organization_save() is merge-safe on absent keys).
@@ -42,7 +42,7 @@ $mustAttr   = $idfCreate ? ' required' : '';
         <label for="<?= e($idfId) ?>_type_<?= e($value) ?>"><?= e($label) ?></label>
       <?php endforeach; ?>
     </div>
-    <span class="hint">برای حساب حقوقی، مشخصات شرکت و مدیرعامل هم پرسیده می‌شود.</span>
+    <span class="hint">برای حساب حقوقی، مشخصات شرکت هم پرسیده می‌شود.</span>
   </div>
 </div>
 
@@ -96,13 +96,6 @@ $mustAttr   = $idfCreate ? ' required' : '';
     <label>تلفن ثابت <input type="text" name="landline_phone" class="ltr" inputmode="tel" value="<?= $idfVal($idfOrg, 'landline_phone') ?>" maxlength="20"></label>
     <label>تاریخ شروع فعالیت <?= jalali_date_select('company_start_date', $idfOrg['company_start_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
     <label>تاریخ انقضا <?= jalali_date_select('company_expiry_date', $idfOrg['company_expiry_date'] ?? null, yearsAhead: 15, yearsBack: 10, allowEmpty: true) ?></label>
-  </div>
-  <h3 class="subsection-title">مدیرعامل</h3>
-  <div class="form-grid cols-4">
-    <label>نام و نام‌خانوادگی مدیرعامل <?= $must ?> <input type="text" name="ceo_name" value="<?= $idfVal($idfOrg, 'ceo_name') ?>" maxlength="160"<?= $mustAttr ?>></label>
-    <label>نام پدر مدیرعامل <input type="text" name="ceo_father_name" value="<?= $idfVal($idfOrg, 'ceo_father_name') ?>" maxlength="120"></label>
-    <label>کد ملی مدیرعامل <input type="text" name="ceo_national_code" class="ltr" inputmode="numeric" value="<?= $idfVal($idfOrg, 'ceo_national_code') ?>" maxlength="10" placeholder="۱۰ رقم"></label>
-    <label>تاریخ تولد مدیرعامل <?= jalali_date_select('ceo_birth_date', $idfOrg['ceo_birth_date'] ?? null, yearsAhead: 0, yearsBack: 100, allowEmpty: true) ?></label>
   </div>
 </fieldset>
 

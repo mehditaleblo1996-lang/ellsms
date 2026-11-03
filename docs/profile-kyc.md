@@ -284,8 +284,8 @@ unambiguous case `cron/tenant-backfill.php` already treats safely — protected 
 
 | Requirement | Where |
 |---|---|
-| نوع حساب selector on create | `public/users.php`'s "ساخت حساب تازه" form; defaults to `individual` |
-| Selector on edit, admin can change it | `public/users.php`'s "نوع حساب" card (`do=account_type`) |
+| نوع حساب selector on create | `public/users.php`'s "ساخت حساب تازه" form — the «حقیقی / حقوقی» switch of the «مشخصات مشتری» form ([customer-profile.md](customer-profile.md)); defaults to `individual` |
+| Selector on edit, admin can change it | the same «مشخصات مشتری» form in the edit page's «حساب و اعتبار» tab (`do=profile_identity`) |
 | Repair path for a zero-organization legacy user | `public/users.php`'s "ساخت سازمان پیش‌فرض برای این کاربر" button (`do=ensure_organization`), or bulk via `make tenant-backfill` |
 | نوع حساب column, no N+1 | `public/users.php`'s user list — two bulk queries total regardless of list size |
 | profile.php clear empty-state (not silent hide, not a false "individual") | Zero memberships → self-repair card linking to `organizations.php`; 2+ memberships and none selected → "select an organization" card. Never conflated. |

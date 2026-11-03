@@ -854,7 +854,7 @@ function profile_error_message(string $reason): string {
         'invalid_email'               => 'ایمیل اعلان معتبر نیست.',
         'expiry_before_start'         => 'تاریخ انقضا نمی‌تواند پیش از تاریخ شروع فعالیت باشد.',
         'representative_not_a_member' => 'نماینده‌ی قانونی باید عضو همین سازمان باشد.',
-        'legal_fields_required'       => 'برای حساب حقوقی نام شرکت، شماره ثبت، شناسه ملی، کد اقتصادی و نام مدیرعامل لازم است.',
+        'legal_fields_required'       => 'برای حساب حقوقی نام شرکت، شماره ثبت، شناسه ملی و کد اقتصادی لازم است.',
     ][$reason] ?? 'ذخیره‌سازی ممکن نشد.';
 }
 
@@ -974,10 +974,6 @@ function profile_identity_from_request(array $post): array {
             'landline_phone'      => $text('landline_phone'),
             'company_start_date'  => profile_date_from_request('company_start_date'),
             'company_expiry_date' => profile_date_from_request('company_expiry_date'),
-            'ceo_name'            => $text('ceo_name'),
-            'ceo_father_name'     => $text('ceo_father_name'),
-            'ceo_national_code'   => $text('ceo_national_code'),
-            'ceo_birth_date'      => profile_date_from_request('ceo_birth_date'),
         ];
     }
     $address = [];
@@ -1003,12 +999,12 @@ function profile_identity_validate(array $identity, bool $creating): ?string {
     if ($user['birth_date'] !== null && $user['birth_date'] > date('Y-m-d')) return 'birth_date_in_future';
     if ($identity['account_type'] === 'legal') {
         if ($creating) {
-            foreach (PROFILE_LEGAL_ENTITY_REQUIRED_FIELDS as $field) {
+            // The form asks for the company itself, not its managing director (the account holder's own
+            // details above stand for the person), so ceo_name is not required here.
+            foreach (array_diff(PROFILE_LEGAL_ENTITY_REQUIRED_FIELDS, ['ceo_name']) as $field) {
                 if (trim((string)($org[$field] ?? '')) === '') return 'legal_fields_required';
             }
         }
-        if ($org['ceo_national_code'] !== '' && profile_normalize_national_code($org['ceo_national_code']) === '') return 'invalid_ceo_national_code';
-        if ($org['ceo_birth_date'] !== null && $org['ceo_birth_date'] > date('Y-m-d')) return 'birth_date_in_future';
         if ($org['company_start_date'] !== null && $org['company_expiry_date'] !== null && $org['company_expiry_date'] < $org['company_start_date']) return 'expiry_before_start';
     }
     if ($address['postal_code'] !== '' && profile_normalize_postal_code($address['postal_code']) === '') return 'invalid_postal_code';
