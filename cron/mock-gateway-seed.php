@@ -35,7 +35,7 @@ $providerId = (int)$db->query("SELECT id FROM ellsms_sms_providers WHERE code='m
 
 // Operator (a generic operator that matches any test number via a very short prefix is unsafe,
 // so we instead attach the gateway to ALL existing active operators in gateway_operators below).
-$db->prepare("INSERT INTO ellsms_sms_operators (code, name, country_code, status) VALUES ('mock','Mock Operator','IR','active') ON DUPLICATE KEY UPDATE status=VALUES(status), name=VALUES(name)")->execute([]);
+$db->prepare("INSERT INTO ellsms_sms_operators (code, name, country_code, status) VALUES ('mock','سایر اپراتورها','IR','active') ON DUPLICATE KEY UPDATE status=VALUES(status), name=VALUES(name)")->execute([]);
 $mockOperatorId = (int)$db->query("SELECT id FROM ellsms_sms_operators WHERE code='mock' LIMIT 1")->fetchColumn();
 
 // Route. Not the global default so it does not hijack production sends unless a sender is

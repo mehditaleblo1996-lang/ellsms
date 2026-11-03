@@ -13,6 +13,35 @@ declare(strict_types=1);
 /** Persian name of each operator that has a logo. */
 const OPERATOR_LOGO_NAMES = ['mci' => 'همراه اول', 'mtn' => 'ایرانسل', 'rightel' => 'رایتل'];
 
+/** Display name of the test/mock operator (code 'mock', seeded as «Mock Operator»). */
+const OPERATOR_OTHER_NAME = 'سایر اپراتورها';
+
+/** Report order of the major operators, by code: همراه اول، ایرانسل، رایتل. */
+const OPERATOR_DISPLAY_ORDER = ['mci', 'mtn', 'rightel'];
+
+/** Whether a code or name is the mock operator — shown everywhere as «سایر اپراتورها». */
+function operator_is_mock(?string $codeOrName): bool {
+    $value = mb_strtolower(trim((string)$codeOrName));
+    return $value === 'mock' || $value === 'mock operator' || $value === OPERATOR_OTHER_NAME;
+}
+
+/** The name to show for an operator: the mock operator becomes «سایر اپراتورها», anything else as given. */
+function operator_display_name(string $name): string {
+    return operator_is_mock($name) ? OPERATOR_OTHER_NAME : $name;
+}
+
+/**
+ * Sort rank for showing an operator in a report: همراه اول 0، ایرانسل 1، رایتل 2، any other operator
+ * 50, «سایر اپراتورها» 100, «سایر / نامشخص» 200.
+ */
+function operator_display_rank(?string $code, ?string $name = null): int {
+    if (operator_is_mock($code) || operator_is_mock($name)) return 100;
+    if (trim((string)($name ?? $code)) === 'سایر / نامشخص') return 200;
+    $key = in_array((string)$code, OPERATOR_DISPLAY_ORDER, true) ? (string)$code : (operator_logo_key($code) ?? operator_logo_key($name));
+    $i = $key === null ? false : array_search($key, OPERATOR_DISPLAY_ORDER, true);
+    return $i === false ? 50 : (int)$i;
+}
+
 /** Logo key for an operator code or display name: 'mci' | 'mtn' | 'rightel' | null. */
 function operator_logo_key(?string $codeOrName): ?string {
     $value = mb_strtolower(trim((string)$codeOrName));
@@ -57,6 +86,9 @@ function operator_logo(?string $codeOrName, int $size = 20, bool $full = false):
  * text, so callers can use it for every operator unconditionally.
  */
 function operator_label(?string $codeOrName, ?string $name = null, int $size = 20): string {
+    if (operator_is_mock($codeOrName) || ($name !== null && operator_is_mock($name))) {
+        return e(OPERATOR_OTHER_NAME);
+    }
     $key = operator_logo_key($codeOrName);
     $text = e((string)($name ?? ($key !== null ? OPERATOR_LOGO_NAMES[$key] : $codeOrName) ?? ''));
     $logo = operator_logo($codeOrName, $size) ?: ($name !== null ? operator_logo($name, $size) : '');
