@@ -21,7 +21,8 @@ $pageTitle = 'موتورهای هوش مصنوعی';
 $active = 'ai_engines';
 
 $view = (string)($_GET['view'] ?? $_POST['view'] ?? 'providers');
-if (!in_array($view, ['providers', 'access', 'playground'], true)) $view = 'providers';
+if (!in_array($view, ['providers', 'access', 'pricing', 'usage', 'playground'], true)) $view = 'providers';
+if (in_array($view, ['pricing', 'usage'], true) && !ai_billing_available()) $view = 'providers';
 $providerId = (int)($_GET['provider'] ?? $_POST['provider_id'] ?? 0);
 $tab = (string)($_GET['tab'] ?? $_POST['tab'] ?? 'settings');
 if (!in_array($tab, ['settings', 'models', 'history'], true)) $tab = 'settings';
@@ -138,6 +139,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            case 'billing_settings_save':
+                ai_billing_settings_save($_POST, $actor);
+                flash('success', 'تنظیمات تعرفه‌ی هوش مصنوعی ذخیره شد.');
+                break;
+
+            case 'prices_global_save': {
+                [$rows, $error] = ai_prices_from_form((array)($_POST['price'] ?? []), true);
+                if ($error !== null) throw new AppException($error);
+                ai_prices_save('global', 0, $rows, $actor);
+                flash('success', 'تعرفه‌ی عمومی هوش مصنوعی ذخیره شد.');
+                break;
+            }
+
+            case 'prices_account_save': {
+                $userId = (int)($_POST['user_id'] ?? 0);
+                if ($userId <= 0 || backend_usernames_by_ids([$userId]) === []) throw new AppException('کاربر پیدا نشد.');
+                if (!customer_prices_eligible($userId)) {
+                    throw new AppException('این حساب زیر نماینده یا زیرسازمان است؛ قیمتش از تعرفه‌ی نماینده یا سازمان بالادست می‌آید.');
+                }
+                [$rows, $error] = ai_prices_from_form((array)($_POST['price'] ?? []), false);
+                if ($error !== null) throw new AppException($error);
+                ai_prices_save('account', $userId, $rows, $actor);
+                flash('success', 'قیمت اختصاصی هوش مصنوعی این حساب ذخیره شد.');
+                redirect('/ai-engines.php?view=pricing&price_user=' . $userId);
+            }
+
             case 'settings_save':
                 ai_settings_save((int)($_POST['default_model_id'] ?? 0), !empty($_POST['default_access']), $actor);
                 flash('success', 'تنظیمات دسترسی پیش‌فرض ذخیره شد.');
@@ -218,6 +245,19 @@ if ($view === 'access' && isset($_GET['user']) && trim((string)$_GET['user']) !=
     }
 }
 
+$priceUser = null;
+if ($view === 'pricing' && trim((string)($_GET['price_user'] ?? '')) !== '') {
+    $needle = trim((string)$_GET['price_user']);
+    $uid = ctype_digit($needle) ? (int)$needle : (int)backend_find_user_id_by_username($needle);
+    $name = $uid > 0 ? (backend_usernames_by_ids([$uid])[$uid] ?? null) : null;
+    if ($name === null) {
+        flash('error', 'کاربر «' . $needle . '» پیدا نشد.');
+    } else {
+        $priceUser = ['id' => $uid, 'username' => (string)$name, 'eligible' => customer_prices_eligible($uid), 'rows' => ai_prices_for('account', $uid)];
+    }
+}
+$rialOf = static fn(?int $millis): string => $millis === null ? '—' : to_persian_digits(number_format($millis / SMS_PRICE_SCALE, $millis % SMS_PRICE_SCALE === 0 ? 0 : 3));
+
 $sourceLabels = ['custom' => 'مدل‌های اختصاصی همین حساب', 'inherited' => 'به ارث رسیده از حساب بالادست (نماینده/سازمان)',
                  'platform' => 'مدل پیش‌فرض سامانه', 'none' => 'هیچ مدلی'];
 $statusBadge = static function (string $status): string {
@@ -238,7 +278,7 @@ require __DIR__ . '/../app/views/header.php';
     «سازگار با OpenAI» تعریف می‌شوند.
   </p>
   <div class="toolbar">
-    <?php foreach (['providers' => 'ارائه‌دهنده‌ها و مدل‌ها', 'access' => 'دسترسی کاربران', 'playground' => 'چت آزمایشی'] as $key => $label): ?>
+    <?php foreach (['providers' => 'ارائه‌دهنده‌ها و مدل‌ها', 'access' => 'دسترسی کاربران'] + (ai_billing_available() ? ['pricing' => 'تعرفه‌ی هوش مصنوعی', 'usage' => 'مصرف و سود'] : []) + ['playground' => 'چت آزمایشی'] as $key => $label): ?>
       <a class="btn<?= $view === $key ? ' btn-primary' : '' ?>" href="/ai-engines.php?view=<?= $key ?>"><?= $label ?></a>
     <?php endforeach; ?>
   </div>
@@ -602,6 +642,138 @@ require __DIR__ . '/../app/views/header.php';
   </table>
 </div>
 <?php endif; ?>
+
+<?php elseif ($view === 'pricing'): ?>
+<?php
+  $globalRows = ai_prices_for('global', 0);
+  $avgTokens = ai_average_tokens();
+  $usdRate = ai_billing_setting('ai_usd_rial_rate');
+  $pricedModels = array_values(array_filter($allModels, static fn(array $m): bool => $m['status'] === 'active' || isset($globalRows[(int)$m['id']])));
+?>
+<div class="card">
+  <h2>تعرفه‌ی هوش مصنوعی</h2>
+  <p class="muted">
+    هر پاسخ هوشمند (و هر «آزمایش منشی» مشتری) جدا از هزینه‌ی پیامکش، با این تعرفه محاسبه و از کیف پول کسر می‌شود:
+    «قیمت هر پاسخ» تا «توکن رایگان هر پاسخ» (ورودی + خروجی)، و برای هر ۱۰۰۰ توکن بیشتر، «قیمت هر ۱۰۰۰ توکن اضافه».
+    ردیف «همه‌ی مدل‌ها» برای مدلی است که ردیف خودش را ندارد. مانند تعرفه‌ی پیامک: قیمت اختصاصی حساب بر درصد تعرفه‌ی آن مقدم است،
+    مشتریان نماینده با تعرفه‌ی نماینده محاسبه می‌شوند و سود نماینده در اجرای روزانه‌ی سود پرداخت می‌شود.
+  </p>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="do" value="billing_settings_save"><input type="hidden" name="view" value="pricing">
+    <label><input type="checkbox" name="ai_billing_enabled" value="1"<?= ai_billing_enabled() ? ' checked' : '' ?>> هزینه‌ی هوش مصنوعی کسر شود</label>
+    <label>توکن رایگان پیش‌فرض هر پاسخ <input type="number" name="ai_default_included_tokens" min="0" value="<?= ai_billing_setting('ai_default_included_tokens') ?>" style="width:7em"></label>
+    <label>نرخ دلار (ریال، فقط برای محاسبه‌ی سود) <input type="number" name="ai_usd_rial_rate" min="0" value="<?= $usdRate ?>" style="width:9em"></label>
+    <button class="btn btn-primary">ذخیره</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>تعرفه‌ی عمومی (قیمت پایه)</h2>
+  <form method="post">
+    <?= csrf_field() ?><input type="hidden" name="do" value="prices_global_save"><input type="hidden" name="view" value="pricing">
+    <div style="overflow-x:auto">
+    <table class="table">
+      <thead><tr><th>مدل</th><th>قیمت هر پاسخ (ریال)</th><th>توکن رایگان هر پاسخ</th><th>هر ۱۰۰۰ توکن اضافه (ریال)</th>
+        <th>میانگین توکن (۳۰ روز)</th><th>هزینه‌ی خرید هر پاسخ</th><th>درآمد هر پاسخ</th></tr></thead>
+      <tbody>
+      <?php foreach (array_merge([['id' => 0, 'display_name' => 'همه‌ی مدل‌ها (پیش‌فرض)', 'provider_name' => '', 'input_cost_per_million' => null, 'output_cost_per_million' => null, 'cost_currency' => 'USD']], $pricedModels) as $m):
+          $mid = (int)$m['id']; $row = $globalRows[$mid] ?? ['answer' => null, 'overage' => null, 'included' => null];
+          $avg = $avgTokens[$mid] ?? null;
+          $buy = $avg !== null && $m['input_cost_per_million'] !== null && $m['output_cost_per_million'] !== null
+              ? $avg * ((float)$m['input_cost_per_million'] * 0.8 + (float)$m['output_cost_per_million'] * 0.2) / 1000000 : null;
+          $sell = $avg !== null && $mid > 0 ? ai_charge_millis((int)ai_price_cell($globalRows, $mid, 'answer'), (int)ai_price_cell($globalRows, $mid, 'overage'), ai_included_tokens($mid), $avg) : null; ?>
+        <tr>
+          <td><?= e($m['display_name']) ?><?= $m['provider_name'] !== '' ? ' <span class="muted">' . e($m['provider_name']) . '</span>' : '' ?></td>
+          <td><input type="text" name="price[<?= $mid ?>][answer]" class="mono" value="<?= e(ai_price_to_rial($row['answer'])) ?>" placeholder="<?= $mid > 0 ? 'از ردیف همه' : '0' ?>" style="width:8em"></td>
+          <td><input type="text" name="price[<?= $mid ?>][included]" class="mono" value="<?= $row['included'] !== null ? (int)$row['included'] : '' ?>" placeholder="<?= $mid > 0 ? 'از ردیف همه' : ai_billing_setting('ai_default_included_tokens') ?>" style="width:7em"></td>
+          <td><input type="text" name="price[<?= $mid ?>][overage]" class="mono" value="<?= e(ai_price_to_rial($row['overage'])) ?>" placeholder="<?= $mid > 0 ? 'از ردیف همه' : '0' ?>" style="width:8em"></td>
+          <td class="mono"><?= $avg !== null ? $avg : '—' ?></td>
+          <td class="mono"><?= $buy !== null ? e(number_format($buy, 5) . ' ' . $m['cost_currency']) . ($usdRate > 0 && $m['cost_currency'] === 'USD' ? '<br>≈ ' . e(number_format($buy * $usdRate)) . ' ریال' : '') : '—' ?></td>
+          <td class="mono"><?= $sell !== null ? $rialOf($sell) . ' ریال' : '—' ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+    </div>
+    <p class="muted">«هزینه‌ی خرید» تخمینی است: میانگین توکن ۳۰ روز اخیر با فرض ۸۰٪ ورودی و ۲۰٪ خروجی، به قیمت خریدی که در برگه‌ی مدل‌ها وارد کرده‌اید.
+      «درآمد هر پاسخ» به قیمت پایه و همان میانگین توکن است (قبل از درصد تعرفه‌ی حساب‌ها).</p>
+    <button class="btn btn-primary">ذخیره‌ی تعرفه‌ی عمومی</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>قیمت اختصاصی یک حساب</h2>
+  <p class="muted">قیمت دقیق یک حساب، جایگزین «قیمت پایه × درصد تعرفه»ی آن حساب. خانه‌ی خالی یعنی همان قیمت پایه با درصد تعرفه‌ی حساب.
+    برای مشتریان نماینده، قیمت از تعرفه‌ی نماینده می‌آید (پنل نمایندگی ← تعرفه‌ها).</p>
+  <form method="get" class="toolbar">
+    <input type="hidden" name="view" value="pricing">
+    <label>نام کاربری یا شناسه <input type="text" name="price_user" class="mono" value="<?= e((string)($_GET['price_user'] ?? '')) ?>" required></label>
+    <button class="btn btn-primary">نمایش</button>
+  </form>
+  <?php if ($priceUser !== null): ?>
+    <h3>حساب <span class="mono"><?= e($priceUser['username']) ?></span></h3>
+    <?php if (!$priceUser['eligible']): ?>
+      <p class="muted">این حساب زیر نماینده یا زیرسازمان است و قیمت اختصاصی نمی‌گیرد.</p>
+    <?php else: ?>
+      <form method="post">
+        <?= csrf_field() ?><input type="hidden" name="do" value="prices_account_save"><input type="hidden" name="view" value="pricing">
+        <input type="hidden" name="user_id" value="<?= (int)$priceUser['id'] ?>">
+        <table class="table">
+          <thead><tr><th>مدل</th><th>قیمت هر پاسخ (ریال)</th><th>هر ۱۰۰۰ توکن اضافه (ریال)</th><th>قیمت فعلی این حساب</th></tr></thead>
+          <tbody>
+          <?php foreach (array_merge([['id' => 0, 'display_name' => 'همه‌ی مدل‌ها']], $activeModels) as $m): $mid = (int)$m['id'];
+              $row = $priceUser['rows'][$mid] ?? ['answer' => null, 'overage' => null];
+              $now = $mid > 0 ? ai_price_resolve((int)$priceUser['id'], $mid) : null; ?>
+            <tr>
+              <td><?= e($m['display_name']) ?></td>
+              <td><input type="text" name="price[<?= $mid ?>][answer]" class="mono" value="<?= e(ai_price_to_rial($row['answer'])) ?>" style="width:8em"></td>
+              <td><input type="text" name="price[<?= $mid ?>][overage]" class="mono" value="<?= e(ai_price_to_rial($row['overage'])) ?>" style="width:8em"></td>
+              <td class="mono"><?= $now !== null ? $rialOf($now['answer']) . ' / ' . $rialOf($now['overage']) : '' ?></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+        <button class="btn btn-primary">ذخیره‌ی قیمت این حساب</button>
+      </form>
+    <?php endif; ?>
+  <?php endif; ?>
+</div>
+
+<?php elseif ($view === 'usage'): ?>
+<?php
+  $days = in_array((int)($_GET['days'] ?? 30), [1, 7, 30, 90], true) ? (int)($_GET['days'] ?? 30) : 30;
+  $usage = ai_usage_by_model(gmdate('Y-m-d H:i:s', time() - $days * 86400), gmdate('Y-m-d H:i:s', time() + 60));
+  $usdRate = ai_billing_setting('ai_usd_rial_rate');
+?>
+<div class="card">
+  <h2>مصرف و سود هوش مصنوعی</h2>
+  <div class="toolbar">
+    <?php foreach ([1 => '۲۴ ساعت', 7 => '۷ روز', 30 => '۳۰ روز', 90 => '۹۰ روز'] as $d => $label): ?>
+      <a class="btn<?= $days === $d ? ' btn-primary' : '' ?>" href="/ai-engines.php?view=usage&days=<?= $d ?>"><?= $label ?></a>
+    <?php endforeach; ?>
+  </div>
+  <div style="overflow-x:auto">
+  <table class="table">
+    <thead><tr><th>مدل</th><th>پاسخ</th><th>توکن</th><th>درآمد (ریال)</th><th>پرداخت‌نشده</th><th>هزینه‌ی خرید</th><th>سود تقریبی (ریال)</th></tr></thead>
+    <tbody>
+    <?php foreach ($usage as $u): $buyRial = $usdRate > 0 && ($u['currency'] ?? 'USD') === 'USD' ? $u['purchase_cost'] * $usdRate : null; ?>
+      <tr>
+        <td><?= e((string)($u['display_name'] ?? ('#' . $u['model_id']))) ?></td>
+        <td class="mono"><?= number_format($u['answers']) ?></td>
+        <td class="mono"><?= number_format($u['tokens']) ?></td>
+        <td class="mono"><?= number_format($u['revenue']) ?></td>
+        <td class="mono"><?= $u['unpaid'] > 0 ? '<strong style="color:#b91c1c">' . number_format($u['unpaid']) . '</strong>' : '۰' ?></td>
+        <td class="mono"><?= e(number_format($u['purchase_cost'], 4) . ' ' . ($u['currency'] ?? '')) ?><?= $buyRial !== null ? '<br>≈ ' . number_format($buyRial) . ' ریال' : '' ?></td>
+        <td class="mono"><?= $buyRial !== null ? number_format($u['revenue'] - $buyRial) : '—' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if ($usage === []): ?><tr><td colspan="7" class="muted">در این بازه پاسخ هوشمندی ثبت نشده است.</td></tr><?php endif; ?>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">درآمد: آن‌چه از حساب پاسخ‌دهنده کسر شده (سهم نماینده‌ها جداگانه در «سود نمایندگان» پرداخت می‌شود). هزینه‌ی خرید از توکن واقعی هر پاسخ و قیمت خرید مدل محاسبه می‌شود؛
+    برای تبدیل به ریال، «نرخ دلار» را در برگه‌ی تعرفه وارد کنید.</p>
+</div>
 
 <?php else: /* playground */ ?>
 <div class="card">

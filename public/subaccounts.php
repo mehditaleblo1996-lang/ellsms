@@ -178,7 +178,7 @@ if ($myAccount['customer_type'] === 'reseller') {
 }
 
 $ledgerLabels = [
-    'transfer_in' => 'انتقال اعتبار (دریافت)', 'transfer_out' => 'انتقال اعتبار (پرداخت)', 'sms_debit' => 'هزینه‌ی ارسال', 'delivery_refund' => 'بازگشت هزینه‌ی پیام تحویل‌نشده',
+    'transfer_in' => 'انتقال اعتبار (دریافت)', 'transfer_out' => 'انتقال اعتبار (پرداخت)', 'sms_debit' => 'هزینه‌ی ارسال', 'ai_debit' => 'هزینه‌ی هوش مصنوعی', 'delivery_refund' => 'بازگشت هزینه‌ی پیام تحویل‌نشده',
     'purchase' => 'خرید اعتبار', 'manual_credit' => 'افزایش توسط مدیر', 'manual_debit' => 'کاهش توسط مدیر',
     'reservation_release' => 'آزادسازی رزرو', 'reseller_profit' => 'سود نمایندگی', 'migration_opening_balance' => 'موجودی اولیه',
 ];

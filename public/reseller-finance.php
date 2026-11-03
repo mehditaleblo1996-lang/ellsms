@@ -42,7 +42,7 @@ $ledger->execute([$resellerId, $fromUtc, $toUtc]);
 $ledger = $ledger->fetchAll();
 
 $ledgerLabels = [
-    'transfer_in' => 'انتقال اعتبار (دریافت)', 'transfer_out' => 'انتقال اعتبار به مشتری', 'sms_debit' => 'هزینه‌ی ارسال',
+    'transfer_in' => 'انتقال اعتبار (دریافت)', 'transfer_out' => 'انتقال اعتبار به مشتری', 'sms_debit' => 'هزینه‌ی ارسال', 'ai_debit' => 'هزینه‌ی هوش مصنوعی',
     'purchase' => 'خرید اعتبار', 'manual_credit' => 'افزایش توسط مدیر', 'manual_debit' => 'کاهش توسط مدیر',
     'reservation_release' => 'آزادسازی رزرو', 'reseller_profit' => 'سود نمایندگی', 'migration_opening_balance' => 'موجودی اولیه',
     'reseller_package_sale' => 'تسویه‌ی فروش آنلاین بسته',

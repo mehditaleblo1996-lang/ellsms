@@ -90,7 +90,7 @@ button on «سود نمایندگان»):
 - Each finished Tehran day is processed once, an hour after it ends.
 - Sends with chain prices in their snapshot are split by those exact prices (`docs/reseller-panel.md`, «Profit»).
   The rest of this list is the legacy split for older charges without them.
-- For every `sms_debit` of an account that has a parent, the list price is `amount / tariff`.
+- For every `sms_debit` (and `ai_debit`, the AI part of an AI answer) of an account that has a parent, the list price is `amount / tariff`. Charges priced down a reseller chain use their own recorded chain prices instead (SMS: the price snapshot; AI: `ellsms_ai_charges.chain_prices`).
 - Every reseller up the chain earns `(tariff of the account below it on the chain − its own tariff) × list price`.
   Example: a customer at 150% under a sub-reseller at 120% under a reseller at 100%. A 1500 charge
   (list 1000) pays the sub-reseller 300 and the reseller 200.

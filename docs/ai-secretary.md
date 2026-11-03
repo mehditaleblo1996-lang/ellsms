@@ -62,6 +62,7 @@ A job is **skipped**, and the log shows why, when:
 | `sender_limit` | The per-number hourly cap for the line was reached (0 = no cap). |
 | `line_limit` | The line's daily cap was reached (0 = no cap). |
 | `no_model` | The account has no usable model. |
+| `insufficient_credit` | The account's balance cannot cover the AI price of one answer ([docs/ai-billing.md](ai-billing.md)). |
 | `optout_keyword`, `empty` | Recorded when the message is enqueued. The model is never asked. |
 
 The inbound text is untrusted. The system prompt tells the model never to follow instructions inside
@@ -86,15 +87,17 @@ the part limit.
 «آزمایش منشی» shows the answer the saved settings would give, including that number's real
 conversation memory, without sending an SMS or creating a job.
 
-## Billing in phase 2
+## Billing
 
 - The **SMS** of each answer is charged like an auto-reply, with reference type `ai_secretary` in
   the wallet ledger and the financial log.
+- The **AI part** is priced by the AI tariff and charged as `ai_debit` once the SMS has gone out.
+  An account that cannot pay for one answer is skipped as `insufficient_credit` before the model is
+  asked. A fallback text costs no AI. A customer's «آزمایش منشی» is charged like an answer, with no
+  SMS. See [docs/ai-billing.md](ai-billing.md). The log shows each answer's AI charge.
 - In the dashboard and the sent report, the answers are counted with the auto-replies. The transport
   record (`ellsms_message_attempts`) is written as `direct_send`, exactly as for keyword
   auto-replies. This is existing behavior of the send path and was not changed.
-- The **AI part** is not charged yet. Every job records its input/output tokens and an estimated
-  cost in the model's purchase currency. Phase 3 turns this into a tariff.
 
 ## Admin settings
 

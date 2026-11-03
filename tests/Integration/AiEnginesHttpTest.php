@@ -248,6 +248,29 @@ final class AiEnginesHttpTest extends TestCase
         $this->assertSame($a, (int)$effective['default']['id']);
     }
 
+    public function testAdminSavesAiPricesAndOpensTheUsageReport(): void
+    {
+        $admin = $this->sessionFor($this->adminId);
+        $r = $this->post($admin, ['do' => 'prices_global_save', 'view' => 'pricing',
+            'price' => ['0' => ['answer' => '1,250', 'included' => '1500', 'overage' => '12.5']]]);
+        $this->assertSame(302, $r['code']);
+        \ai_prices_cache_reset();
+        $this->assertSame(['answer' => 1250000, 'overage' => 12500, 'included' => 1500], \ai_prices_for('global', 0)[0]);
+
+        $bad = $this->post($admin, ['do' => 'prices_global_save', 'view' => 'pricing', 'price' => ['0' => ['answer' => 'abc']]]);
+        $this->assertSame(302, $bad['code']);
+        \ai_prices_cache_reset();
+        $this->assertSame(1250000, \ai_prices_for('global', 0)[0]['answer'], 'an invalid form changes nothing');
+
+        foreach (['/ai-engines.php?view=pricing', '/ai-engines.php?view=usage&days=7'] as $url) {
+            $page = $this->request('GET', $url, $admin);
+            $this->assertSame(200, $page['code'], $url);
+            $this->assertStringNotContainsString('Fatal', $page['body']);
+        }
+        $this->assertSame(403, $this->request('GET', '/ai-engines.php?view=pricing', $this->sessionFor($this->customerId))['code']);
+        db()->exec("DELETE FROM ellsms_ai_prices WHERE scope = 'global'");
+    }
+
     /* ================= helpers ================= */
 
     /** Starts `php [options] -S 127.0.0.1:PORT [tail...]` and waits until it accepts connections. */

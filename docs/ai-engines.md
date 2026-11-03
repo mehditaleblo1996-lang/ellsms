@@ -4,7 +4,8 @@ Phase 1 of the AI SMS secretary (منشی پیامکی هوشمند). A platform
 way SMS gateways are connected, finds and enables their models, gives accounts the models they may
 use, and tests everything from the panel. Phase 1 itself sends no SMS and charges nothing. Phase 2, the secretary that answers inbound
 messages, is described in [docs/ai-secretary.md](ai-secretary.md). Phase 3 adds tariffs and wallet
-charges for the AI part.
+charges for the AI part ([docs/ai-billing.md](ai-billing.md)). The same admin page has the
+«تعرفه‌ی هوش مصنوعی» and «مصرف و سود» views.
 
 Page: **Platform Admin → هوش مصنوعی → موتورهای هوش مصنوعی** (`/admin/ai/engines`, `public/ai-engines.php`).
 Platform admins only.
@@ -112,6 +113,7 @@ stored.**
 ## Next phases
 
 - **Phase 2 (done):** the AI SMS secretary. See [docs/ai-secretary.md](ai-secretary.md).
-- **Phase 3:** AI tariffs through the existing pricing chain, and wallet charges.
+- **Phase 3 (done):** AI tariffs through the existing pricing chain, and wallet charges. See
+  [docs/ai-billing.md](ai-billing.md).
 - **Phase 4:** customer data tables with tool calling.
 - **Phase 5:** relay, RAG, and the Bale/Telegram channels.

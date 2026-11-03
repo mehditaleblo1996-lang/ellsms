@@ -70,6 +70,7 @@ const AI_SECRETARY_SKIP_REASONS = [
     'sender_limit'     => 'سقف پاسخ ساعتی به این شماره پر شده است',
     'line_limit'       => 'سقف پاسخ روزانه‌ی این خط پر شده است',
     'no_model'         => 'هیچ مدل هوش مصنوعی برای این حساب فعال نیست',
+    'insufficient_credit' => 'اعتبار حساب برای هزینه‌ی پاسخ هوشمند کافی نیست',
 ];
 
 /**
@@ -602,13 +603,18 @@ function ai_secretary_generate(array $assistant, array $model, array $history, s
     $provider = ai_provider_find((int)$model['provider_id']) ?? throw new AiProviderException('not_found', 'ارائه‌دهنده‌ی مدل پیدا نشد.');
     $cfg = ai_provider_config($provider);
     $parts = max(1, (int)$assistant['max_parts']);
-    $reply = ai_chat($cfg, (string)$model['external_model_id'], ai_secretary_build_messages($assistant, $history, $content),
-        ai_model_token_cap($model, ai_secretary_max_tokens($parts)));
+    $messages = ai_secretary_build_messages($assistant, $history, $content);
+    $reply = ai_chat($cfg, (string)$model['external_model_id'], $messages, ai_model_token_cap($model, ai_secretary_max_tokens($parts)));
+    // What the answer is billed for: the provider's usage, or an estimate when it reported none
+    // (app/Ai/AiBilling.php). Counted on the model's full reply, before it is cut to the SMS parts.
+    $promptChars = array_sum(array_map(static fn(array $m): int => mb_strlen((string)$m['content']), $messages));
+    $billable = ai_billable_tokens($reply['input_tokens'], $reply['output_tokens'], $promptChars, mb_strlen($reply['text']));
     return [
         'text' => ai_secretary_fit_parts($reply['text'], $parts),
         'model' => $model,
-        'input_tokens' => $reply['input_tokens'], 'output_tokens' => $reply['output_tokens'], 'latency_ms' => $reply['latency_ms'],
-        'cost' => ai_cost_estimate($reply['input_tokens'], $reply['output_tokens'], $model['input_cost_per_million'], $model['output_cost_per_million']),
+        'input_tokens' => $billable['input'], 'output_tokens' => $billable['output'], 'tokens_estimated' => $billable['estimated'],
+        'latency_ms' => $reply['latency_ms'],
+        'cost' => ai_cost_estimate($billable['input'], $billable['output'], $model['input_cost_per_million'], $model['output_cost_per_million']),
     ];
 }
 
@@ -659,10 +665,16 @@ function ai_secretary_process_job(array $job): void {
             ai_secretary_finish($jobId, 'skipped', ['skip_reason' => 'no_model']);
             return;
         }
+        // An account that cannot pay for one answer is not answered (the model is never asked).
+        if (!ai_can_afford((int)$assistant['user_id'], (int)$model['id'])) {
+            ai_secretary_finish($jobId, 'skipped', ['skip_reason' => 'insufficient_credit', 'model_id' => (int)$model['id']]);
+            return;
+        }
         try {
             $answer = ai_secretary_generate($assistant, $model, ai_secretary_history($job, $assistant), (string)$job['content']);
             $reply = $answer['text'];
             db()->prepare('UPDATE ellsms_ai_jobs SET model_id = ?, reply_text = ?, reply_parts = ?, input_tokens = ?, output_tokens = ?,
+                                  ' . (ai_billing_available() ? 'tokens_estimated = ' . ($answer['tokens_estimated'] ? 1 : 0) . ',' : '') . '
                                   cost_estimate = ?, ai_latency_ms = ?, error_code = NULL WHERE id = ?')
                 ->execute([(int)$model['id'], $reply, sms_parts($reply), $answer['input_tokens'], $answer['output_tokens'],
                            $answer['cost'], $answer['latency_ms'], $jobId]);
@@ -692,8 +704,15 @@ function ai_secretary_process_job(array $job): void {
     [$ok, $info, $retryable] = dispatch_message_retryable($user, (string)$job['line'], [(string)$job['sender']], $reply,
         'ai_secretary', (string)$jobId, $sendAttempts, null, 'transactional');
     if ($ok) {
-        ai_secretary_finish($jobId, 'sent', ['info' => mb_strimwidth((string)$info, 0, 500, '…')]);
-        Logger::info('ai.secretary.sent', ['job_id' => $jobId, 'line' => $job['line'], 'parts' => sms_parts($reply)]);
+        $fields = ['info' => mb_strimwidth((string)$info, 0, 500, '…')];
+        // The AI part is charged only now that the answer actually went out — a failed send never
+        // costs it, and a fallback text (no model answer) costs nothing.
+        $charge = ai_secretary_charge_job($jobId, (int)$assistant['user_id']);
+        if ($charge !== null) {
+            $fields['ai_charge'] = $charge['amount'];
+        }
+        ai_secretary_finish($jobId, 'sent', $fields);
+        Logger::info('ai.secretary.sent', ['job_id' => $jobId, 'line' => $job['line'], 'parts' => sms_parts($reply), 'ai_charge' => $charge['amount'] ?? null]);
         return;
     }
     if ($retryable && $sendAttempts < job_max_attempts()) {
@@ -702,6 +721,26 @@ function ai_secretary_process_job(array $job): void {
         return;
     }
     ai_secretary_finish($jobId, 'failed', ['error_code' => 'send_failed', 'info' => mb_strimwidth((string)$info, 0, 500, '…')]);
+}
+
+/**
+ * Charges the AI part of a sent job, from what is stored on it. Null when there is nothing to charge
+ * (billing not installed, a fallback text, or no model answer).
+ * @return array{status:string, amount:int}|null
+ */
+function ai_secretary_charge_job(int $jobId, int $userId): ?array {
+    if (!ai_billing_available()) return null;
+    $st = db()->prepare('SELECT j.model_id, j.input_tokens, j.output_tokens, j.tokens_estimated, j.cost_estimate, j.is_fallback, m.*
+                         FROM ellsms_ai_jobs j LEFT JOIN ellsms_ai_models m ON m.id = j.model_id WHERE j.id = ?');
+    $st->execute([$jobId]);
+    $row = $st->fetch();
+    if (!$row || (int)$row['is_fallback'] === 1 || $row['model_id'] === null || $row['input_tokens'] === null) return null;
+    $model = $row;
+    $model['id'] = (int)$row['model_id'];
+    return ai_charge('job:' . $jobId, $userId, $model, [
+        'input_tokens' => (int)$row['input_tokens'], 'output_tokens' => (int)$row['output_tokens'],
+        'estimated' => (bool)$row['tokens_estimated'], 'cost' => $row['cost_estimate'] !== null ? (float)$row['cost_estimate'] : null,
+    ]);
 }
 
 /** Deletes finished jobs older than the retention setting, in chunks. */
@@ -722,13 +761,18 @@ function ai_secretary_prune(int $chunk = 5000): int {
 
 /**
  * «آزمایش منشی»: the answer this assistant would give to $content from $sender, with the real
- * conversation memory of that number, WITHOUT sending anything or creating a job.
+ * conversation memory of that number, WITHOUT sending anything or creating a job. With $charge (a
+ * customer's own test; a platform admin's is free) the AI part is charged to the line's owner.
  * @return array{ok:bool, text?:string, message?:string, model?:array, input_tokens?:?int, output_tokens?:?int, latency_ms?:int, cost?:?float, history?:int}
  */
-function ai_secretary_simulate(array $assistant, string $sender, string $content, int $actorId): array {
+function ai_secretary_simulate(array $assistant, string $sender, string $content, int $actorId, bool $charge = false): array {
     $model = ai_secretary_resolve_model($assistant);
     if ($model === null) {
         return ['ok' => false, 'message' => ai_secretary_reason_label('no_model')];
+    }
+    $payer = (int)$assistant['user_id'];
+    if ($charge && !ai_can_afford($payer, (int)$model['id'])) {
+        return ['ok' => false, 'message' => ai_secretary_reason_label('insufficient_credit')];
     }
     $history = [];
     $sender = normalize_originator($sender) ?? '';
@@ -743,7 +787,12 @@ function ai_secretary_simulate(array $assistant, string $sender, string $content
     }
     ai_record_run((int)$model['provider_id'], (int)$model['id'], 'playground', $actorId, true, null, $answer['latency_ms'], null,
         $answer['input_tokens'], $answer['output_tokens']);
-    return ['ok' => true, 'history' => count($history)] + $answer;
+    // A customer's test is a real model call and is charged like an answer (no SMS, so nothing else).
+    $charged = $charge ? ai_charge('test:' . bin2hex(random_bytes(8)), $payer, $model, [
+        'input_tokens' => $answer['input_tokens'], 'output_tokens' => $answer['output_tokens'],
+        'estimated' => $answer['tokens_estimated'], 'cost' => $answer['cost'],
+    ]) : null;
+    return ['ok' => true, 'history' => count($history), 'charge' => $charged] + $answer;
 }
 
 /**

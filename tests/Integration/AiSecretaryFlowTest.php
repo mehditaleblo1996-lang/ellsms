@@ -87,6 +87,7 @@ final class AiSecretaryFlowTest extends IntegrationTestCase
         @file_put_contents(self::$aiLog, '');
         @file_put_contents(self::$gatewayLog, '');
         ai_secretary_cache_reset();
+        ai_prices_cache_reset();
         sms_pricing_cache_reset();
         gateway_cache_reset();
 
@@ -279,6 +280,89 @@ final class AiSecretaryFlowTest extends IntegrationTestCase
         $this->assertSame('پاسخ آزمایشی: تست', $result['text']);
         $this->assertSame(0, (int)db()->query('SELECT COUNT(*) FROM ellsms_ai_jobs')->fetchColumn());
         $this->assertSame([], $this->gatewayRequests());
+    }
+
+    /* ================= AI charges (phase 3, app/Ai/AiBilling.php) ================= */
+
+    public function testTheAiPartIsChargedOnceTheAnswerHasBeenSent(): void
+    {
+        // 1,000 Rial per answer including 20 tokens, 100 Rial per 1,000 tokens beyond; the fake model
+        // reports 21 + 7 = 28 tokens: 1,000 + 8 x 0.1 = 1,000.8 -> 1,001 Rial.
+        ai_prices_save('global', 0, [0 => ['answer' => 1000000, 'overage' => 100000, 'included' => 20]], $this->ownerId);
+        set_setting('ai_billing_enabled', '1');
+        $this->assistant();
+        $id = $this->inbound($this->customer, 'سلام');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+
+        $job = $this->job($id);
+        $this->assertSame('sent', $job['status']);
+        $this->assertSame(1001, (int)$job['ai_charge']);
+        $charge = db()->prepare("SELECT * FROM ellsms_ai_charges WHERE reference_id = ?");
+        $charge->execute(['job:' . $job['id']]);
+        $row = $charge->fetch();
+        $this->assertSame(['charged', 1001, 1000800, 28], [$row['status'], (int)$row['amount'], (int)$row['amount_millis'], (int)$row['input_tokens'] + (int)$row['output_tokens']]);
+        $ledger = db()->prepare("SELECT amount FROM ellsms_wallet_transactions WHERE user_id = ? AND type = 'ai_debit' AND reference_type = 'ai_usage' AND reference_id = ?");
+        $ledger->execute([$this->ownerId, 'job:' . $job['id']]);
+        $this->assertSame(-1001, (int)$ledger->fetchColumn());
+
+        // Charged once: a second charge call for the same job is a replay.
+        $this->assertSame(1001, ai_secretary_charge_job((int)$job['id'], $this->ownerId)['amount']);
+        $count = db()->prepare("SELECT COUNT(*) FROM ellsms_wallet_transactions WHERE type = 'ai_debit' AND reference_id = ?");
+        $count->execute(['job:' . $job['id']]);
+        $this->assertSame(1, (int)$count->fetchColumn());
+    }
+
+    public function testTheAccountTariffPercentageApplies(): void
+    {
+        ai_prices_save('global', 0, [0 => ['answer' => 1000000, 'overage' => 0, 'included' => 100000]], $this->ownerId);
+        db()->prepare("INSERT INTO ellsms_customer_accounts (user_id, customer_type, tariff_bp) VALUES (?, 'normal', 15000)")->execute([$this->ownerId]);
+        $this->assertSame(1500000, ai_price_resolve($this->ownerId, $this->modelId)['answer'], 'list price x 150%');
+        ai_prices_save('account', $this->ownerId, [$this->modelId => ['answer' => 700000, 'overage' => null, 'included' => null]], $this->ownerId);
+        $this->assertSame(700000, ai_price_resolve($this->ownerId, $this->modelId)['answer'], 'the account\'s own exact price wins');
+    }
+
+    public function testAnAccountThatCannotPayIsNotAnsweredAndTheModelIsNotAsked(): void
+    {
+        ai_prices_save('global', 0, [0 => ['answer' => 999999999000, 'overage' => 0, 'included' => 0]], $this->ownerId);
+        $this->assistant();
+        $id = $this->inbound($this->customer, 'سلام');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $this->assertSame(['skipped', 'insufficient_credit'], [$this->job($id)['status'], $this->job($id)['skip_reason']]);
+        $this->assertSame([], $this->aiRequests());
+        $this->assertSame([], $this->gatewayRequests());
+    }
+
+    public function testAFallbackTextAndAnUnpricedModelCostNoAi(): void
+    {
+        $this->assistant(['fallback_text' => 'بعداً پاسخ می‌دهیم.']);
+        db()->prepare('UPDATE ellsms_ai_providers SET base_url = ? WHERE id = ?')->execute(['http://127.0.0.1:1/v1', $this->providerId]);
+        set_setting('ai_secretary_max_attempts', '1');
+        ai_prices_save('global', 0, [0 => ['answer' => 1000000, 'overage' => 0, 'included' => 0]], $this->ownerId);
+        $fallback = $this->inbound($this->customer, 'سلام');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $this->assertSame('sent', $this->job($fallback)['status']);
+        $this->assertNull($this->job($fallback)['ai_charge'], 'no model answer, no AI charge');
+
+        db()->prepare('UPDATE ellsms_ai_providers SET base_url = ? WHERE id = ?')->execute(['http://127.0.0.1:' . self::$aiPort . '/v1', $this->providerId]);
+        ai_prices_save('global', 0, [], $this->ownerId);
+        $free = $this->inbound('989351112233', 'سلام');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $this->assertSame(['sent', 0], [$this->job($free)['status'], (int)$this->job($free)['ai_charge']]);
+    }
+
+    public function testACustomerTestIsChargedAndAnAdminTestIsFree(): void
+    {
+        ai_prices_save('global', 0, [0 => ['answer' => 500000, 'overage' => 0, 'included' => 0]], $this->ownerId);
+        $assistant = ai_assistant_find($this->assistant());
+        $customer = ai_secretary_simulate($assistant, '', 'تست', $this->ownerId, true);
+        $this->assertSame(['charged', 500], [$customer['charge']['status'], $customer['charge']['amount']]);
+        $admin = ai_secretary_simulate($assistant, '', 'تست', $this->ownerId, false);
+        $this->assertNull($admin['charge']);
+        $this->assertSame(1, (int)db()->query("SELECT COUNT(*) FROM ellsms_wallet_transactions WHERE type = 'ai_debit'")->fetchColumn());
     }
 
     /* ================= helpers ================= */

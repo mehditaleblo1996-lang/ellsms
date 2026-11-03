@@ -79,6 +79,13 @@ carries the message).
 Every account's price on the chain is written to the send's price snapshot
 (`ellsms_sms_price_snapshots.chain_prices`, and the group key includes it).
 
+
+**AI answers.** Each tariff also has an «تعرفه‌ی هوش مصنوعی» section on its edit page
+(`/reseller/tariffs?edit=<id>#ai`). There the reseller sets, per model or for «همه‌ی مدل‌ها», the
+price of one AI secretary answer and of every 1,000 extra tokens for customers on that tariff. Both
+are checked against what the reseller itself pays, and the margin is paid by the same daily profit
+run. See [docs/ai-billing.md](ai-billing.md).
+
 ## Profit
 
 `customer_profit_run_day()` now prices each `sms_debit` of an account with a parent from that send's

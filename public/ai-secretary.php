@@ -90,7 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $assistant = ai_assistant_for_line($selectedLine) ?? throw new AppException('ابتدا تنظیمات منشی را ذخیره کنید.');
                 $message = trim((string)($_POST['message'] ?? ''));
                 if ($message === '' || mb_strlen($message) > AI_SECRETARY_MAX_INPUT_CHARS) throw new AppException('متن پیام آزمایشی را وارد کنید.');
-                $simulation = ai_secretary_simulate($assistant, (string)($_POST['sender'] ?? ''), $message, $actor);
+                // A customer's own test is a real model call and is charged; a platform admin's is free.
+                $simulation = ai_secretary_simulate($assistant, (string)($_POST['sender'] ?? ''), $message, $actor, !$isAdmin);
                 break;
             }
             case 'settings_save':
@@ -122,6 +123,15 @@ $editing = $selectedLine !== '' ? ($assistants[$selectedLine] ?? ai_assistant_de
 $editingOwner = $selectedLine !== '' ? $ownerFor($selectedLine) : null;
 $ownerModels = $editingOwner !== null ? ai_access_effective($editingOwner) : ['models' => [], 'default' => null];
 $hasAccess = $isAdmin || ($myAccess !== null && $myAccess['models'] !== []);
+/** What one answer of the line being edited costs its owner (null when billing is off or unpriced). */
+$priceInfo = null;
+if ($editingOwner !== null && ai_billing_enabled()) {
+    $priceModel = isset($assistants[$selectedLine]) ? ai_secretary_resolve_model($assistants[$selectedLine]) : $ownerModels['default'];
+    if ($priceModel !== null) {
+        $priceInfo = ai_price_resolve($editingOwner, (int)$priceModel['id']) + ['model' => $priceModel];
+    }
+}
+$rialText = static fn(int $millis): string => to_persian_digits(number_format($millis / SMS_PRICE_SCALE, $millis % SMS_PRICE_SCALE === 0 ? 0 : 1));
 
 $statusLabels = ['pending' => 'در صف', 'processing' => 'در حال پاسخ', 'sent' => 'پاسخ داده شد', 'skipped' => 'بدون پاسخ', 'failed' => 'ناموفق'];
 $statusColors = ['sent' => '#15803d', 'failed' => '#b91c1c', 'skipped' => '#92400e'];
@@ -133,7 +143,7 @@ require __DIR__ . '/../app/views/header.php';
   <p class="muted">
     پیامک‌هایی که روی خط شما دریافت می‌شود با هوش مصنوعی و بر اساس اطلاعات کسب‌وکار شما جواب داده می‌شود.
     پیام‌های «۱۱/۱۲» (لغو/عضویت) و پیام‌هایی که یکی از قانون‌های <a href="/autoreply.php">منشی پیامک</a> (کلیدواژه) به آن‌ها جواب می‌دهد، به منشی هوشمند نمی‌رسند.
-    هزینه‌ی هر پاسخ مانند پیامک عادی از اعتبار حساب کسر می‌شود.
+    هزینه‌ی هر پاسخ دو بخش دارد: پیامکِ پاسخ (مانند پیامک عادی) و هزینه‌ی هوش مصنوعی؛ هر دو از اعتبار حساب کسر می‌شوند.
   </p>
   <?php if (!ai_secretary_enabled()): ?>
     <p><strong style="color:#b91c1c">این سرویس در حال حاضر از طرف مدیریت سامانه متوقف است؛ پیام‌ها پاسخ داده نمی‌شوند.</strong></p>
@@ -194,6 +204,16 @@ require __DIR__ . '/../app/views/header.php';
   <?php endif; ?>
   <?php if ($editingOwner !== null && $ownerModels['models'] === []): ?>
     <p><strong style="color:#b91c1c">هیچ مدل هوش مصنوعی برای حساب مالک این خط فعال نیست؛ منشی پاسخی نمی‌دهد.</strong></p>
+  <?php endif; ?>
+  <?php if ($priceInfo !== null): ?>
+    <p class="muted">
+      هزینه‌ی هوش مصنوعی هر پاسخ (<?= e($priceInfo['model']['display_name']) ?>):
+      <strong><?= $priceInfo['answer'] > 0 ? $rialText($priceInfo['answer']) . ' ریال' : 'رایگان' ?></strong>
+      <?php if ($priceInfo['overage'] > 0): ?>
+        تا <?= to_persian_digits(number_format($priceInfo['included'])) ?> توکن، و برای هر ۱۰۰۰ توکن بیشتر <?= $rialText($priceInfo['overage']) ?> ریال
+      <?php endif; ?>
+      — به‌علاوه‌ی هزینه‌ی پیامکِ پاسخ. اطلاعات کسب‌وکار طولانی‌تر، توکن بیشتری مصرف می‌کند.
+    </p>
   <?php endif; ?>
   <form method="post" id="assistant-form">
     <?= csrf_field() ?><input type="hidden" name="do" value="save"><input type="hidden" name="line" value="<?= e($selectedLine) ?>">
@@ -276,7 +296,8 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2>آزمایش منشی</h2>
   <p class="muted">پیامی بنویسید تا ببینید منشی با تنظیمات <strong>ذخیره‌شده</strong> چه جوابی می‌دهد. هیچ پیامکی ارسال نمی‌شود.
-    اگر شماره‌ی فرستنده را وارد کنید، گفتگوی قبلی همان شماره هم در نظر گرفته می‌شود.</p>
+    اگر شماره‌ی فرستنده را وارد کنید، گفتگوی قبلی همان شماره هم در نظر گرفته می‌شود.
+    <?= $isAdmin ? '' : 'هزینه‌ی هوش مصنوعیِ هر آزمایش مانند یک پاسخ کسر می‌شود (بدون هزینه‌ی پیامک).' ?></p>
   <form method="post">
     <?= csrf_field() ?><input type="hidden" name="do" value="simulate"><input type="hidden" name="line" value="<?= e($selectedLine) ?>">
     <div class="toolbar">
@@ -296,6 +317,7 @@ require __DIR__ . '/../app/views/header.php';
         زمان پاسخ: <span class="mono"><?= (int)$simulation['latency_ms'] ?> ms</span> ·
         توکن: <span class="mono"><?= $simulation['input_tokens'] ?? '—' ?> / <?= $simulation['output_tokens'] ?? '—' ?></span>
         <?php if ($simulation['history'] > 0): ?> · با <?= to_persian_digits((string)$simulation['history']) ?> پیام قبلی این شماره<?php endif; ?>
+        <?php if (($simulation['charge'] ?? null) !== null): ?> · هزینه: <?= $simulation['charge']['amount'] > 0 ? to_persian_digits(number_format($simulation['charge']['amount'])) . ' ریال' : 'رایگان' ?><?php endif; ?>
       </p>
     <?php else: ?>
       <p style="margin-top:12px"><strong style="color:#b91c1c">ناموفق:</strong> <?= e($simulation['message']) ?></p>
@@ -328,7 +350,7 @@ require __DIR__ . '/../app/views/header.php';
         <td style="max-width:22em;white-space:pre-wrap"><?= e(mb_strimwidth((string)$row['content'], 0, 300, '…')) ?></td>
         <td style="max-width:26em;white-space:pre-wrap"><?= $row['reply_text'] !== null ? e((string)$row['reply_text']) : '<span class="muted">—</span>' ?>
           <?php if ($row['reply_text'] !== null): ?>
-            <br><span class="muted"><?= (int)$row['is_fallback'] ? 'متن جایگزین · ' : '' ?><?= e((string)($row['model_name'] ?? '')) ?><?= $row['reply_parts'] ? ' · ' . to_persian_digits((string)$row['reply_parts']) . ' پارت' : '' ?></span>
+            <br><span class="muted"><?= (int)$row['is_fallback'] ? 'متن جایگزین · ' : '' ?><?= e((string)($row['model_name'] ?? '')) ?><?= $row['reply_parts'] ? ' · ' . to_persian_digits((string)$row['reply_parts']) . ' پارت' : '' ?><?= isset($row['ai_charge']) && $row['ai_charge'] !== null ? ' · هوش مصنوعی: ' . ((int)$row['ai_charge'] > 0 ? to_persian_digits(number_format((int)$row['ai_charge'])) . ' ریال' : 'رایگان') : '' ?></span>
           <?php endif; ?>
         </td>
         <td>
@@ -362,7 +384,7 @@ require __DIR__ . '/../app/views/header.php';
     <button class="btn btn-primary">ذخیره</button>
   </form>
   <p class="muted">
-    هزینه‌ی هوش مصنوعی فعلاً فقط ثبت می‌شود (توکن و هزینه‌ی تقریبی هر پاسخ) و از مشتری کسر نمی‌شود؛ هزینه‌ی پیامکِ پاسخ مثل پاسخ خودکار کسر می‌شود.
+    هزینه‌ی هوش مصنوعی هر پاسخ با «تعرفه‌ی هوش مصنوعی» (مدیریت ← موتورهای هوش مصنوعی) محاسبه و پس از ارسال پاسخ کسر می‌شود؛ هزینه‌ی پیامکِ پاسخ مثل پاسخ خودکار کسر می‌شود.
     پاسخ‌ها را سرویس <span class="mono">ai-worker</span> ارسال می‌کند.
   </p>
 </div>
