@@ -106,7 +106,6 @@ $mustAttr   = $idfCreate ? ' required' : '';
     <label>کشور <?= geo_country_select('country', (string)(($idfAddress['country'] ?? '') ?: GEO_DEFAULT_COUNTRY)) ?></label>
     <label>استان <?= geo_province_select('province', (string)($idfAddress['province'] ?? '')) ?></label>
     <label>شهر <?= geo_city_select('city', (string)($idfAddress['city'] ?? ''), (string)($idfAddress['province'] ?? '')) ?></label>
-    <label>منطقه / محله <input type="text" name="district" value="<?= $idfVal($idfAddress, 'district') ?>" maxlength="60"></label>
     <label class="span-2">خیابان <input type="text" name="street" value="<?= $idfVal($idfAddress, 'street') ?>" maxlength="190"></label>
     <label class="span-2">کوچه <input type="text" name="alley" value="<?= $idfVal($idfAddress, 'alley') ?>" maxlength="120"></label>
     <label>پلاک <input type="text" name="building_no" class="ltr" value="<?= $idfVal($idfAddress, 'building_no') ?>" maxlength="20"></label>

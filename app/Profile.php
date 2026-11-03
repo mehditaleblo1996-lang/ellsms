@@ -944,7 +944,8 @@ function profile_account_completeness(string $accountType, array $userProfile, a
    «مشخصات مشتری» — the one admin form (app/views/customer_identity_fields.php)
    ========================================================================== */
 
-const PROFILE_ADDRESS_FIELDS = ['country', 'province', 'city', 'district', 'street', 'alley', 'building_no', 'unit_no', 'postal_code', 'address_text'];
+// No «منطقه / محله» on this form; a district already on file is kept (profile_identity_save()).
+const PROFILE_ADDRESS_FIELDS = ['country', 'province', 'city', 'street', 'alley', 'building_no', 'unit_no', 'postal_code', 'address_text'];
 
 /**
  * Pure apart from reading the Jalali date triples: the posted form split into what each save function
@@ -1030,12 +1031,15 @@ function profile_identity_save(int $userId, int $organizationId, array $identity
     if ($identity['account_type'] === 'individual') {
         $a = $identity['address'];
         $user['personal_address'] = implode('، ', array_filter([
-            $a['province'], $a['city'], $a['district'], $a['street'], $a['alley'],
+            $a['province'], $a['city'], $a['street'], $a['alley'],
             $a['building_no'] !== '' ? 'پلاک ' . $a['building_no'] : '',
             $a['unit_no'] !== '' ? 'واحد ' . $a['unit_no'] : '',
             $a['address_text'],
         ], static fn(string $part): bool => $part !== ''));
     }
+    // profile_address_save() writes every column, so the district this form no longer asks for is
+    // passed through unchanged.
+    $identity['address']['district'] = (string)(profile_address_get($organizationId)['district'] ?? '');
     try {
         db_transaction(static function () use ($userId, $organizationId, $identity, $user, $actorUserId): void {
             foreach ([

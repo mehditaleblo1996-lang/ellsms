@@ -18,7 +18,7 @@ gone). A «حقیقی / حقوقی» switch at the top picks the account type:
 
 - **حقیقی** — the person (name, national code, father's name, birth certificate no., birth date,
   gender), contact details, address, login and account settings. The address is also kept as the
-  user's personal address.
+  user's personal address. The form has no «منطقه / محله» field; a district already on file is kept.
 - **حقوقی** — the same, plus the company: legal name, company type, registration no., company
   national id, economic code, landline, start/expiry dates. The managing-director fields are not
   asked here (they stay editable from the customer's own profile page).
