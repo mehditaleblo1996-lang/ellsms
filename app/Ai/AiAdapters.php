@@ -299,60 +299,118 @@ function ai_parse_models(string $type, array $json): array {
    Chat (pure)
    ========================================================================== */
 
+/** System prompts at least this long are marked cacheable for Anthropic (prompt caching). */
+const AI_CACHE_MIN_SYSTEM_CHARS = 4000;
+
 /**
  * Pure: the chat request for one model.
  *
- * $messages is a list of ['role' => 'system'|'user'|'assistant', 'content' => string]. For Anthropic
- * the system messages move to the top-level `system` field and consecutive turns of the same role
- * are merged (the Messages API needs alternating user/assistant turns starting with user).
- * $temperature is sent to OpenAI-style and Ollama providers only (Anthropic rejects it on
- * AI_ANTHROPIC_VERSION).
+ * $messages is a list of:
+ *   ['role' => 'system'|'user'|'assistant', 'content' => string]
+ *   ['role' => 'assistant', 'content' => string, 'tool_calls' => [['id', 'name', 'arguments' => array], ...]]
+ *   ['role' => 'tool', 'tool_call_id' => string, 'name' => string, 'content' => string]
+ * $tools: [['name', 'description', 'parameters' => JSON schema], ...] (null/[] = no tools).
+ *
+ * For Anthropic the system messages move to the top-level `system` field (marked cacheable when
+ * long — the business information repeats on every answer), tool results become tool_result blocks
+ * of a user turn, and consecutive turns of the same role are merged (the Messages API needs
+ * alternating user/assistant turns starting with user). $temperature is sent to OpenAI-style and
+ * Ollama providers only (Anthropic rejects it on AI_ANTHROPIC_VERSION).
  *
  * @return array{method:string, url:string, headers:list<string>, body:string}
  */
-function ai_build_chat_request(array $cfg, string $model, array $messages, int $maxTokens, ?float $temperature = null): array {
+function ai_build_chat_request(array $cfg, string $model, array $messages, int $maxTokens, ?float $temperature = null, ?array $tools = null): array {
     $type = (string)$cfg['type'];
     $base = (string)$cfg['base_url'];
     $maxTokens = max(1, $maxTokens);
-    $clean = [];
-    foreach ($messages as $m) {
-        $role = in_array($m['role'] ?? '', ['system', 'user', 'assistant'], true) ? $m['role'] : 'user';
-        $clean[] = ['role' => $role, 'content' => (string)($m['content'] ?? '')];
-    }
+    $tools = $tools ?: [];
 
     if ($type === 'anthropic') {
         $system = [];
         $turns = [];
-        foreach ($clean as $m) {
-            if ($m['role'] === 'system') {
-                if (trim($m['content']) !== '') $system[] = $m['content'];
-                continue;
-            }
+        $push = static function (string $role, array $blocks) use (&$turns): void {
             $last = array_key_last($turns);
-            if ($last !== null && $turns[$last]['role'] === $m['role']) {
-                $turns[$last]['content'] .= "\n\n" . $m['content'];
+            if ($last !== null && $turns[$last]['role'] === $role) {
+                $turns[$last]['content'] = array_merge($turns[$last]['content'], $blocks);
             } else {
-                $turns[] = $m;
+                $turns[] = ['role' => $role, 'content' => $blocks];
+            }
+        };
+        foreach ($messages as $m) {
+            $role = (string)($m['role'] ?? 'user');
+            $content = (string)($m['content'] ?? '');
+            if ($role === 'system') {
+                if (trim($content) !== '') $system[] = $content;
+            } elseif ($role === 'tool') {
+                $push('user', [['type' => 'tool_result', 'tool_use_id' => (string)$m['tool_call_id'], 'content' => $content]]);
+            } elseif ($role === 'assistant') {
+                $blocks = trim($content) !== '' ? [['type' => 'text', 'text' => $content]] : [];
+                foreach (($m['tool_calls'] ?? []) as $call) {
+                    $blocks[] = ['type' => 'tool_use', 'id' => (string)$call['id'], 'name' => (string)$call['name'], 'input' => (object)($call['arguments'] ?? [])];
+                }
+                if ($blocks !== []) $push('assistant', $blocks);
+            } else {
+                $push('user', [['type' => 'text', 'text' => $content !== '' ? $content : '.']]);
             }
         }
         if ($turns === [] || $turns[0]['role'] !== 'user') {
-            array_unshift($turns, ['role' => 'user', 'content' => '.']);
+            array_unshift($turns, ['role' => 'user', 'content' => [['type' => 'text', 'text' => '.']]]);
         }
+        // A turn of plain text blocks only is sent as a string, like before tools existed.
+        foreach ($turns as &$turn) {
+            if (array_filter($turn['content'], static fn(array $b): bool => $b['type'] !== 'text') === []) {
+                $turn['content'] = implode("\n\n", array_column($turn['content'], 'text'));
+            }
+        }
+        unset($turn);
         $body = ['model' => $model, 'max_tokens' => $maxTokens, 'messages' => $turns];
-        if ($system !== []) $body['system'] = implode("\n\n", $system);
+        if ($system !== []) {
+            $systemText = implode("\n\n", $system);
+            $body['system'] = mb_strlen($systemText) >= AI_CACHE_MIN_SYSTEM_CHARS
+                ? [['type' => 'text', 'text' => $systemText, 'cache_control' => ['type' => 'ephemeral']]]
+                : $systemText;
+        }
+        if ($tools !== []) {
+            $body['tools'] = array_map(static fn(array $t): array => ['name' => $t['name'], 'description' => $t['description'],
+                'input_schema' => $t['parameters']], $tools);
+        }
         $url = ai_join_url($base, 'messages');
-    } elseif ($type === 'ollama') {
-        $options = ['num_predict' => $maxTokens];
-        if ($temperature !== null) $options['temperature'] = $temperature;
-        $body = ['model' => $model, 'messages' => $clean, 'stream' => false, 'options' => $options];
-        $url = ai_join_url($base, 'api/chat');
     } else {
-        $body = ['model' => $model, 'messages' => $clean, 'stream' => false];
-        // OpenAI's current models reject max_tokens and take max_completion_tokens; compatible servers
-        // (vLLM, Hermes, LM Studio) and OpenRouter take max_tokens.
-        $body[$type === 'openai' ? 'max_completion_tokens' : 'max_tokens'] = $maxTokens;
-        if ($temperature !== null) $body['temperature'] = $temperature;
-        $url = ai_join_url($base, 'chat/completions');
+        $clean = [];
+        foreach ($messages as $m) {
+            $role = in_array($m['role'] ?? '', ['system', 'user', 'assistant', 'tool'], true) ? $m['role'] : 'user';
+            $msg = ['role' => $role, 'content' => (string)($m['content'] ?? '')];
+            if ($role === 'assistant' && !empty($m['tool_calls'])) {
+                $msg['tool_calls'] = array_map(static fn(array $c): array => $type === 'ollama'
+                    ? ['function' => ['name' => (string)$c['name'], 'arguments' => (object)($c['arguments'] ?? [])]]
+                    : ['id' => (string)$c['id'], 'type' => 'function', 'function' => ['name' => (string)$c['name'],
+                        'arguments' => json_encode((object)($c['arguments'] ?? []), JSON_UNESCAPED_UNICODE)]], $m['tool_calls']);
+            }
+            if ($role === 'tool') {
+                if ($type === 'ollama') {
+                    $msg['tool_name'] = (string)($m['name'] ?? '');
+                } else {
+                    $msg['tool_call_id'] = (string)($m['tool_call_id'] ?? '');
+                }
+            }
+            $clean[] = $msg;
+        }
+        $toolDefs = array_map(static fn(array $t): array => ['type' => 'function', 'function' => ['name' => $t['name'],
+            'description' => $t['description'], 'parameters' => $t['parameters']]], $tools);
+        if ($type === 'ollama') {
+            $options = ['num_predict' => $maxTokens];
+            if ($temperature !== null) $options['temperature'] = $temperature;
+            $body = ['model' => $model, 'messages' => $clean, 'stream' => false, 'options' => $options];
+            $url = ai_join_url($base, 'api/chat');
+        } else {
+            $body = ['model' => $model, 'messages' => $clean, 'stream' => false];
+            // OpenAI's current models reject max_tokens and take max_completion_tokens; compatible servers
+            // (vLLM, Hermes, LM Studio) and OpenRouter take max_tokens.
+            $body[$type === 'openai' ? 'max_completion_tokens' : 'max_tokens'] = $maxTokens;
+            if ($temperature !== null) $body['temperature'] = $temperature;
+            $url = ai_join_url($base, 'chat/completions');
+        }
+        if ($toolDefs !== []) $body['tools'] = $toolDefs;
     }
     return [
         'method'  => 'POST',
@@ -363,27 +421,54 @@ function ai_build_chat_request(array $cfg, string $model, array $messages, int $
 }
 
 /**
- * Pure: a chat response -> text and token usage.
- * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string}
+ * Pure: a chat response -> text, tool calls and token usage. A response with tool calls may have
+ * no text; one with neither is an empty_response.
+ *
+ * Input tokens include cached prompt tokens (Anthropic reports them apart, as
+ * cache_creation_input_tokens / cache_read_input_tokens; OpenAI already counts them in
+ * prompt_tokens), so billing counts every token the model read.
+ *
+ * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string,
+ *               tool_calls: list<array{id:string, name:string, arguments:array}>}
  */
 function ai_parse_chat(string $type, array $json): array {
     $text = '';
     $in = $out = null;
     $finish = null;
+    $calls = [];
+    $args = static function (mixed $raw): array {
+        if (is_array($raw)) return $raw;
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+        return [];
+    };
     if ($type === 'anthropic') {
         foreach (($json['content'] ?? []) as $block) {
-            if (is_array($block) && ($block['type'] ?? '') === 'text' && is_string($block['text'] ?? null)) {
+            if (!is_array($block)) continue;
+            if (($block['type'] ?? '') === 'text' && is_string($block['text'] ?? null)) {
                 $text .= $block['text'];
+            } elseif (($block['type'] ?? '') === 'tool_use' && is_string($block['name'] ?? null)) {
+                $calls[] = ['id' => (string)($block['id'] ?? ('call_' . count($calls))), 'name' => $block['name'], 'arguments' => $args($block['input'] ?? [])];
             }
         }
-        $in = is_int($json['usage']['input_tokens'] ?? null) ? $json['usage']['input_tokens'] : null;
-        $out = is_int($json['usage']['output_tokens'] ?? null) ? $json['usage']['output_tokens'] : null;
+        $usage = $json['usage'] ?? [];
+        if (is_int($usage['input_tokens'] ?? null)) {
+            $in = $usage['input_tokens'] + (int)($usage['cache_creation_input_tokens'] ?? 0) + (int)($usage['cache_read_input_tokens'] ?? 0);
+        }
+        $out = is_int($usage['output_tokens'] ?? null) ? $usage['output_tokens'] : null;
         $finish = is_string($json['stop_reason'] ?? null) ? $json['stop_reason'] : null;
         if ($finish === 'refusal') {
             throw new AiProviderException('refusal');
         }
     } elseif ($type === 'ollama') {
         $text = is_string($json['message']['content'] ?? null) ? $json['message']['content'] : '';
+        foreach (($json['message']['tool_calls'] ?? []) as $i => $call) {
+            if (is_array($call) && is_string($call['function']['name'] ?? null)) {
+                $calls[] = ['id' => 'call_' . $i, 'name' => $call['function']['name'], 'arguments' => $args($call['function']['arguments'] ?? [])];
+            }
+        }
         $in = is_int($json['prompt_eval_count'] ?? null) ? $json['prompt_eval_count'] : null;
         $out = is_int($json['eval_count'] ?? null) ? $json['eval_count'] : null;
         $finish = is_string($json['done_reason'] ?? null) ? $json['done_reason'] : null;
@@ -401,6 +486,11 @@ function ai_parse_chat(string $type, array $json): array {
         } elseif (is_string($content)) {
             $text = $content;
         }
+        foreach (($choice['message']['tool_calls'] ?? []) as $i => $call) {
+            if (is_array($call) && is_string($call['function']['name'] ?? null)) {
+                $calls[] = ['id' => (string)($call['id'] ?? ('call_' . $i)), 'name' => $call['function']['name'], 'arguments' => $args($call['function']['arguments'] ?? [])];
+            }
+        }
         $in = is_int($json['usage']['prompt_tokens'] ?? null) ? $json['usage']['prompt_tokens'] : null;
         $out = is_int($json['usage']['completion_tokens'] ?? null) ? $json['usage']['completion_tokens'] : null;
         $finish = is_string($choice['finish_reason'] ?? null) ? $choice['finish_reason'] : null;
@@ -408,10 +498,10 @@ function ai_parse_chat(string $type, array $json): array {
     // Reasoning models served through compatible servers (Hermes among them) can wrap their
     // reasoning in <think>…</think>; it is never part of the answer.
     $text = trim((string)preg_replace('#<think>.*?</think>#su', '', $text));
-    if ($text === '') {
+    if ($text === '' && $calls === []) {
         throw new AiProviderException('empty_response');
     }
-    return ['text' => $text, 'input_tokens' => $in, 'output_tokens' => $out, 'finish_reason' => $finish];
+    return ['text' => $text, 'input_tokens' => $in, 'output_tokens' => $out, 'finish_reason' => $finish, 'tool_calls' => $calls];
 }
 
 /** Pure: estimated cost in the model's currency, or null when a price is missing. */
@@ -576,9 +666,9 @@ function ai_list_models(array $cfg): array {
 
 /**
  * One chat completion.
- * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string, latency_ms:int}
+ * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string, tool_calls:list<array>, latency_ms:int}
  */
-function ai_chat(array $cfg, string $model, array $messages, int $maxTokens, ?float $temperature = null): array {
-    $response = ai_http_send(ai_build_chat_request($cfg, $model, $messages, $maxTokens, $temperature), $cfg);
+function ai_chat(array $cfg, string $model, array $messages, int $maxTokens, ?float $temperature = null, ?array $tools = null): array {
+    $response = ai_http_send(ai_build_chat_request($cfg, $model, $messages, $maxTokens, $temperature, $tools), $cfg);
     return ai_parse_chat((string)$cfg['type'], $response['json']) + ['latency_ms' => $response['latency_ms']];
 }

@@ -62,6 +62,7 @@ A job is **skipped**, and the log shows why, when:
 | `sender_limit` | The per-number hourly cap for the line was reached (0 = no cap). |
 | `line_limit` | The line's daily cap was reached (0 = no cap). |
 | `no_model` | The account has no usable model. |
+| `human_handoff` | The conversation was handed to a human and is paused ([docs/ai-data.md](ai-data.md)). |
 | `insufficient_credit` | The account's balance cannot cover the AI price of one answer ([docs/ai-billing.md](ai-billing.md)). |
 | `optout_keyword`, `empty` | Recorded when the message is enqueued. The model is never asked. |
 
@@ -82,6 +83,8 @@ the part limit.
 | **Max reply length** | 1–5 SMS parts. The answer is cut at a sentence or word boundary, with «…» if cut. |
 | **Memory** | The last N exchanges (default 6) with the same number within H hours (default 24). |
 | **Caps** | Replies per number per hour, and replies per line per day. |
+| **Data tables / lookup mode** | The tables the assistant may look into and how (automatic search or tool calls). See [docs/ai-data.md](ai-data.md). |
+| **Hand-off** | «ارجاع به اپراتور» and how long the AI stays out of a handed-over conversation. See [docs/ai-data.md](ai-data.md). |
 | **Fallback text** | Sent when the model is still unreachable after `ai_secretary_max_attempts` tries. Empty means stay silent. |
 
 «آزمایش منشی» shows the answer the saved settings would give, including that number's real

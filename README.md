@@ -142,8 +142,14 @@ customer writes, and the answer is sent from the same line.
   percentage, and reseller named tariffs with a floor and daily reseller profit. The AI part is
   charged as `ai_debit` after the answer's SMS has gone out. «مصرف و سود» shows income against
   purchase cost. See [`docs/ai-billing.md`](docs/ai-billing.md).
+- **Data tables, lookup and hand-off** (`/messages/ai-data`): customers keep tables (products, orders,
+  appointments, …) built from templates, Excel/CSV or by hand. The assistant looks records up through
+  tool calls or an automatic search. A table with a phone column only ever shows a sender its own
+  rows. The AI can hand a conversation to a human: it is paused, the owner is notified, and the
+  operator replies from the panel and resumes the AI. See [`docs/ai-data.md`](docs/ai-data.md).
 
-Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`.
+Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
+`2026_11_06_ai_datasets.sql`.
 No public API routes.
 
 ## Delivery-based billing (ارسال بر اساس تحویل)
@@ -495,6 +501,7 @@ updated in the same change** — see `CLAUDE.md`.
 [telegram-user-service](docs/telegram-user-service.md) ·
 [ai-engines](docs/ai-engines.md) ·
 [ai-secretary](docs/ai-secretary.md) ·
+[ai-data](docs/ai-data.md) ·
 [webengage](docs/webengage.md) ·
 [telegram-invoice-bot](docs/telegram-invoice-bot.md)
 

@@ -301,6 +301,16 @@ function ai_discover_models(int $providerId, int $actorId): array {
         }
         $db->prepare($sql)->execute($params);
     });
+    // Hosted APIs answer tool calls; a self-hosted server (Hermes, vLLM, Ollama) only with the right
+    // parser, so the admin switches those on per model after testing.
+    if (in_array($provider['type'], ['openai', 'anthropic', 'openrouter'], true)) {
+        try {
+            db()->prepare("UPDATE ellsms_ai_models SET supports_tools = 1 WHERE provider_id = ? AND discovered_at >= NOW() - INTERVAL 1 MINUTE AND updated_by IS NULL")
+                ->execute([$providerId]);
+        } catch (PDOException) {
+            // 2026_11_06_ai_datasets.sql not applied yet.
+        }
+    }
     ai_record_run($providerId, null, 'discovery', $actorId, true, null, $result['latency_ms'], count($result['models']));
     audit($actorId, 'ai.models.discover', json_encode(['provider_id' => $providerId, 'seen' => count($result['models']), 'added' => $added]) ?: '');
     $message = count($result['models']) . ' مدل شناسایی شد؛ ' . $added . ' مدل جدید (غیرفعال) اضافه شد.'
@@ -384,6 +394,10 @@ function ai_model_update(int $modelId, array $input, int $actorId): void {
                 input_cost_per_million = ?, output_cost_per_million = ?, cost_currency = ?, sort_order = ?, updated_by = ? WHERE id = ?'
     )->execute([$displayName, $status, $maxOut === '' ? null : (int)$maxOut, $context === '' ? null : (int)$context,
                 $inPrice, $outPrice, $currency, (int)($input['sort_order'] ?? 100), $actorId, $modelId]);
+    // Tool calls (phase 4, the secretary's record lookup): only once the column exists.
+    if (array_key_exists('supports_tools', $model)) {
+        db()->prepare('UPDATE ellsms_ai_models SET supports_tools = ? WHERE id = ?')->execute([!empty($input['supports_tools']) ? 1 : 0, $modelId]);
+    }
     audit($actorId, 'ai.model.update', json_encode(['model_id' => $modelId, 'status' => $status, 'model' => $model['external_model_id']], JSON_UNESCAPED_UNICODE) ?: '');
 }
 

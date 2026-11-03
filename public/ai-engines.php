@@ -458,7 +458,7 @@ require __DIR__ . '/../app/views/header.php';
   </p>
   <div style="overflow-x:auto">
   <table class="table">
-    <thead><tr><th>مدل</th><th>نام نمایشی</th><th>حداکثر خروجی</th><th>پنجره‌ی متن</th><th>قیمت ورودی / خروجی (هر ۱M توکن)</th><th></th><th>آخرین تست</th><th></th></tr></thead>
+    <thead><tr><th>مدل</th><th>نام نمایشی</th><th>حداکثر خروجی</th><th>پنجره‌ی متن</th><th>قیمت ورودی / خروجی (هر ۱M توکن)</th><th title="مدل می‌تواند برای جست‌وجوی جدول‌های مشتری ابزار صدا بزند">ابزار</th><th></th><th>آخرین تست</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($models as $m): $mid = (int)$m['id']; $f = 'model-form-' . $mid; ?>
       <tr>
@@ -481,6 +481,7 @@ require __DIR__ . '/../app/views/header.php';
           <input form="<?= $f ?>" type="text" name="output_cost_per_million" class="mono" value="<?= e((string)($m['output_cost_per_million'] ?? '')) ?>" placeholder="0.00" style="width:5.5em" aria-label="قیمت خروجی">
           <input form="<?= $f ?>" type="text" name="cost_currency" class="mono" value="<?= e((string)$m['cost_currency']) ?>" style="width:3.5em" aria-label="ارز">
         </td>
+        <td><?php if (array_key_exists('supports_tools', $m)): ?><label title="فراخوانی ابزار (جست‌وجوی جدول‌ها)"><input form="<?= $f ?>" type="checkbox" name="supports_tools" value="1"<?= (int)$m['supports_tools'] ? ' checked' : '' ?>> دارد</label><?php endif; ?></td>
         <td><button form="<?= $f ?>" class="btn">ذخیره</button></td>
         <td>
           <?php if ($m['last_tested_at']): ?>
@@ -506,7 +507,7 @@ require __DIR__ . '/../app/views/header.php';
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if ($models === []): ?><tr><td colspan="8" class="muted">مدلی ثبت نشده است. «تشخیص مدل‌ها» را بزنید یا مدل را دستی اضافه کنید.</td></tr><?php endif; ?>
+    <?php if ($models === []): ?><tr><td colspan="9" class="muted">مدلی ثبت نشده است. «تشخیص مدل‌ها» را بزنید یا مدل را دستی اضافه کنید.</td></tr><?php endif; ?>
     </tbody>
   </table>
   </div>

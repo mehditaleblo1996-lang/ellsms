@@ -89,6 +89,9 @@ Every provider call goes through `ai_http_send()`:
   context window, and purchase price per million input/output tokens (USD by default). The price is
   the base for the phase-3 tariff, and the playground uses it to show an approximate cost.
 - **تست** sends a one-line prompt with a 16-token cap.
+- **«ابزار»** (`supports_tools`) marks a model that answers tool calls. The secretary's record lookup
+  uses it ([docs/ai-data.md](ai-data.md)). Discovery sets it for OpenAI, Anthropic and OpenRouter;
+  tick it yourself for a self-hosted server that has a tool parser.
 
 ## Which models an account may use
 

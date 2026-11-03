@@ -365,13 +365,128 @@ final class AiSecretaryFlowTest extends IntegrationTestCase
         $this->assertSame(1, (int)db()->query("SELECT COUNT(*) FROM ellsms_wallet_transactions WHERE type = 'ai_debit'")->fetchColumn());
     }
 
-    /* ================= helpers ================= */
+    /* ================= data tables, lookup and hand-off (phase 4, app/Ai/AiData.php) ================= */
+
+    /** An «سفارش‌ها» table restricted to the sender, with one order of the customer and one of someone else. */
+    private function ordersTable(): array
+    {
+        $id = ai_dataset_from_template($this->ownerId, 'shop_orders', $this->ownerId);
+        $orders = ai_dataset_find($id, $this->ownerId);
+        ai_data_row_save($orders, null, ['c1' => '4512', 'c2' => '09121234567', 'c3' => 'ارسال شده', 'c5' => 'RT998877']);
+        ai_data_row_save(ai_dataset_find($id, $this->ownerId), null, ['c1' => '7777', 'c2' => '09359998877', 'c3' => 'لغو شده']);
+        return ai_dataset_find($id, $this->ownerId);
+    }
+
+    public function testTheAutomaticSearchShowsOnlyTheSendersOwnRecords(): void
+    {
+        $orders = $this->ordersTable();
+        $assistantId = $this->assistant();
+        ai_assistant_set_datasets($assistantId, $this->ownerId, [$orders['id']]);
+
+        $own = $this->inbound($this->customer, 'سفارش ۴۵۱۲ کجاست؟');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $prompt = end($this->aiRequests()[0]['messages'])['content'];
+        $this->assertStringContainsString('کد سفارش: 4512', $prompt);
+        $this->assertStringContainsString('RT998877', $prompt);
+        $this->assertArrayNotHasKey('tools', $this->aiRequests()[0], 'this model has no tool support: automatic search');
+        $this->assertSame(['sent', 1], [$this->job($own)['status'], (int)$this->job($own)['records_used']]);
+
+        // Words that name no value of the row still find the sender's own latest orders.
+        $results = ai_data_search([$orders], 'سفارشم کی میرسه', $this->customer);
+        $this->assertSame(['4512'], array_map(static fn(array $r): string => $r['data']['c1'], $results));
+
+        // Someone else's order code finds nothing for this sender.
+        $other = $this->inbound($this->customer, 'سفارش 7777 چی شد؟');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $prompt = end($this->aiRequests()[1]['messages'])['content'];
+        $this->assertStringNotContainsString('لغو شده', $prompt);
+        $this->assertStringNotContainsString('09359998877', $prompt);
+    }
+
+    public function testAToolCapableModelLooksTheRecordUpItself(): void
+    {
+        $orders = $this->ordersTable();
+        db()->prepare('UPDATE ellsms_ai_models SET supports_tools = 1 WHERE id = ?')->execute([$this->modelId]);
+        $assistantId = $this->assistant();
+        ai_assistant_set_datasets($assistantId, $this->ownerId, [$orders['id']]);
+        $id = $this->inbound($this->customer, 'سفارش 4512');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+
+        $requests = $this->aiRequests();
+        $this->assertCount(2, $requests, 'a tool round, then the answer');
+        $this->assertSame('lookup_records', $requests[0]['tools'][0]['function']['name']);
+        $this->assertSame('tool', end($requests[1]['messages'])['role']);
+        $job = $this->job($id);
+        $this->assertSame('sent', $job['status']);
+        $this->assertStringStartsWith('پاسخ آزمایشی با داده: - کد سفارش: 4512', $job['reply_text']);
+        $this->assertSame([42, 14, 1], [(int)$job['input_tokens'], (int)$job['output_tokens'], (int)$job['records_used']], 'usage summed over both rounds');
+    }
+
+    public function testHandOffPausesTheConversationUntilAnOperatorResumesIt(): void
+    {
+        $assistantId = $this->assistant();
+        $id = $this->inbound($this->customer, 'می‌خوام با اپراتور صحبت کنم');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $job = $this->job($id);
+        $this->assertSame(['sent', 1], [$job['status'], (int)$job['handoff']]);
+        $this->assertSame('همکاران ما به‌زودی با شما تماس می‌گیرند.', $job['reply_text'], 'the marker never reaches the customer');
+        $this->assertTrue(ai_conversation_paused($this->line, $this->customer));
+        $note = db()->prepare("SELECT COUNT(*) FROM ellsms_notifications WHERE user_id = ? AND event_key = 'ai.handoff'");
+        $note->execute([$this->ownerId]);
+        $this->assertSame(1, (int)$note->fetchColumn(), 'the owner is notified');
+
+        $paused = $this->inbound($this->customer, 'کسی هست؟');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $this->assertSame(['skipped', 'human_handoff'], [$this->job($paused)['status'], $this->job($paused)['skip_reason']]);
+
+        $assistant = ai_assistant_find($assistantId);
+        ai_conversation_manual_reply($assistant, $this->customer, 'سلام، من همکار پشتیبانی هستم.', $this->ownerId);
+        $this->assertStringContainsString('همکار پشتیبانی', json_encode(end($this->gatewayRequests()), JSON_UNESCAPED_UNICODE));
+        try {
+            ai_conversation_manual_reply($assistant, '989000000000', 'سلام', $this->ownerId);
+            $this->fail('a number without a conversation on this line was accepted');
+        } catch (\AppException) {
+        }
+
+        ai_conversation_resume($this->line, $this->customer, $this->ownerId);
+        $this->assertFalse(ai_conversation_paused($this->line, $this->customer));
+        $this->inbound($this->customer, 'ممنون');
+        run_autoreply_pass();
+        ai_secretary_run_pass(5);
+        $contents = array_column(end($this->aiRequests())['messages'], 'content');
+        $this->assertContains('سلام، من همکار پشتیبانی هستم.', $contents, 'the AI sees the operator\'s reply in the conversation');
+    }
+
+    public function testImportAppendsUpdatesByKeyAndReplaces(): void
+    {
+        $orders = $this->ordersTable();
+        $header = ['کد سفارش', 'وضعیت', 'موبایل مشتری', 'ستون اضافه'];
+        $r = ai_data_import($orders, [$header, ['4512', 'تحویل شده', '09121234567', 'x'], ['9001', '', '09121234567', ''], ['', '', '', '']], 'upsert', $this->ownerId);
+        $this->assertSame(['added' => 1, 'updated' => 1, 'skipped' => 1], $r);
+        $page = ai_data_rows_page(ai_dataset_find($orders['id'], $this->ownerId), '9001', 1);
+        $this->assertSame(['9001', '989121234567'], [$page['rows'][0]['data']['c1'], \ai_data_phone($page['rows'][0]['data']['c2'])]);
+        $this->assertSame(3, (int)ai_dataset_find($orders['id'], $this->ownerId)['row_count']);
+
+        $r = ai_data_import(ai_dataset_find($orders['id'], $this->ownerId), [$header, ['1', 'جدید', '', '']], 'replace', $this->ownerId);
+        $this->assertSame(1, $r['added']);
+        $this->assertSame(1, (int)ai_dataset_find($orders['id'], $this->ownerId)['row_count']);
+        $this->expectException(\AppException::class);
+        ai_data_import(ai_dataset_find($orders['id'], $this->ownerId), [['چیز دیگر'], ['1']], 'append', $this->ownerId);
+    }
+
+        /* ================= helpers ================= */
 
     private function assistant(array $overrides = []): int
     {
         return ai_assistant_save($this->line, $this->ownerId, null, $overrides + [
             'enabled' => '1', 'mode' => 'business', 'business_name' => 'کلینیک لبخند',
             'instructions' => 'کوتاه جواب بده.', 'knowledge' => 'ساعت کاری: ۹ تا ۱۸', 'max_parts' => '2',
+            'handoff_enabled' => '1', 'handoff_pause_hours' => '24',
         ], $this->ownerId);
     }
 

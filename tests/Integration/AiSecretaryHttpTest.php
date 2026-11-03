@@ -20,6 +20,7 @@ final class AiSecretaryHttpTest extends TestCase
     private array $createdUserIds = [];
     private array $lines = [];
     private array $orgIds = [];
+    private array $datasetIds = [];
     /** user id => organization id */
     private array $orgOf = [];
     private int $modelId = 0;
@@ -64,6 +65,7 @@ final class AiSecretaryHttpTest extends TestCase
         @rmdir($this->sessionDir);
         $db = db();
         $db->exec("DELETE FROM ellsms_ai_providers WHERE code LIKE 'aisechttp%'");
+        foreach ($this->datasetIds as $id) $db->prepare('DELETE FROM ellsms_ai_datasets WHERE id = ?')->execute([$id]);
         foreach ($this->lines as $line) {
             $db->prepare('DELETE FROM ellsms_ai_assistants WHERE line = ?')->execute([$line]);
             $db->prepare('DELETE FROM ellsms_numbers WHERE number = ?')->execute([$line]);
@@ -122,6 +124,37 @@ final class AiSecretaryHttpTest extends TestCase
         $this->assertNull(\ai_assistant_for_line($customer['line']));
     }
 
+    public function testACustomerBuildsATableAndImportsACsvButCannotOpenAnotherCustomersTable(): void
+    {
+        $customer = $this->customerWithLine(true);
+        $other = $this->customerWithLine(true);
+        $otherTable = \ai_dataset_from_template($other['id'], 'clinic_services', $other['id']);
+        $session = $this->sessionFor($customer['id']);
+
+        $r = $this->post($session, ['do' => 'create_template', 'template' => 'shop_orders'], '/ai-data.php');
+        $this->assertSame(302, $r['code']);
+        $tables = \ai_datasets_for($customer['id']);
+        $this->assertSame(['سفارش‌ها'], array_column($tables, 'name'));
+        $this->datasetIds[] = $tables[0]['id'];
+
+        $csv = tempnam(sys_get_temp_dir(), 'aidata') . '.csv';
+        file_put_contents($csv, "کد سفارش,موبایل مشتری,وضعیت\n4512,09121234567,ارسال شده\n4513,09121234567,در انتظار\n");
+        $page = $this->request('GET', '/ai-data.php?id=' . $tables[0]['id'], $session);
+        preg_match('/name="_csrf" value="([^"]+)"/', $page['body'], $m);
+        $upload = $this->request('POST', '/ai-data.php', $session, ['_csrf' => $m[1], 'do' => 'import', 'dataset_id' => (string)$tables[0]['id'],
+            'mode' => 'upsert', 'file' => new \CURLFile($csv, 'text/csv', 'orders.csv')], true);
+        @unlink($csv);
+        $this->assertSame(302, $upload['code']);
+        $this->assertSame(2, (int)\ai_dataset_find($tables[0]['id'], $customer['id'])['row_count']);
+
+        $view = $this->request('GET', '/ai-data.php?id=' . $tables[0]['id'], $session);
+        $this->assertStringContainsString('4513', $view['body']);
+        $foreign = $this->request('GET', '/ai-data.php?id=' . $otherTable, $session);
+        $this->assertSame(302, $foreign['code'], 'another customer\'s table is not shown');
+        $this->assertNotNull(\ai_dataset_find($otherTable, $other['id']));
+        $this->datasetIds[] = $otherTable;
+    }
+
     /* ================= helpers ================= */
 
     /** @return array{id:int, line:string} */
@@ -161,23 +194,23 @@ final class AiSecretaryHttpTest extends TestCase
         return $sid;
     }
 
-    private function post(string $sessionId, array $fields): array
+    private function post(string $sessionId, array $fields, string $path = '/ai-secretary.php'): array
     {
-        $page = $this->request('GET', '/ai-secretary.php', $sessionId);
+        $page = $this->request('GET', $path, $sessionId);
         $csrf = preg_match('/name="_csrf" value="([^"]+)"/', $page['body'], $m) === 1 ? $m[1] : '';
         $this->assertNotSame('', $csrf);
-        return $this->request('POST', '/ai-secretary.php', $sessionId, ['_csrf' => $csrf] + $fields);
+        return $this->request('POST', $path, $sessionId, ['_csrf' => $csrf] + $fields);
     }
 
     /** @return array{code:int, body:string} */
-    private function request(string $method, string $path, ?string $sessionId = null, array $post = []): array
+    private function request(string $method, string $path, ?string $sessionId = null, array $post = [], bool $multipart = false): array
     {
         $ch = curl_init("http://127.0.0.1:{$this->port}{$path}");
         $options = [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 30, CURLOPT_FOLLOWLOCATION => false, CURLOPT_HEADER => true];
         if ($sessionId !== null) $options[CURLOPT_COOKIE] = 'ELLSMS_SESSION=' . $sessionId;
         if ($method === 'POST') {
             $options[CURLOPT_POST] = true;
-            $options[CURLOPT_POSTFIELDS] = http_build_query($post);
+            $options[CURLOPT_POSTFIELDS] = $multipart ? $post : http_build_query($post);
         }
         curl_setopt_array($ch, $options);
         $raw = (string)curl_exec($ch);

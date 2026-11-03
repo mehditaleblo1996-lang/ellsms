@@ -6,7 +6,10 @@
  *   php -S 127.0.0.1:PORT tests/fixtures/fake-openai-server.php
  *
  *   GET  /v1/models            -> two models
- *   POST /v1/chat/completions  -> echoes the last user message, with usage
+ *   POST /v1/chat/completions  -> echoes the last user message, with usage; when tools are offered it
+ *                                 first calls the first tool with that message as the query, then
+ *                                 answers from the tool result's first «- » line; a message asking for
+ *                                 «اپراتور» gets an answer starting with the [HUMAN] hand-off marker
  * When FAKE_AI_KEY is set, both answer 401 unless "Authorization: Bearer <FAKE_AI_KEY>" is sent.
  * Every request is appended to FAKE_AI_LOG (one JSON line) so a test can see what was sent.
  */
@@ -41,13 +44,32 @@ if ($path === '/v1/models' && $_SERVER['REQUEST_METHOD'] === 'GET') {
 
 if ($path === '/v1/chat/completions' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $request = json_decode($body, true) ?: [];
+    $messages = $request['messages'] ?? [];
+    $lastMessage = end($messages) ?: [];
     $last = '';
-    foreach (($request['messages'] ?? []) as $m) {
+    foreach ($messages as $m) {
         if (($m['role'] ?? '') === 'user') $last = (string)$m['content'];
+    }
+    $message = ['role' => 'assistant', 'content' => 'پاسخ آزمایشی: ' . $last];
+    $finish = 'stop';
+    if (($lastMessage['role'] ?? '') === 'tool') {
+        // Answer from the tool result: its first record line.
+        $lines = array_values(array_filter(explode("\n", (string)$lastMessage['content']), static fn(string $l): bool => str_starts_with($l, '- ')));
+        $message['content'] = 'پاسخ آزمایشی با داده: ' . ($lines[0] ?? 'چیزی پیدا نشد');
+    } elseif (!empty($request['tools'])) {
+        // A tool-capable model looks the record up first.
+        $tool = $request['tools'][0]['function'];
+        $message = ['role' => 'assistant', 'content' => null, 'tool_calls' => [[
+            'id' => 'call_1', 'type' => 'function',
+            'function' => ['name' => $tool['name'], 'arguments' => json_encode(['table' => $tool['parameters']['properties']['table']['enum'][0] ?? '', 'query' => $last], JSON_UNESCAPED_UNICODE)],
+        ]]];
+        $finish = 'tool_calls';
+    } elseif (str_contains($last, 'اپراتور')) {
+        $message['content'] = '[HUMAN] همکاران ما به‌زودی با شما تماس می‌گیرند.';
     }
     echo json_encode([
         'id' => 'chatcmpl-test', 'object' => 'chat.completion', 'model' => $request['model'] ?? '',
-        'choices' => [['index' => 0, 'message' => ['role' => 'assistant', 'content' => 'پاسخ آزمایشی: ' . $last], 'finish_reason' => 'stop']],
+        'choices' => [['index' => 0, 'message' => $message, 'finish_reason' => $finish]],
         'usage' => ['prompt_tokens' => 21, 'completion_tokens' => 7, 'total_tokens' => 28],
     ], JSON_UNESCAPED_UNICODE);
     return true;

@@ -140,6 +140,8 @@ function financial_log_reference_labels(): array {
         'autoreply'         => 'منشی پیامک',
         'ai_secretary'      => 'منشی هوشمند',
         'ai_usage'          => 'منشی هوشمند (هوش مصنوعی)',
+        'ai_manual'         => 'پاسخ اپراتور در منشی هوشمند',
+        'ai_outreach'       => 'پیام اول منشی هوشمند',
         'regional_bulk'     => 'ارسال منطقه‌ای',
         'voice_message'     => 'پیام صوتی',
         'voice_tts'         => 'ساخت فایل صوتی',

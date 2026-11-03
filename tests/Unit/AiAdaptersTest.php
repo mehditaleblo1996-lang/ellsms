@@ -192,7 +192,7 @@ final class AiAdaptersTest extends TestCase
     {
         $openai = \ai_parse_chat('openai_compatible', ['choices' => [['message' => ['content' => "<think>reasoning</think>\nسلام!"], 'finish_reason' => 'stop']],
             'usage' => ['prompt_tokens' => 12, 'completion_tokens' => 3]]);
-        $this->assertSame(['text' => 'سلام!', 'input_tokens' => 12, 'output_tokens' => 3, 'finish_reason' => 'stop'], $openai);
+        $this->assertSame(['text' => 'سلام!', 'input_tokens' => 12, 'output_tokens' => 3, 'finish_reason' => 'stop', 'tool_calls' => []], $openai);
 
         $parts = \ai_parse_chat('openai', ['choices' => [['message' => ['content' => [['type' => 'text', 'text' => 'a'], ['type' => 'text', 'text' => 'b']]]]]]);
         $this->assertSame('ab', $parts['text']);

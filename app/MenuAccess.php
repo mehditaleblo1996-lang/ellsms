@@ -33,7 +33,7 @@ function menu_catalog(): array {
         'smart'         => ['پیامک هوشمند',         '✦',  '/smart-send.php',    ['smart-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
         'schedules'     => ['زمان‌بندی‌شده',         '◷',  '/schedules.php',     ['schedules.php']],
         'autoreply'     => ['منشی پیامک',           '🤖', '/autoreply.php',     ['autoreply.php']],
-        'ai_secretary'  => ['منشی هوشمند',          '✦',  '/ai-secretary.php',  ['ai-secretary.php']],
+        'ai_secretary'  => ['منشی هوشمند',          '✦',  '/ai-secretary.php',  ['ai-secretary.php', 'ai-data.php']],
         'reports'       => ['گزارش ارسال',          '≣',  '/reports.php',       ['reports.php', 'reports-v2.php', 'message-detail.php', 'report-exports.php', 'bulk-job.php', 'operator-reports.php']],
         'reports_bulk'  => ['گزارش ارسال حجیم',     '≣',  '/reports-bulk.php',  ['reports-bulk.php', 'bulk-job.php']],
         'inbox'         => ['صندوق دریافت',         '✉',  '/inbox.php',         ['inbox.php']],

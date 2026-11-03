@@ -75,7 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 $orgId = $ownerId === (int)$me['id'] ? (isset($me['organization_id']) ? (int)$me['organization_id'] : null) : user_default_organization_id((int)$ownerId);
-                ai_assistant_save($selectedLine, (int)$ownerId, $orgId ?: null, $_POST, $actor);
+                $assistantId = ai_assistant_save($selectedLine, (int)$ownerId, $orgId ?: null, $_POST, $actor);
+                if (ai_data_available()) {
+                    ai_assistant_set_datasets($assistantId, (int)$ownerId, (array)($_POST['dataset_ids'] ?? []));
+                }
                 flash('success', !empty($_POST['enabled']) ? 'منشی هوشمند این خط ذخیره و فعال شد.' : 'تنظیمات ذخیره شد (منشی خاموش است).');
                 break;
             }
@@ -93,6 +96,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // A customer's own test is a real model call and is charged; a platform admin's is free.
                 $simulation = ai_secretary_simulate($assistant, (string)($_POST['sender'] ?? ''), $message, $actor, !$isAdmin);
                 break;
+            }
+            case 'manual_reply': {
+                $assistant = ai_assistant_for_line($selectedLine) ?? throw new AppException('برای این خط منشی تعریف نشده است.');
+                $to = normalize_originator((string)($_POST['sender'] ?? '')) ?? throw new AppException('شماره‌ی مشتری نامعتبر است.');
+                ai_conversation_manual_reply($assistant, $to, (string)($_POST['text'] ?? ''), $actor);
+                flash('success', 'پاسخ شما ارسال شد.');
+                redirect('/ai-secretary.php?line=' . $selectedLine . '#handoffs');
+            }
+            case 'resume': {
+                $to = normalize_originator((string)($_POST['sender'] ?? '')) ?? throw new AppException('شماره‌ی مشتری نامعتبر است.');
+                ai_conversation_resume($selectedLine, $to, $actor);
+                flash('success', 'منشی هوشمند دوباره به این شماره پاسخ می‌دهد.');
+                redirect('/ai-secretary.php?line=' . $selectedLine . '#handoffs');
             }
             case 'settings_save':
                 if (!$isAdmin) throw new AppException('دسترسی ندارید.');
@@ -269,6 +285,32 @@ require __DIR__ . '/../app/views/header.php';
       <label>سقف پاسخ روزانه‌ی خط <input type="number" name="line_daily_limit" min="0" value="<?= (int)$editing['line_daily_limit'] ?>" style="width:7em"></label>
       <span class="muted">(۰ = بدون سقف)</span>
     </div>
+    <?php if (ai_data_available()):
+        $ownerTables = $editingOwner !== null ? ai_datasets_for($editingOwner) : [];
+        $linkedTables = isset($assistants[$selectedLine]) ? array_column(ai_assistant_datasets((int)$assistants[$selectedLine]['id']), 'id') : []; ?>
+      <fieldset style="border:1px solid var(--border, #ddd);border-radius:8px;padding:8px 12px;margin:8px 0">
+        <legend>جدول‌های داده (جست‌وجوی سفارش، محصول، نوبت ...)</legend>
+        <?php foreach ($ownerTables as $t): ?>
+          <label style="display:inline-block;margin-inline-end:16px"><input type="checkbox" name="dataset_ids[]" value="<?= $t['id'] ?>"<?= in_array($t['id'], $linkedTables, true) ? ' checked' : '' ?>>
+            <?= e($t['name']) ?> <span class="muted">(<?= to_persian_digits(number_format((int)$t['row_count'])) ?> ردیف<?= $t['phone_column'] !== null ? '، فقط ردیف‌های همان شماره' : '' ?>)</span></label>
+        <?php endforeach; ?>
+        <?php if ($ownerTables === []): ?><span class="muted">جدولی ندارید.</span><?php endif; ?>
+        <a class="btn" href="/ai-data.php">مدیریت جدول‌ها</a>
+        <div class="toolbar" style="margin-top:6px">
+          <label>روش جست‌وجو
+            <select name="lookup_mode">
+              <?php foreach (['auto' => 'خودکار (ابزار اگر مدل پشتیبانی کند)', 'search' => 'جست‌وجوی خودکار در پیام', 'tools' => 'ابزار (فقط مدل‌های دارای ابزار)'] as $k => $l): ?>
+                <option value="<?= $k ?>"<?= ($editing['lookup_mode'] ?? 'auto') === $k ? ' selected' : '' ?>><?= $l ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+        </div>
+      </fieldset>
+      <div class="toolbar">
+        <label><input type="checkbox" name="handoff_enabled" value="1"<?= (int)($editing['handoff_enabled'] ?? 1) ? ' checked' : '' ?>> ارجاع به اپراتور: وقتی مشتری اپراتور بخواهد، شکایت کند یا منشی نتواند کمک کند</label>
+        <label>پس از ارجاع، منشی <input type="number" name="handoff_pause_hours" min="0" max="720" value="<?= (int)($editing['handoff_pause_hours'] ?? 24) ?>" style="width:5em"> ساعت به آن شماره پاسخ ندهد (۰ = ادامه دهد)</label>
+      </div>
+    <?php endif; ?>
     <label style="display:block">متن جایگزین وقتی هوش مصنوعی در دسترس نیست (خالی = پاسخی ارسال نشود)
       <input type="text" name="fallback_text" value="<?= e((string)$editing['fallback_text']) ?>" maxlength="500" style="width:100%" placeholder="پیام شما دریافت شد؛ همکاران ما به‌زودی پاسخ می‌دهند.">
     </label>
@@ -327,6 +369,43 @@ require __DIR__ . '/../app/views/header.php';
 <?php endif; ?>
 <?php endif; ?>
 
+<?php
+  $handoffLines = $selectedLine !== '' ? [$selectedLine] : $myLines;
+  $handoffs = ai_conversations_handed_over($handoffLines);
+  if ($handoffs !== []): ?>
+<div class="card" id="handoffs">
+  <h2>گفتگوهای ارجاع‌شده به اپراتور</h2>
+  <p class="muted">در این گفتگوها مشتری پاسخ انسانی خواسته یا منشی نتوانسته کمک کند. تا وقتی گفتگو «متوقف» است منشی به آن شماره جواب نمی‌دهد؛
+    از همین‌جا پاسخ بدهید (مثل پیامک عادی هزینه دارد) و بعد «ادامه با منشی هوشمند» را بزنید.</p>
+  <?php foreach ($handoffs as $h):
+      $recent = db()->prepare('SELECT kind, content, reply_text, created_at FROM ellsms_ai_jobs WHERE line = ? AND sender = ? ORDER BY id DESC LIMIT 6');
+      $recent->execute([$h['line'], $h['sender']]); ?>
+    <div style="border:1px solid var(--border, #ddd);border-radius:8px;padding:10px;margin-bottom:10px">
+      <p><span class="mono"><?= e($h['sender']) ?></span> روی خط <span class="mono"><?= e($h['line']) ?></span> —
+        <?= (int)$h['is_paused'] ? '<strong style="color:#b91c1c">منشی متوقف است</strong>' : '<span class="muted">' . ($h['resolved_at'] ? 'به منشی برگشت' : 'منشی فعال') . '</span>' ?>
+        · <?= jdate((string)$h['handoff_at']) ?></p>
+      <ul style="margin:0 0 8px">
+        <?php foreach (array_reverse($recent->fetchAll()) as $m): ?>
+          <?php if (trim((string)$m['content']) !== ''): ?><li>مشتری: <?= e(mb_strimwidth((string)$m['content'], 0, 200, '…')) ?></li><?php endif; ?>
+          <?php if ($m['reply_text'] !== null): ?><li class="muted"><?= $m['kind'] === 'manual' ? 'اپراتور' : 'منشی' ?>: <?= e(mb_strimwidth((string)$m['reply_text'], 0, 200, '…')) ?></li><?php endif; ?>
+        <?php endforeach; ?>
+      </ul>
+      <form method="post" class="toolbar">
+        <?= csrf_field() ?><input type="hidden" name="do" value="manual_reply"><input type="hidden" name="line" value="<?= e($h['line']) ?>"><input type="hidden" name="sender" value="<?= e($h['sender']) ?>">
+        <label style="flex:1 1 24em">پاسخ شما <input type="text" name="text" maxlength="1000" style="width:100%" required></label>
+        <button class="btn btn-primary">ارسال پاسخ</button>
+      </form>
+      <?php if ((int)$h['is_paused']): ?>
+        <form method="post" style="display:inline">
+          <?= csrf_field() ?><input type="hidden" name="do" value="resume"><input type="hidden" name="line" value="<?= e($h['line']) ?>"><input type="hidden" name="sender" value="<?= e($h['sender']) ?>">
+          <button class="btn">ادامه با منشی هوشمند</button>
+        </form>
+      <?php endif; ?>
+    </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <div class="card">
   <h2>گفتگوها<?= $selectedLine !== '' ? ' — خط <span class="mono">' . e($selectedLine) . '</span>' : '' ?></h2>
   <form method="get" class="toolbar">
@@ -356,6 +435,9 @@ require __DIR__ . '/../app/views/header.php';
         <td>
           <strong style="color:<?= $statusColors[$row['status']] ?? 'inherit' ?>"><?= $statusLabels[$row['status']] ?? e($row['status']) ?></strong>
           <?php if ($row['skip_reason']): ?><br><span class="muted"><?= e(ai_secretary_reason_label((string)$row['skip_reason'])) ?></span><?php endif; ?>
+          <?php if (!empty($row['handoff'])): ?><br><span class="badge">ارجاع به اپراتور</span><?php endif; ?>
+          <?php if (($row['kind'] ?? '') === 'manual'): ?><br><span class="muted">پاسخ اپراتور</span><?php endif; ?>
+          <?php if (isset($row['records_used']) && $row['records_used'] !== null): ?><br><span class="muted"><?= to_persian_digits((string)$row['records_used']) ?> ردیف داده</span><?php endif; ?>
           <?php if ($row['status'] === 'failed' || ($row['status'] === 'pending' && $row['error_code'])): ?>
             <br><span class="muted"><?= e($row['error_code'] === 'send_failed' ? (string)$row['info'] : ai_secretary_reason_label((string)$row['error_code'])) ?></span>
           <?php endif; ?>

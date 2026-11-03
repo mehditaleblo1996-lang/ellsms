@@ -38,6 +38,11 @@ const AI_SECRETARY_SETTINGS = [
     'ai_secretary_retention_days'  => ['90', 7, 3650],
 ];
 
+/** Written by the model at the start of an answer that hands the conversation to a human. */
+const AI_SECRETARY_HANDOFF_MARKER = '[HUMAN]';
+/** Most tool-call rounds per answer before the model must answer with what it has. */
+const AI_SECRETARY_MAX_TOOL_ROUNDS = 3;
+
 /** Burst guard: more than this many messages from one number to one line within the window = stop. */
 const AI_SECRETARY_BURST_MAX = 5;
 const AI_SECRETARY_BURST_WINDOW_SECONDS = 120;
@@ -71,6 +76,7 @@ const AI_SECRETARY_SKIP_REASONS = [
     'line_limit'       => 'سقف پاسخ روزانه‌ی این خط پر شده است',
     'no_model'         => 'هیچ مدل هوش مصنوعی برای این حساب فعال نیست',
     'insufficient_credit' => 'اعتبار حساب برای هزینه‌ی پاسخ هوشمند کافی نیست',
+    'human_handoff'    => 'گفتگو به اپراتور سپرده شده است (منشی هوشمند متوقف است)',
 ];
 
 /**
@@ -190,7 +196,7 @@ function ai_assistant_defaults(string $line): array {
         'id' => 0, 'line' => $line, 'user_id' => 0, 'organization_id' => null, 'enabled' => 0, 'mode' => 'business',
         'template' => 'custom', 'business_name' => '', 'instructions' => '', 'knowledge' => '', 'model_id' => null,
         'max_parts' => 2, 'memory_turns' => 6, 'memory_hours' => 24, 'sender_hourly_limit' => 10,
-        'line_daily_limit' => 500, 'fallback_text' => '',
+        'line_daily_limit' => 500, 'fallback_text' => '', 'handoff_enabled' => 1, 'handoff_pause_hours' => 24, 'lookup_mode' => 'auto',
     ];
 }
 
@@ -247,7 +253,11 @@ function ai_assistant_validate(array $input, array $allowedModelIds): array {
         'sender_hourly_limit' => $int('sender_hourly_limit', 10, 0, 1000, 'سقف پاسخ ساعتی به هر شماره'),
         'line_daily_limit'    => $int('line_daily_limit', 500, 0, 1000000, 'سقف پاسخ روزانه‌ی خط'),
         'fallback_text'       => $fallback,
-    ], $errors];
+    ] + (ai_data_available() ? [
+        'handoff_enabled'     => !empty($input['handoff_enabled']) ? 1 : 0,
+        'handoff_pause_hours' => $int('handoff_pause_hours', 24, 0, 720, 'مدت توقف منشی پس از ارجاع'),
+        'lookup_mode'         => in_array($input['lookup_mode'] ?? '', ['auto', 'search', 'tools'], true) ? (string)$input['lookup_mode'] : 'auto',
+    ] : []), $errors];
 }
 
 /**
@@ -354,7 +364,7 @@ function ai_secretary_fit_parts(string $text, int $maxParts): string {
  * Pure: the system prompt of an assistant. The inbound SMS is untrusted: the prompt says so, and
  * that the customer cannot change these rules or see them.
  */
-function ai_secretary_system_prompt(array $assistant): string {
+function ai_secretary_system_prompt(array $assistant, array $ctx = []): string {
     $parts = max(1, (int)$assistant['max_parts']);
     $chars = ai_secretary_part_chars($parts);
     $name = trim((string)($assistant['business_name'] ?? ''));
@@ -371,6 +381,16 @@ function ai_secretary_system_prompt(array $assistant): string {
     if ($instructions !== '') {
         $lines[] = "\n## Instructions from the business\n" . $instructions;
     }
+    $tables = $ctx['tables'] ?? [];
+    if ($tables !== []) {
+        $names = implode('، ', array_map(static fn(array $d): string => '«' . $d['name'] . '»', $tables));
+        $lines[] = !empty($ctx['tools'])
+            ? "The business keeps records in these tables: {$names}. Before answering anything about a specific order, product, appointment, price, stock or status, look it up with the lookup_records tool. Never invent a record or a value; if the lookup finds nothing, say so and ask for the code or number."
+            : "The business keeps records in these tables: {$names}. Records that match the customer's message are given with it under «Records found». Use only those values. If the record the customer asks about is not there, say you could not find it and ask for its code or number.";
+    }
+    if (!empty($ctx['handoff'])) {
+        $lines[] = 'If the customer asks to talk to a person, is angry or complaining, or you cannot help with the information you have, start your reply with ' . AI_SECRETARY_HANDOFF_MARKER . ' and then tell them briefly and politely that a colleague will contact them soon.';
+    }
     $knowledge = trim((string)($assistant['knowledge'] ?? ''));
     if ($knowledge !== '') {
         $lines[] = "\n## Business information\n" . $knowledge;
@@ -379,19 +399,39 @@ function ai_secretary_system_prompt(array $assistant): string {
 }
 
 /**
+ * Pure: an answer with the hand-off marker removed, and whether it was there. The marker is looked
+ * for anywhere (some models put it after a greeting) and is never sent to the customer.
+ * @return array{0: string, 1: bool}
+ */
+function ai_secretary_parse_handoff(string $text): array {
+    $found = stripos($text, AI_SECRETARY_HANDOFF_MARKER) !== false;
+    $clean = trim(preg_replace('/\s*' . preg_quote(AI_SECRETARY_HANDOFF_MARKER, '/') . '\s*/iu', ' ', $text) ?? $text);
+    return [$clean, $found];
+}
+
+/**
  * Pure: the chat messages for one answer — system prompt, the earlier exchanges (oldest first, each
  * a user turn and the reply that was sent), then the new message.
  * @param list<array{content:string, reply_text:?string}> $history newest LAST
  */
-function ai_secretary_build_messages(array $assistant, array $history, string $content): array {
-    $messages = [['role' => 'system', 'content' => ai_secretary_system_prompt($assistant)]];
+function ai_secretary_build_messages(array $assistant, array $history, string $content, array $ctx = []): array {
+    $messages = [['role' => 'system', 'content' => ai_secretary_system_prompt($assistant, $ctx)]];
     foreach ($history as $turn) {
         $reply = trim((string)($turn['reply_text'] ?? ''));
         if ($reply === '') continue;
-        $messages[] = ['role' => 'user', 'content' => mb_substr((string)$turn['content'], 0, AI_SECRETARY_MAX_INPUT_CHARS)];
+        // An operator's manual reply has no customer message of its own.
+        if (trim((string)$turn['content']) !== '') {
+            $messages[] = ['role' => 'user', 'content' => mb_substr((string)$turn['content'], 0, AI_SECRETARY_MAX_INPUT_CHARS)];
+        }
         $messages[] = ['role' => 'assistant', 'content' => $reply];
     }
-    $messages[] = ['role' => 'user', 'content' => mb_substr(trim($content), 0, AI_SECRETARY_MAX_INPUT_CHARS)];
+    $message = mb_substr(trim($content), 0, AI_SECRETARY_MAX_INPUT_CHARS);
+    // Records found by the automatic search travel with the message, not in the system prompt: the
+    // system prompt stays the same from message to message, so a provider can cache it.
+    if (array_key_exists('records', $ctx) && $ctx['records'] !== null) {
+        $message = "Records found:\n" . ($ctx['records'] !== '' ? $ctx['records'] : '(none)') . "\n\nCustomer message:\n" . $message;
+    }
+    $messages[] = ['role' => 'user', 'content' => $message];
     return $messages;
 }
 
@@ -402,6 +442,7 @@ function ai_secretary_build_messages(array $assistant, array $history, string $c
 function ai_secretary_guard(array $f): ?string {
     return match (true) {
         !$f['is_mobile']                                                          => 'not_mobile',
+        !empty($f['paused'])                                                      => 'human_handoff',
         $f['own_line']                                                            => 'own_line',
         $f['opted_out']                                                           => 'opted_out',
         $f['age_seconds'] > $f['max_age_seconds']                                 => 'too_old',
@@ -552,6 +593,7 @@ function ai_secretary_guard_facts(array $job, array $assistant): array {
     $ownLine = $count('SELECT COUNT(*) FROM ellsms_numbers WHERE number = ?', [$sender]) > 0;
     $age = $count('SELECT TIMESTAMPDIFF(SECOND, created_at, NOW()) FROM ellsms_ai_jobs WHERE id = ?', [(int)$job['id']]);
     return [
+        'paused'              => ai_conversation_paused($line, $sender),
         'is_mobile'           => ai_secretary_is_mobile($sender),
         'own_line'            => $ownLine,
         'opted_out'           => line_optout_filter($line, [$sender]) !== [],
@@ -595,26 +637,77 @@ function ai_secretary_resolve_model(array $assistant): ?array {
 }
 
 /**
- * Asks the model for an answer.
- * @return array{text:string, model:array, input_tokens:?int, output_tokens:?int, latency_ms:int, cost:?float}
+ * Asks the model for an answer, looking records up in the line's tables when it has any: through
+ * the model's tool calls (lookup_mode 'tools', or 'auto' with a model flagged supports_tools), or
+ * by the automatic search otherwise. Token usage is summed over every round.
+ *
+ * @return array{text:string, model:array, input_tokens:int, output_tokens:int, tokens_estimated:bool,
+ *               latency_ms:int, cost:?float, handoff:bool, records_used:?int}
  * @throws AiProviderException
  */
-function ai_secretary_generate(array $assistant, array $model, array $history, string $content): array {
+function ai_secretary_generate(array $assistant, array $model, array $history, string $content, ?string $sender = null): array {
     $provider = ai_provider_find((int)$model['provider_id']) ?? throw new AiProviderException('not_found', 'ارائه‌دهنده‌ی مدل پیدا نشد.');
     $cfg = ai_provider_config($provider);
     $parts = max(1, (int)$assistant['max_parts']);
-    $messages = ai_secretary_build_messages($assistant, $history, $content);
-    $reply = ai_chat($cfg, (string)$model['external_model_id'], $messages, ai_model_token_cap($model, ai_secretary_max_tokens($parts)));
-    // What the answer is billed for: the provider's usage, or an estimate when it reported none
-    // (app/Ai/AiBilling.php). Counted on the model's full reply, before it is cut to the SMS parts.
-    $promptChars = array_sum(array_map(static fn(array $m): int => mb_strlen((string)$m['content']), $messages));
-    $billable = ai_billable_tokens($reply['input_tokens'], $reply['output_tokens'], $promptChars, mb_strlen($reply['text']));
+    $tables = !empty($assistant['id']) ? ai_assistant_datasets((int)$assistant['id']) : [];
+    $mode = (string)($assistant['lookup_mode'] ?? 'auto');
+    $useTools = $tables !== [] && ($mode === 'tools' || ($mode === 'auto' && !empty($model['supports_tools'])));
+    $ctx = ['tables' => $tables, 'tools' => $useTools, 'handoff' => !empty($assistant['handoff_enabled'])];
+    $recordsUsed = null;
+    if ($tables !== [] && !$useTools) {
+        // The previous customer message helps a follow-up («کی می‌رسه؟» after giving the code).
+        $previous = '';
+        for ($i = count($history) - 1; $i >= 0; $i--) {
+            if (trim((string)$history[$i]['content']) !== '') { $previous = (string)$history[$i]['content']; break; }
+        }
+        $results = ai_data_search($tables, $content . ' ' . $previous, $sender);
+        $ctx['records'] = ai_data_format_results($results);
+        $recordsUsed = count($results);
+    }
+    $messages = ai_secretary_build_messages($assistant, $history, $content, $ctx);
+    $tools = $useTools ? [ai_data_tool($tables)] : null;
+    $maxTokens = ai_model_token_cap($model, ai_secretary_max_tokens($parts));
+
+    $in = $out = 0;
+    $latency = 0;
+    $unknownUsage = false;
+    $promptChars = 0;
+    for ($round = 0; ; $round++) {
+        $promptChars += array_sum(array_map(static fn(array $m): int => mb_strlen((string)($m['content'] ?? '')), $messages));
+        $reply = ai_chat($cfg, (string)$model['external_model_id'], $messages, $maxTokens, null,
+            $round < AI_SECRETARY_MAX_TOOL_ROUNDS ? $tools : null);
+        $latency += $reply['latency_ms'];
+        $billable = ai_billable_tokens($reply['input_tokens'], $reply['output_tokens'], $promptChars, mb_strlen($reply['text']));
+        $in += $billable['input'];
+        $out += $billable['output'];
+        $unknownUsage = $unknownUsage || $billable['estimated'];
+        $promptChars = 0;
+        if ($reply['tool_calls'] === [] || $tools === null) break;
+        $messages[] = ['role' => 'assistant', 'content' => $reply['text'], 'tool_calls' => $reply['tool_calls']];
+        foreach ($reply['tool_calls'] as $call) {
+            $result = $call['name'] === 'lookup_records'
+                ? ai_data_tool_run($tables, $call['arguments'], $sender)
+                : ['text' => 'Unknown tool.', 'count' => 0];
+            $recordsUsed = ($recordsUsed ?? 0) + $result['count'];
+            $messages[] = ['role' => 'tool', 'tool_call_id' => $call['id'], 'name' => $call['name'], 'content' => $result['text']];
+        }
+        if ($round + 1 >= AI_SECRETARY_MAX_TOOL_ROUNDS) $tools = null; // last round: answer with what you have
+    }
+    if (trim($reply['text']) === '') {
+        throw new AiProviderException('empty_response');
+    }
+    [$text, $handoff] = ai_secretary_parse_handoff($reply['text']);
+    if ($text === '') {
+        throw new AiProviderException('empty_response');
+    }
     return [
-        'text' => ai_secretary_fit_parts($reply['text'], $parts),
+        'text' => ai_secretary_fit_parts($text, $parts),
         'model' => $model,
-        'input_tokens' => $billable['input'], 'output_tokens' => $billable['output'], 'tokens_estimated' => $billable['estimated'],
-        'latency_ms' => $reply['latency_ms'],
-        'cost' => ai_cost_estimate($billable['input'], $billable['output'], $model['input_cost_per_million'], $model['output_cost_per_million']),
+        'input_tokens' => $in, 'output_tokens' => $out, 'tokens_estimated' => $unknownUsage,
+        'latency_ms' => $latency,
+        'cost' => ai_cost_estimate($in, $out, $model['input_cost_per_million'], $model['output_cost_per_million']),
+        'handoff' => $handoff && !empty($assistant['handoff_enabled']),
+        'records_used' => $recordsUsed,
     ];
 }
 
@@ -671,8 +764,15 @@ function ai_secretary_process_job(array $job): void {
             return;
         }
         try {
-            $answer = ai_secretary_generate($assistant, $model, ai_secretary_history($job, $assistant), (string)$job['content']);
+            $answer = ai_secretary_generate($assistant, $model, ai_secretary_history($job, $assistant), (string)$job['content'], (string)$job['sender']);
             $reply = $answer['text'];
+            if (ai_data_available()) {
+                db()->prepare('UPDATE ellsms_ai_jobs SET handoff = ?, records_used = ? WHERE id = ?')
+                    ->execute([$answer['handoff'] ? 1 : 0, $answer['records_used'], $jobId]);
+                if ($answer['handoff']) {
+                    ai_conversation_handoff($assistant, (string)$job['line'], (string)$job['sender'], (string)$job['content']);
+                }
+            }
             db()->prepare('UPDATE ellsms_ai_jobs SET model_id = ?, reply_text = ?, reply_parts = ?, input_tokens = ?, output_tokens = ?,
                                   ' . (ai_billing_available() ? 'tokens_estimated = ' . ($answer['tokens_estimated'] ? 1 : 0) . ',' : '') . '
                                   cost_estimate = ?, ai_latency_ms = ?, error_code = NULL WHERE id = ?')
@@ -756,6 +856,77 @@ function ai_secretary_prune(int $chunk = 5000): int {
 }
 
 /* ==========================================================================
+   Hand-off to a human (phase 4)
+   ========================================================================== */
+
+/** Whether the AI is paused for this conversation (handed to a human and not resumed yet). */
+function ai_conversation_paused(string $line, string $sender): bool {
+    if (!ai_data_available()) return false;
+    $st = db()->prepare('SELECT 1 FROM ellsms_ai_conversations WHERE line = ? AND sender = ? AND paused_until > NOW()');
+    $st->execute([$line, $sender]);
+    return (bool)$st->fetchColumn();
+}
+
+/**
+ * The model handed this conversation over: the AI stays out of it for handoff_pause_hours (0 = it
+ * keeps answering, only the owner is told), and the line's owner is notified.
+ */
+function ai_conversation_handoff(array $assistant, string $line, string $sender, string $message): void {
+    $hours = (int)($assistant['handoff_pause_hours'] ?? 24);
+    db()->prepare('INSERT INTO ellsms_ai_conversations (line, sender, paused_until, handoff_at, handoff_reason, resolved_at, resolved_by)
+                   VALUES (?, ?, ' . ($hours > 0 ? 'DATE_ADD(NOW(), INTERVAL ? HOUR)' : 'NULL') . ', NOW(), ?, NULL, NULL)
+                   ON DUPLICATE KEY UPDATE paused_until = VALUES(paused_until), handoff_at = NOW(), handoff_reason = VALUES(handoff_reason),
+                                           resolved_at = NULL, resolved_by = NULL')
+        ->execute(array_merge([$line, $sender], $hours > 0 ? [$hours] : [], [mb_substr($message, 0, 300)]));
+    notification_dispatch_user((int)$assistant['user_id'], $assistant['organization_id'] !== null ? (int)$assistant['organization_id'] : null,
+        'ai.handoff', 'گفتگوی منشی هوشمند به شما سپرده شد',
+        'مشتری ' . $sender . ' روی خط ' . $line . ' به پاسخ شما نیاز دارد: «' . mb_strimwidth($message, 0, 120, '…') . '»',
+        '/ai-secretary.php?line=' . rawurlencode($line) . '#handoffs', 'warning');
+    Logger::info('ai.secretary.handoff', ['line' => $line, 'paused_hours' => $hours]);
+}
+
+/** An operator gives the conversation back to the AI. */
+function ai_conversation_resume(string $line, string $sender, int $actorId): void {
+    db()->prepare('UPDATE ellsms_ai_conversations SET paused_until = NULL, resolved_at = NOW(), resolved_by = ? WHERE line = ? AND sender = ?')
+        ->execute([$actorId, $line, $sender]);
+    audit($actorId, 'ai.conversation.resume', json_encode(['line' => $line, 'sender' => $sender]) ?: '');
+}
+
+/**
+ * An operator's reply from the panel: sent from the line as an ordinary SMS of the line's owner, and
+ * kept in the conversation so the AI sees it when it answers again.
+ */
+function ai_conversation_manual_reply(array $assistant, string $sender, string $text, int $actorId): void {
+    $text = trim($text);
+    if ($text === '' || mb_strlen($text) > 1000) throw new AppException('متن پاسخ باید ۱ تا ۱۰۰۰ نویسه باشد.');
+    // Only to a number that is already in a conversation on this line: this is a reply, not a send page.
+    $known = db()->prepare("SELECT 1 FROM ellsms_ai_jobs WHERE line = ? AND sender = ? AND kind = 'inbound' LIMIT 1");
+    $known->execute([(string)$assistant['line'], $sender]);
+    if (!$known->fetchColumn()) throw new AppException('این شماره گفتگویی با این خط ندارد.');
+    $owner = backend_find_user_by_id((int)$assistant['user_id']) ?? throw new AppException('مالک خط پیدا نشد.');
+    $user = ['id' => (int)$owner['id'], 'role' => $owner['is_admin'] ? 'admin' : 'user', 'credit' => $owner['credit'],
+             'originator' => $owner['originator'], 'organization_id' => $assistant['organization_id'] !== null ? (int)$assistant['organization_id'] : null];
+    $ref = 'manual:' . bin2hex(random_bytes(8));
+    [$ok, $info] = dispatch_message($user, (string)$assistant['line'], [$sender], $text, null, 'ai_manual', $ref);
+    if (!$ok) throw new AppException('ارسال پاسخ ناموفق بود: ' . $info);
+    db()->prepare("INSERT INTO ellsms_ai_jobs (inbound_key, kind, assistant_id, user_id, line, sender, content, status, reply_text, reply_parts, info, completed_at)
+                   VALUES (?, 'manual', ?, ?, ?, ?, '', 'sent', ?, ?, ?, NOW())")
+        ->execute([$ref, (int)$assistant['id'], (int)$assistant['user_id'], (string)$assistant['line'], $sender, $text, sms_parts($text),
+                   'پاسخ اپراتور (کاربر #' . $actorId . ')']);
+    audit($actorId, 'ai.conversation.manual_reply', json_encode(['line' => $assistant['line'], 'sender' => $sender]) ?: '');
+}
+
+/** @return list<array> handed-over conversations of these lines (null = all), open ones first. */
+function ai_conversations_handed_over(?array $lines, int $limit = 30): array {
+    if (!ai_data_available() || $lines === []) return [];
+    $where = $lines === null ? '' : ' AND line IN (' . implode(',', array_fill(0, count($lines), '?')) . ')';
+    $st = db()->prepare("SELECT *, (paused_until > NOW()) AS is_paused FROM ellsms_ai_conversations
+                         WHERE handoff_at IS NOT NULL$where ORDER BY (paused_until > NOW()) DESC, handoff_at DESC LIMIT " . max(1, $limit));
+    $st->execute($lines === null ? [] : array_values($lines));
+    return $st->fetchAll();
+}
+
+/* ==========================================================================
    Panel helpers
    ========================================================================== */
 
@@ -780,7 +951,7 @@ function ai_secretary_simulate(array $assistant, string $sender, string $content
         $history = ai_secretary_history(['line' => $assistant['line'], 'sender' => $sender, 'id' => PHP_INT_MAX], $assistant);
     }
     try {
-        $answer = ai_secretary_generate($assistant, $model, $history, $content);
+        $answer = ai_secretary_generate($assistant, $model, $history, $content, $sender !== '' ? $sender : null);
     } catch (AiProviderException $e) {
         ai_record_run((int)$model['provider_id'], (int)$model['id'], 'playground', $actorId, false, $e, null);
         return ['ok' => false, 'message' => $e->getMessage()];

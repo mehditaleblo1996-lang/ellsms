@@ -85,6 +85,7 @@ if (PHP_SAPI !== 'cli') {
                 '/schedules.php' => '/messages/schedules',
                 '/autoreply.php' => '/messages/autoreply',
                 '/ai-secretary.php' => '/messages/ai-secretary',
+                '/ai-data.php' => '/messages/ai-data',
                 '/reports.php' => '/messages/reports',
                 '/report-exports.php' => '/messages/reports/exports',
                 '/inbox.php' => '/messages/inbox',
