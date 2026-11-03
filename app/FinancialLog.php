@@ -137,6 +137,7 @@ function financial_log_reference_labels(): array {
         'direct_send'       => 'ارسال مستقیم',
         'direct_send_queue' => 'ارسال مستقیم',
         'autoreply'         => 'منشی پیامک',
+        'ai_secretary'      => 'منشی هوشمند',
         'regional_bulk'     => 'ارسال منطقه‌ای',
         'voice_message'     => 'پیام صوتی',
         'voice_tts'         => 'ساخت فایل صوتی',

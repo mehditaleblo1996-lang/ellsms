@@ -84,6 +84,7 @@ if (PHP_SAPI !== 'cli') {
                 '/smart-send.php' => '/messages/smart',
                 '/schedules.php' => '/messages/schedules',
                 '/autoreply.php' => '/messages/autoreply',
+                '/ai-secretary.php' => '/messages/ai-secretary',
                 '/reports.php' => '/messages/reports',
                 '/report-exports.php' => '/messages/reports/exports',
                 '/inbox.php' => '/messages/inbox',

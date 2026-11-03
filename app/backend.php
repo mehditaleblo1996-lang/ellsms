@@ -1140,6 +1140,13 @@ function run_autoreply_pass(): int {
                     'exception'          => $t,
                 ]);
             }
+            try {
+                // AI secretary (app/Ai/AiSecretary.php): a message no keyword rule answered becomes a
+                // job for cron/ai-worker.php when its line has a switched-on assistant. Exactly once.
+                ai_secretary_consider($msg, $cursorKey === 'autoreply_last_inbound_id' ? 'b' : 'g');
+            } catch (Throwable $t) {
+                Logger::error('ai.secretary.enqueue_failed', ['inbound_message_id' => $msg['id'] ?? null, 'exception' => $t]);
+            }
         }
 
         set_setting($cursorKey, (string)$maxId);
@@ -1152,12 +1159,12 @@ function run_autoreply_pass(): int {
  * worker's abandoned claim, Invariant D), cooldown-check, send, classify the result for retry
  * (Invariant H/I). Throws on real errors — caller isolates them per-row.
  */
-function autoreply_process_one(PDO $db, array $msg, int &$sent): void {
-    $line   = normalize_originator((string)$msg['destination']); // our line that received it
-    $sender = normalize_originator((string)$msg['originator']);  // the customer's number
-    $content = trim((string)$msg['content']);
-    if (!$line || !$sender || $line === $sender) return; // malformed row / self-loop
-
+/**
+ * The active keyword rule of $line that $content matches (exact before starts_with before contains,
+ * then oldest first), or null. Shared by autoreply_process_one() and the AI secretary, which only
+ * answers a message no rule answered (app/Ai/AiSecretary.php).
+ */
+function autoreply_find_rule(PDO $db, string $line, string $content): ?array {
     $rst = $db->prepare(
         "SELECT * FROM ellsms_autoreply_rules
          WHERE originator = ? AND is_active = 1
@@ -1165,13 +1172,21 @@ function autoreply_process_one(PDO $db, array $msg, int &$sent): void {
          LIMIT 20"
     );
     $rst->execute([$line]);
-    $rule = null;
     foreach ($rst->fetchAll() as $candidate) {
         if (autoreply_matches($content, $candidate['keyword'], $candidate['match_type'])) {
-            $rule = $candidate;
-            break;
+            return $candidate;
         }
     }
+    return null;
+}
+
+function autoreply_process_one(PDO $db, array $msg, int &$sent): void {
+    $line   = normalize_originator((string)$msg['destination']); // our line that received it
+    $sender = normalize_originator((string)$msg['originator']);  // the customer's number
+    $content = trim((string)$msg['content']);
+    if (!$line || !$sender || $line === $sender) return; // malformed row / self-loop
+
+    $rule = autoreply_find_rule($db, $line, $content);
     if (!$rule) return;
 
     $workerId = worker_id();

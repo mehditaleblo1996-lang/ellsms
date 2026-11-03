@@ -165,6 +165,7 @@ function report_reference_type_label(?string $type): string {
         'schedule'    => 'زمان‌بندی‌شده',
         'bulk_job'    => 'ارسال انبوه',
         'autoreply'   => 'پاسخ خودکار',
+        'ai_secretary' => 'منشی هوشمند',
         'api'         => 'API',
         default       => (string)($type ?? '—'),
     };

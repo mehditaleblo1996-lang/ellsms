@@ -28,6 +28,11 @@ $nav += [
     'invoices'   => ['/invoices.php',    'فاکتورها',        '🧾'],
     'financial_log' => ['/financial-log.php', 'تاریخچه مالی', '📒'],
 ];
+// AI secretary (app/Ai/AiSecretary.php): only for accounts with a usable AI model and a line.
+if (ai_secretary_menu_visible($me)) {
+    $nav = array_slice($nav, 0, (int)array_search('autoreply', array_keys($nav), true) + 1, true)
+        + ['ai_secretary' => ['/ai-secretary.php', 'منشی هوشمند', '✦']] + $nav;
+}
 // The customer's own per-operator price list (public/my-tariff.php); admins set prices elsewhere.
 if ($me['role'] !== 'admin') {
     $nav['my_tariff'] = ['/my-tariff.php', 'تعرفه من', '💱'];

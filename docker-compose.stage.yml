@@ -8,6 +8,9 @@ services:
   app:
     extra_hosts:
       - "host.docker.internal:host-gateway"
+  ai-worker:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   mysql:
     image: mysql:8.0.40

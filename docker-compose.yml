@@ -161,6 +161,9 @@ services:
       SUBSCRIPTION_REMINDER_CHECK_SECONDS: ${SUBSCRIPTION_REMINDER_CHECK_SECONDS:-3600}
       SMS_LEGACY_BACKEND_ENABLED: ${SMS_LEGACY_BACKEND_ENABLED:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      # AI secretary (cron/ai-worker.php shares this block): the AI-provider key vault.
+      AI_MASTER_KEY: ${AI_MASTER_KEY:-}
+      AI_WORKER_PROCESSES: ${AI_WORKER_PROCESSES:-2}
       SMS_GATEWAY_INTERNAL_HOSTS: ${SMS_GATEWAY_INTERNAL_HOSTS:-}
       SMS_GATEWAY_ENFORCE_ADDRESS_RULES: ${SMS_GATEWAY_ENFORCE_ADDRESS_RULES:-0}
       ELLSMS_MOCK_GATEWAY_ENABLED: ${ELLSMS_MOCK_GATEWAY_ENABLED:-0}
@@ -222,6 +225,24 @@ services:
     networks:
       - backend_net
     stop_grace_period: 30s
+
+  # AI secretary (docs/ai-secretary.md): answers inbound SMS with the line's AI model and sends the
+  # answer like an auto-reply. Its OWN container: a slow model or an unreachable AI provider can only
+  # delay other AI answers, never a send, a keyword auto-reply or a status poll. Shares the worker's
+  # environment because it sends through the same path. Idles while no line has an assistant.
+  ai-worker:
+    logging: *default-logging
+    image: ${ELLSMS_APP_IMAGE:-ellsms-app:latest}
+    pull_policy: never
+    container_name: ${ELLSMS_CONTAINER_PREFIX:-ellsms}-ai-worker
+    restart: unless-stopped
+    command: php /var/www/html/cron/ai-worker.php
+    environment: *worker_environment
+    volumes:
+      - ./:/var/www/html
+    networks:
+      - backend_net
+    stop_grace_period: 60s
 
   # Phase 12, STEP 33 — deliberately its OWN container, never sharing worker's poll loop: a slow or
   # unreachable customer webhook endpoint can only ever delay OTHER webhook deliveries this way,

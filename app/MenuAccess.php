@@ -33,6 +33,7 @@ function menu_catalog(): array {
         'smart'         => ['پیامک هوشمند',         '✦',  '/smart-send.php',    ['smart-send.php', 'import.php', 'import-status.php', 'import-confirm.php', 'import-cancel.php']],
         'schedules'     => ['زمان‌بندی‌شده',         '◷',  '/schedules.php',     ['schedules.php']],
         'autoreply'     => ['منشی پیامک',           '🤖', '/autoreply.php',     ['autoreply.php']],
+        'ai_secretary'  => ['منشی هوشمند',          '✦',  '/ai-secretary.php',  ['ai-secretary.php']],
         'reports'       => ['گزارش ارسال',          '≣',  '/reports.php',       ['reports.php', 'reports-v2.php', 'message-detail.php', 'report-exports.php', 'bulk-job.php', 'operator-reports.php']],
         'reports_bulk'  => ['گزارش ارسال حجیم',     '≣',  '/reports-bulk.php',  ['reports-bulk.php', 'bulk-job.php']],
         'inbox'         => ['صندوق دریافت',         '✉',  '/inbox.php',         ['inbox.php']],
@@ -76,7 +77,7 @@ function menu_catalog(): array {
 function menu_groups(): array {
     return [
         'general'      => ['عمومی',            ['dashboard', 'notifications', 'onboarding', 'guide']],
-        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'shared_service', 'regional_bulk', 'lba', 'aimed_bulk', 'schedules', 'autoreply']],
+        'send'         => ['ارسال پیامک',       ['new_send', 'send', 'p2p', 'smart', 'shared_service', 'regional_bulk', 'lba', 'aimed_bulk', 'schedules', 'autoreply', 'ai_secretary']],
         'voice'        => ['پیام صوتی',         ['voice', 'voice_files']],
         'telegram'     => ['تلگرام',            ['telegram', 'telegram_send', 'telegram_check']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'sent_count_report', 'inbox', 'received_count_report', 'bale']],
