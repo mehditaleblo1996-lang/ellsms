@@ -888,7 +888,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
     max-height: 0; overflow: hidden; opacity: 0;
     transition: max-height .25s ease, opacity .2s ease;
   }
-  .lp-nav-links.is-open { max-height: 320px; opacity: 1; }
+  .lp-nav-links.is-open { max-height: 380px; opacity: 1; }
   .lp-nav-links a { padding: 12px 8px; border-radius: 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
   .lp-nav-links a::after { display: none; }
   .lp-nav-links a:last-child { border-bottom: 0; }
