@@ -33,7 +33,7 @@ Platform admins only.
 | `openai_compatible` | `GET {base}/models` | `POST {base}/chat/completions` | **Hermes**, vLLM, LM Studio, DeepSeek, any OpenAI-compatible server |
 | `ollama` | `GET {base}/api/tags` | `POST {base}/api/chat` | Ollama |
 | `openai` | `GET {base}/models` | `POST {base}/chat/completions` (`max_completion_tokens`) | OpenAI |
-| `openrouter` | `GET {base}/models` (also fills context window and per-million prices) | `POST {base}/chat/completions` | OpenRouter |
+| `openrouter` | `GET {base}/models` (also fills context window, per-million prices and tool support) | `POST {base}/chat/completions` (asks for `usage.cost`) | OpenRouter: one key for hundreds of models ([below](#openrouter)) |
 | `anthropic` | `GET {base}/models` (paginated) | `POST {base}/messages` | Claude. Uses `x-api-key` and `anthropic-version: 2026-10-21`. No `temperature` is sent, because that API version rejects it. |
 
 Authentication: `Authorization: Bearer <key>`, a custom header holding the raw key, or none.
@@ -42,6 +42,34 @@ Anthropic always uses `x-api-key`. Extra headers can be added, for example OpenR
 refused.
 
 Reasoning that a model wraps in `<think>…</think>` is removed from the reply.
+
+## OpenRouter
+
+One OpenRouter key reaches Claude, GPT, Gemini, DeepSeek, Qwen, Hermes and hundreds of other models.
+Add a provider of type «OpenRouter» (base URL `https://openrouter.ai/api/v1`, key from
+openrouter.ai → Keys), then «تشخیص مدل‌ها». OpenRouter refuses Iranian addresses, so use the proxy or
+the relay ([below](#proxy-and-relay-phase-5)).
+
+- **Discovery** fills each new model's name, context window, max output, purchase prices (USD per
+  million tokens) and the «ابزار» flag from OpenRouter's `supported_parameters`. Models still arrive
+  disabled; turn on only the ones you will sell.
+- **Actual cost:** every chat request sends `"usage": {"include": true}`. OpenRouter then reports
+  what the call really cost in USD (`usage.cost`, including caching discounts and the upstream
+  provider's price). For a model priced in USD, that figure is recorded as the purchase cost, for
+  example in the playground, on secretary jobs and on AI charges, instead of the estimate from
+  per-million prices. Other providers, and models priced in another currency, keep the estimate.
+- **App name:** requests carry `X-Title: ELLSMS`, so they are grouped under that name in
+  OpenRouter's activity page. An extra header `X-Title` overrides it.
+- **Key credit:** «تست اتصال» also reads `GET {base}/key` and shows the key's usage, and either its
+  remaining limit or that it has no limit and spends the account's credit. A free-tier key is
+  flagged. If this call fails, the connection test still passes.
+
+## Iranian gateways (هوشا and similar)
+
+An Iranian gateway that resells model access is added as «سازگار با OpenAI» if its API is
+OpenAI-compatible: base URL ending in `/v1`, a key, `Authorization: Bearer`. Discovery and chat work
+unchanged, and no proxy is needed. Enter the purchase prices by hand, in the gateway's billing
+currency (for example `IRR`). A gateway with its own non-OpenAI API needs a new adapter type.
 
 ## Connecting Hermes on staging
 
@@ -90,8 +118,8 @@ Every provider call goes through `ai_http_send()`:
   the base for the phase-3 tariff, and the playground uses it to show an approximate cost.
 - **تست** sends a one-line prompt with a 16-token cap.
 - **«ابزار»** (`supports_tools`) marks a model that answers tool calls. The secretary's record lookup
-  uses it ([docs/ai-data.md](ai-data.md)). Discovery sets it for OpenAI, Anthropic and OpenRouter;
-  tick it yourself for a self-hosted server that has a tool parser.
+  uses it ([docs/ai-data.md](ai-data.md)). Discovery sets it for OpenAI and Anthropic, and for
+  OpenRouter from each model's `supported_parameters`. Tick it yourself for a self-hosted server that has a tool parser.
 
 ## Which models an account may use
 

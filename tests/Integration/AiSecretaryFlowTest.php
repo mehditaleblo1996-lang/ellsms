@@ -541,11 +541,15 @@ final class AiSecretaryFlowTest extends IntegrationTestCase
         ai_secretary_run_pass(5); // enqueues and answers
         $job = db()->query("SELECT * FROM ellsms_ai_jobs WHERE kind = 'telegram'")->fetch();
         $this->assertSame(['sent', 'tgu:888', 'پاسخ آزمایشی: سلام از تلگرام'], [$job['status'], $job['sender'], $job['reply_text']]);
-        $message = db()->query("SELECT m.phone, m.tg_peer_id, m.tg_access_hash, c.content, c.account_id FROM ellsms_tg_messages m JOIN ellsms_tg_campaigns c ON c.id = m.campaign_id")->fetch();
+        $message = db()->prepare("SELECT m.phone, m.tg_peer_id, m.tg_access_hash, c.content, c.account_id FROM ellsms_tg_messages m JOIN ellsms_tg_campaigns c ON c.id = m.campaign_id WHERE c.account_id = ?");
+        $message->execute([$accountId]);
+        $message = $message->fetch();
         $this->assertSame(['tgu:888', 888, 9, 'پاسخ آزمایشی: سلام از تلگرام', $accountId],
             [$message['phone'], (int)$message['tg_peer_id'], (int)$message['tg_access_hash'], $message['content'], (int)$message['account_id']]);
         $this->assertSame([], $this->gatewayRequests(), 'no SMS');
-        $this->assertSame((int)$job['id'], (int)db()->query('SELECT job_id FROM ellsms_tg_inbound')->fetchColumn());
+        $inbound = db()->prepare('SELECT job_id FROM ellsms_tg_inbound WHERE account_id = ?');
+        $inbound->execute([$accountId]);
+        $this->assertSame((int)$job['id'], (int)$inbound->fetchColumn());
     }
 
     public function testADocumentIsSplitAndItsRelevantPartReachesTheModel(): void

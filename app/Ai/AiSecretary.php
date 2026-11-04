@@ -679,6 +679,8 @@ function ai_secretary_generate(array $assistant, array $model, array $history, s
     $in = $out = 0;
     $latency = 0;
     $unknownUsage = false;
+    $reported = 0.0;      // what the provider said the calls cost (OpenRouter), summed over the rounds
+    $allReported = true;
     $promptChars = 0;
     for ($round = 0; ; $round++) {
         $promptChars += array_sum(array_map(static fn(array $m): int => mb_strlen((string)($m['content'] ?? '')), $messages));
@@ -689,6 +691,7 @@ function ai_secretary_generate(array $assistant, array $model, array $history, s
         $in += $billable['input'];
         $out += $billable['output'];
         $unknownUsage = $unknownUsage || $billable['estimated'];
+        if (($reply['cost'] ?? null) !== null) $reported += $reply['cost']; else $allReported = false;
         $promptChars = 0;
         if ($reply['tool_calls'] === [] || $tools === null) break;
         $messages[] = ['role' => 'assistant', 'content' => $reply['text'], 'tool_calls' => $reply['tool_calls']];
@@ -713,7 +716,7 @@ function ai_secretary_generate(array $assistant, array $model, array $history, s
         'model' => $model,
         'input_tokens' => $in, 'output_tokens' => $out, 'tokens_estimated' => $unknownUsage,
         'latency_ms' => $latency,
-        'cost' => ai_cost_estimate($in, $out, $model['input_cost_per_million'], $model['output_cost_per_million']),
+        'cost' => ai_call_cost($allReported ? $reported : null, $in, $out, $model),
         'handoff' => $handoff && !empty($assistant['handoff_enabled']),
         'records_used' => $recordsUsed,
     ];

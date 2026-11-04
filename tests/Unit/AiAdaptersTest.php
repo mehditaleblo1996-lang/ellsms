@@ -110,6 +110,54 @@ final class AiAdaptersTest extends TestCase
         $this->assertSame(8192, $m['max_output_tokens']);
     }
 
+    public function testOpenRouterReportsToolSupportPerModel(): void
+    {
+        $parsed = \ai_parse_models('openrouter', ['data' => [
+            ['id' => 'a/tools', 'supported_parameters' => ['max_tokens', 'tools', 'tool_choice']],
+            ['id' => 'b/plain', 'supported_parameters' => ['max_tokens']],
+            ['id' => 'c/unknown'],
+        ]]);
+        $this->assertSame([true, false, null], array_column($parsed['models'], 'supports_tools'));
+        $this->assertNull(\ai_parse_models('openai', ['data' => [['id' => 'gpt']]])['models'][0]['supports_tools']);
+    }
+
+    public function testOpenRouterRequestAsksForCostAndNamesTheApp(): void
+    {
+        $cfg = ['type' => 'openrouter', 'base_url' => 'https://openrouter.ai/api/v1', 'auth_scheme' => 'bearer', 'api_key' => 'sk-or', 'extra_headers' => []];
+        $req = \ai_build_chat_request($cfg, 'x/y', [['role' => 'user', 'content' => 'hi']], 50);
+        $this->assertSame(['include' => true], json_decode($req['body'], true)['usage']);
+        $this->assertContains('X-Title: ELLSMS', $req['headers']);
+        $own = \ai_request_headers(['extra_headers' => ['X-Title' => 'Mine']] + $cfg, true);
+        $this->assertContains('X-Title: Mine', $own);
+        $this->assertNotContains('X-Title: ELLSMS', $own, 'an extra header overrides the default');
+        $openai = \ai_build_chat_request(['type' => 'openai_compatible'] + $cfg, 'x/y', [['role' => 'user', 'content' => 'hi']], 50);
+        $this->assertArrayNotHasKey('usage', json_decode($openai['body'], true));
+        $this->assertNotContains('X-Title: ELLSMS', $openai['headers']);
+    }
+
+    public function testReportedCostWinsForUsdModels(): void
+    {
+        $reply = \ai_parse_chat('openrouter', ['choices' => [['message' => ['content' => 'ok'], 'finish_reason' => 'stop']],
+            'usage' => ['prompt_tokens' => 100, 'completion_tokens' => 10, 'cost' => 0.00042]]);
+        $this->assertSame(0.00042, $reply['cost']);
+        $this->assertNull(\ai_parse_chat('openai', ['choices' => [['message' => ['content' => 'ok']]]])['cost']);
+        $usd = ['cost_currency' => 'USD', 'input_cost_per_million' => '1', 'output_cost_per_million' => '2'];
+        $this->assertSame(0.00042, \ai_call_cost(0.00042, 100, 10, $usd));
+        $this->assertEqualsWithDelta(0.00012, \ai_call_cost(null, 100, 10, $usd), 1e-12);
+        $this->assertEqualsWithDelta(0.00012, \ai_call_cost(0.5, 100, 10, ['cost_currency' => 'EUR'] + $usd), 1e-12, 'USD report, other currency: estimate');
+    }
+
+    public function testOpenRouterKeyInfo(): void
+    {
+        $cfg = ['type' => 'openrouter', 'base_url' => 'https://openrouter.ai/api/v1', 'auth_scheme' => 'bearer', 'api_key' => 'k', 'extra_headers' => []];
+        $this->assertSame('https://openrouter.ai/api/v1/key', \ai_build_key_request($cfg)['url']);
+        $info = \ai_parse_key_info(['data' => ['label' => 'x', 'usage' => 1.25, 'limit' => 10, 'limit_remaining' => 8.75, 'is_free_tier' => false]]);
+        $this->assertSame(['usage' => 1.25, 'limit' => 10.0, 'remaining' => 8.75, 'free_tier' => false], $info);
+        $this->assertSame('مصرف این کلید: $1.25؛ باقی‌مانده‌ی سقف کلید: $8.75 از $10', \ai_key_info_text($info));
+        $this->assertStringContainsString('سقف ندارد', \ai_key_info_text(\ai_parse_key_info(['data' => ['usage' => 0, 'limit' => null]])));
+        $this->assertNull(\ai_key_info(['type' => 'openai'] + $cfg), 'only OpenRouter has this endpoint');
+    }
+
     public function testParsesAnthropicModelsAndPagination(): void
     {
         $parsed = \ai_parse_models('anthropic', ['data' => [
@@ -192,7 +240,7 @@ final class AiAdaptersTest extends TestCase
     {
         $openai = \ai_parse_chat('openai_compatible', ['choices' => [['message' => ['content' => "<think>reasoning</think>\nسلام!"], 'finish_reason' => 'stop']],
             'usage' => ['prompt_tokens' => 12, 'completion_tokens' => 3]]);
-        $this->assertSame(['text' => 'سلام!', 'input_tokens' => 12, 'output_tokens' => 3, 'finish_reason' => 'stop', 'tool_calls' => []], $openai);
+        $this->assertSame(['text' => 'سلام!', 'input_tokens' => 12, 'output_tokens' => 3, 'finish_reason' => 'stop', 'tool_calls' => [], 'cost' => null], $openai);
 
         $parts = \ai_parse_chat('openai', ['choices' => [['message' => ['content' => [['type' => 'text', 'text' => 'a'], ['type' => 'text', 'text' => 'b']]]]]]);
         $this->assertSame('ab', $parts['text']);

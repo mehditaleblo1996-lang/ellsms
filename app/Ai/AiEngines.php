@@ -247,8 +247,11 @@ function ai_provider_test(int $providerId, int $actorId): array {
         $cfg = ai_provider_config($provider);
         $result = ai_list_models($cfg);
         ai_record_run($providerId, null, 'connection', $actorId, true, null, $result['latency_ms'], count($result['models']));
-        return ['ok' => true, 'model_count' => count($result['models']),
-                'message' => 'اتصال برقرار است — ' . count($result['models']) . ' مدل در ارائه‌دهنده موجود است (' . $result['latency_ms'] . ' ms).'];
+        $key = ai_key_info($cfg);
+        $keyText = $key !== null ? ai_key_info_text($key) : '';
+        return ['ok' => true, 'model_count' => count($result['models']), 'key' => $key,
+                'message' => 'اتصال برقرار است — ' . count($result['models']) . ' مدل در ارائه‌دهنده موجود است (' . $result['latency_ms'] . ' ms).'
+                    . ($keyText !== '' ? ' ' . $keyText . '.' : '')];
     } catch (AiProviderException $e) {
         if ($e->errorCode === 'not_found') {
             ai_record_run($providerId, null, 'connection', $actorId, true, null, null, 0);
@@ -277,7 +280,8 @@ function ai_discover_models(int $providerId, int $actorId): array {
     }
 
     $added = 0;
-    db_transaction(function (PDO $db) use ($providerId, $result, &$added): void {
+    $newWithTools = []; // new models whose tool support the provider reported (OpenRouter)
+    db_transaction(function (PDO $db) use ($providerId, $result, &$added, &$newWithTools): void {
         $insert = $db->prepare(
             "INSERT INTO ellsms_ai_models (provider_id, external_model_id, display_name, status, context_window, max_output_tokens,
                                           input_cost_per_million, output_cost_per_million, source, discovered_at, last_seen_at)
@@ -291,7 +295,10 @@ function ai_discover_models(int $providerId, int $actorId): array {
         foreach ($result['models'] as $m) {
             $insert->execute([$providerId, $m['id'], $m['display_name'], $m['context_window'], $m['max_output_tokens'],
                               $m['input_cost_per_million'], $m['output_cost_per_million']]);
-            if ($insert->rowCount() === 1) $added++; // 1 = inserted, 2 = updated, 0 = unchanged
+            if ($insert->rowCount() === 1) { // 1 = inserted, 2 = updated, 0 = unchanged
+                $added++;
+                if ($m['supports_tools'] !== null) $newWithTools[$m['id']] = $m['supports_tools'];
+            }
         }
         $ids = array_column($result['models'], 'id');
         $sql = "UPDATE ellsms_ai_models SET missing_since = COALESCE(missing_since, NOW())
@@ -303,15 +310,20 @@ function ai_discover_models(int $providerId, int $actorId): array {
         }
         $db->prepare($sql)->execute($params);
     });
-    // Hosted APIs answer tool calls; a self-hosted server (Hermes, vLLM, Ollama) only with the right
-    // parser, so the admin switches those on per model after testing.
-    if (in_array($provider['type'], ['openai', 'anthropic', 'openrouter'], true)) {
-        try {
+    // OpenAI and Anthropic answer tool calls; OpenRouter says per model (supported_parameters); a
+    // self-hosted server (Hermes, vLLM, Ollama) only with the right parser, so the admin switches
+    // those on per model after testing. Only NEW models are set; an admin's choice is kept.
+    try {
+        if (in_array($provider['type'], ['openai', 'anthropic'], true)) {
             db()->prepare("UPDATE ellsms_ai_models SET supports_tools = 1 WHERE provider_id = ? AND discovered_at >= NOW() - INTERVAL 1 MINUTE AND updated_by IS NULL")
                 ->execute([$providerId]);
-        } catch (PDOException) {
-            // 2026_11_06_ai_datasets.sql not applied yet.
         }
+        $setTools = db()->prepare('UPDATE ellsms_ai_models SET supports_tools = ? WHERE provider_id = ? AND external_model_id = ? AND updated_by IS NULL');
+        foreach ($newWithTools as $externalId => $tools) {
+            $setTools->execute([$tools ? 1 : 0, $providerId, (string)$externalId]);
+        }
+    } catch (PDOException) {
+        // 2026_11_06_ai_datasets.sql not applied yet.
     }
     ai_record_run($providerId, null, 'discovery', $actorId, true, null, $result['latency_ms'], count($result['models']));
     audit($actorId, 'ai.models.discover', json_encode(['provider_id' => $providerId, 'seen' => count($result['models']), 'added' => $added]) ?: '');
@@ -448,7 +460,7 @@ function ai_model_chat(int $modelId, array $messages, int $maxTokens, ?float $te
             ->execute([$reply['latency_ms'], $modelId]);
     }
     return ['ok' => true] + $reply + [
-        'cost' => ai_cost_estimate($reply['input_tokens'], $reply['output_tokens'], $model['input_cost_per_million'], $model['output_cost_per_million']),
+        'cost' => ai_call_cost($reply['cost'] ?? null, $reply['input_tokens'], $reply['output_tokens'], $model),
         'currency' => (string)$model['cost_currency'],
     ];
 }

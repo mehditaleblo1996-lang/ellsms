@@ -89,3 +89,7 @@ priced down the chain.
 The pricing view also shows, per model, the average tokens per answer over the last 30 days, the
 approximate purchase cost of one such answer, and the list-price income from it. The purchase cost
 uses the model's purchase prices and assumes 80% input / 20% output tokens.
+
+The purchase cost recorded on each charge (used by «مصرف و سود») is what OpenRouter reported for
+the call when the model is an OpenRouter model priced in USD. Otherwise it is estimated from the
+model's per-million prices ([docs/ai-engines.md](ai-engines.md#openrouter)).

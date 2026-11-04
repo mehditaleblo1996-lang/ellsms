@@ -54,6 +54,9 @@ const AI_AUTH_SCHEMES = ['bearer' => 'Authorization: Bearer', 'header' => 'هد�
 /** API version sent to Anthropic. On this version temperature / top_p / top_k are rejected, so none is sent. */
 const AI_ANTHROPIC_VERSION = '2026-10-21';
 
+/** The app name OpenRouter lists requests under (X-Title). */
+const AI_OPENROUTER_APP_TITLE = 'ELLSMS';
+
 /** Discovery stops after this many models (OpenRouter lists several hundred). */
 const AI_MAX_DISCOVERED_MODELS = 1000;
 /** Responses larger than this are cut off and reported as response_too_large. */
@@ -194,6 +197,10 @@ function ai_request_headers(array $cfg, bool $withBody): array {
     foreach (($cfg['extra_headers'] ?? []) as $name => $value) {
         $headers[] = $name . ': ' . $value;
     }
+    if (($cfg['type'] ?? '') === 'openrouter' && !array_key_exists('x-title', array_change_key_case($cfg['extra_headers'] ?? []))) {
+        // OpenRouter shows requests under this app name in its activity page (an extra header overrides it).
+        $headers[] = 'X-Title: ' . AI_OPENROUTER_APP_TITLE;
+    }
     $key = (string)($cfg['api_key'] ?? '');
     if (($cfg['type'] ?? '') === 'anthropic') {
         $headers[] = 'anthropic-version: ' . AI_ANTHROPIC_VERSION;
@@ -256,7 +263,8 @@ function ai_per_token_to_per_million(mixed $value): ?string {
 /**
  * Pure: a models response -> the models it lists, plus the cursor of the next page (Anthropic only).
  * @return array{models: list<array{id:string, display_name:string, context_window:?int, max_output_tokens:?int,
- *               input_cost_per_million:?string, output_cost_per_million:?string}>, next: ?string}
+ *               input_cost_per_million:?string, output_cost_per_million:?string, supports_tools:?bool}>, next: ?string}
+ * supports_tools is known for OpenRouter only (its supported_parameters lists "tools").
  */
 function ai_parse_models(string $type, array $json): array {
     $rows = $type === 'ollama' ? ($json['models'] ?? null) : ($json['data'] ?? null);
@@ -269,7 +277,7 @@ function ai_parse_models(string $type, array $json): array {
         $id = $type === 'ollama' ? ($row['name'] ?? $row['model'] ?? null) : ($row['id'] ?? null);
         if (!is_string($id) || ($id = trim($id)) === '' || strlen($id) > 191) continue;
         $model = ['id' => $id, 'display_name' => $id, 'context_window' => null, 'max_output_tokens' => null,
-                  'input_cost_per_million' => null, 'output_cost_per_million' => null];
+                  'input_cost_per_million' => null, 'output_cost_per_million' => null, 'supports_tools' => null];
         if ($type === 'anthropic') {
             if (is_string($row['display_name'] ?? null) && $row['display_name'] !== '') $model['display_name'] = mb_substr($row['display_name'], 0, 191);
             if (is_int($row['max_input_tokens'] ?? null)) $model['context_window'] = $row['max_input_tokens'];
@@ -280,6 +288,9 @@ function ai_parse_models(string $type, array $json): array {
             if (is_int($row['top_provider']['max_completion_tokens'] ?? null)) $model['max_output_tokens'] = $row['top_provider']['max_completion_tokens'];
             $model['input_cost_per_million'] = ai_per_token_to_per_million($row['pricing']['prompt'] ?? null);
             $model['output_cost_per_million'] = ai_per_token_to_per_million($row['pricing']['completion'] ?? null);
+            if (is_array($row['supported_parameters'] ?? null)) {
+                $model['supports_tools'] = in_array('tools', $row['supported_parameters'], true);
+            }
         } elseif (is_int($row['context_length'] ?? null)) {
             // vLLM reports max_model_len, some OpenAI-compatible servers context_length.
             $model['context_window'] = $row['context_length'];
@@ -408,6 +419,8 @@ function ai_build_chat_request(array $cfg, string $model, array $messages, int $
             // (vLLM, Hermes, LM Studio) and OpenRouter take max_tokens.
             $body[$type === 'openai' ? 'max_completion_tokens' : 'max_tokens'] = $maxTokens;
             if ($temperature !== null) $body['temperature'] = $temperature;
+            // OpenRouter then reports what the call actually cost, in USD (usage.cost).
+            if ($type === 'openrouter') $body['usage'] = ['include' => true];
             $url = ai_join_url($base, 'chat/completions');
         }
         if ($toolDefs !== []) $body['tools'] = $toolDefs;
@@ -429,12 +442,14 @@ function ai_build_chat_request(array $cfg, string $model, array $messages, int $
  * prompt_tokens), so billing counts every token the model read.
  *
  * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string,
- *               tool_calls: list<array{id:string, name:string, arguments:array}>}
+ *               tool_calls: list<array{id:string, name:string, arguments:array}>, cost:?float}
+ * cost: the price the provider itself reported for this call, in USD (OpenRouter's usage.cost), or null.
  */
 function ai_parse_chat(string $type, array $json): array {
     $text = '';
     $in = $out = null;
     $finish = null;
+    $cost = null;
     $calls = [];
     $args = static function (mixed $raw): array {
         if (is_array($raw)) return $raw;
@@ -494,6 +509,10 @@ function ai_parse_chat(string $type, array $json): array {
         $in = is_int($json['usage']['prompt_tokens'] ?? null) ? $json['usage']['prompt_tokens'] : null;
         $out = is_int($json['usage']['completion_tokens'] ?? null) ? $json['usage']['completion_tokens'] : null;
         $finish = is_string($choice['finish_reason'] ?? null) ? $choice['finish_reason'] : null;
+        // OpenRouter (and some gateways) report the actual price of the call, in USD.
+        if (is_int($json['usage']['cost'] ?? null) || is_float($json['usage']['cost'] ?? null)) {
+            $cost = max(0.0, (float)$json['usage']['cost']);
+        }
     }
     // Reasoning models served through compatible servers (Hermes among them) can wrap their
     // reasoning in <think>…</think>; it is never part of the answer.
@@ -501,7 +520,7 @@ function ai_parse_chat(string $type, array $json): array {
     if ($text === '' && $calls === []) {
         throw new AiProviderException('empty_response');
     }
-    return ['text' => $text, 'input_tokens' => $in, 'output_tokens' => $out, 'finish_reason' => $finish, 'tool_calls' => $calls];
+    return ['text' => $text, 'input_tokens' => $in, 'output_tokens' => $out, 'finish_reason' => $finish, 'tool_calls' => $calls, 'cost' => $cost];
 }
 
 /** Pure: estimated cost in the model's currency, or null when a price is missing. */
@@ -510,6 +529,34 @@ function ai_cost_estimate(?int $inputTokens, ?int $outputTokens, ?string $inPerM
         return null;
     }
     return ($inputTokens * (float)$inPerMillion + $outputTokens * (float)$outPerMillion) / 1_000_000;
+}
+
+/**
+ * Pure: the cost to record — what the provider reported (USD) when the model is priced in USD, else
+ * the estimate from the model's per-million prices.
+ */
+function ai_call_cost(?float $reported, ?int $inputTokens, ?int $outputTokens, array $model): ?float {
+    if ($reported !== null && strtoupper((string)($model['cost_currency'] ?? 'USD')) === 'USD') {
+        return $reported;
+    }
+    return ai_cost_estimate($inputTokens, $outputTokens, $model['input_cost_per_million'] ?? null, $model['output_cost_per_million'] ?? null);
+}
+
+/** Pure: OpenRouter's GET {base}/key (the key's own usage and limit, in USD). */
+function ai_build_key_request(array $cfg): array {
+    return ['method' => 'GET', 'url' => ai_join_url((string)$cfg['base_url'], 'key'), 'headers' => ai_request_headers($cfg, false), 'body' => null];
+}
+
+/**
+ * Pure: OpenRouter's key response -> usage so far, the key's limit and what is left of it (USD; a
+ * null limit means the key has none and spends the account's credit).
+ * @return array{usage:?float, limit:?float, remaining:?float, free_tier:bool}
+ */
+function ai_parse_key_info(array $json): array {
+    $d = is_array($json['data'] ?? null) ? $json['data'] : [];
+    $num = static fn(mixed $v): ?float => is_int($v) || is_float($v) ? (float)$v : null;
+    return ['usage' => $num($d['usage'] ?? null), 'limit' => $num($d['limit'] ?? null),
+            'remaining' => $num($d['limit_remaining'] ?? null), 'free_tier' => ($d['is_free_tier'] ?? false) === true];
 }
 
 /* ==========================================================================
@@ -694,8 +741,35 @@ function ai_list_models(array $cfg): array {
 }
 
 /**
+ * OpenRouter only: the key's usage and limit, or null when the provider is not OpenRouter or does
+ * not answer (it never stops a connection test).
+ */
+function ai_key_info(array $cfg): ?array {
+    if (($cfg['type'] ?? '') !== 'openrouter') return null;
+    try {
+        return ai_parse_key_info(ai_http_send(ai_build_key_request($cfg), $cfg)['json']);
+    } catch (AiProviderException) {
+        return null;
+    }
+}
+
+/** Pure: a one-line Persian summary of ai_key_info() for the connection test. */
+function ai_key_info_text(array $info): string {
+    $usd = static fn(float $v): string => '$' . rtrim(rtrim(number_format($v, 4, '.', ''), '0'), '.');
+    $parts = [];
+    if ($info['usage'] !== null) $parts[] = 'مصرف این کلید: ' . $usd($info['usage']);
+    if ($info['remaining'] !== null) {
+        $parts[] = 'باقی‌مانده‌ی سقف کلید: ' . $usd($info['remaining']) . ($info['limit'] !== null ? ' از ' . $usd($info['limit']) : '');
+    } elseif ($info['limit'] === null) {
+        $parts[] = 'کلید سقف ندارد و از اعتبار حساب OpenRouter خرج می‌کند';
+    }
+    if ($info['free_tier']) $parts[] = 'حساب رایگان (فقط مدل‌های :free و با محدودیت تعداد)';
+    return implode('؛ ', $parts);
+}
+
+/**
  * One chat completion.
- * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string, tool_calls:list<array>, latency_ms:int}
+ * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string, tool_calls:list<array>, cost:?float, latency_ms:int}
  */
 function ai_chat(array $cfg, string $model, array $messages, int $maxTokens, ?float $temperature = null, ?array $tools = null): array {
     $response = ai_http_send(ai_build_chat_request($cfg, $model, $messages, $maxTokens, $temperature, $tools), $cfg);

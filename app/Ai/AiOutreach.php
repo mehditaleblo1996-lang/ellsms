@@ -144,7 +144,7 @@ function ai_outreach_write(array $assistant, array $model, array $dataset, array
     if (trim($text) === '') throw new AiProviderException('empty_response');
     return ['text' => ai_secretary_fit_parts($text, $parts), 'usage' => [
         'input_tokens' => $billable['input'], 'output_tokens' => $billable['output'], 'estimated' => $billable['estimated'],
-        'cost' => ai_cost_estimate($billable['input'], $billable['output'], $model['input_cost_per_million'], $model['output_cost_per_million']),
+        'cost' => ai_call_cost($reply['cost'] ?? null, $billable['input'], $billable['output'], $model),
         'latency_ms' => $reply['latency_ms'],
     ]];
 }

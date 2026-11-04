@@ -128,7 +128,8 @@ customer writes, and the answer is sent from the same line.
 
 - **AI engines** (Platform Admin → «موتورهای هوش مصنوعی», `/admin/ai/engines`): connect providers
   the way SMS gateways are connected. Supported types are OpenAI-compatible (Hermes, vLLM, LM Studio,
-  DeepSeek …), Ollama, OpenAI, Anthropic and OpenRouter. API keys are kept in their own encrypted
+  DeepSeek, OpenAI-compatible Iranian gateways …), Ollama, OpenAI, Anthropic and OpenRouter
+  (one key for hundreds of models; real per-call cost and key credit are read from OpenRouter). API keys are kept in their own encrypted
   vault. «تست اتصال» and «تشخیص مدل‌ها» are available, models start disabled, and admins give
   accounts the models they may use (resellers' customers never get more than their reseller). There
   is a playground. See [`docs/ai-engines.md`](docs/ai-engines.md).
