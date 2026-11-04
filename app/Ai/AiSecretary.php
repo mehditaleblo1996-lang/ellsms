@@ -319,9 +319,14 @@ function ai_secretary_part_chars(int $parts, bool $unicode = true): int {
     return $parts <= 1 ? 70 : $parts * 67;
 }
 
-/** Pure: the output-token budget for an answer of $parts parts (room for a model's reasoning too). */
+/**
+ * Pure: the output-token budget for an answer of $parts parts. Thinking models (e.g. *-thinking,
+ * reasoning models) spend most of it on hidden reasoning before the first word of the answer, so
+ * the floor is generous; an ordinary model stops on its own long before it and is billed only for
+ * what it wrote, and the answer is still cut to $parts parts by ai_secretary_fit_parts().
+ */
 function ai_secretary_max_tokens(int $parts): int {
-    return max(256, $parts * 150);
+    return max(1500, $parts * 300);
 }
 
 /**

@@ -141,6 +141,19 @@ Every provider call goes through `ai_http_send()`:
   uses it ([docs/ai-data.md](ai-data.md)). Discovery sets it for OpenAI and Anthropic, and for
   OpenRouter from each model's `supported_parameters`. Tick it yourself for a self-hosted server that has a tool parser.
 
+### Thinking models and the output-token cap
+
+Thinking/reasoning models (e.g. `gapgpt-qwen-3.5-thinking`, OpenAI's o-series) count their hidden
+reasoning as output tokens, and spend it before they write the first word of the answer. With a
+small cap the reply comes back cut off mid-sentence with finish reason `length` (`max_tokens` on
+Anthropic). `ai_parse_chat()` returns `truncated` for that case and `reasoning_tokens` when the
+provider reports it (`usage.completion_tokens_details.reasoning_tokens`). In **چت آزمایشی** the
+default «حداکثر توکن خروجی» is 1500, a cut-off answer carries a «پاسخ ناقص است» warning, and the
+reasoning tokens are shown next to the output tokens. The secretary and outreach budget is
+`ai_secretary_max_tokens()` = `max(1500, parts × 300)` (still capped by the model's max output
+tokens); a model is billed only for the tokens it actually writes, and the answer is cut to the SMS
+part limit afterwards either way. Leave a thinking model's «حداکثر خروجی» at least that high.
+
 ## Which models an account may use
 
 Resolution happens in `ai_access_resolve()`, which is pure and unit-tested:

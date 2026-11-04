@@ -99,8 +99,9 @@ final class AiSecretaryTest extends TestCase
 
     public function testTokenBudgetGrowsWithParts(): void
     {
-        $this->assertSame(256, \ai_secretary_max_tokens(1));
-        $this->assertSame(750, \ai_secretary_max_tokens(5));
+        $this->assertSame(1500, \ai_secretary_max_tokens(1));
+        $this->assertSame(1500, \ai_secretary_max_tokens(5));
+        $this->assertSame(3000, \ai_secretary_max_tokens(10));
     }
 
     /* ---------------- prompt ---------------- */

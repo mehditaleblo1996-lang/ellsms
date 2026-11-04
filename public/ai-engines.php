@@ -200,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stay = true;
                 $message = trim((string)($_POST['message'] ?? ''));
                 $system = trim((string)($_POST['system'] ?? ''));
-                $maxTokens = max(1, min(4000, (int)($_POST['max_tokens'] ?? 300)));
+                $maxTokens = max(1, min(4000, (int)($_POST['max_tokens'] ?? 1500)));
                 $temperature = trim((string)($_POST['temperature'] ?? '')) === '' ? null : max(0.0, min(2.0, (float)$_POST['temperature']));
                 if ($message === '' || mb_strlen($message) > 4000) throw new AppException('متن پیام باید ۱ تا ۴۰۰۰ نویسه باشد.');
                 $modelId = (int)($_POST['model_id'] ?? 0);
@@ -831,7 +831,7 @@ require __DIR__ . '/../app/views/header.php';
         </select>
       </label>
       <label>به‌عنوان کاربر <input type="text" name="as_user" class="ltr" value="<?= e((string)($_POST['as_user'] ?? '')) ?>" placeholder="نام کاربری (اختیاری)"></label>
-      <label>حداکثر توکن خروجی <input type="number" name="max_tokens" class="ltr" min="1" max="4000" value="<?= (int)($_POST['max_tokens'] ?? 300) ?>" style="width:6em"></label>
+      <label>حداکثر توکن خروجی <input type="number" name="max_tokens" class="ltr" min="1" max="4000" value="<?= (int)($_POST['max_tokens'] ?? 1500) ?>" style="width:6em"></label>
       <label>temperature <input type="text" name="temperature" class="ltr" value="<?= e((string)($_POST['temperature'] ?? '')) ?>" placeholder="پیش‌فرض" style="width:6em"></label>
     </div>
     <label style="display:block">دستورالعمل سیستم (اختیاری)
@@ -850,10 +850,16 @@ require __DIR__ . '/../app/views/header.php';
   <h2>پاسخ</h2>
   <?php if ($playgroundResult['note']): ?><p class="muted"><?= e($playgroundResult['note']) ?></p><?php endif; ?>
   <?php if ($playgroundResult['ok']): ?>
+    <?php if (!empty($playgroundResult['truncated'])): ?>
+      <p style="color:#b45309"><strong>پاسخ ناقص است:</strong> مدل به سقف «حداکثر توکن خروجی» رسید و پاسخ نیمه‌کاره قطع شد.
+        مدل‌های استدلالی (مثل نسخه‌های <span class="ltr">thinking</span>) بیشتر این بودجه را پیش از نوشتن پاسخ صرف استدلال پنهان می‌کنند؛
+        حداکثر توکن خروجی را بیشتر کنید (مثلاً ۱۵۰۰ یا بیشتر).</p>
+    <?php endif; ?>
     <div style="white-space:pre-wrap;border:1px solid var(--border, #ddd);border-radius:8px;padding:12px"><?= e($playgroundResult['text']) ?></div>
     <p class="muted">
       زمان پاسخ: <span class="ltr"><?= (int)$playgroundResult['latency_ms'] ?> ms</span> ·
-      توکن ورودی/خروجی: <span class="ltr"><?= $playgroundResult['input_tokens'] ?? '—' ?> / <?= $playgroundResult['output_tokens'] ?? '—' ?></span> ·
+      توکن ورودی/خروجی: <span class="ltr"><?= $playgroundResult['input_tokens'] ?? '—' ?> / <?= $playgroundResult['output_tokens'] ?? '—' ?></span>
+      <?php if (($playgroundResult['reasoning_tokens'] ?? null) !== null): ?>(<span class="ltr"><?= (int)$playgroundResult['reasoning_tokens'] ?></span> توکن استدلال) <?php endif; ?>·
       پایان: <span class="ltr"><?= e((string)($playgroundResult['finish_reason'] ?? '—')) ?></span>
       <?php if ($playgroundResult['cost'] !== null): ?> · هزینه‌ی تقریبی: <span class="ltr"><?= e(number_format($playgroundResult['cost'], 6) . ' ' . $playgroundResult['currency']) ?></span><?php endif; ?>
       · طول پاسخ: <?= mb_strlen($playgroundResult['text']) ?> نویسه
