@@ -20,7 +20,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: "ellsms_{live|test}_{prefix}_{secret}"
+      bearerFormat: "datis_{live|test}_{prefix}_{secret}"
     basicApiKey:
       type: http
       scheme: basic

@@ -14,7 +14,7 @@
 
 <div class="cards">
   <div class="card"><span class="b">۱</span><h4>کلید بسازید</h4>
-    <p>در پنل، بخش «توسعه‌دهندگان ← کلیدهای API»، یک کلید با دسترسی‌های لازم بسازید.</p></div>
+    <p>در پنل، بخش «یکپارچه‌سازی ← کلیدهای API»، یک کلید با دسترسی‌های لازم بسازید.</p></div>
   <div class="card"><span class="b">۲</span><h4>هدر بگذارید</h4>
     <p>کلید را در هدر <span class="c">Authorization</span> هر درخواست قرار دهید.</p></div>
   <div class="card"><span class="b">۳</span><h4>بفرستید</h4>
@@ -47,6 +47,15 @@ Content-Type: application/json
 <p>بلافاصله پس از ساخت، آن را در جای امنی (مثل متغیر محیطی سرور) ذخیره کنید. داتیس رایان گستر ایرانیان خودِ کلید را نگه نمی‌دارد و قابل بازیابی نیست؛ اگر گم شد، کلید را چرخش (<span class="ltr">rotate</span>) دهید یا کلید تازه بسازید. هرگز کلید را در کد سمت مرورگر یا اپلیکیشن موبایل قرار ندهید.</p></div>
 
 <p class="note">کلیدهای جدید با <span class="c">datis_live_</span> شروع می‌شوند. کلیدهایی که پیش از تغییر نام ساخته شده‌اند و با <span class="c">ellsms_live_</span> شروع می‌شوند همچنان معتبرند و نیازی به تعویض ندارند.</p>
+
+<div class="call warn"><b class="h">خطای <span class="c">401 unauthenticated</span> می‌گیرید؟</b>
+<p>معمولاً یکی از این‌هاست:</p>
+<ul>
+  <li><b>هدر اشتباه:</b> فقط هدر <span class="c">Authorization: Bearer &lt;API_KEY&gt;</span> خوانده می‌شود. هدرهایی مثل <span class="c">X-API-Key</span> یا <span class="c">api-key</span> نادیده گرفته می‌شوند. در Postman از زبانه‌ی <span class="ltr">Authorization</span> گزینه‌ی <span class="ltr">Bearer Token</span> را انتخاب کنید.</li>
+  <li><b>جاافتادن کلمه‌ی <span class="c">Bearer</span></b> پیش از کلید.</li>
+  <li><b>کلید ناقص:</b> کلید کامل چهار بخش دارد: <span class="c">datis_live_&lt;prefix&gt;_&lt;secret&gt;</span>. ستون «پیشوند» در جدول کلیدها فقط بخش اول است و به‌تنهایی کار نمی‌کند (مثلاً <span class="c">datis_live_578688aec077</span> همیشه رد می‌شود). اگر کلید کامل را ذخیره نکرده‌اید، آن را چرخش دهید یا کلید تازه بسازید.</li>
+  <li><b>کلید لغو یا منقضی شده</b> است.</li>
+</ul></div>
 
 <h3>دسترسی‌ها (<span class="ltr">Scope</span>)</h3>
 <p>هنگام ساخت کلید مشخص می‌کنید آن کلید چه کارهایی مجاز است انجام دهد. بهتر است هر کلید فقط دسترسی‌هایی را داشته باشد که واقعاً لازم دارد.</p>

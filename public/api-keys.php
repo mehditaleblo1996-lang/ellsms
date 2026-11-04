@@ -253,5 +253,8 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
     <?php if (!$keys): ?><tr><td colspan="7" class="empty">هنوز کلیدی ساخته نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
+  <p class="hint">ستون «پیشوند» فقط بخش اول کلید است و به‌تنهایی برای احراز هویت کار نمی‌کند. کلید کامل به شکل
+    <span class="ltr">datis_live_&lt;prefix&gt;_&lt;secret&gt;</span> است و فقط یک‌بار هنگام ساخت یا چرخش نمایش داده می‌شود؛
+    آن را در هدر <span class="ltr">Authorization: Bearer &lt;API_KEY&gt;</span> بفرستید (هدر <span class="ltr">X-API-Key</span> پشتیبانی نمی‌شود).</p>
 </div>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

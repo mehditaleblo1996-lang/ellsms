@@ -28,7 +28,7 @@ https://<your-domain>/api/v1/
 Every request must carry:
 
 ```
-Authorization: Bearer ellsms_<environment>_<prefix>_<secret>
+Authorization: Bearer datis_<environment>_<prefix>_<secret>
 ```
 
 - The key is **never** accepted from a query string, cookie, or any other location — only this
@@ -46,7 +46,9 @@ Authorization: Bearer ellsms_<environment>_<prefix>_<secret>
 
 ### Key format and lifecycle
 
-Format: `ellsms_{live|test}_{12-hex-char prefix}_{secret}`. The prefix is a public lookup id (not
+Format: `datis_{live|test}_{12-hex-char prefix}_{secret}`. Keys issued before the Datis Rayan
+rebrand start with `ellsms_` instead and remain valid (the brand segment is cosmetic: lookup is by
+prefix, proof is the secret). The prefix is a public lookup id (not
 secret, indexed); the secret is 256 bits of random data. Only a SHA-256 hash of the secret is ever
 stored — the raw key is shown exactly once, at creation or rotation, and cannot be recovered
 afterward. (This is a deliberately different design from this codebase's user-password hashing,
@@ -64,6 +66,26 @@ or revoke a key). Available actions:
   overlap window. Update every integration using the old key before rotating.
 - **Expire** — an optional `expires_at` may be set at creation; an expired key behaves exactly like
   a revoked one (generic `401`, nothing more specific).
+
+The key table on `/api-keys.php` shows only the 12-char prefix (column «پیشوند»), never the secret —
+the prefix alone (or `datis_live_<prefix>`) is **not** a usable key; a hint under the table says so.
+
+### Troubleshooting `401 unauthenticated`
+
+Almost every `401` from a key that "looks right" is one of these:
+
+1. **Wrong header.** Only `Authorization: Bearer <key>` is read. `X-API-Key`, `api-key`, `apikey`,
+   a query-string `?api_key=` or a cookie are all ignored, so the request counts as having no
+   credentials. (In Postman: Authorization tab → *Bearer Token*.)
+2. **Missing `Bearer ` prefix** — `Authorization: datis_live_…` without `Bearer ` fails.
+3. **Incomplete key.** A full key has four `_`-separated parts:
+   `datis_live_<12-hex prefix>_<secret>`. Copying only the prefix from the key table (e.g.
+   `datis_live_578688aec077`) always fails. The secret is shown only once; if it was not saved,
+   rotate the key or create a new one.
+4. **Revoked or expired key** — check the «وضعیت» column on `/api-keys.php`.
+
+A `403` instead means authentication succeeded but the key lacks the scope, or the caller's IP is
+not on the organization's allowlist.
 
 ## Scopes
 
