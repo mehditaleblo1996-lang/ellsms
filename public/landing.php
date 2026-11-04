@@ -9,11 +9,12 @@ if (reseller_brand_for_host() !== null) redirect('/login');
 // registration_verify_otp() — so it is described as approval too.)
 $registrationOpen = registration_enabled();
 $pageTitle = 'پنل هوشمند پیامک';
-$metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
+$extraStyles = ['/assets/css/landing-ai.css'];
+$metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی هوشمند با هوش مصنوعی، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 require __DIR__ . '/../app/views/public_header.php';
 ?>
-  <!-- Top banner: five animated slides (plain HTML/CSS + a tiny script below, no video file).
+  <!-- Top banner: six animated slides (plain HTML/CSS + a tiny script below, no video file).
        Slide 1 reuses the tilted-phone shot of the ELLSMS promo video as one still (≈43 KB WebP);
        everything else is drawn in CSS/SVG. Auto-advances, pauses on hover/off-screen, and stays on
        the first slide without motion for prefers-reduced-motion. -->
@@ -26,7 +27,7 @@ require __DIR__ . '/../app/views/public_header.php';
     </svg>
     <div class="lp-banner-track">
 
-      <article class="lp-banner-slide is-active" id="lpSlide1" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۵">
+      <article class="lp-banner-slide is-active" id="lpSlide1" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۶">
         <div class="lp-banner-visual lp-banner-phone" aria-hidden="true">
           <picture>
             <source srcset="/assets/img/landing/banner-phone.webp" type="image/webp">
@@ -49,7 +50,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide2" role="tabpanel" aria-roledescription="slide" aria-label="۲ از ۵">
+      <article class="lp-banner-slide" id="lpSlide2" role="tabpanel" aria-roledescription="slide" aria-label="۲ از ۶">
         <div class="lp-banner-visual lp-banner-smart" aria-hidden="true">
           <div class="lp-smart-template">سلام <b>{نام}</b>، شما <b>{شانس}</b> شانس دارید</div>
           <div class="lp-smart-bubble" style="--i:0">سلام <b>علی</b>، شما <b>۲</b> شانس دارید <em>✓</em></div>
@@ -68,7 +69,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۵">
+      <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۶">
         <div class="lp-banner-visual lp-banner-report" aria-hidden="true">
           <div class="lp-report-card">
             <div class="lp-report-head"><span>نمونه — ارسال امروز</span><b>۱۲٬۴۸۰</b></div>
@@ -90,7 +91,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide4" role="tabpanel" aria-roledescription="slide" aria-label="۴ از ۵">
+      <article class="lp-banner-slide" id="lpSlide4" role="tabpanel" aria-roledescription="slide" aria-label="۴ از ۶">
         <div class="lp-banner-visual lp-banner-voice" aria-hidden="true">
           <div class="lp-voice-card">
             <div class="lp-voice-head">
@@ -122,7 +123,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide5" role="tabpanel" aria-roledescription="slide" aria-label="۵ از ۵">
+      <article class="lp-banner-slide" id="lpSlide5" role="tabpanel" aria-roledescription="slide" aria-label="۵ از ۶">
         <div class="lp-banner-visual lp-banner-bale" aria-hidden="true">
           <div class="lp-bale-chat">
             <div class="lp-bale-head">
@@ -156,6 +157,35 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
+      <article class="lp-banner-slide" id="lpSlide6" role="tabpanel" aria-roledescription="slide" aria-label="۶ از ۶">
+        <div class="lp-banner-visual lp-banner-ai" aria-hidden="true">
+          <div class="lp-ai-chat">
+            <div class="lp-ai-chat-head">
+              <span class="lp-ai-orb"><i></i><i></i><svg viewBox="0 0 24 24"><path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></svg></span>
+              <div><b>منشی هوشمند</b><span>پاسخ خودکار روی خط شما</span></div>
+              <em class="lp-ai-live">آنلاین</em>
+            </div>
+            <div class="lp-ai-chat-body">
+              <p class="lp-ai-msg is-in lp-ai-pop" style="--t:.5s">سلام، کیف چرمی قهوه‌ای موجوده؟ قیمتش چنده؟<small>۲۳:۴۸</small></p>
+              <p class="lp-ai-typing" style="--t:1.3s"><i></i><i></i><i></i></p>
+              <p class="lp-ai-msg is-out lp-ai-pop" style="--t:2.9s">سلام! بله موجود است 🌿 قیمت <b>۱٬۸۵۰٬۰۰۰ تومان</b>. برای سفارش، کد <b>۲۱۴</b> را بفرستید.<small>۲۳:۴۸ · منشی هوشمند</small></p>
+            </div>
+          </div>
+          <div class="lp-ai-chip is-a lp-ai-pop" style="--t:3.6s"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>از جدول «محصولات»</div>
+          <div class="lp-ai-chip is-b lp-ai-pop" style="--t:4s"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>شبانه‌روزی</div>
+        </div>
+        <div class="lp-banner-copy">
+          <h2>منشی <span class="is-blue">هوشمند</span>؛ پاسخ‌گوی <span class="is-green">شبانه‌روزی</span> مشتریان</h2>
+          <p>هوش مصنوعی به پیامک‌هایی که به خط شما می‌رسد، از روی اطلاعات کسب‌وکار و جدول‌های خودتان جواب می‌دهد؛ از همان خط و در چند ثانیه.</p>
+          <ul class="lp-banner-points">
+            <li>جواب از قیمت‌ها، سفارش‌ها و نوبت‌های خودتان</li>
+            <li>ارجاع گفتگو به اپراتور، هر وقت لازم شد</li>
+            <li>پیامک و تلگرام، با یک منشی</li>
+          </ul>
+          <a href="#ai-secretary" class="btn btn-primary">آشنایی با منشی هوشمند</a>
+        </div>
+      </article>
+
     </div>
     <div class="lp-banner-controls">
       <button type="button" class="lp-banner-toggle" data-lp-banner-toggle aria-pressed="false">
@@ -167,6 +197,7 @@ require __DIR__ . '/../app/views/public_header.php';
         <button type="button" role="tab" id="lpSlideTab3" aria-controls="lpSlide3" aria-selected="false" aria-label="اسلاید ۳" tabindex="-1"></button>
         <button type="button" role="tab" id="lpSlideTab4" aria-controls="lpSlide4" aria-selected="false" aria-label="اسلاید ۴" tabindex="-1"></button>
         <button type="button" role="tab" id="lpSlideTab5" aria-controls="lpSlide5" aria-selected="false" aria-label="اسلاید ۵" tabindex="-1"></button>
+        <button type="button" role="tab" id="lpSlideTab6" aria-controls="lpSlide6" aria-selected="false" aria-label="اسلاید ۶" tabindex="-1"></button>
       </div>
     </div>
   </section>
@@ -256,7 +287,7 @@ require __DIR__ . '/../app/views/public_header.php';
         <p class="lp-eyebrow">پنل هوشمند پیامک</p>
         <h1>ارسال پیامک انبوه، <span class="lp-heading-accent">شخصی‌سازی‌شده</span> و خودکار<br>همه در یک پنل</h1>
         <p class="lp-hero-sub">
-          از ارسال ساده و زمان‌بندی‌شده تا پیامک هوشمند با قالب پویا، منشی پیامک خودکار
+          از ارسال ساده و زمان‌بندی‌شده تا پیامک هوشمند با قالب پویا، منشی هوشمند با هوش مصنوعی
           و گزارش لحظه‌ای وضعیت هر پیام — داتیس رایان گستر ایرانیان ابزار پیامک‌رسانی کسب‌وکار شماست.
         </p>
         <div class="lp-hero-cta">
@@ -403,7 +434,7 @@ require __DIR__ . '/../app/views/public_header.php';
   <section id="features" class="lp-section lp-reveal">
     <div class="lp-section-head">
       <h2>هر روش ارسالی که نیاز دارید</h2>
-      <p>پنج حالت ارسال در یک پنل. دسترسی به برخی امکانات ممکن است به پلن حساب بستگی داشته باشد.</p>
+      <p>پنج حالت ارسال و یک منشی هوش مصنوعی در یک پنل. دسترسی به برخی امکانات ممکن است به پلن حساب بستگی داشته باشد.</p>
     </div>
     <div class="lp-bento">
       <article class="lp-card lp-bento-flag lp-reveal" style="--i:0">
@@ -429,7 +460,7 @@ require __DIR__ . '/../app/views/public_header.php';
         <span class="lp-icon lp-icon-tint-b">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>
         </span>
-        <h3>منشی پیامک</h3>
+        <h3>منشی پیامک (کلیدواژه)</h3>
         <p>به پیامک‌های دریافتی بر اساس قوانین از‌پیش‌تعیین‌شده، بدون دخالت دستی، پاسخ خودکار بدهید.</p>
       </article>
       <article class="lp-card lp-bento-c2 lp-reveal" style="--i:3">
@@ -467,8 +498,376 @@ require __DIR__ . '/../app/views/public_header.php';
         <h3>مخاطبین و لیست سیاه</h3>
         <p>مخاطبین را گروه‌بندی کنید و با یک لیست سیاه، شماره‌های مسدود را پیش از هر ارسال به‌طور خودکار فیلتر کنید.</p>
       </article>
+      <article class="lp-card lp-bento-ai lp-reveal" style="--i:8">
+        <div class="lp-bento-ai-copy">
+          <span class="lp-icon lp-icon-light">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9 12h.01M15 12h.01M9.5 16h5"/></svg>
+          </span>
+          <h3>منشی هوشمند با هوش مصنوعی <span class="lp-new-badge">جدید</span></h3>
+          <p>به پیامک‌های ورودی هر خط، از روی اطلاعات کسب‌وکار و جدول‌های خودتان (محصولات، سفارش‌ها، نوبت‌ها) خودکار جواب می‌دهد، گفتگو را هر وقت لازم شد به اپراتور می‌سپارد و در تلگرام هم پاسخ‌گوست.</p>
+        </div>
+        <div class="lp-bento-chips">
+          <span class="lp-chip">پاسخ شبانه‌روزی</span>
+          <span class="lp-chip">جواب از جدول‌ها</span>
+          <span class="lp-chip">ارجاع به اپراتور</span>
+          <span class="lp-chip">پیام اول</span>
+        </div>
+        <a href="#ai-secretary" class="btn lp-bento-ai-link">آشنایی کامل ←</a>
+      </article>
     </div>
   </section>
+
+  <!-- «منشی هوشمند» showcase: a seven-step slider that explains the AI SMS secretary
+       (docs/ai-secretary.md, docs/landing.md). Each step pairs a CSS/SVG animated scene with real text.
+       Tabs on the side are an ARIA tablist; auto-advance is driven by each tab's progress bar
+       (animationend), pauses on hover / focus / off-screen / «توقف», and is off for reduced motion. -->
+  <section id="ai-secretary" class="lp-section lp-ai lp-reveal">
+    <div class="lp-section-head">
+      <p class="lp-ai-eyebrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/></svg>با هوش مصنوعی</p>
+      <h2>منشی هوشمند؛ مشتری می‌پرسد، منشی جواب می‌دهد</h2>
+      <p>یک منشی هوش مصنوعی روی هر خط، که از اطلاعات و جدول‌های خودتان به پیامک‌های ورودی جواب می‌دهد و هر جا لازم شد گفتگو را به شما می‌سپارد.</p>
+    </div>
+
+    <div class="lp-ai-tour" data-lp-ai aria-roledescription="carousel" aria-label="آشنایی با منشی هوشمند">
+      <div class="lp-ai-tabs" role="tablist" aria-label="مراحل معرفی منشی هوشمند">
+        <?php
+          $aiSteps = [
+            ['پاسخ خودکار، شبانه‌روزی', 'جواب در چند ثانیه، از همان خط'],
+            ['راه‌اندازی در چند دقیقه', 'الگو، اطلاعات کسب‌وکار، روشن'],
+            ['مسیر هر پیام', 'قانون‌های شما اول، بعد هوش مصنوعی'],
+            ['جواب از جدول‌های شما', 'محصولات، سفارش‌ها، نوبت‌ها'],
+            ['ارجاع به اپراتور', 'هر وقت لازم شد، انسان'],
+            ['پیام اول با هوش مصنوعی', 'پیام شخصی برای هر ردیف'],
+            ['امن، با هزینه‌ی شفاف', 'محافظ‌ها و هزینه‌ی هر پاسخ'],
+          ];
+          foreach ($aiSteps as $k => [$stepTitle, $stepSub]): $n = $k + 1;
+        ?>
+        <button type="button" role="tab" class="lp-ai-tab<?= $k === 0 ? ' is-active' : '' ?>" id="lpAiTab<?= $n ?>" aria-controls="lpAiStep<?= $n ?>" aria-selected="<?= $k === 0 ? 'true' : 'false' ?>"<?= $k === 0 ? '' : ' tabindex="-1"' ?>>
+          <span class="lp-ai-tab-no"><?= to_persian_digits((string)$n) ?></span>
+          <span class="lp-ai-tab-text"><b><?= e($stepTitle) ?></b><small><?= e($stepSub) ?></small></span>
+          <span class="lp-ai-tab-bar" aria-hidden="true"><i></i></span>
+        </button>
+        <?php endforeach; ?>
+      </div>
+
+      <div class="lp-ai-panels">
+
+        <!-- 1. Answering -->
+        <article class="lp-ai-slide is-active" id="lpAiStep1" role="tabpanel" aria-labelledby="lpAiTab1" aria-roledescription="slide">
+          <div class="lp-ai-text">
+            <span class="lp-ai-step">مرحله‌ی ۱ از ۷</span>
+            <h3>پاسخ خودکار، شبانه‌روزی</h3>
+            <p>مشتری به خط شما پیامک می‌دهد و منشی هوشمند با لحنی که خودتان تعیین کرده‌اید، از همان خط جواب می‌دهد؛ حتی نیمه‌شب و روزهای تعطیل.</p>
+            <ul class="lp-ai-points">
+              <li>یک منشی جدا برای هر خط</li>
+              <li>چند پیام قبلی هر شماره را به خاطر می‌سپارد</li>
+              <li>طول پاسخ به تعداد پارتی که تعیین می‌کنید محدود است</li>
+              <li>اکانت تلگرامتان را وصل کنید، در تلگرام هم جواب می‌دهد</li>
+            </ul>
+          </div>
+          <div class="lp-ai-stage" aria-hidden="true">
+            <div class="lp-ai-phone">
+              <div class="lp-ai-phone-head"><span class="lp-ai-avatar">م</span><div><b>مشتری</b><span class="ltr">0912 *** 4471</span></div></div>
+              <div class="lp-ai-phone-body">
+                <p class="lp-ai-msg is-in lp-ai-pop" style="--t:.3s">سلام، فردا عصر نوبت خالی دارید؟<small>۲۲:۱۵</small></p>
+                <p class="lp-ai-typing" style="--t:1s"><i></i><i></i><i></i></p>
+                <p class="lp-ai-msg is-out lp-ai-pop" style="--t:2.5s">سلام! بله، فردا ساعت <b>۱۸:۳۰</b> وقت خالی داریم. برای رزرو عدد <b>۱</b> را بفرستید.<small>۲۲:۱۵ · منشی</small></p>
+                <p class="lp-ai-msg is-in lp-ai-pop" style="--t:3.6s">۱<small>۲۲:۱۶</small></p>
+                <p class="lp-ai-msg is-out lp-ai-pop" style="--t:4.5s">نوبت شما برای فردا ۱۸:۳۰ ثبت شد ✅<small>۲۲:۱۶ · منشی</small></p>
+              </div>
+            </div>
+            <div class="lp-ai-badge is-tl lp-ai-pop" style="--t:1.6s"><b>۲۴/۷</b>پاسخ‌گو</div>
+            <div class="lp-ai-badge is-br lp-ai-pop" style="--t:2s"><span class="lp-ai-ch is-sms">پیامک</span><span class="lp-ai-ch is-tg">تلگرام</span></div>
+          </div>
+        </article>
+
+        <!-- 2. Setup -->
+        <article class="lp-ai-slide" id="lpAiStep2" role="tabpanel" aria-labelledby="lpAiTab2" aria-roledescription="slide" hidden>
+          <div class="lp-ai-text">
+            <span class="lp-ai-step">مرحله‌ی ۲ از ۷</span>
+            <h3>راه‌اندازی در چند دقیقه</h3>
+            <p>برای هر خط «راه‌اندازی» را بزنید، یک الگو انتخاب کنید، اطلاعات کسب‌وکارتان را بنویسید و منشی را روشن کنید.</p>
+            <ul class="lp-ai-points">
+              <li>الگوهای آماده: فروشگاه، کلینیک، خدمات و دستیار عمومی</li>
+              <li>«منشی کسب‌وکار» فقط از اطلاعات شما جواب می‌دهد و قیمت یا قولی از خودش نمی‌سازد</li>
+              <li>«دستیار عمومی» به هر سؤالی جواب می‌دهد</li>
+              <li>با «آزمایش منشی» جواب را پیش از روشن‌کردن ببینید</li>
+            </ul>
+          </div>
+          <div class="lp-ai-stage" aria-hidden="true">
+            <div class="lp-ai-form">
+              <div class="lp-ai-form-title">تنظیمات منشی · خط <span class="ltr">30001234</span></div>
+              <div class="lp-ai-form-label">الگو</div>
+              <div class="lp-ai-tpls">
+                <span>فروشگاه</span><span class="is-pick">کلینیک</span><span>خدمات</span><span>دستیار عمومی</span>
+              </div>
+              <div class="lp-ai-form-label">حالت</div>
+              <div class="lp-ai-seg"><span class="is-on">منشی کسب‌وکار</span><span>دستیار عمومی</span></div>
+              <div class="lp-ai-form-label">اطلاعات کسب‌وکار</div>
+              <div class="lp-ai-info">
+                <p class="lp-ai-line" style="--t:.9s">ساعت کاری: شنبه تا پنجشنبه، ۹ تا ۲۰</p>
+                <p class="lp-ai-line" style="--t:1.5s">ویزیت عمومی: ۴۵۰ هزار تومان</p>
+                <p class="lp-ai-line" style="--t:2.1s">آدرس: خیابان ولیعصر، کوچه‌ی ۱۲</p>
+                <p class="lp-ai-line" style="--t:2.7s">پارکینگ: دارد · بیمه: تکمیلی</p>
+              </div>
+              <div class="lp-ai-form-foot">
+                <span class="lp-ai-switch"><i></i></span><b>منشی هوشمند روشن باشد</b>
+                <span class="lp-ai-save lp-ai-pop" style="--t:4s">ذخیره شد ✓</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 3. Flow -->
+        <article class="lp-ai-slide" id="lpAiStep3" role="tabpanel" aria-labelledby="lpAiTab3" aria-roledescription="slide" hidden>
+          <div class="lp-ai-text">
+            <span class="lp-ai-step">مرحله‌ی ۳ از ۷</span>
+            <h3>مسیر هر پیام، شفاف و قابل پیش‌بینی</h3>
+            <p>منشی هوشمند جای قانون‌های شما را نمی‌گیرد؛ بعد از آن‌ها وارد کار می‌شود و فقط به پیام‌هایی جواب می‌دهد که جواب دیگری نگرفته‌اند.</p>
+            <ul class="lp-ai-points">
+              <li>«۱۱» و «۱۲» همیشه لغو و عضویت‌اند و به هوش مصنوعی نمی‌رسند</li>
+              <li>اگر یکی از قانون‌های «منشی پیامک» جواب داد، منشی هوشمند کنار می‌ماند</li>
+              <li>پاسخ از همان خطی می‌رود که پیام به آن رسیده</li>
+              <li>همه‌ی گفتگوها و دلیل هر پاسخ‌ندادن در بخش «گفتگوها»</li>
+            </ul>
+          </div>
+          <div class="lp-ai-stage" aria-hidden="true">
+            <ol class="lp-ai-flow">
+              <li style="--t:.2s"><span class="lp-ai-node"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></span><b>پیامک ورودی</b><small>«سلام، قیمت ویزیت چنده؟»</small></li>
+              <li style="--t:1s"><span class="lp-ai-node is-muted"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg></span><b>لغو عضویت «۱۱/۱۲»</b><small>نیست، ادامه</small></li>
+              <li style="--t:1.8s"><span class="lp-ai-node is-muted"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h10M4 17h7"/></svg></span><b>قانون‌های کلیدواژه</b><small>قانونی جواب نداد، ادامه</small></li>
+              <li style="--t:2.6s" class="is-ai"><span class="lp-ai-node is-ai"><svg viewBox="0 0 24 24"><path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/></svg></span><b>منشی هوشمند</b><small>اطلاعات کسب‌وکار + حافظه‌ی گفتگو</small></li>
+              <li style="--t:3.4s"><span class="lp-ai-node is-ok"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/></svg></span><b>پاسخ از همان خط</b><small>«ویزیت عمومی ۴۵۰ هزار تومان است.»</small></li>
+            </ol>
+          </div>
+        </article>
+
+        <!-- 4. Data tables -->
+        <article class="lp-ai-slide" id="lpAiStep4" role="tabpanel" aria-labelledby="lpAiTab4" aria-roledescription="slide" hidden>
+          <div class="lp-ai-text">
+            <span class="lp-ai-step">مرحله‌ی ۴ از ۷</span>
+            <h3>جواب از جدول‌های خودتان</h3>
+            <p>محصولات، سفارش‌ها یا نوبت‌ها را در «مدیریت جدول‌ها» بسازید یا از اکسل وارد کنید؛ منشی به سؤالی مثل «سفارش ۴۵۱۲ کجاست؟» از همان جدول جواب می‌دهد.</p>
+            <ul class="lp-ai-points">
+              <li>ساخت جدول از الگو، فایل اکسل/CSV یا به‌صورت دستی</li>
+              <li>با «ستون موبایل»، هر مشتری فقط ردیف‌های شماره‌ی خودش را می‌بیند</li>
+              <li>متن‌های طولانی مثل شرایط گارانتی را به‌صورت سند (txt، docx، pdf) بدهید</li>
+              <li>منشی فقط بخش‌های مرتبط با سؤال را می‌خواند</li>
+            </ul>
+          </div>
+          <div class="lp-ai-stage" aria-hidden="true">
+            <div class="lp-ai-lookup">
+              <p class="lp-ai-msg is-in lp-ai-pop" style="--t:.3s">سفارش ۴۵۱۲ کجاست؟</p>
+              <div class="lp-ai-table lp-ai-pop" style="--t:.9s">
+                <div class="lp-ai-table-title"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>جدول «سفارش‌ها»<span class="lp-ai-lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>فقط شماره‌ی خود مشتری</span></div>
+                <div class="lp-ai-tr is-head"><span>کد</span><span>نام</span><span>وضعیت</span><span>رهگیری</span></div>
+                <div class="lp-ai-tr is-dim"><span>۴۵۰۹</span><span>•••</span><span>•••</span><span>•••</span></div>
+                <div class="lp-ai-tr is-hit"><span>۴۵۱۲</span><span>سارا</span><span>ارسال شد</span><span class="ltr">RT998877</span></div>
+                <div class="lp-ai-tr is-dim"><span>۴۵۱۷</span><span>•••</span><span>•••</span><span>•••</span></div>
+                <span class="lp-ai-scan"></span>
+              </div>
+              <p class="lp-ai-msg is-out lp-ai-pop" style="--t:3s">سارا خانم سلام، سفارش ۴۵۱۲ امروز ارسال شد. کد رهگیری: <b class="ltr">RT998877</b></p>
+            </div>
+          </div>
+        </article>
+
+        <!-- 5. Hand-off -->
+        <article class="lp-ai-slide" id="lpAiStep5" role="tabpanel" aria-labelledby="lpAiTab5" aria-roledescription="slide" hidden>
+          <div class="lp-ai-text">
+            <span class="lp-ai-step">مرحله‌ی ۵ از ۷</span>
+            <h3>هر وقت لازم شد، اپراتور</h3>
+            <p>وقتی مشتری اپراتور بخواهد، شکایت کند یا منشی نتواند کمک کند، گفتگو به شما سپرده می‌شود و منشی کنار می‌رود.</p>
+            <ul class="lp-ai-points">
+              <li>اعلان در پنل برای گفتگوی ارجاع‌شده</li>
+              <li>منشی تا مدتی که تعیین کرده‌اید به آن شماره جواب نمی‌دهد</li>
+              <li>پاسخ دستی در «گفتگوهای ارجاع‌شده به اپراتور»</li>
+              <li>با «ادامه با منشی هوشمند» گفتگو را به منشی برگردانید</li>
+            </ul>
+          </div>
+          <div class="lp-ai-stage" aria-hidden="true">
+            <div class="lp-ai-handoff">
+              <p class="lp-ai-msg is-in lp-ai-pop" style="--t:.3s">می‌خوام با یه نفر صحبت کنم، از ارسال ناراضی‌ام.</p>
+              <p class="lp-ai-msg is-out lp-ai-pop" style="--t:1.3s">حتماً؛ گفتگو را به همکارم سپردم و به‌زودی پاسخ می‌دهد.<small>منشی</small></p>
+              <div class="lp-ai-toast lp-ai-pop" style="--t:2.2s">
+                <span class="lp-ai-bell"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></span>
+                <div><b>گفتگو به اپراتور ارجاع شد</b><span>منشی برای این شماره متوقف است</span></div>
+              </div>
+              <p class="lp-ai-msg is-out is-human lp-ai-pop" style="--t:3.3s">سلام، من مریم از پشتیبانی هستم؛ سفارش شما را پیگیری کردم…<small>اپراتور</small></p>
+              <span class="lp-ai-resume lp-ai-pop" style="--t:4.3s"><svg viewBox="0 0 24 24"><path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/></svg>ادامه با منشی هوشمند</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- 6. First message (outreach) -->
+        <article class="lp-ai-slide" id="lpAiStep6" role="tabpanel" aria-labelledby="lpAiTab6" aria-roledescription="slide" hidden>
+          <div class="lp-ai-text">
+            <span class="lp-ai-step">مرحله‌ی ۶ از ۷</span>
+            <h3>پیام اول را هم منشی می‌نویسد</h3>
+            <p>در بخش «پیام اول»، منشی برای هر ردیف یک جدول (مثلاً سفارش‌های ارسال‌شده) یک پیام شخصی می‌نویسد و از همان خط می‌فرستد.</p>
+            <ul class="lp-ai-points">
+              <li>پیش‌نمایش دو پیام اول، پیش از شروع</li>
+              <li>ارسال با پیامک، بله، یا بله و سپس پیامک</li>
+              <li>پاسخ مشتری مستقیم به منشی می‌رسد</li>
+              <li>لغو در هر لحظه؛ پیام‌های ارسال‌نشده متوقف می‌شوند</li>
+            </ul>
+          </div>
+          <div class="lp-ai-stage" aria-hidden="true">
+            <div class="lp-ai-outreach">
+              <div class="lp-ai-rows">
+                <div class="lp-ai-row lp-ai-pop" style="--t:.2s"><b>سارا</b><span>۴۵۱۲</span><span class="ltr">RT998877</span></div>
+                <div class="lp-ai-row lp-ai-pop" style="--t:.4s"><b>امیر</b><span>۴۵۱۴</span><span class="ltr">RT998912</span></div>
+                <div class="lp-ai-row lp-ai-pop" style="--t:.6s"><b>نیلوفر</b><span>۴۵۲۰</span><span class="ltr">RT999031</span></div>
+              </div>
+              <div class="lp-ai-prompt lp-ai-pop" style="--t:1s"><svg viewBox="0 0 24 24"><path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/></svg>«به مشتری خبر بده سفارشش ارسال شد و کد رهگیری را بده»</div>
+              <div class="lp-ai-outs">
+                <p class="lp-ai-out lp-ai-pop" style="--t:2s"><span class="lp-ai-ch is-sms">پیامک</span>سارا خانم سلام، سفارش ۴۵۱۲ امروز ارسال شد. کد رهگیری: RT998877</p>
+                <p class="lp-ai-out lp-ai-pop" style="--t:2.8s"><span class="lp-ai-ch is-bale">بله</span>آقای امیر، بسته‌ی سفارش ۴۵۱۴ در راه است؛ کد رهگیری RT998912</p>
+                <p class="lp-ai-out lp-ai-pop" style="--t:3.6s"><span class="lp-ai-ch is-sms">پیامک</span>نیلوفر جان، سفارش ۴۵۲۰ ارسال شد. رهگیری: RT999031</p>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 7. Guards and cost -->
+        <article class="lp-ai-slide" id="lpAiStep7" role="tabpanel" aria-labelledby="lpAiTab7" aria-roledescription="slide" hidden>
+          <div class="lp-ai-text">
+            <span class="lp-ai-step">مرحله‌ی ۷ از ۷</span>
+            <h3>امن، کنترل‌شده، با هزینه‌ی شفاف</h3>
+            <p>منشی به سرشماره‌ها و ربات‌ها جواب نمی‌دهد و دستورهایی را که داخل پیام مشتری نوشته شده اجرا نمی‌کند.</p>
+            <ul class="lp-ai-points">
+              <li>جلوگیری از حلقه‌ی ربات‌ها، پیام تکراری و پیام‌های خیلی قدیمی</li>
+              <li>سقف پاسخ به هر شماره در ساعت و سقف روزانه‌ی خط</li>
+              <li>هزینه‌ی هر پاسخ: پیامکِ پاسخ + هزینه‌ی هوش مصنوعی</li>
+              <li>هزینه‌ی هوش مصنوعی فقط پس از ارسال موفق پاسخ کسر می‌شود</li>
+            </ul>
+          </div>
+          <div class="lp-ai-stage" aria-hidden="true">
+            <div class="lp-ai-guard">
+              <div class="lp-ai-shield"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/></svg></div>
+              <ul class="lp-ai-checks">
+                <li class="lp-ai-pop" style="--t:.4s"><i>✓</i>سرشماره و ربات: بدون پاسخ</li>
+                <li class="lp-ai-pop" style="--t:.8s"><i>✓</i>ضد حلقه و پیام تکراری</li>
+                <li class="lp-ai-pop" style="--t:1.2s"><i>✓</i>سقف ساعتی و روزانه</li>
+                <li class="lp-ai-pop" style="--t:1.6s"><i>✓</i>لغو عضویت‌شده‌ها: بدون پاسخ</li>
+              </ul>
+              <div class="lp-ai-receipt lp-ai-pop" style="--t:2.2s">
+                <div class="lp-ai-receipt-title">هزینه‌ی یک پاسخ</div>
+                <div class="lp-ai-receipt-row"><span>پیامکِ پاسخ</span><b>مثل پیامک عادی</b></div>
+                <div class="lp-ai-receipt-row"><span>هوش مصنوعی</span><b>طبق تعرفه</b></div>
+                <div class="lp-ai-receipt-row is-sum"><span>کسر از اعتبار</span><b>پس از ارسال موفق</b></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+
+      <div class="lp-ai-controls">
+        <button type="button" class="lp-ai-arrow" data-lp-ai-prev aria-label="مرحله‌ی قبل"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+        <span class="lp-ai-count" aria-live="polite"><b data-lp-ai-count>۱</b> / ۷</span>
+        <button type="button" class="lp-ai-arrow" data-lp-ai-next aria-label="مرحله‌ی بعد"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+        <button type="button" class="lp-banner-toggle lp-ai-toggle" data-lp-ai-toggle aria-pressed="false">
+          <span class="lp-banner-toggle-icon" aria-hidden="true"></span><span data-lp-ai-toggle-label>توقف</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="lp-ai-cta">
+      <p>منشی هوشمند برای حساب‌هایی فعال می‌شود که سرویس هوش مصنوعی برایشان روشن شده و خط ارسال دارند. برای فعال‌سازی با پشتیبانی تماس بگیرید.</p>
+      <div>
+        <a href="/contact.php" class="btn btn-primary">درخواست فعال‌سازی</a>
+        <a href="/guide.php#guide-ai-secretary" class="btn btn-ghost">راهنمای منشی هوشمند</a>
+      </div>
+    </div>
+  </section>
+<script>
+(function () {
+  var root = document.querySelector('[data-lp-ai]');
+  if (!root) return;
+  var tabs = root.querySelectorAll('.lp-ai-tab');
+  var slides = root.querySelectorAll('.lp-ai-slide');
+  var count = root.querySelector('[data-lp-ai-count]');
+  var toggle = root.querySelector('[data-lp-ai-toggle]');
+  var toggleLabel = root.querySelector('[data-lp-ai-toggle-label]');
+  var fa = '۰۱۲۳۴۵۶۷۸۹';
+  var current = 0, hovering = false, focused = false, visible = false;
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var stopped = still;
+  function show(i, moveFocus) {
+    current = (i + slides.length) % slides.length;
+    slides.forEach(function (s, k) { var on = k === current; s.classList.toggle('is-active', on); s.hidden = !on; });
+    tabs.forEach(function (t, k) {
+      var on = k === current;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      t.classList.remove('is-done');
+      if (k < current) t.classList.add('is-done');
+    });
+    count.textContent = fa[current + 1];
+    // Keep the active tab in view when the tabs scroll sideways (narrow screens), without moving the page.
+    var t = tabs[current], strip = t.parentNode;
+    if (strip.scrollWidth > strip.clientWidth) {
+      var tr = t.getBoundingClientRect(), sr = strip.getBoundingClientRect();
+      strip.scrollBy({ left: (tr.left + tr.width / 2) - (sr.left + sr.width / 2), behavior: still ? 'auto' : 'smooth' });
+    }
+    if (moveFocus) t.focus();
+  }
+  function sync() {
+    // The tab's progress bar is the timer: its animation runs only while auto-advance is allowed.
+    var hold = stopped || hovering || focused || !visible || document.hidden;
+    root.classList.toggle('is-holding', hold);
+  }
+  function replay() {
+    // Coming back into view: play the current scene again from its start.
+    var s = slides[current];
+    s.classList.remove('is-active'); void s.offsetWidth; s.classList.add('is-active');
+  }
+  tabs.forEach(function (t, k) {
+    t.querySelector('.lp-ai-tab-bar i').addEventListener('animationend', function () { if (k === current) show(current + 1); });
+    t.addEventListener('click', function () { show(k); });
+    t.addEventListener('keydown', function (e) {
+      var vertical = getComputedStyle(t.parentNode).flexDirection === 'column';
+      var step = vertical ? { ArrowDown: 1, ArrowUp: -1 }[e.key] : { ArrowLeft: 1, ArrowRight: -1 }[e.key]; // RTL
+      if (step) { e.preventDefault(); show(current + step, true); }
+      else if (e.key === 'Home') { e.preventDefault(); show(0, true); }
+      else if (e.key === 'End') { e.preventDefault(); show(slides.length - 1, true); }
+    });
+  });
+  root.querySelector('[data-lp-ai-prev]').addEventListener('click', function () { show(current - 1); });
+  root.querySelector('[data-lp-ai-next]').addEventListener('click', function () { show(current + 1); });
+  toggle.addEventListener('click', function () {
+    stopped = !stopped;
+    toggle.setAttribute('aria-pressed', stopped ? 'true' : 'false');
+    toggleLabel.textContent = stopped ? 'پخش خودکار' : 'توقف';
+    sync();
+  });
+  root.addEventListener('mouseenter', function () { hovering = true; sync(); });
+  root.addEventListener('mouseleave', function () { hovering = false; sync(); });
+  root.addEventListener('focusin', function () { focused = true; sync(); });
+  root.addEventListener('focusout', function (e) { if (!root.contains(e.relatedTarget)) { focused = false; sync(); } });
+  var x0 = null;
+  var panels = root.querySelector('.lp-ai-panels');
+  panels.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+  panels.addEventListener('touchend', function (e) {
+    if (x0 === null) return;
+    var dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 40) show(current + (dx > 0 ? 1 : -1)); // RTL: swipe right = next
+  });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      var en = entries[0];
+      // "In view" = a good part of the tour is on screen (it is taller than a phone screen).
+      var now = en.isIntersecting && en.intersectionRect.height >= Math.min(320, en.boundingClientRect.height * 0.3);
+      if (now && !visible) replay();
+      visible = now; sync();
+    }, { threshold: [0, 0.1, 0.2, 0.3, 0.5] }).observe(root);
+  } else { visible = true; }
+  document.addEventListener('visibilitychange', sync);
+  if (still) { toggle.setAttribute('aria-pressed', 'true'); toggleLabel.textContent = 'پخش خودکار'; }
+  sync();
+})();
+</script>
 
   <section id="compare" class="lp-section lp-compare lp-reveal">
     <div class="lp-section-head">
@@ -494,7 +893,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <div class="lp-compare-row">
         <div>پاسخ به پیام‌های دریافتی</div>
         <div class="lp-compare-no">دستی و با تأخیر</div>
-        <div class="lp-compare-yes">منشی پیامک، پاسخ خودکار طبق قوانین شما</div>
+        <div class="lp-compare-yes">منشی هوشمند و منشی پیامک، پاسخ خودکار و شبانه‌روزی</div>
       </div>
       <div class="lp-compare-row">
         <div>گزارش وضعیت تحویل</div>
@@ -663,6 +1062,10 @@ require __DIR__ . '/../app/views/public_header.php';
       <details class="lp-guide-item">
         <summary>منشی پیامک روی چه اساسی پاسخ می‌دهد؟</summary>
         <div class="lp-guide-body">بر اساس قوانینی که خودتان از پیش تعریف می‌کنید — مثلاً کلمات کلیدی خاص در پیامک دریافتی — بدون نیاز به دخالت دستی.</div>
+      </details>
+      <details class="lp-guide-item">
+        <summary>منشی هوشمند چیست و چه هزینه‌ای دارد؟</summary>
+        <div class="lp-guide-body">یک منشی هوش مصنوعی روی خط شماست که از اطلاعات کسب‌وکار و جدول‌هایی که خودتان می‌دهید به پیامک‌های ورودی جواب می‌دهد و در صورت نیاز گفتگو را به اپراتور می‌سپارد. هر پاسخ دو بخش هزینه دارد: پیامکِ پاسخ (مثل پیامک عادی) و هزینه‌ی هوش مصنوعی طبق تعرفه، که فقط پس از ارسال موفق پاسخ کسر می‌شود. برای فعال‌سازی با <a href="/contact">پشتیبانی</a> تماس بگیرید. <a href="#ai-secretary">معرفی کامل منشی هوشمند</a></div>
       </details>
       <details class="lp-guide-item">
         <summary>راهنمای کامل استفاده از پنل کجاست؟</summary>

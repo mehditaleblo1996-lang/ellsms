@@ -1,7 +1,8 @@
 <?php
 /** Shared chrome for public marketing pages (landing, contact) — not
  *  the logged-in app shell in app/views/header.php.
- *  Expects: $pageTitle, optional $metaDescription. */
+ *  Expects: $pageTitle, optional $metaDescription, optional $extraStyles (list of
+ *  /assets/... stylesheet paths a single page adds after style.css). */
 $loggedIn     = (bool) current_user();
 $primaryHref  = $loggedIn ? '/index.php' : '/login.php';
 $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به پنل';
@@ -14,6 +15,8 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
 <?php if (!empty($metaDescription)): ?><meta name="description" content="<?= e($metaDescription) ?>"><?php endif; ?>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
+<?php foreach (($extraStyles ?? []) as $extraStyle): ?><link rel="stylesheet" href="<?= e(asset_url($extraStyle)) ?>">
+<?php endforeach; ?>
 </head>
 <body class="lp-body">
 <a class="skip-link" href="#main">پرش به محتوای اصلی</a>
@@ -25,6 +28,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
       <a href="/landing.php#features">امکانات</a>
+      <a href="/landing.php#ai-secretary">منشی هوشمند</a>
       <a href="/landing.php#pricing">بسته‌های پیامک</a>
       <a href="/landing.php#how">نحوه‌ی کار</a>
       <a href="/landing.php#faq">سوالات</a>

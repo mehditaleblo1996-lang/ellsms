@@ -157,6 +157,8 @@ customer writes, and the answer is sent from the same line.
   - Long documents (txt/docx/pdf) become searchable.
   - AI providers can be reached through a proxy or the relay kit in `ops/ai-relay/`.
   - Anthropic prompt caching.
+- **Public showcase**: the landing page advertises the secretary with banner slide 6, a feature tile
+  and a seven-step slider at `/landing.php#ai-secretary` ([`docs/landing.md`](docs/landing.md)).
 
 Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
 `2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`.
@@ -303,7 +305,8 @@ The panel now has a real mobile navigation drawer instead of stacking the entire
 
 `/index.php` (the site root) now shows `/landing.php` to anyone not logged in instead of bouncing straight to `/login.php` — the dashboard behavior for logged-in users is unchanged. Login is still reachable from the landing page's own CTA. Everything under this section is public, unauthenticated, and shares one chrome (`app/views/public_header.php` / `public_footer.php`) separate from the logged-in app shell in `app/views/header.php`.
 
-- **Hero slider** — an admin-managed (Settings → اسلایدر صفحه‌ی اصلی, `/slides.php`) image carousel spanning the full page width directly under the nav, above the hero text. Each slide is an image + title + optional short text + optional link. Falls back to a static decorative mockup when no slides are configured, so the page never looks broken on a fresh install. Images upload straight into `public/assets/img/slides/` (gitignored, like `storage/kyc/`) since these are public marketing banners, not sensitive documents — no access-control script needed the way `kyc-photo.php` has one.
+- **Top banner** — six animated slides (bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») spanning the full page width directly under the nav. They are fixed HTML/CSS/SVG in `landing.php` (no video, no library): auto-advance, pause on hover/focus/off-screen, a «توقف اسلایدها» button, keyboard and swipe, and a still first slide for reduced motion. Admin slides from Settings → اسلایدر صفحه‌ی اصلی (`/slides.php`) are not shown on the landing page. See [`docs/landing.md`](docs/landing.md).
+- **«منشی هوشمند» on the landing page** — a full-width «منشی هوشمند با هوش مصنوعی» tile in the features grid, a nav link, an FAQ entry, and a seven-step showcase slider at `/landing.php#ai-secretary` (answering, setup, message flow, data tables, hand-off, «پیام اول», guards and cost), each step with an animated CSS/SVG scene. Styles in `public/assets/css/landing-ai.css`, loaded only on that page through the public header's `$extraStyles`. See [`docs/landing.md`](docs/landing.md).
 - **بسته‌های پیامک / pricing cards** (`/pricing.php` to manage, shown on `/landing.php#pricing`) — a separate marketing-only table (`ellsms_pricing_packages`: name, credit amount, price in Rial, feature bullets, a "پیشنهاد ویژه" badge). Deliberately independent from the real purchase in `buy-credit.php` (one Rial paid before VAT = one Rial of credit) — this is just what's advertised.
 - **راهنمای استفاده** — a public FAQ/guide page (`/guide.php`, plain `<details>`/`<summary>` accordion, no JS needed) backed by admin-editable articles (`/guide-admin.php`, `ellsms_guide_articles`). Body text is plain, rendered with `nl2br()` — no markdown parser, consistent with this project having no `vendor/` directory anywhere else.
 - **تماس با ما** (`/contact.php`) — shows an address/phone block from Settings → تماس با ما (hidden entirely if never configured) plus a ticket form. Submitting the form doesn't write to a table — `app/telegram.php` relays it as a plain chat message to a Telegram bot via the official `sendMessage` endpoint, using a Bot Token + Chat ID configured the same `.env`-with-Settings-override pattern as ZarinPal (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`). Create the bot with `@BotFather`.
@@ -540,7 +543,8 @@ updated in the same change** — see `CLAUDE.md`.
 [customer-profile](docs/customer-profile.md) ·
 [registration](docs/registration.md) ·
 [profile-kyc](docs/profile-kyc.md) ·
-[admin-impersonation](docs/admin-impersonation.md)
+[admin-impersonation](docs/admin-impersonation.md) ·
+[landing](docs/landing.md)
 
 **API & integrations**
 [public-api](docs/public-api.md) ·
