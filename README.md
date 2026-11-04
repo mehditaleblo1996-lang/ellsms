@@ -160,6 +160,10 @@ customer writes, and the answer is sent from the same line.
 
 Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
 `2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`.
+
+Next phases (6–12: actions and booking, reminders, «بنویس برام», Bale/Telegram bots, insights, public
+API, packages and fallback) are specified for implementing agents in
+[`docs/ai-roadmap.md`](docs/ai-roadmap.md).
 No public API routes.
 
 ## Delivery-based billing (ارسال بر اساس تحویل)
@@ -513,6 +517,7 @@ updated in the same change** — see `CLAUDE.md`.
 [ai-secretary](docs/ai-secretary.md) ·
 [ai-data](docs/ai-data.md) ·
 [ai-outreach](docs/ai-outreach.md) ·
+[ai-roadmap](docs/ai-roadmap.md) ·
 [webengage](docs/webengage.md) ·
 [telegram-invoice-bot](docs/telegram-invoice-bot.md)
 
