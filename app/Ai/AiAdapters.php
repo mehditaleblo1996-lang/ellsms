@@ -90,6 +90,7 @@ function ai_error_label(string $code): string {
         'invalid_json'         => 'پاسخ ارائه‌دهنده JSON معتبر نبود.',
         'response_too_large'   => 'پاسخ ارائه‌دهنده بیش از حد بزرگ بود.',
         'empty_response'       => 'ارائه‌دهنده پاسخ متنی برنگرداند.',
+        'reasoning_exhausted'  => 'مدل همه‌ی توکن‌های خروجی را صرف استدلال کرد و به نوشتن پاسخ نرسید؛ «حداکثر خروجی» این مدل را بیشتر کنید (مثلاً ۸۰۰۰).',
         'refusal'              => 'مدل از پاسخ‌دادن خودداری کرد.',
         'models_not_supported' => 'این سرور فهرست مدل‌ها را ارائه نمی‌کند؛ مدل را دستی اضافه کنید.',
         'secret_unavailable'   => 'کلید API ذخیره‌شده قابل رمزگشایی نیست (کلید اصلی تغییر کرده است).',
@@ -445,14 +446,20 @@ function ai_build_chat_request(array $cfg, string $model, array $messages, int $
  * prompt_tokens), so billing counts every token the model read.
  *
  * @return array{text:string, input_tokens:?int, output_tokens:?int, finish_reason:?string,
- *               tool_calls: list<array{id:string, name:string, arguments:array}>, cost:?float}
+ *               tool_calls: list<array{id:string, name:string, arguments:array}>, cost:?float,
+ *               reasoning_tokens:?int, truncated:bool}
  * cost: the price the provider itself reported for this call, in USD (OpenRouter's usage.cost), or null.
+ * reasoning_tokens: the part of output_tokens a thinking model spent on hidden reasoning, when the
+ * provider reports it (usage.completion_tokens_details.reasoning_tokens), or null.
+ * truncated: the model hit the output-token cap (finish_reason length / max_tokens), so the answer
+ * is cut off — with a thinking model, usually because the reasoning used up the budget.
  */
 function ai_parse_chat(string $type, array $json): array {
     $text = '';
     $in = $out = null;
     $finish = null;
     $cost = null;
+    $reasoning = null;
     $calls = [];
     $args = static function (mixed $raw): array {
         if (is_array($raw)) return $raw;
@@ -512,6 +519,8 @@ function ai_parse_chat(string $type, array $json): array {
         $in = is_int($json['usage']['prompt_tokens'] ?? null) ? $json['usage']['prompt_tokens'] : null;
         $out = is_int($json['usage']['completion_tokens'] ?? null) ? $json['usage']['completion_tokens'] : null;
         $finish = is_string($choice['finish_reason'] ?? null) ? $choice['finish_reason'] : null;
+        $details = $json['usage']['completion_tokens_details'] ?? $json['usage']['output_tokens_details'] ?? null;
+        $reasoning = is_int($details['reasoning_tokens'] ?? null) ? $details['reasoning_tokens'] : null;
         // OpenRouter (and some gateways) report the actual price of the call, in USD.
         if (is_int($json['usage']['cost'] ?? null) || is_float($json['usage']['cost'] ?? null)) {
             $cost = max(0.0, (float)$json['usage']['cost']);
@@ -519,11 +528,15 @@ function ai_parse_chat(string $type, array $json): array {
     }
     // Reasoning models served through compatible servers (Hermes among them) can wrap their
     // reasoning in <think>…</think>; it is never part of the answer.
-    $text = trim((string)preg_replace('#<think>.*?</think>#su', '', $text));
+    // A reply cut off mid-reasoning leaves an unclosed <think>: everything after it is reasoning too.
+    $text = trim((string)preg_replace(['#<think>.*?</think>#su', '#<think>.*$#su'], '', $text));
+    $truncated = in_array($finish, ['length', 'max_tokens'], true);
     if ($text === '' && $calls === []) {
-        throw new AiProviderException('empty_response');
+        // A thinking model that hit the cap before writing a word: a bigger budget fixes it.
+        throw new AiProviderException($truncated ? 'reasoning_exhausted' : 'empty_response');
     }
-    return ['text' => $text, 'input_tokens' => $in, 'output_tokens' => $out, 'finish_reason' => $finish, 'tool_calls' => $calls, 'cost' => $cost];
+    return ['text' => $text, 'input_tokens' => $in, 'output_tokens' => $out, 'finish_reason' => $finish, 'tool_calls' => $calls, 'cost' => $cost,
+        'reasoning_tokens' => $reasoning, 'truncated' => $truncated];
 }
 
 /** Pure: estimated cost in the model's currency, or null when a price is missing. */

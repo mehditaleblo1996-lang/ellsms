@@ -80,7 +80,7 @@ the part limit.
 | **Instructions** | Up to 4,000 characters. |
 | **Business information** | Up to 20,000 characters. Sent with every request. For large data, see phase 4. |
 | **Model** | The account default, or one of the account's allowed models. |
-| **Max reply length** | 1–5 SMS parts. The answer is cut at a sentence or word boundary, with «…» if cut. |
+| **Max reply length** | 1–5 SMS parts. The answer is cut at a sentence or word boundary, with «…» if cut. The model's output-token budget is `max(1500, parts × 300)`, so a thinking model has room for its reasoning ([ai-engines.md](ai-engines.md#thinking-models-and-the-output-token-cap)). |
 | **Memory** | The last N exchanges (default 6) with the same number within H hours (default 24). |
 | **Caps** | Replies per number per hour, and replies per line per day. |
 | **Data tables / lookup mode** | The tables the assistant may look into and how (automatic search or tool calls). See [docs/ai-data.md](ai-data.md). |

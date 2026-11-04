@@ -137,7 +137,7 @@ function ai_outreach_write(array $assistant, array $model, array $dataset, array
     $provider = ai_provider_find((int)$model['provider_id']) ?? throw new AiProviderException('not_found');
     $messages = ai_outreach_messages($assistant, $dataset, $rowData, $instruction);
     $parts = max(1, (int)$assistant['max_parts']);
-    $reply = ai_chat(ai_provider_config($provider), (string)$model['external_model_id'], $messages, ai_model_token_cap($model, ai_secretary_max_tokens($parts)));
+    $reply = ai_secretary_chat(ai_provider_config($provider), $model, $messages, ai_model_token_cap($model, ai_secretary_max_tokens($parts)));
     [$text] = ai_secretary_parse_handoff($reply['text']);
     $promptChars = array_sum(array_map(static fn(array $m): int => mb_strlen($m['content']), $messages));
     $billable = ai_billable_tokens($reply['input_tokens'], $reply['output_tokens'], $promptChars, mb_strlen($reply['text']));
