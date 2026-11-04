@@ -657,7 +657,6 @@ function ai_http_curl(array $request, array $cfg, array $policy): array {
     curl_exec($ch);
     $errno = curl_errno($ch);
     $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
     if ($tooLarge) {
         $errno = CURLE_WRITE_ERROR;
     }
