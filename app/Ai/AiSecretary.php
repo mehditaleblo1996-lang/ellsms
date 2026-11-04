@@ -330,6 +330,23 @@ function ai_secretary_max_tokens(int $parts): int {
 }
 
 /**
+ * ai_chat() that gives a thinking model one more go when it spent the whole budget on reasoning
+ * (reasoning_exhausted): the same request with 4× the budget, up to the model's own cap (8000 when
+ * the model has none). The tokens of the failed attempt are not reported by the provider in the
+ * exception, so they are not billed.
+ * @throws AiProviderException
+ */
+function ai_secretary_chat(array $cfg, array $model, array $messages, int $maxTokens, ?array $tools = null): array {
+    try {
+        return ai_chat($cfg, (string)$model['external_model_id'], $messages, $maxTokens, null, $tools);
+    } catch (AiProviderException $e) {
+        $bigger = ai_model_token_cap($model, (int)($model['max_output_tokens'] ?? 0) > 0 ? $maxTokens * 4 : min(8000, $maxTokens * 4));
+        if ($e->errorCode !== 'reasoning_exhausted' || $bigger <= $maxTokens) throw $e;
+        return ai_chat($cfg, (string)$model['external_model_id'], $messages, $bigger, null, $tools);
+    }
+}
+
+/**
  * Pure: $text cut so it fits in $maxParts SMS parts — at the last sentence or word boundary that
  * fits, with «…» when something was cut. Whitespace runs are collapsed and markdown emphasis is
  * dropped first, since an SMS shows it literally.
@@ -689,7 +706,7 @@ function ai_secretary_generate(array $assistant, array $model, array $history, s
     $promptChars = 0;
     for ($round = 0; ; $round++) {
         $promptChars += array_sum(array_map(static fn(array $m): int => mb_strlen((string)($m['content'] ?? '')), $messages));
-        $reply = ai_chat($cfg, (string)$model['external_model_id'], $messages, $maxTokens, null,
+        $reply = ai_secretary_chat($cfg, $model, $messages, $maxTokens,
             $round < AI_SECRETARY_MAX_TOOL_ROUNDS ? $tools : null);
         $latency += $reply['latency_ms'];
         $billable = ai_billable_tokens($reply['input_tokens'], $reply['output_tokens'], $promptChars, mb_strlen($reply['text']));

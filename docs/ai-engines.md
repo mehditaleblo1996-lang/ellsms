@@ -152,7 +152,14 @@ default «حداکثر توکن خروجی» is 1500, a cut-off answer carries a
 reasoning tokens are shown next to the output tokens. The secretary and outreach budget is
 `ai_secretary_max_tokens()` = `max(1500, parts × 300)` (still capped by the model's max output
 tokens); a model is billed only for the tokens it actually writes, and the answer is cut to the SMS
-part limit afterwards either way. Leave a thinking model's «حداکثر خروجی» at least that high.
+part limit afterwards either way. Leave a thinking model's «حداکثر خروجی» at least that high
+(8000 is a good value).
+
+When a reply is cut off before the model wrote any answer, `ai_parse_chat()` throws
+`reasoning_exhausted` («مدل همه‌ی توکن‌های خروجی را صرف استدلال کرد…») instead of the generic
+`empty_response`, and an unclosed `<think>` is dropped so reasoning never reaches a customer. The
+secretary and outreach (`ai_secretary_chat()`) then retry once with 4× the budget, up to the model's
+«حداکثر خروجی» (8000 when it is empty); if that is already reached, the error stays.
 
 ## Which models an account may use
 

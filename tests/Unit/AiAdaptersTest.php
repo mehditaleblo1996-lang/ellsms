@@ -264,6 +264,13 @@ final class AiAdaptersTest extends TestCase
         $cut = \ai_parse_chat('gapgpt', ['choices' => [['message' => ['content' => 'سلام! پایتخت'], 'finish_reason' => 'length']],
             'usage' => ['prompt_tokens' => 41, 'completion_tokens' => 302, 'completion_tokens_details' => ['reasoning_tokens' => 270]]]);
         $this->assertSame([true, 270], [$cut['truncated'], $cut['reasoning_tokens']]);
+        // Cut off before the answer: the unclosed <think> never leaks, and the error says why.
+        try {
+            \ai_parse_chat('openai_compatible', ['choices' => [['message' => ['content' => '<think>let me see'], 'finish_reason' => 'length']]]);
+            $this->fail('expected reasoning_exhausted');
+        } catch (\AiProviderException $e) {
+            $this->assertSame('reasoning_exhausted', $e->errorCode);
+        }
         $this->assertTrue(\ai_parse_chat('anthropic', ['content' => [['type' => 'text', 'text' => 'x']], 'stop_reason' => 'max_tokens'])['truncated']);
 
         $parts = \ai_parse_chat('openai', ['choices' => [['message' => ['content' => [['type' => 'text', 'text' => 'a'], ['type' => 'text', 'text' => 'b']]]]]]);
