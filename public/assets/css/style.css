@@ -316,6 +316,19 @@ input[type=date], select, textarea {
   input[type=date], select, textarea { font-size: 16px; }
 }
 textarea { min-height: 112px; resize: vertical; }
+/* NATIVE DROPDOWN LISTS. Firefox draws a <select>'s open list outside the page, from the options'
+   own computed styles. Left implicit, the list came up blank in the RTL panel — empty white rows
+   and a cut-off grey highlight — because the right-aligned option text was laid out off the visible
+   edge and the list took the OS (possibly dark) theme's text colour against the select's white
+   background. Naming the scheme, colours and direction on the options keeps every dropdown
+   readable whatever the browser or system theme. */
+html { color-scheme: light; }
+select option, select optgroup {
+  color: #0b1023; background-color: #fff;
+  direction: rtl; text-align: right; unicode-bidi: plaintext;
+  white-space: normal;
+}
+select option:disabled { color: #8a94ab; }
 input:focus, select:focus, textarea:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px rgba(46,99,246,.15); }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .hint { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-base); margin-top: var(--sp-1); }
