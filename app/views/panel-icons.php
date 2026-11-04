@@ -59,7 +59,7 @@ function panel_icon(string $name): string {
     $names = [
         'dashboard'=>'grid', 'notifications'=>'bell', 'guide'=>'book', 'onboarding'=>'check',
         'new_send'=>'spark', 'send'=>'send', 'p2p'=>'users', 'smart'=>'spark', 'schedules'=>'clock',
-        'autoreply'=>'message', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'sent_count_report'=>'chart', 'received_count_report'=>'inbox', 'inbox'=>'inbox',
+        'autoreply'=>'message', 'ai_secretary'=>'spark', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'sent_count_report'=>'chart', 'received_count_report'=>'inbox', 'inbox'=>'inbox',
         'contacts'=>'users', 'blacklist'=>'ban', 'line_optouts'=>'ban', 'tickets'=>'help',
         'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'telegram'=>'send', 'telegram_send'=>'send', 'telegram_check'=>'users', 'telegram_admin'=>'settings', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe', 'lba'=>'globe', 'lba_gateways'=>'globe',
         'api_keys'=>'key', 'otp_templates'=>'key', 'shared_otp'=>'key', 'shared_service'=>'send', 'shared_service_admin'=>'send', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',
@@ -67,7 +67,7 @@ function panel_icon(string $name): string {
         'reseller_profits'=>'chart', 'user_send_policies'=>'shield', 'registration_requests'=>'user',
         'kyc_review'=>'shield', 'kyc_gates'=>'key', 'analytics'=>'chart', 'logs'=>'receipt',
         'numbers'=>'phone', 'number_categories'=>'folder', 'landing_videos'=>'folder', 'pricing'=>'wallet',
-        'price_quote'=>'receipt', 'sms_pricing'=>'wallet', 'sms_gateways'=>'link', 'prohibited_words'=>'ban',
+        'price_quote'=>'receipt', 'sms_pricing'=>'wallet', 'sms_gateways'=>'link', 'ai_engines'=>'spark', 'prohibited_words'=>'ban',
         'queue_cancellation'=>'ban', 'queue_monitor'=>'chart', 'alerts'=>'bell', 'bulk_archive'=>'folder', 'sms_gateway_clone'=>'copy',
         'guide_admin'=>'book', 'billing_admin'=>'wallet', 'financial_admin'=>'receipt',
         'reseller_packages'=>'gift', 'reseller_dashboard'=>'grid', 'reseller_customers'=>'users', 'reseller_tariffs'=>'wallet',

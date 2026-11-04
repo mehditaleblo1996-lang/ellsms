@@ -1,0 +1,64 @@
+# AI relay — a reverse proxy on a server OUTSIDE Iran that forwards ELLSMS's AI requests to providers
+# that refuse Iranian addresses. See ops/ai-relay/README.md.
+#
+#   https://<relay>/openai/v1/...      -> https://api.openai.com/v1/...
+#   https://<relay>/anthropic/v1/...   -> https://api.anthropic.com/v1/...
+#   https://<relay>/openrouter/api/v1/... -> https://openrouter.ai/api/v1/...
+#
+# Every request must carry the header X-Relay-Key: ${RELAY_KEY} (set it in ELLSMS as an extra header of
+# the provider). The provider's own API key passes through untouched; the relay stores nothing and logs
+# no request bodies.
+
+events {}
+
+http {
+    access_log /dev/stdout combined;
+    error_log /dev/stderr warn;
+    client_max_body_size 8m;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    resolver 1.1.1.1 8.8.8.8 valid=300s ipv6=off;
+
+    server {
+        listen 443 ssl;
+        server_name ${RELAY_DOMAIN};
+        ssl_certificate     /etc/nginx/certs/fullchain.pem;
+        ssl_certificate_key /etc/nginx/certs/privkey.pem;
+
+        # The shared secret: anything without it is refused before it reaches a provider.
+        if ($http_x_relay_key != "${RELAY_KEY}") {
+            return 403;
+        }
+
+        location /openai/ {
+            set $upstream api.openai.com;
+            rewrite ^/openai/(.*)$ /$1 break;
+            proxy_pass https://$upstream;
+            proxy_set_header Host $upstream;
+            proxy_set_header X-Relay-Key "";
+            proxy_ssl_server_name on;
+        }
+
+        location /anthropic/ {
+            set $upstream api.anthropic.com;
+            rewrite ^/anthropic/(.*)$ /$1 break;
+            proxy_pass https://$upstream;
+            proxy_set_header Host $upstream;
+            proxy_set_header X-Relay-Key "";
+            proxy_ssl_server_name on;
+        }
+
+        location /openrouter/ {
+            set $upstream openrouter.ai;
+            rewrite ^/openrouter/(.*)$ /$1 break;
+            proxy_pass https://$upstream;
+            proxy_set_header Host $upstream;
+            proxy_set_header X-Relay-Key "";
+            proxy_ssl_server_name on;
+        }
+
+        location / {
+            return 404;
+        }
+    }
+}

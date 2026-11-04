@@ -34,7 +34,7 @@
         maintenance-on maintenance-off maintenance-status \
         release-preflight release-plan release-apply \
         api-keys-status webhooks-status webhook-retry-failed \
-        webhook-prune-dry-run webhook-prune webhook-worker-once number-forward-worker-once idempotency-prune-dry-run idempotency-prune \
+        webhook-prune-dry-run webhook-prune webhook-worker-once number-forward-worker-once ai-worker-once idempotency-prune-dry-run idempotency-prune \
         billing-backfill billing-backfill-dry-run billing-plans subscription-integrity-check \
         subscription-lifecycle subscription-lifecycle-dry-run usage-status usage-reconcile usage-reconcile-apply \
         sms-pricing-integrity-check sms-pricing-status sms-pricing-status-json sms-price-simulate \
@@ -155,6 +155,7 @@ help:
 	@echo "  make webhook-prune        MUTATION: deletes them (dead_letter rows kept unless DEAD_LETTER=1)"
 	@echo "  make webhook-worker-once  run one webhook-delivery pass in a throwaway container"
 	@echo "  make number-forward-worker-once  run one MO/DLR URL-forwarding pass (docs/number-forwarding.md)"
+	@echo "  make ai-worker-once     run one AI secretary pass (docs/ai-secretary.md)"
 	@echo "  make idempotency-prune-dry-run  read-only: reports which COMPLETED idempotency records retention would delete"
 	@echo "  make idempotency-prune    MUTATION: deletes them -- see docs/public-api.md"
 	@echo ""
@@ -820,6 +821,11 @@ webhook-worker-once:
 # number-forward-worker service (rows are claimed atomically). See docs/number-forwarding.md.
 number-forward-worker-once:
 	docker compose run --rm worker php cron/number-forward-worker.php --once
+
+# One AI secretary pass (answers due jobs); safe alongside the ai-worker service (atomic claims).
+# See docs/ai-secretary.md.
+ai-worker-once:
+	docker compose run --rm worker php cron/ai-worker.php --once
 
 # Read-only. Reports how many COMPLETED Idempotency-Key records are older than API_IDEMPOTENCY_TTL_HOURS.
 idempotency-prune-dry-run:

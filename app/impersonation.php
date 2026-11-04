@@ -95,6 +95,8 @@ function impersonation_blocked_actions(): array {
         // that should be reachable while acting as somebody else.
         'gateway.config'       => 'تغییر پیکربندی درگاه در حالت پشتیبانی غیرفعال است.',
         'gateway.secret'       => 'تغییر کلید محرمانه‌ی درگاه در حالت پشتیبانی غیرفعال است.',
+        'ai.config'            => 'تغییر پیکربندی موتورهای هوش مصنوعی در حالت پشتیبانی غیرفعال است.',
+        'ai.secret'            => 'تغییر کلید API هوش مصنوعی در حالت پشتیبانی غیرفعال است.',
 
         // Money and plan (STEP 27).
         'billing.subscription' => 'تغییر اشتراک در حالت پشتیبانی غیرفعال است.',

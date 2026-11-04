@@ -121,6 +121,47 @@ the `tg-worker` container (Python + Telethon); money, limits and webhooks stay i
 limits and activation on `/admin/telegram`. The worker needs `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` from
 my.telegram.org. See [`docs/telegram-user-service.md`](docs/telegram-user-service.md).
 
+## AI SMS secretary (منشی هوشمند) and AI engines
+
+Inbound SMS on a customer's line can be answered by an AI model, from the business information the
+customer writes, and the answer is sent from the same line.
+
+- **AI engines** (Platform Admin → «موتورهای هوش مصنوعی», `/admin/ai/engines`): connect providers
+  the way SMS gateways are connected. Supported types are OpenAI-compatible (Hermes, vLLM, LM Studio,
+  DeepSeek, OpenAI-compatible Iranian gateways …), GapGPT (Iranian, no proxy), Ollama, OpenAI,
+  Anthropic and OpenRouter
+  (one key for hundreds of models; real per-call cost and key credit are read from OpenRouter). API keys are kept in their own encrypted
+  vault. «تست اتصال» and «تشخیص مدل‌ها» are available, models start disabled, and admins give
+  accounts the models they may use (resellers' customers never get more than their reseller). There
+  is a playground. See [`docs/ai-engines.md`](docs/ai-engines.md).
+- **Secretary** («منشی هوشمند», `/messages/ai-secretary`): one assistant per line, with business or
+  general mode, templates, conversation memory, reply length, caps, a fallback text, a test box and
+  the conversation log. Order: «۱۱/۱۲» opt-outs, then keyword auto-reply rules, then the AI. Guards
+  stop short codes and bot loops, stale backlogs and floods. Answers are sent by the separate
+  `ai-worker` container. See [`docs/ai-secretary.md`](docs/ai-secretary.md).
+- **AI tariff** («تعرفه‌ی هوش مصنوعی»): a price per answer, the tokens it includes, and a price per
+  1,000 extra tokens. It goes through the SMS pricing chain: list price, account price or tariff
+  percentage, and reseller named tariffs with a floor and daily reseller profit. The AI part is
+  charged as `ai_debit` after the answer's SMS has gone out. «مصرف و سود» shows income against
+  purchase cost. See [`docs/ai-billing.md`](docs/ai-billing.md).
+- **Data tables, lookup and hand-off** (`/messages/ai-data`): customers keep tables (products, orders,
+  appointments, …) built from templates, Excel/CSV or by hand. The assistant looks records up through
+  tool calls or an automatic search. A table with a phone column only ever shows a sender its own
+  rows. The AI can hand a conversation to a human: it is paused, the owner is notified, and the
+  operator replies from the panel and resumes the AI. See [`docs/ai-data.md`](docs/ai-data.md).
+- **Phase 5:**
+  - «پیام اول»: the AI writes and sends one personalized first message per row of a table, by SMS,
+    Bale or Bale-then-SMS ([`docs/ai-outreach.md`](docs/ai-outreach.md)).
+  - The secretary also answers messages received on the customer's own Telegram accounts
+    ([`docs/ai-secretary.md`](docs/ai-secretary.md) §Telegram).
+  - Long documents (txt/docx/pdf) become searchable.
+  - AI providers can be reached through a proxy or the relay kit in `ops/ai-relay/`.
+  - Anthropic prompt caching.
+
+Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
+`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`.
+No public API routes.
+
 ## Delivery-based billing (ارسال بر اساس تحویل)
 
 An admin can switch it on per user (**Users → user → ارسال بر اساس تحویل**) and set a refund percentage
@@ -162,7 +203,7 @@ Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: 
 
 | Where | What |
 |---|---|
-| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)) |
+| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)) |
 | Panel → Settings (admin) | API base URL (overrides `.env`, stored in `ellsms_settings`), default sender line |
 | Panel → Users | Grant/revoke panel access, admin flag, per-user sender line, credit (writes to the shared `user_.currentcredit`) |
 
@@ -468,6 +509,10 @@ updated in the same change** — see `CLAUDE.md`.
 [voice-messages](docs/voice-messages.md) ·
 [bale-channel](docs/bale-channel.md) ·
 [telegram-user-service](docs/telegram-user-service.md) ·
+[ai-engines](docs/ai-engines.md) ·
+[ai-secretary](docs/ai-secretary.md) ·
+[ai-data](docs/ai-data.md) ·
+[ai-outreach](docs/ai-outreach.md) ·
 [webengage](docs/webengage.md) ·
 [telegram-invoice-bot](docs/telegram-invoice-bot.md)
 
@@ -478,6 +523,7 @@ updated in the same change** — see `CLAUDE.md`.
 [rial-currency](docs/rial-currency.md) ·
 [wallet-architecture](docs/wallet-architecture.md) ·
 [delivery-based-billing](docs/delivery-based-billing.md) ·
+[ai-billing](docs/ai-billing.md) ·
 [manual-payments](docs/manual-payments.md) ·
 [financial-commerce](docs/financial-commerce.md) ·
 [plans-and-entitlements](docs/plans-and-entitlements.md) ·

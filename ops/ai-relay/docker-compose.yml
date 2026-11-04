@@ -1,0 +1,17 @@
+# AI relay for ELLSMS (ops/ai-relay/README.md). Runs on a server OUTSIDE Iran, never on the ELLSMS host.
+#   RELAY_DOMAIN=relay.example.com RELAY_KEY=$(openssl rand -hex 32) docker compose up -d
+services:
+  relay:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "443:443"
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?set RELAY_DOMAIN}
+      RELAY_KEY: ${RELAY_KEY:?set RELAY_KEY (openssl rand -hex 32)}
+    # nginx's image renders /etc/nginx/templates/*.template with envsubst into /etc/nginx/conf.d;
+    # this config is a whole nginx.conf, so it is rendered by hand at start instead.
+    command: ["/bin/sh", "-c", "envsubst '$$RELAY_DOMAIN $$RELAY_KEY' < /etc/nginx/relay.conf.template > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"]
+    volumes:
+      - ./nginx.conf.template:/etc/nginx/relay.conf.template:ro
+      - ./certs:/etc/nginx/certs:ro

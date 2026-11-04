@@ -33,6 +33,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('error', $message);
         redirect('/reseller/tariffs' . ($tariffId ? '?edit=' . $tariffId : '?new=1'));
     }
+    // AI answers (app/Ai/AiBilling.php): the tariff's price per AI answer, never below the reseller's own.
+    if ($do === 'ai_save' && $tariffId && ai_billing_available()) {
+        [$rows, $error] = ai_prices_from_form((array)($_POST['ai_price'] ?? []), false);
+        $result = $error !== null ? ['ok' => false, 'message' => $error] : ai_reseller_tariff_save($resellerId, $tariffId, $rows, $actorId);
+        if (!empty($result['ok'])) {
+            flash('success', 'تعرفه‌ی هوش مصنوعی ذخیره شد.');
+        } elseif (($result['reason'] ?? '') === 'below_own_price') {
+            $model = $result['model_id'] > 0 ? (ai_model_find((int)$result['model_id'])['display_name'] ?? '') : 'همه‌ی مدل‌ها';
+            flash('error', 'قیمت تعرفه نمی‌تواند کمتر از قیمتی باشد که خودتان می‌پردازید (' . $model . ' / ' . AI_PRICE_PARTS[$result['part']] . ').');
+        } else {
+            flash('error', $result['message'] ?? reseller_tariff_error_message((string)($result['reason'] ?? '')));
+        }
+        redirect('/reseller/tariffs?edit=' . $tariffId . '#ai');
+    }
     if ($do === 'delete' && $tariffId) {
         $result = reseller_tariff_delete($resellerId, $tariffId, $actorId);
         flash($result['ok'] ? 'info' : 'error', $result['ok'] ? 'تعرفه حذف شد.' : reseller_tariff_error_message((string)$result['reason']));
@@ -122,6 +136,40 @@ require __DIR__ . '/../app/views/reseller_header.php';
       <button class="btn btn-primary">ذخیره‌ی تعرفه</button>
       <a class="btn btn-ghost" href="/reseller/tariffs">انصراف</a>
     </div>
+  </form>
+</div>
+<?php endif; ?>
+
+<?php if ($edit !== null && ai_billing_available() && ($aiModels = ai_models_all(true)) !== []):
+    $aiRows = ai_prices_for('tariff', $edit['id']);
+    $aiFloor = ai_reseller_floor($resellerId); ?>
+<div class="card" id="ai">
+  <h2>تعرفه‌ی هوش مصنوعی (منشی هوشمند): <?= e($edit['title']) ?></h2>
+  <p class="hint">هزینه‌ی هوش مصنوعیِ هر پاسخ «منشی هوشمند» برای مشتریانی که این تعرفه را دارند، جدا از هزینه‌ی پیامکِ پاسخ.
+    هر پاسخ تا تعداد توکن معینی شامل «قیمت هر پاسخ» است و برای هر ۱۰۰۰ توکن بیشتر «قیمت توکن اضافه» اضافه می‌شود.
+    خانه‌ی خالی: ردیف «همه‌ی مدل‌ها»، و اگر آن هم خالی باشد قیمت پایه‌ی سامانه با درصد تعرفه‌ی مشتری. هیچ قیمتی کمتر از قیمت خود شما پذیرفته نمی‌شود.</p>
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="ai_save"><input type="hidden" name="tariff_id" value="<?= $edit['id'] ?>">
+    <div class="table-wrap">
+      <table class="tariff-matrix">
+        <thead><tr><th>مدل</th><?php foreach (AI_PRICE_PARTS as $label): ?><th><?= e($label) ?> (ریال)</th><?php endforeach; ?></tr></thead>
+        <tbody>
+        <?php foreach (array_merge([['id' => 0, 'display_name' => 'همه‌ی مدل‌ها']], $aiModels) as $m): $mid = (int)$m['id']; ?>
+          <tr>
+            <th scope="row"><?= e($m['display_name']) ?></th>
+            <?php foreach (array_keys(AI_PRICE_PARTS) as $part): ?>
+              <td>
+                <input type="text" inputmode="decimal" name="ai_price[<?= $mid ?>][<?= $part ?>]" value="<?= e(ai_price_to_rial($aiRows[$mid][$part] ?? null)) ?>" aria-label="<?= e($m['display_name'] . ' — ' . AI_PRICE_PARTS[$part]) ?>">
+                <?php if (isset($aiFloor[$mid])): ?><span class="floor">قیمت شما: <?= to_persian_digits($rial($aiFloor[$mid][$part])) ?></span><?php endif; ?>
+              </td>
+            <?php endforeach; ?>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <div class="form-actions"><button class="btn btn-primary">ذخیره‌ی تعرفه‌ی هوش مصنوعی</button></div>
   </form>
 </div>
 <?php endif; ?>

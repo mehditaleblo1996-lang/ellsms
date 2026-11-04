@@ -124,6 +124,16 @@ require_once __DIR__ . '/Sms/GatewayReceive.php';
 require_once __DIR__ . '/Sms/GatewayCallbacks.php';
 // #46 — SMPP gateways (compile/send through the smpp-bridge container, receipts and MOs from its events).
 require_once __DIR__ . '/Sms/Smpp.php';
+// AI engines (docs/ai-engines.md): the AI vault, the provider adapters (pure + one network entry
+// point, which reuses number forwarding's address check), then the database layer.
+require_once __DIR__ . '/Ai/AiSecrets.php';
+require_once __DIR__ . '/Ai/AiAdapters.php';
+require_once __DIR__ . '/Ai/AiEngines.php';
+require_once __DIR__ . '/Ai/AiBilling.php';
+require_once __DIR__ . '/Ai/AiSecretary.php';
+require_once __DIR__ . '/Ai/AiData.php';
+require_once __DIR__ . '/Ai/AiOutreach.php';
+require_once __DIR__ . '/Ai/AiTelegram.php';
 // #45 — customer database connector (config/validation, SQL dialects + password vault, sync engine).
 require_once __DIR__ . '/RemoteDb/Config.php';
 require_once __DIR__ . '/RemoteDb/Dialect.php';

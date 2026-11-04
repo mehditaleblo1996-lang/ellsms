@@ -30,6 +30,7 @@ const NOTIFICATION_EVENTS = [
     'ticket.answered'               => 'پاسخ تیکت (به کاربر)',
     'shared_otp.template_reviewed'  => 'بررسی قالب کد تایید',
     'shared_service.rejected'       => 'رد پیام سرویس اشتراکی',
+    'ai.handoff'                    => 'ارجاع گفتگوی منشی هوشمند به اپراتور',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];

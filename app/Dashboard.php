@@ -9,7 +9,7 @@
  * an admin removed from the customer's panel (app/HiddenMessages.php).
  */
 
-const DASHBOARD_DIRECT_TYPES = ['direct_send', 'schedule', 'autoreply'];
+const DASHBOARD_DIRECT_TYPES = ['direct_send', 'schedule', 'autoreply', 'ai_secretary'];
 const DASHBOARD_UNDELIVERED = ['failed', 'rejected', 'expired'];
 
 /** Accounts whose sends $me may see on the dashboard: null for an admin (all). */

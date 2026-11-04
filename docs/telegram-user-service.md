@@ -114,3 +114,12 @@ Error codes: `not_on_telegram`, `privacy_restricted`, `blocked`, `deactivated`, 
 
 - `tests/Integration/TelegramUserServiceTest.php` (PHPUnit integration suite) covers the panel side: access, reservation and charging, acknowledgement, stuck/OTP rules, cancel, lookups, login limits, password sealing, and webhooks.
 - `tg-worker/tests/test_worker.py` (`cd tg-worker && python -m unittest discover -s tests`) covers the worker side: crypto compatibility with PHP, error classification, and against a real database with a fake Telegram client: sending, the daily cap, OTP priority, flood handling, read sweep, and lookups with cache. Set `TG_TEST_DB_HOST` (and `_NAME/_USER/_PASS`) to the integration-test database.
+
+## AI secretary on Telegram
+
+When a customer switches on the «منشی هوشمند» of one of its Telegram accounts
+([docs/ai-secretary.md](ai-secretary.md) §Telegram), the `tg-worker` keeps that account connected,
+even with nothing to send, and stores every private text message from a person in
+`ellsms_tg_inbound`. It re-checks whether the assistant is on every 20 seconds. The answers come back
+as ordinary one-recipient campaigns of that account. Their messages carry the sender's
+`tg_peer_id` / `tg_access_hash`, and the worker sends to that peer directly, without a phone lookup.

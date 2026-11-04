@@ -42,6 +42,7 @@ that makes a retried operation a safe no-op (Invariant C/F).
 |---|---|
 | `purchase` | `payment_claim_and_credit()` (a completed ZarinPal payment) |
 | `sms_debit` | `wallet_commit_reservation()` (spending part/all of a reservation) or `wallet_debit()` directly |
+| `ai_debit` | `ai_charge()` (app/Ai/AiBilling.php): the AI part of an AI secretary answer, debited directly once the answer's SMS was sent ([docs/ai-billing.md](ai-billing.md)) |
 | `manual_credit` / `manual_debit` | `wallet_manual_adjustment()` (admin credit/debit, STEP 17) |
 | `reservation_release` | `wallet_release_reservation()` (unused reserved credit returned) |
 | `delivery_refund` | `delivery_refund_apply()` — part or all of one undelivered message's charge, for a user with delivery-based billing switched on (`docs/delivery-based-billing.md`) |

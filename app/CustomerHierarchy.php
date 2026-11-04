@@ -729,6 +729,10 @@ function customer_profit_split_by_groups(int $amount, array $groups): array {
  * none (no snapshot, no parent, or a snapshot from before chain prices were recorded).
  */
 function customer_profit_snapshot_groups(string $referenceType, string $referenceId, int $userId): array {
+    // An AI answer's charge keeps its own chain prices (ellsms_ai_charges).
+    if ($referenceType === 'ai_usage') {
+        return function_exists('ai_charge_profit_groups') ? ai_charge_profit_groups($referenceId, $userId) : [];
+    }
     if (!function_exists('sms_price_snapshot_has_chain_column') || !sms_price_snapshot_has_chain_column()) return [];
     $st = db()->prepare('SELECT total_cost_credits, chain_prices FROM ellsms_sms_price_snapshots
                          WHERE reference_type = ? AND reference_id = ? AND user_id = ? AND chain_prices IS NOT NULL');
@@ -784,12 +788,13 @@ function customer_profit_run(bool $dryRun = false, ?string $today = null): array
 function customer_profit_run_day(string $day, bool $dryRun = false): array {
     [$fromUtc, $toUtc] = local_day_range_to_utc($day, $day);
 
-    // Charges by accounts that have a parent. sms_debit is the only ledger type that is a spend:
-    // reservations move nothing until committed, and a release returns what was never spent.
+    // Charges by accounts that have a parent. sms_debit and ai_debit (the AI part of an AI answer,
+    // app/Ai/AiBilling.php) are the ledger types that are a spend: reservations move nothing until
+    // committed, and a release returns what was never spent.
     $st = db()->prepare("SELECT t.user_id, t.amount, t.created_at, t.reference_type, t.reference_id
                          FROM ellsms_wallet_transactions t
                          JOIN ellsms_customer_accounts c ON c.user_id = t.user_id AND c.parent_user_id IS NOT NULL
-                         WHERE t.type = 'sms_debit' AND t.amount < 0 AND t.created_at >= ? AND t.created_at < ?");
+                         WHERE t.type IN ('sms_debit', 'ai_debit') AND t.amount < 0 AND t.created_at >= ? AND t.created_at < ?");
     $st->execute([$fromUtc, $toUtc]);
     $charges = $st->fetchAll();
 

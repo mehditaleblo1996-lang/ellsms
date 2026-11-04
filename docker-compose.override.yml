@@ -12,6 +12,7 @@ services:
     environment:
       MFA_MASTER_KEY: ${MFA_MASTER_KEY:-}
       SMS_GATEWAY_MASTER_KEY: ${SMS_GATEWAY_MASTER_KEY:-}
+      AI_MASTER_KEY: ${AI_MASTER_KEY:-}
       # Large-import business limit: allow up to 2,000,000 source rows per job.
       IMPORT_MAX_ROWS: 2000000
       # Business rule: all newly-issued invoices include 10% VAT.

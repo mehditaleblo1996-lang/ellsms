@@ -37,7 +37,11 @@ next turn; a failed daily job waits for its next day, or `make scheduler-run JOB
 **Not scheduler jobs, but periodic too:** the `worker` container runs `tg_settle_pass()` on every loop
 (charges, finishes and releases Telegram campaigns/lookups, emits `telegram.message.*` webhooks, fails
 stuck or undeliverable Telegram messages), and the separate `tg-worker` container polls its queue every
-second (`docs/telegram-user-service.md`).
+second (`docs/telegram-user-service.md`). The `ai-worker` container answers AI secretary jobs every
+`AI_WORKER_POLL_INTERVAL_SECONDS` (default 2) and prunes finished jobs past their retention about once
+an hour (`docs/ai-secretary.md`); the `worker` container's auto-reply pass enqueues the SMS jobs. Each
+`ai-worker` pass also turns Telegram messages the `tg-worker` stored into jobs, sends «پیام اول»
+campaigns (`docs/ai-outreach.md`) and marks finished campaigns done.
 
 **Maintenance mode** pauses the scheduler entirely, like the workers.
 
