@@ -34,6 +34,7 @@ Platform admins only.
 | `ollama` | `GET {base}/api/tags` | `POST {base}/api/chat` | Ollama |
 | `openai` | `GET {base}/models` | `POST {base}/chat/completions` (`max_completion_tokens`) | OpenAI |
 | `openrouter` | `GET {base}/models` (also fills context window, per-million prices and tool support) | `POST {base}/chat/completions` (asks for `usage.cost`) | OpenRouter: one key for hundreds of models ([below](#openrouter)) |
+| `gapgpt` | `GET {base}/models` | `POST {base}/chat/completions` | GapGPT, an Iranian gateway to GPT, Claude, Gemini and others, with no proxy needed ([below](#gapgpt)) |
 | `anthropic` | `GET {base}/models` (paginated) | `POST {base}/messages` | Claude. Uses `x-api-key` and `anthropic-version: 2026-10-21`. No `temperature` is sent, because that API version rejects it. |
 
 Authentication: `Authorization: Bearer <key>`, a custom header holding the raw key, or none.
@@ -64,12 +65,31 @@ the relay ([below](#proxy-and-relay-phase-5)).
   remaining limit or that it has no limit and spends the account's credit. A free-tier key is
   flagged. If this call fails, the connection test still passes.
 
-## Iranian gateways (هوشا and similar)
+## GapGPT
 
-An Iranian gateway that resells model access is added as «سازگار با OpenAI» if its API is
+[GapGPT](https://gapgpt.app/) is an Iranian gateway that resells access to OpenAI, Anthropic,
+Google and other models through an OpenAI-compatible API. It is reachable from Iranian servers, so
+**no proxy or relay is needed**.
+
+1. Get an API key from the GapGPT panel.
+2. In «ارائه‌دهنده‌ی جدید», choose type «GapGPT». The base URL `https://api.gapgpt.app/v1` is filled
+   in. Enter the key, then «ذخیره».
+3. «تست اتصال», then «تشخیص مدل‌ها». Models arrive disabled. Switch on the ones you will sell, and
+   test each with «تست».
+4. Enter each model's purchase prices by hand, in GapGPT's billing currency. Set «ارز» to `IRR` if
+   it bills in Rial; the margin views use it as is. GapGPT does not report prices or tool support
+   in its model list. Tick «ابزار» for models that answer tool calls (GPT, Claude and Gemini do).
+
+The type needs `db/migrations/2026_11_08_ai_gapgpt.sql`, which adds `gapgpt` to
+`ellsms_ai_providers.type`. Deploys apply it.
+
+## Other Iranian gateways (هوشا and similar)
+
+Any other Iranian gateway that resells model access is added as «سازگار با OpenAI» if its API is
 OpenAI-compatible: base URL ending in `/v1`, a key, `Authorization: Bearer`. Discovery and chat work
 unchanged, and no proxy is needed. Enter the purchase prices by hand, in the gateway's billing
 currency (for example `IRR`). A gateway with its own non-OpenAI API needs a new adapter type.
+Hoosha (هوشا) publishes no API reference, so it has no type of its own.
 
 ## Connecting Hermes on staging
 

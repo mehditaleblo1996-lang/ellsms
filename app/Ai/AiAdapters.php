@@ -2,8 +2,9 @@
 /**
  * ELLSMS — AI provider adapters: the wire protocol of each provider type (docs/ai-engines.md).
  *
- * Five types, three protocols:
- *   openai_compatible, openai, openrouter  GET {base}/models, POST {base}/chat/completions
+ * Six types, three protocols:
+ *   openai_compatible, openai, openrouter, gapgpt
+ *                                          GET {base}/models, POST {base}/chat/completions
  *                                          (Hermes, vLLM, LM Studio, DeepSeek, ... are all this one)
  *   ollama                                 GET {base}/api/tags, POST {base}/api/chat
  *   anthropic                              GET {base}/models (paginated), POST {base}/messages
@@ -38,6 +39,7 @@ const AI_PROVIDER_TYPES = [
     'openai'            => 'OpenAI',
     'anthropic'         => 'Anthropic (Claude)',
     'openrouter'        => 'OpenRouter',
+    'gapgpt'            => 'GapGPT (ایرانی، بدون نیاز به پراکسی)',
 ];
 
 /** Suggested base URL per type (the form pre-fills it; openai_compatible has no universal default). */
@@ -47,6 +49,7 @@ const AI_PROVIDER_DEFAULT_BASE_URLS = [
     'openai'            => 'https://api.openai.com/v1',
     'anthropic'         => 'https://api.anthropic.com/v1',
     'openrouter'        => 'https://openrouter.ai/api/v1',
+    'gapgpt'            => 'https://api.gapgpt.app/v1',
 ];
 
 const AI_AUTH_SCHEMES = ['bearer' => 'Authorization: Bearer', 'header' => 'هدر سفارشی', 'none' => 'بدون کلید'];
@@ -144,7 +147,7 @@ function ai_join_url(string $base, string $path): string {
 
 /** Whether a provider type speaks the OpenAI chat-completions protocol. */
 function ai_type_is_openai_like(string $type): bool {
-    return in_array($type, ['openai_compatible', 'openai', 'openrouter'], true);
+    return in_array($type, ['openai_compatible', 'openai', 'openrouter', 'gapgpt'], true);
 }
 
 /**

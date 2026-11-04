@@ -158,6 +158,23 @@ final class AiAdaptersTest extends TestCase
         $this->assertNull(\ai_key_info(['type' => 'openai'] + $cfg), 'only OpenRouter has this endpoint');
     }
 
+    public function testGapGptIsAnOpenAiCompatibleGatewayThatNeedsAKey(): void
+    {
+        $this->assertSame('https://api.gapgpt.app/v1', \AI_PROVIDER_DEFAULT_BASE_URLS['gapgpt']);
+        $cfg = ['type' => 'gapgpt', 'base_url' => 'https://api.gapgpt.app/v1', 'auth_scheme' => 'bearer', 'api_key' => 'gk', 'extra_headers' => []];
+        $req = \ai_build_chat_request($cfg, 'gpt-4o', [['role' => 'system', 'content' => 's'], ['role' => 'user', 'content' => 'سلام']], 120);
+        $this->assertSame('https://api.gapgpt.app/v1/chat/completions', $req['url']);
+        $this->assertContains('Authorization: Bearer gk', $req['headers']);
+        $body = json_decode($req['body'], true);
+        $this->assertSame(120, $body['max_tokens']);
+        $this->assertSame(['system', 'user'], array_column($body['messages'], 'role'));
+        $this->assertArrayNotHasKey('usage', $body);
+        $this->assertSame('https://api.gapgpt.app/v1/models', \ai_build_models_request($cfg)['url']);
+        $this->assertTrue(\ai_config_missing_key(['api_key' => null, 'auth_scheme' => 'none'] + $cfg), 'a hosted gateway always needs a key');
+        $reply = \ai_parse_chat('gapgpt', ['choices' => [['message' => ['content' => 'درود'], 'finish_reason' => 'stop']], 'usage' => ['prompt_tokens' => 9, 'completion_tokens' => 2]]);
+        $this->assertSame(['درود', 9, 2], [$reply['text'], $reply['input_tokens'], $reply['output_tokens']]);
+    }
+
     public function testParsesAnthropicModelsAndPagination(): void
     {
         $parsed = \ai_parse_models('anthropic', ['data' => [

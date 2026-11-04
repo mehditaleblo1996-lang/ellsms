@@ -128,7 +128,8 @@ customer writes, and the answer is sent from the same line.
 
 - **AI engines** (Platform Admin → «موتورهای هوش مصنوعی», `/admin/ai/engines`): connect providers
   the way SMS gateways are connected. Supported types are OpenAI-compatible (Hermes, vLLM, LM Studio,
-  DeepSeek, OpenAI-compatible Iranian gateways …), Ollama, OpenAI, Anthropic and OpenRouter
+  DeepSeek, OpenAI-compatible Iranian gateways …), GapGPT (Iranian, no proxy), Ollama, OpenAI,
+  Anthropic and OpenRouter
   (one key for hundreds of models; real per-call cost and key credit are read from OpenRouter). API keys are kept in their own encrypted
   vault. «تست اتصال» and «تشخیص مدل‌ها» are available, models start disabled, and admins give
   accounts the models they may use (resellers' customers never get more than their reseller). There
@@ -158,7 +159,7 @@ customer writes, and the answer is sent from the same line.
   - Anthropic prompt caching.
 
 Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
-`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`.
+`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`.
 No public API routes.
 
 ## Delivery-based billing (ارسال بر اساس تحویل)
