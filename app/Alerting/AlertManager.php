@@ -53,6 +53,10 @@ final class AlertManager
         self::$emailSenderOverride = $sender;
     }
 
+    private static function rank(string $severity): int {
+        return (int)array_search($severity, self::SEVERITIES, true);
+    }
+
     private static function isValidSeverity(string $severity): bool {
         return in_array($severity, self::SEVERITIES, true);
     }
@@ -122,6 +126,19 @@ final class AlertManager
             $incidentId = (int)$incident['id'];
             $db->prepare('UPDATE ellsms_alert_incidents SET last_fired_at = ?, fire_count = fire_count + 1, message = ? WHERE id = ?')
                 ->execute([$now, $message, $incidentId]);
+
+            // Escalation: the same condition got worse (a low balance that is now critical). The
+            // incident takes the higher severity, is re-opened even if it was acknowledged, and pages
+            // now -- acknowledging a warning must not silence the emergency it turns into. A lower
+            // severity never downgrades an open incident.
+            if (self::rank($severity) > self::rank((string)$incident['severity'])) {
+                $db->prepare("UPDATE ellsms_alert_incidents SET severity = ?, title = ?, status = 'open', acknowledged_by = NULL,
+                                     acknowledged_at = NULL, next_repeat_at = DATE_ADD(?, INTERVAL ? SECOND) WHERE id = ?")
+                    ->execute([$severity, $title, $now, self::repeatIntervalSeconds($severity), $incidentId]);
+                self::dispatch($incidentId, $severity, $title, $message, false);
+                Metrics::increment('alert.escalated', 1, ['severity' => $severity]);
+                return $incidentId;
+            }
 
             // Acknowledged incidents never repeat -- that is the entire point of acknowledging one.
             if ($incident['status'] === 'acknowledged') {

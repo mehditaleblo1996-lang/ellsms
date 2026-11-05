@@ -134,6 +134,7 @@ require_once __DIR__ . '/Ai/AiSecretary.php';
 require_once __DIR__ . '/Ai/AiData.php';
 require_once __DIR__ . '/Ai/AiOutreach.php';
 require_once __DIR__ . '/Ai/AiTelegram.php';
+require_once __DIR__ . '/Ai/AiBalance.php';
 // #45 — customer database connector (config/validation, SQL dialects + password vault, sync engine).
 require_once __DIR__ . '/RemoteDb/Config.php';
 require_once __DIR__ . '/RemoteDb/Dialect.php';

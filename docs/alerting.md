@@ -29,6 +29,12 @@ this key also becomes a Prometheus label if a future metric ever needs it.
   recovery notification. A no-op if nothing is open/acknowledged for that key. A new `fire()` for
   the same key after this creates a brand-new incident row — history is never overwritten.
 
+**Escalation:** a `fire()` for a key whose open incident has a *lower* severity (a low AI balance
+that turns critical) raises the incident to the new severity and title, re-opens it if it was
+acknowledged, and dispatches immediately (`alert.escalated` metric). Acknowledging a warning must not
+silence the emergency it becomes. A lower severity never downgrades an open incident; only
+`recover()` ends it.
+
 ## Severities and repeat intervals
 
 `warning` (default 1800s), `critical` (default 300s), `emergency` (default 120s). All three are

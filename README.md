@@ -134,6 +134,12 @@ customer writes, and the answer is sent from the same line.
   vault. «تست اتصال» and «تشخیص مدل‌ها» are available, models start disabled, and admins give
   accounts the models they may use (resellers' customers never get more than their reseller). There
   is a playground. See [`docs/ai-engines.md`](docs/ai-engines.md).
+- **AI provider credit alerts** (provider → «موجودی و هشدار»): the credit left on each provider
+  account (read from OpenRouter's API, or estimated from recorded top-ups minus spend), the days it
+  lasts at the last 7 days' spend, and Telegram/email alerts through «هشدارها»: warning at 7 days,
+  critical at 2 days or 1 USD, emergency the moment a provider refuses a call for lack of credit.
+  Scheduler job `ai-balance`, every 15 minutes. See
+  [`docs/ai-engines.md`](docs/ai-engines.md#provider-balance-and-alerts).
 - **Secretary** («منشی هوشمند», `/messages/ai-secretary`): one assistant per line, with business or
   general mode, templates, conversation memory, reply length, caps, a fallback text, a test box and
   the conversation log. Order: «۱۱/۱۲» opt-outs, then keyword auto-reply rules, then the AI. Guards
@@ -161,7 +167,8 @@ customer writes, and the answer is sent from the same line.
   and a seven-step slider at `/landing.php#ai-secretary` ([`docs/landing.md`](docs/landing.md)).
 
 Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
-`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`.
+`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`,
+`2026_11_09_ai_provider_balance.sql`.
 
 Next phases (6–12: actions and booking, reminders, «بنویس برام», Bale/Telegram bots, insights, public
 API, packages and fallback) are specified for implementing agents in
