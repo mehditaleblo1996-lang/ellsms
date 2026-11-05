@@ -189,6 +189,7 @@ function ai_provider_config(array $provider): array {
         'allow_private_network' => (bool)$provider['allow_private_network'],
         'connect_timeout_ms' => (int)$provider['connect_timeout_ms'], 'request_timeout_ms' => (int)$provider['request_timeout_ms'],
         'api_key' => null,
+        'provider_id' => (int)$provider['id'], // lets ai_http_send() report an empty account (app/Ai/AiBalance.php)
     ];
     if ($cfg['auth_scheme'] !== 'none' || $cfg['type'] === 'anthropic') {
         $cfg['api_key'] = ai_secret_get((int)$provider['id'], 'api_key');

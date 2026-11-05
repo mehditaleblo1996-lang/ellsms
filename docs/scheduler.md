@@ -16,6 +16,7 @@ before.
 | `voice-worker` | every minute | sends due scheduled voice messages, polls ZarinCall for answered / not answered calls and settles their cost (`docs/voice-messages.md`) |
 | `lba-worker` | every minute | polls LBA audiences the provider is still building, follows one-off LBA sends and charges / settles periodic ones (`docs/lba.md`) |
 | `shared-service` | every minute | sends approved and promotional-window messages of the shared sending service and expires held messages nobody reviewed (`docs/shared-service.md`) |
+| `ai-balance` | every 15 min | reads each AI provider's credit (OpenRouter's API, or the estimate from recorded top-ups minus spend), the days it lasts at the last 7 days' spend, and raises / resolves the `ai_balance:<code>` alert (`docs/ai-engines.md` §Provider balance and alerts); a no-op until `2026_11_09_ai_provider_balance.sql` is applied |
 | `backup` | daily `BACKUP_DAILY_AT` (03:30) | backup without message rows → retention prune → off-server copy (`docs/backup-and-disaster-recovery.md` §1, §17) |
 | `usage-reconcile` | daily 04:10 | rebuilds usage counters' `reserved` from the live reservations |
 | `idempotency-prune` | daily 04:20 | deletes completed Idempotency-Key records past their TTL |
