@@ -37,6 +37,7 @@ require_once __DIR__ . '/Slo.php';
 require_once __DIR__ . '/tenant.php';
 require_once __DIR__ . '/Contacts.php';
 require_once __DIR__ . '/Pagination.php';
+require_once __DIR__ . '/MessageParts.php';
 require_once __DIR__ . '/LazyParts.php';
 require_once __DIR__ . '/LineOptouts.php';
 require_once __DIR__ . '/ContentPolicy.php';

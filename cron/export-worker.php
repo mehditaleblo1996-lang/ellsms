@@ -263,7 +263,8 @@ function export_csv_row(string $kind, array $r, array $usernames, array $deliver
         $r['originator'],
         $r['destination'],
         $content,
-        $content !== '' ? sms_parts($content) : '',
+        // The stored part count (app/MessageParts.php); a row not filled yet: counted from its text.
+        isset($r['parts']) ? (int)$r['parts'] : ($content !== '' ? sms_parts($content) : ''),
         $status,
         $kind === 'bulk' ? 'bulk_job:' . $r['job_id'] : $r['reference_type'] . ':' . $r['reference_id'],
         $providerId($r['provider_message_id']),

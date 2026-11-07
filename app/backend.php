@@ -1639,10 +1639,14 @@ function bulk_queue_job(
             // Only that caller adds the column to the statement, so every other path keeps working
             // on a database that has not applied 2026_10_06_remote_db_connections.sql.
             $withSourceRef = isset($items[array_key_first($items)]['source_ref']);
+            // Each row's SMS part count travels with it (app/MessageParts.php) — once
+            // 2026_11_10_message_parts.sql has added the column.
+            $withParts = message_parts_available('ellsms_bulk_items');
             $ins = $db->prepare(
                 'INSERT INTO ellsms_bulk_items
                    (job_id, mobile, content, unit_price_millicredits, price_cost_credits, price_operator_code, price_route_id, price_group_key'
-                . ($withSourceRef ? ', source_ref) VALUES (?,?,?,?,?,?,?,?,?)' : ') VALUES (?,?,?,?,?,?,?,?)')
+                . ($withSourceRef ? ', source_ref' : '') . ($withParts ? ', parts' : '')
+                . ') VALUES (?,?,?,?,?,?,?,?' . ($withSourceRef ? ',?' : '') . ($withParts ? ',?' : '') . ')'
             );
             foreach ($items as $index => $it) {
                 // per_index, not per_mobile: a personalized file may contain the same number twice
@@ -1658,6 +1662,9 @@ function bulk_queue_job(
                 ];
                 if ($withSourceRef) {
                     $row[] = isset($it['source_ref']) ? (int)$it['source_ref'] : null;
+                }
+                if ($withParts) {
+                    $row[] = sms_parts((string)$it['content']);
                 }
                 $ins->execute($row);
             }

@@ -405,16 +405,18 @@ function sent_report_source_query(string $source, array $f, ?array $scope, bool 
 function sent_report_select_sql(string $source): string {
     $report = backend_message_attempts_have_report_columns();
     $status = sent_report_status_sql($source) . ' AS report_status, ' . sent_report_type_sql($source) . ' AS report_type';
+    // The stored part count (app/MessageParts.php); NULL where none is stored — decorate counts the text then.
+    $parts = static fn(string $table, string $alias): string => message_parts_available($table) ? "{$alias}.parts" : 'NULL AS parts';
     return match ($source) {
         'bulk' => "i.id, i.created_at AS sort_time, i.created_at AS requested_at, i.claimed_at AS sent_at, i.delivered_at,
                    j.user_id, j.originator, i.mobile AS destination, i.content, i.operator_id, i.job_id,
-                   " . bulk_job_masked_sql('j') . " AS masked, {$status}",
+                   " . bulk_job_masked_sql('j') . " AS masked, " . $parts('ellsms_bulk_items', 'i') . ", {$status}",
         'attempt' => "a.id, a.attempted_at AS sort_time, a.attempted_at AS requested_at, a.attempted_at AS sent_at, a.delivered_at,
                       a.user_id, " . ($report ? 'a.originator, a.content' : 'NULL AS originator, NULL AS content') . ",
-                      a.destination, a.operator_id, NULL AS job_id, 0 AS masked, {$status}",
+                      a.destination, a.operator_id, NULL AS job_id, 0 AS masked, " . $parts('ellsms_message_attempts', 'a') . ", {$status}",
         default => "m.id, m.sent_at AS sort_time, m.sent_at AS requested_at, m.sent_at, m.delivered_at,
                     m.sender_user_id AS user_id, m.originator, m.destination, m.content, NULL AS operator_id,
-                    NULL AS job_id, 0 AS masked, {$status}",
+                    NULL AS job_id, 0 AS masked, NULL AS parts, {$status}",
     };
 }
 
@@ -563,7 +565,7 @@ function sent_report_summary(array $f, ?array $scope, bool $hide): array {
 
 /**
  * Display fields for list rows: user names, operator, recipient as the viewer may see it, format,
- * part count, labels and the message reference.
+ * part count (the stored one, else counted from the text), labels and the message reference.
  */
 function sent_report_decorate(array $rows): array {
     if ($rows === []) return [];
@@ -582,7 +584,7 @@ function sent_report_decorate(array $rows): array {
         $row['operator_code'] = $opId > 0 && isset($operators[$opId]) ? $operators[$opId]['code'] : $row['operator_name'];
         $content = (string)($row['content'] ?? '');
         $row['format'] = $content === '' ? '—' : sent_report_format($content);
-        $row['parts'] = sms_parts($content);
+        $row['parts'] = message_parts_of_row($row);
         $row['ref'] = sent_report_ref($row['source'], (int)$row['id']);
         $row['type_label'] = $types[$row['report_type']] ?? $row['report_type'];
         $row['status_label'] = $statuses[$row['report_status']] ?? $row['report_status'];
@@ -653,6 +655,7 @@ function sent_report_find(string $ref, ?array $scope, bool $hide, bool $isAdmin)
         'attempt' => sent_report_attempt_type((string)($row['reference_type'] ?? '')),
         default => 'direct',
     };
+    if ($source === 'legacy') unset($row['parts']); // the backend's table: whatever it holds, the count is ELLSMS's own
     [$row] = sent_report_decorate([$row]);
     $row['characters'] = mb_strlen((string)($row['content'] ?? ''), 'UTF-8');
 

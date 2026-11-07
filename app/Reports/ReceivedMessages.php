@@ -227,7 +227,8 @@ function received_report_find(int $id, array $allowedLines, bool $isAdmin): ?arr
     $row = false;
     $store = 'ellsms';
     if (inbound_ellsms_store_available()) {
-        $st = db()->prepare("SELECT id, gateway_id, originator, destination, content, received_at, provider_message_id, created_at
+        $parts = message_parts_available('ellsms_inbound_messages') ? ', parts' : '';
+        $st = db()->prepare("SELECT id, gateway_id, originator, destination, content, received_at, provider_message_id, created_at{$parts}
                              FROM ellsms_inbound_messages WHERE id = ?{$scopeSql}");
         $st->execute($params);
         $row = $st->fetch();
@@ -243,7 +244,7 @@ function received_report_find(int $id, array $allowedLines, bool $isAdmin): ?arr
     $row['store'] = $store;
     $content = (string)($row['content'] ?? '');
     $row['characters'] = mb_strlen($content, 'UTF-8');
-    $row['parts'] = sms_parts($content);
+    $row['parts'] = message_parts_of_row($row); // stored on ELLSMS's own store; the backend's: from the text
     $row['format'] = $content === '' ? '—' : sent_report_format($content);
     $row['gateway_name'] = $isAdmin ? sent_report_lookup_name('ellsms_sms_gateways', (int)($row['gateway_id'] ?? 0)) : null;
     return $row;

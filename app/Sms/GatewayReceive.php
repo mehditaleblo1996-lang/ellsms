@@ -147,14 +147,17 @@ function gateway_receive_store(PDO $db, int $gatewayId, array $message): ?int {
     $dedupeKey = $message['provider_message_id'] !== null
         ? hash('sha256', 'id:' . $message['provider_message_id'])
         : hash('sha256', implode("\x1f", [$message['originator'], $message['destination'], $message['content'], $message['received_at']]));
+    // The received SMS's part count (app/MessageParts.php), once the column exists.
+    $withParts = message_parts_available('ellsms_inbound_messages');
     $st = $db->prepare(
         'INSERT INTO ellsms_inbound_messages
-           (gateway_id, originator, destination, content, received_at, provider_message_id, dedupe_key)
-         VALUES (?,?,?,?,?,?,?)
+           (gateway_id, originator, destination, content, received_at, provider_message_id, dedupe_key' . ($withParts ? ', parts' : '') . ')
+         VALUES (?,?,?,?,?,?,?' . ($withParts ? ',?' : '') . ')
          ON DUPLICATE KEY UPDATE id = id'
     );
     $st->execute([$gatewayId, $message['originator'], $message['destination'], $message['content'],
-                  $message['received_at'], $message['provider_message_id'], $dedupeKey]);
+                  $message['received_at'], $message['provider_message_id'], $dedupeKey,
+                  ...($withParts ? [sms_parts((string)($message['content'] ?? ''))] : [])]);
     return $st->rowCount() === 1 ? (int)$db->lastInsertId() : null;
 }
 

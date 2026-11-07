@@ -13,6 +13,7 @@ before.
 | `delivery-refunds` | every 5 min | refunds undelivered messages of delivery-based-billing users that the status path itself missed (`docs/delivery-based-billing.md`); a no-op until an admin switches the service on for someone |
 | `subscription-lifecycle` | every 15 min | trial and grace expiry, period rollover, stale usage reservations (skips itself while `BILLING_ENABLED=0`) |
 | `bulk-archive` | every minute | advances approved bulk-archive runs one bounded pass |
+| `message-parts` | every minute | fills the SMS part count (`parts`) into message rows written before it was stored — a bounded slice per run (at most 50 s); once caught up, only the rows added since the last run (`docs/message-parts.md`) |
 | `voice-worker` | every minute | sends due scheduled voice messages, polls ZarinCall for answered / not answered calls and settles their cost (`docs/voice-messages.md`) |
 | `lba-worker` | every minute | polls LBA audiences the provider is still building, follows one-off LBA sends and charges / settles periodic ones (`docs/lba.md`) |
 | `shared-service` | every minute | sends approved and promotional-window messages of the shared sending service and expires held messages nobody reviewed (`docs/shared-service.md`) |

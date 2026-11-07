@@ -254,7 +254,7 @@ function report_export_gateway_page(string $whereSql, array $params, int $limit,
     $st = db()->prepare(
         "SELECT a.id, a.user_id, {$text}, a.destination, a.reference_type, a.reference_id, a.error_code,
                 a.provider_message_id, a.provider_status, a.delivery_status, a.delivery_attempts,
-                a.delivery_checked_at, a.delivered_at, a.attempted_at
+                a.delivery_checked_at, a.delivered_at, a.attempted_at" . (message_parts_available('ellsms_message_attempts') ? ', a.parts' : '') . "
          FROM ellsms_message_attempts a
          WHERE {$whereSql}
          ORDER BY a.id DESC
@@ -279,7 +279,7 @@ function report_export_bulk_page(string $whereSql, array $params, int $limit, in
     $st = db()->prepare(
         "SELECT bi.id, bi.job_id, bj.user_id, bj.originator, bi.mobile AS destination, " . bulk_job_masked_sql('bj') . " AS recipients_masked, bi.content, bi.status, bi.error,
                 bi.provider_message_id, bi.provider_status, bi.delivery_status, bi.delivery_attempts,
-                bi.delivery_checked_at, bi.delivered_at, COALESCE(bi.claimed_at, bi.created_at) AS sent_at
+                bi.delivery_checked_at, bi.delivered_at, COALESCE(bi.claimed_at, bi.created_at) AS sent_at" . (message_parts_available('ellsms_bulk_items') ? ', bi.parts' : '') . "
          FROM ellsms_bulk_items bi
          JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
          WHERE {$whereSql}

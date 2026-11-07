@@ -69,6 +69,13 @@ and a «برو به صفحه» box on long lists. The sent list stays fast at an
 and a jump to a page number reads only row keys, from the nearer end. See
 [`docs/reporting-scalability.md`](docs/reporting-scalability.md).
 
+**Part count per message.** Every message row in ELLSMS's own tables (`ellsms_bulk_items`,
+`ellsms_message_attempts`, `ellsms_inbound_messages`) stores its SMS part count in `parts` — written
+with the message (the same `sms_parts()` count the send was priced with), and filled into older rows
+by the `message-parts` scheduler job a bounded slice a minute (`make message-parts-status` shows how
+far it has come). Migration `db/migrations/2026_11_10_message_parts.sql`. See
+[`docs/message-parts.md`](docs/message-parts.md).
+
 ## Voice messages (ZarinCall)
 
 Customers can send voice files (uploaded WAV/MP3 or generated from Persian text) by phone call to a
@@ -584,6 +591,7 @@ updated in the same change** — see `CLAUDE.md`.
 [observability-dod-checklist](docs/observability-dod-checklist.md) ·
 [slo-latency-targets](docs/slo-latency-targets.md) ·
 [reporting-scalability](docs/reporting-scalability.md) ·
+[message-parts](docs/message-parts.md) ·
 [daily-metadata-aggregation](docs/daily-metadata-aggregation.md) ·
 [mysql-performance-audit](docs/mysql-performance-audit.md) ·
 [sms-load-testing](docs/sms-load-testing.md) ·
