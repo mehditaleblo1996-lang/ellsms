@@ -370,6 +370,16 @@ tr:hover td { background: #f9f9ff; }
 .badge-done, .badge-user, .badge-sent { background: var(--tint); color: var(--indigo); }
 .badge-unknown { background: var(--line); color: var(--muted); }
 .badge-admin { background: var(--ink); color: #fff; }
+/* «مشتری ویژه» (app/VipCustomers.php): a gold badge, and a warm tint with a gold edge on the customer's
+   rows in admin lists and reports. */
+.badge-vip { background: #fff1c2; color: #8a5a00; border: 1px solid #f2c94c; white-space: nowrap; }
+tr.row-vip > td, tr.row-vip > th { background: #fff9e6; }
+tr.row-vip > :first-child { box-shadow: inset -4px 0 0 #f2c94c; }
+tr.row-vip:hover > td, tr.row-vip:hover > th { background: #fff3cc; }
+.vip-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+.vip-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vip-form .check { margin: 0; }
+.summary-item.summary-vip { background: #fff9e6; border-color: #f2c94c; }
 
 .badge-open { background: var(--warn-bg); color: var(--warn); }
 .badge-answered { background: var(--tint); color: var(--indigo); }

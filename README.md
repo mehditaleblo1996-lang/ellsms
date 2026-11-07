@@ -226,6 +226,16 @@ public API route. Migration:
 `db/migrations/2026_11_11_status_report.sql` (empties the operator summary; `report-summary-worker`
 rebuilds it). See [`docs/status-report.md`](docs/status-report.md).
 
+## VIP customers (مشتری ویژه)
+
+A platform admin ticks **«مشتری ویژه»** on a user (**Users → user**, or on «ساخت حساب تازه»). VIP
+customers are highlighted in gold in the customer list, which can also show VIP customers only
+(`/users.php?vip=1`), and the admin reports get a **«مشتری ویژه»** filter (همه / فقط مشتریان ویژه /
+بدون مشتریان ویژه): «گزارش تعداد پیام‌های ارسالی / دریافتی» (with a VIP subtotal and highlighted rows), «گزارش
+وضعیت‌ها», «گزارش اپراتورها» and «لیست پیام‌های ارسالی» (and its CSV export). Customers and resellers
+never see it; every change is audited. No public API route. Migration
+`db/migrations/2026_11_12_vip_customers.sql`. See [`docs/vip-customers.md`](docs/vip-customers.md).
+
 ## Login model
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.
@@ -586,6 +596,7 @@ updated in the same change** — see `CLAUDE.md`.
 [billing-operations](docs/billing-operations.md)
 
 **Customers, resellers & access**
+[vip-customers](docs/vip-customers.md) ·
 [resellers-and-menu-access](docs/resellers-and-menu-access.md) ·
 [reseller-panel](docs/reseller-panel.md) ·
 [customer-profile](docs/customer-profile.md) ·

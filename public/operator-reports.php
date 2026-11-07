@@ -28,6 +28,8 @@ if (!in_array($view, ['all', 'number', 'route'], true) || ($view === 'route' && 
 $from = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-29 day'));
 $to   = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
 $userId = $admin ? (int)($_GET['user_id'] ?? 0) : 0;
+// «مشتری ویژه» filter (app/VipCustomers.php): admins can count VIP or regular customers only.
+$vip = $admin ? vip_filter_from($_GET) : '';
 $senderRaw = $view === 'number' ? trim((string)($_GET['sender'] ?? '')) : '';
 $sender = $senderRaw !== '' ? normalize_originator($senderRaw) : null;
 $providerId = $view === 'route' ? (int)($_GET['provider_id'] ?? 0) : 0;
@@ -43,7 +45,7 @@ if ($providerId > 0) {
 }
 
 if (lazy_part_begin('report')) {
-    $counts = operator_report_counts(operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeIds, hidden_messages_apply_to_viewer(), $asOf, $partsMap);
+    $counts = operator_report_counts(['vip' => $vip] + operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeIds, hidden_messages_apply_to_viewer(), $asOf, $partsMap);
     $operators = operator_report_operator_order($counts);
     // Every count has its SMS part total beside it (docs/message-parts.md): the same maps over $partsMap.
     $statusByOp = [];
@@ -231,7 +233,7 @@ require __DIR__ . '/../app/views/header.php';
       'route'  => ['بر اساس تأمین‌کننده', $admin],
   ], static fn(array $v): bool => $v[1]) as $key => [$label]): ?>
     <?php if ($key === $view): ?><span class="btn btn-primary" aria-current="page"><?= e($label) ?></span>
-    <?php else: ?><a class="btn btn-ghost" href="/operator-reports.php?<?= e(http_build_query(array_filter(['view' => $key === 'all' ? null : $key, 'user_id' => $userId ?: null]))) ?>"><?= e($label) ?></a><?php endif; ?>
+    <?php else: ?><a class="btn btn-ghost" href="/operator-reports.php?<?= e(http_build_query(array_filter(['view' => $key === 'all' ? null : $key, 'user_id' => $userId ?: null, 'vip' => $vip ?: null]))) ?>"><?= e($label) ?></a><?php endif; ?>
   <?php endforeach; ?>
 </div>
 
@@ -241,9 +243,10 @@ require __DIR__ . '/../app/views/header.php';
     <?php if ($admin): ?>
       <label>نام مشتری
         <select name="user_id"><option value="0">همه</option>
-          <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>" <?= $userId === (int)$u['id'] ? 'selected' : '' ?>><?= e($u['username']) ?></option><?php endforeach; ?>
+          <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>" <?= $userId === (int)$u['id'] ? 'selected' : '' ?>><?= e((vip_is((int)$u['id']) ? '★ ' : '') . $u['username']) ?></option><?php endforeach; ?>
         </select>
       </label>
+      <?= vip_filter_select($vip) ?>
     <?php endif; ?>
     <?php if ($view === 'number'): ?>
       <label>شماره

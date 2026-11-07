@@ -52,7 +52,7 @@ $statuses = sent_report_statuses();
 $canHide = $isAdmin && hidden_messages_available();
 // The filters every link keeps — only these, so paging parameters (this page's cursor, or an old
 // bookmark's before_id / gw_page) never ride along into a filter link or the export.
-$filterKeys = ['user_id', 'ref', 'sender', 'dest', 'q', 'type', 'status', 'from_y', 'from_m', 'from_d', 'to_y', 'to_m', 'to_d', 'from_time', 'to_time', 'per_page'];
+$filterKeys = ['user_id', 'vip', 'ref', 'sender', 'dest', 'q', 'type', 'status', 'from_y', 'from_m', 'from_d', 'to_y', 'to_m', 'to_d', 'from_time', 'to_time', 'per_page'];
 $filterQuery = array_filter(array_intersect_key($_GET, array_flip($filterKeys)), static fn($v) => is_scalar($v) && $v !== '');
 
 if (lazy_part_begin('summary')) {
@@ -111,11 +111,11 @@ if (lazy_part_begin('list')) {
     <tbody>
     <?php foreach ($rows as $n => $r):
         $isHidden = $canHide && isset($hidden[$r['source']][$r['source'] === 'bulk' ? (int)$r['job_id'] : (int)$r['id']]); ?>
-      <tr data-detail="<?= e($r['ref']) ?>" tabindex="0" class="is-clickable<?= $isHidden ? ' is-hidden-row' : '' ?>">
+      <tr data-detail="<?= e($r['ref']) ?>" tabindex="0" class="is-clickable<?= $isHidden ? ' is-hidden-row' : '' ?><?= $isAdmin && $r['vip'] ? ' row-vip' : '' ?>">
         <td class="num"><?= to_persian_digits((string)($offset + $n + 1)) ?></td>
         <td class="ltr report-ref"><?= e($r['ref']) ?></td>
         <td class="msisdn"><?= e(shared_line_mask((string)$r['originator'], $isAdmin)) ?: '—' ?></td>
-        <?php if ($showUser): ?><td><?= e($r['username']) ?></td><?php endif; ?>
+        <?php if ($showUser): ?><td><?= e($r['username']) ?><?= $isAdmin && $r['vip'] ? ' ' . vip_badge() : '' ?></td><?php endif; ?>
         <td><?= operator_label($r['operator_code'], $r['operator_name'], 18) ?></td>
         <td class="msisdn"><?= e($r['destination_display']) ?></td>
         <td class="msg-preview" dir="auto"><?= (string)$r['content'] !== '' ? e(mb_strimwidth((string)$r['content'], 0, 48, '…')) : '—' ?><?= $isHidden ? ' ' . hidden_messages_badge() : '' ?></td>
@@ -171,9 +171,10 @@ require __DIR__ . '/../app/views/header.php';
     <label>نام مشتری
       <select name="user_id">
         <option value="0">همه</option>
-        <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"<?= $f['user_id'] === (int)$u['id'] ? ' selected' : '' ?>><?= e($u['username']) ?></option><?php endforeach; ?>
+        <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"<?= $f['user_id'] === (int)$u['id'] ? ' selected' : '' ?>><?= e((vip_is((int)$u['id']) ? '★ ' : '') . $u['username']) ?></option><?php endforeach; ?>
       </select>
     </label>
+    <?= vip_filter_select($f['vip']) ?>
     <?php endif; ?>
     <label>شناسه پیام
       <input type="text" name="ref" value="<?= e($f['ref']) ?>" class="ltr" placeholder="B12 یا شناسه‌ی سرویس‌دهنده" autocomplete="off">

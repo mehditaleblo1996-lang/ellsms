@@ -122,7 +122,8 @@ function operator_report_prefix_number(string $prefix): ?string {
 
 /**
  * Whose messages the report counts: every user (admin, no customer picked), one user (admin), or the
- * viewer's organization (customer) — the same scoping public/reports-v2.php uses.
+ * viewer's organization (customer) — the same scoping public/reports-v2.php uses. A caller may add
+ * 'vip' => ''|'vip'|'regular' (an admin's «مشتری ویژه» filter, app/VipCustomers.php) to any scope.
  *
  * @return array{members:?list<int>,bulk_org:int,bulk_user:int}
  */
@@ -212,8 +213,10 @@ function operator_report_summary_scope_sql(?array $scope): array {
         $otherCond = $scope['members'] === [] ? '1=0' : 'user_id IN (' . implode(',', array_fill(0, count($scope['members']), '?')) . ')';
         array_push($p, ...array_map('intval', $scope['members']));
     }
-    if ($bulkCond === '1=1' && $otherCond === '1=1') return ['', []];
-    return [" AND ((source = 'bulk' AND {$bulkCond}) OR (source <> 'bulk' AND {$otherCond}))", $p];
+    $sql = $bulkCond === '1=1' && $otherCond === '1=1' ? '' : " AND ((source = 'bulk' AND {$bulkCond}) OR (source <> 'bulk' AND {$otherCond}))";
+    // «مشتری ویژه» filter (app/VipCustomers.php): every source's user, bulk included.
+    $sql .= vip_user_condition((string)($scope['vip'] ?? ''), 'user_id', $p);
+    return [$sql, $p];
 }
 
 /** Whether the summary keeps part totals (`part_count`, `parts_built` — 2026_11_11_report_parts.sql). */
@@ -335,6 +338,8 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         ? ["'{$src}' src, {$uid} uid, {$org} org, {$snd} snd, {$rt} rt, {$hid} hid, {$ch} ch, ", ', src, uid, org, snd, rt, hid, ch']
         : ['', ''];
     $q = static fn(string $v): string => db()->quote($v);
+    // «مشتری ویژه» filter (app/VipCustomers.php) of a scoped count; the summary (no scope) stores every user.
+    $vipFilter = (string)($scope['vip'] ?? '');
     // The local day of each message, when asked for: [select fragment, group fragment] for a time column.
     $day = static fn(string $col): array => $dayOffset === null ? ['', '']
         : ['DATE(DATE_ADD(' . $col . ', INTERVAL ' . (int)$dayOffset . ' SECOND)) dy, ', ', dy'];
@@ -366,6 +371,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
     $w = 'bi.created_at >= ? AND bi.created_at < ?';
     if ($scope !== null && $scope['bulk_org'] > 0) { $w .= ' AND bj.organization_id = ?'; $p[] = $scope['bulk_org']; }
     elseif ($scope !== null && $scope['bulk_user'] > 0) { $w .= ' AND bj.user_id = ?'; $p[] = $scope['bulk_user']; }
+    $w .= vip_user_condition($vipFilter, 'bj.user_id', $p);
     if ($sender !== null) { $w .= ' AND bj.originator = ?'; $p[] = $sender; }
     $w .= operator_report_route_filter('bi.route_id', $routeIds, $p);
     $w .= $exclude('bulk_job', 'bj.id');
@@ -390,6 +396,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         $p = [$fromUtc, $toUtcExclusive];
         $w = "a.status IN ('accepted','failed') AND a.destination IS NOT NULL AND a.reference_type IN ('direct_send','schedule','autoreply')
               AND a.attempted_at >= ? AND a.attempted_at < ?" . $memberIn('a.user_id', $p);
+        $w .= vip_user_condition($vipFilter, 'a.user_id', $p);
         if ($sender !== null) { $w .= ' AND a.originator = ?'; $p[] = $sender; }
         $w .= operator_report_route_filter('a.route_id', $routeIds, $p);
         $w .= $exclude('attempt', 'a.id');
@@ -419,6 +426,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
     if ($ids !== null) {
         $p = [$ids[0], $ids[1], $fromUtc, $toUtcExclusive];
         $w = 'm.id >= ? AND m.id < ? AND m.sent_at >= ? AND m.sent_at < ?' . $memberIn('m.sender_user_id', $p);
+        $w .= vip_user_condition($vipFilter, 'm.sender_user_id', $p);
         if ($sender !== null) { $w .= ' AND m.originator = ?'; $p[] = $sender; }
         $w .= $exclude('outbound', 'm.id');
         $legacyStatus = "CASE WHEN m.status = 'delivered' THEN 'delivered' WHEN m.status = 'failed' THEN 'undelivered'

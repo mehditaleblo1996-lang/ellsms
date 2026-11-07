@@ -29,6 +29,7 @@ message count in every main report (see [SMS parts everywhere](#sms-parts-everyw
 | Filter | Meaning |
 |---|---|
 | سازمان | (admins) one organization |
+| مشتری ویژه | (admins) every customer, VIP customers only («فقط مشتریان ویژه») or everyone else («بدون مشتریان ویژه») ([vip-customers](vip-customers.md)) |
 | شماره‌های اختصاصی | one or more sender lines — a searchable checklist of the customer's own lines (owned, organization and shared); for an admin the picked user's / organization's lines, else every line |
 | کاربر | one user (an admin: anyone; a customer: a member of their organization) |
 | نوع پیام | the message's language: «فارسی» (Unicode) or «انگلیسی» (all-Latin) |

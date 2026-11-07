@@ -123,7 +123,7 @@ function status_report_query_date(array $query, string $name): ?string {
  * STATUS_REPORT_DAILY_MAX_DAYS days is shown per day, a longer one per month.
  *
  * @return array{year:int,month:int,from:string,to:string,from_picked:?string,to_picked:?string,granularity:string,
- *               lines:list<string>,user_id:int,org_id:int,operator:string,encoding:string,parts:int,channel:string,notice:string}
+ *               lines:list<string>,user_id:int,org_id:int,operator:string,encoding:string,parts:int,channel:string,vip:string,notice:string}
  */
 function status_report_filters(array $query, bool $isAdmin, string $today): array {
     [$ty] = status_report_jalali($today);
@@ -173,6 +173,7 @@ function status_report_filters(array $query, bool $isAdmin, string $today): arra
         'encoding' => isset(STATUS_REPORT_ENCODINGS[$encoding]) ? $encoding : '',
         'parts' => $parts >= 1 && $parts <= 255 ? $parts : 0,
         'channel' => isset(SEND_CHANNELS[$channel]) ? $channel : '',
+        'vip' => $isAdmin ? vip_filter_from($query) : '',
         'notice' => $notice,
     ];
 }
@@ -257,7 +258,16 @@ function status_report_table(array $periods, array $cells, array $columns): arra
  *
  * @return array{members:?list<int>,bulk_org:int,bulk_user:int}
  */
-function status_report_scope(array $me, bool $admin, int $orgId, int $userId): array {
+function status_report_scope(array $me, bool $admin, int $orgId, int $userId, string $vip = ''): array {
+    if ($admin) {
+        // «مشتری ویژه» filter (admins only): narrows whichever scope below.
+        return ['vip' => $vip] + status_report_scope_base($me, true, $orgId, $userId);
+    }
+    return status_report_scope_base($me, $admin, $orgId, $userId);
+}
+
+/** status_report_scope() without the «مشتری ویژه» filter. */
+function status_report_scope_base(array $me, bool $admin, int $orgId, int $userId): array {
     if ($admin) {
         if ($userId > 0) return ['members' => [$userId], 'bulk_org' => 0, 'bulk_user' => $userId];
         if ($orgId > 0) {
@@ -440,6 +450,7 @@ function status_report_drops_window(array $f, array $scope, string $fromUtc, str
     [$filterSql, $filterParams] = status_report_filter_sql($f, 'sd.sender', 'sd.operator', 'sd.encoding', 'sd.parts', 'sd.channel');
     $w .= $filterSql;
     array_push($p, ...$filterParams);
+    $w .= vip_user_condition((string)($scope['vip'] ?? ''), 'sd.user_id', $p);
 
     $joins = '';
     try {

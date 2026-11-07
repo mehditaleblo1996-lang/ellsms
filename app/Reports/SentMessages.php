@@ -262,6 +262,8 @@ function sent_report_filters(array $query, bool $isAdmin, string $today): array 
         'type' => array_key_exists($type, sent_report_types()) ? $type : '',
         'status' => array_key_exists($status, sent_report_statuses()) ? $status : '',
         'per_page' => in_array($per, SENT_REPORT_PER_PAGE, true) ? $per : SENT_REPORT_DEFAULT_PER_PAGE,
+        // «مشتری ویژه» filter (app/VipCustomers.php), admins only.
+        'vip' => $isAdmin ? vip_filter_from($query) : '',
         'notice' => $notice,
     ];
 }
@@ -356,6 +358,13 @@ function sent_report_source_query(string $source, array $f, ?array $scope, bool 
     if ($f['user_id'] > 0) {
         $where[] = "{$userCol} = ?";
         $params[] = $f['user_id'];
+    }
+    if (($f['vip'] ?? '') !== '') {
+        [$vipSql, $vipIds] = vip_condition_sql($f['vip'], vip_user_ids(), $userCol);
+        if ($vipSql !== '') {
+            $where[] = substr($vipSql, 5); // without its leading ' AND '
+            array_push($params, ...$vipIds);
+        }
     }
     if ($scope !== null) {
         $scope = array_values(array_map('intval', $scope));
@@ -589,6 +598,7 @@ function sent_report_decorate(array $rows): array {
     foreach ($rows as &$row) {
         $user = $users[(int)$row['user_id']] ?? null;
         $row['username'] = $user ? (string)$user['username'] : '#' . $row['user_id'];
+        $row['vip'] = vip_is((int)$row['user_id']); // shown to admins only (public/reports-v2.php)
         $row['user_full_name'] = $user ? trim($user['first_name'] . ' ' . $user['last_name']) : '';
         $destination = (string)($row['destination'] ?? '');
         $row['destination_display'] = bulk_recipient_display($destination, !empty($row['masked']));

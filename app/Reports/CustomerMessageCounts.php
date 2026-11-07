@@ -423,8 +423,26 @@ function customer_counts_name_cell(array $r): string {
     $html .= $r['has_profile']
         ? '<a href="/users.php?edit=' . (int)$r['user_id'] . '#personal" title="پروفایل مشتری">' . $label . '</a>'
         : '<span title="این حساب دسترسی پنل ندارد">' . $label . '</span>';
+    if (!empty($r['vip'])) $html .= ' ' . vip_badge();
     if ($r['username'] !== '' && $r['username'] !== $r['name']) $html .= '<span class="cc-user ltr">' . e($r['username']) . '</span>';
     return $html . '</td>';
+}
+
+/**
+ * Pure: the rows of the customers the «مشتری ویژه» filter keeps ('' every customer, 'vip', 'regular' —
+ * app/VipCustomers.php), each marked with 'vip' => bool so the page can highlight it.
+ *
+ * @param list<array{user_id:int}> $rows
+ * @param list<int> $vipIds
+ * @return list<array>
+ */
+function customer_counts_vip_rows(array $rows, string $filter, array $vipIds): array {
+    $out = [];
+    foreach ($rows as $r) {
+        $r['vip'] = in_array((int)$r['user_id'], $vipIds, true);
+        if (vip_filter_keeps($filter, (int)$r['user_id'], $vipIds)) $out[] = $r;
+    }
+    return $out;
 }
 
 /** Pure: the company shown for an organization — its legal name, else its own name unless auto-generated. */

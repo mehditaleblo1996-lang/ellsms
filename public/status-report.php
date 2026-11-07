@@ -22,9 +22,9 @@ $admin = is_admin();
 $showDelivery = delivery_status_visible($me);
 $today = (new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d');
 $f = status_report_filters($_GET, $admin, $today);
-$scope = status_report_scope($me, $admin, $f['org_id'], $f['user_id']);
+$scope = status_report_scope($me, $admin, $f['org_id'], $f['user_id'], $f['vip']);
 $hideRemoved = hidden_messages_apply_to_viewer();
-$filterKeys = ['org_id', 'user_id', 'lines', 'encoding', 'operator', 'year', 'month', 'from_y', 'from_m', 'from_d', 'to_y', 'to_m', 'to_d', 'parts', 'channel'];
+$filterKeys = ['org_id', 'vip', 'user_id', 'lines', 'encoding', 'operator', 'year', 'month', 'from_y', 'from_m', 'from_d', 'to_y', 'to_m', 'to_d', 'parts', 'channel'];
 $filterQuery = array_filter(array_intersect_key($_GET, array_flip($filterKeys)), static fn($v) => is_array($v) ? $v !== [] : (is_scalar($v) && $v !== ''));
 $rangeLabel = $f['from'] === $f['to'] ? jdate($f['from'], false) : jdate($f['from'], false) . ' تا ' . jdate($f['to'], false);
 
@@ -206,6 +206,7 @@ require __DIR__ . '/../app/views/header.php';
         <?php foreach ($organizations as $o): ?><option value="<?= (int)$o['id'] ?>"<?= $f['org_id'] === (int)$o['id'] ? ' selected' : '' ?>><?= e((string)$o['name']) ?></option><?php endforeach; ?>
       </select>
     </label>
+    <?= vip_filter_select($f['vip']) ?>
     <?php endif; ?>
 
     <div class="sr-field sr-lines-field">
@@ -232,7 +233,7 @@ require __DIR__ . '/../app/views/header.php';
     <label>کاربر
       <select name="user_id"<?= $admin ? ' data-sr-resubmit' : '' ?>>
         <option value="">همه‌ی کاربران</option>
-        <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"<?= $f['user_id'] === (int)$u['id'] ? ' selected' : '' ?>><?= e((string)$u['username']) ?></option><?php endforeach; ?>
+        <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"<?= $f['user_id'] === (int)$u['id'] ? ' selected' : '' ?>><?= e(($admin && vip_is((int)$u['id']) ? '★ ' : '') . (string)$u['username']) ?></option><?php endforeach; ?>
       </select>
     </label>
     <?php endif; ?>
@@ -293,7 +294,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="sr-actions">
     <button class="btn btn-primary"><?= panel_icon('search') ?> جستجو</button>
     <a class="btn btn-ghost" href="/status-report.php">پاک کردن فیلترها</a>
-    <span class="hint sr-range-hint">بازه: <?= e($rangeLabel) ?> — <?= $f['granularity'] === 'month' ? 'به تفکیک ماه' : 'به تفکیک روز' ?></span>
+    <span class="hint sr-range-hint">بازه: <?= e($rangeLabel) ?> — <?= $f['granularity'] === 'month' ? 'به تفکیک ماه' : 'به تفکیک روز' ?><?= $f['vip'] !== '' ? ' — ' . e(VIP_FILTERS[$f['vip']]) : '' ?></span>
   </div>
 </form>
 
