@@ -47,7 +47,7 @@ $load = static function () use ($from, $to, $vip): array {
 if (isset($_GET['export'])) {
     $report = $load();
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ellsms-received-counts-' . $from . '_' . $to . '.csv"');
+    header('Content-Disposition: attachment; filename="received-counts-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
     fputcsv($out, ['ردیف', 'شناسه کاربر', 'نام کاربری', 'نام و نام خانوادگی', 'نام شرکت', 'خط‌های دریافت', 'تعداد پیام‌های دریافتی', 'تعداد پارت', 'مشتری ویژه']);

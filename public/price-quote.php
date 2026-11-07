@@ -315,7 +315,7 @@ require __DIR__ . '/../app/views/header.php';
   });
 
   document.getElementById('pqImgBtn').addEventListener('click', function () {
-    exportSheetAsPng(sheet, (document.querySelector('input[name="invoice_no"]').value || 'ellsms-price-quote') + '.png');
+    exportSheetAsPng(sheet, (document.querySelector('input[name="invoice_no"]').value || 'price-quote') + '.png');
   });
 
   /* Rasterizes the invoice sheet to a PNG without any third-party library

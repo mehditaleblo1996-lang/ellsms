@@ -34,7 +34,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['do'] ?? '') === 'e
         $exportQuery['status'] = ['queued' => 'pending'][$_GET['status'] ?? ''] ?? ($_GET['status'] ?? '');
         $exportFilters = report_export_filters_from_request($me, $exportQuery, is_admin());
         $exportId = report_export_queue((int)($me['organization_id'] ?? 0), (int)$me['id'], $exportFilters,
-            'ellsms-report-' . $exportFilters['from'] . '-to-' . $exportFilters['to'] . '.csv');
+            'report-' . $exportFilters['from'] . '-to-' . $exportFilters['to'] . '.csv');
         audit((int)$me['id'], 'report_export_request', 'export_id=' . $exportId);
         flash('success', 'خروجی در صف آماده‌سازی قرار گرفت؛ پس از آماده شدن از همین صفحه دانلود کنید.');
     }

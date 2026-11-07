@@ -53,7 +53,7 @@ if (isset($_GET['download'])) {
     $name = (string)($export['download_filename'] ?? '');
     if ($name === '' || !preg_match('/^[A-Za-z0-9._-]+$/', $name)) {
         // Never echo an unvalidated stored value into a response header.
-        $name = 'ellsms-report-' . $exportId . '.csv';
+        $name = 'report-' . $exportId . '.csv';
     }
 
     header('Content-Type: text/csv; charset=utf-8');
