@@ -109,12 +109,22 @@ Two reports read tables built ahead of time, which now keep part totals too:
   not built yet, so its numbers are never missing. `report-summary-worker` rebuilds those days,
   newest first and whatever their age, right after today and yesterday
   (`operator_report_with_upgrades()`); a day takes a few seconds. The page is slower for wide ranges
-  only until then.
+  only until then. **A current-layout day rebuilt only to add part totals never shrinks:** an old
+  day's messages may no longer all be in the tables (archived by `app/BulkArchive.php`, or left out
+  of a restored backup — `app/Backup.php` keeps the summary, not the messages). When the rebuild would
+  count fewer messages than the day holds, the day keeps its counts and is marked `parts_built = 2`
+  (part totals unknown); the operator report and «گزارش تعداد پیام‌های ارسالی» then say, under the
+  tables, that the parts leave those days out (`operator_report_parts_incomplete()`). Note that
+  `2026_11_11_status_report.sql` empties the operator summary once so that every day is rebuilt with
+  the new layout; a day whose bulk items were archived before that comes back from the live tables
+  only, without the archived ones.
 - **`ellsms_report_daily_dimension_summary.part_count`** (the breakdown of «گزارش ارسال حجیم»). The
   migration brings the next hourly full rebuild forward to the worker's next pass, which fills it.
-  Direct / scheduled / auto-reply sends reach the same table through `ellsms_send_dimension_log`,
+  Direct / scheduled / auto-reply sends reach the same breakdown through `ellsms_send_dimension_log`,
   whose new `part_count` is written at dispatch (`send_dimension_log_record()`: the recipients ×
-  their text's parts).
+  their text's parts), folded into their own `ellsms_report_daily_send_summary`
+  (`db/migrations/2026_11_12_dimension_summary_sources.sql`, docs/daily-metadata-aggregation.md
+  §Sources).
 
 ## Where it is read
 

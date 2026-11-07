@@ -7,6 +7,7 @@ namespace Tests\Integration;
 require_once dirname(__DIR__, 2) . '/app/import_worker.php';
 require_once dirname(__DIR__, 2) . '/app/Sms/GatewayReceive.php';
 require_once dirname(__DIR__, 2) . '/app/Reports/SentMessages.php';
+require_once dirname(__DIR__, 2) . '/app/Reports/OperatorReport.php';
 
 /**
  * The SMS part count stored on every message row (app/MessageParts.php,
@@ -119,6 +120,34 @@ final class MessagePartsTest extends IntegrationTestCase
         $rows = array_column(sent_report_page($f, [$this->user], true)['rows'], 'parts', 'ref');
         self::assertSame(['B' . $id => 4, 'B' . $unfilled => 2], $rows);
         self::assertSame(4, sent_report_find('B' . $id, [$this->user], true, false)['parts']);
+    }
+
+    public function testAddingPartTotalsNeverShrinksAnOperatorReportDay(): void
+    {
+        // Two days built before part totals existed. 2019-03-03's messages are gone (archived, or not
+        // in a restored backup); 2019-03-04 still has its one message.
+        $db = db();
+        foreach (['2019-03-03' => 5, '2019-03-04' => 1] as $day => $count) {
+            $db->prepare("DELETE FROM ellsms_operator_report_daily WHERE period_date = ?")->execute([$day]);
+            $db->prepare("INSERT INTO ellsms_operator_report_daily (period_date, source, user_id, organization_id, sender, route_id, channel, operator, encoding, parts, status, hidden, message_count, part_count)
+                          VALUES (?, 'bulk', ?, 0, '50004000', 0, 'direct', 'همراه اول', 'fa', 0, 'delivered', 0, ?, NULL)")->execute([$day, $this->user, $count]);
+            $db->prepare("REPLACE INTO ellsms_operator_report_days (period_date, built_at, queued_count, build_ms, layout, parts_built) VALUES (?, UTC_TIMESTAMP(), 0, 0, ?, 0)")
+               ->execute([$day, OPERATOR_REPORT_SUMMARY_LAYOUT]);
+        }
+        $this->bulkItem(str_repeat('س', 71), '2019-03-04 08:00:00'); // 2 parts
+
+        $kept = operator_report_rebuild_day('2019-03-03', true);
+        self::assertTrue($kept['kept'] ?? false);
+        self::assertSame(5, (int)$db->query("SELECT SUM(message_count) FROM ellsms_operator_report_daily WHERE period_date = '2019-03-03'")->fetchColumn(), 'the day keeps its counts');
+        self::assertSame(2, (int)$db->query("SELECT parts_built FROM ellsms_operator_report_days WHERE period_date = '2019-03-03'")->fetchColumn());
+
+        operator_report_rebuild_day('2019-03-04', true);
+        self::assertSame([1, 2], array_map('intval', $db->query("SELECT SUM(message_count), SUM(part_count) FROM ellsms_operator_report_daily WHERE period_date = '2019-03-04'")->fetch(\PDO::FETCH_NUM)),
+            'a day whose messages are all there is rebuilt with its part totals');
+
+        self::assertSame(['2019-03-03', '2019-03-04'], array_keys(operator_report_built_days('2019-03-03', '2019-03-04')), 'both answer from the summary');
+        self::assertTrue(operator_report_parts_incomplete('2019-03-03', '2019-03-04'));
+        self::assertFalse(operator_report_parts_incomplete('2019-03-04', '2019-03-04'));
     }
 
     /** @return list<int> the parts column of the matching rows, by id */

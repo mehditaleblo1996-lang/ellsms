@@ -9,6 +9,11 @@
  * daily totals): one initial/periodic full rebuild, then advance by ellsms_bulk_items.id in atomic
  * chunks. See docs/daily-metadata-aggregation.md for why this is scoped to bulk sends and what is
  * deliberately left as a known gap.
+ *
+ * Direct / scheduled / auto-reply sends are summed into a table of their own,
+ * ellsms_report_daily_send_summary (app/Reports/SendDimensionLog.php); report_dimension_summary_query()
+ * reads both. The full rebuild here only ever replaces bulk rows, and only for the days the live
+ * items can still answer for — see report_dimension_summary_full_rebuild().
  */
 
 declare(strict_types=1);
@@ -72,28 +77,84 @@ function report_dimension_summary_select_sql(string $itemFilter): string {
 }
 
 /**
- * @return array{rows:int,last_bulk_item_id:int}
+ * The day before which the bulk rebuild leaves the summary alone: the latest cutoff of an archive run
+ * that has moved — or is about to move — items out of ellsms_bulk_items (app/BulkArchive.php). Those
+ * days' items are no longer all live, so the rows built while they were are the record. Null when
+ * nothing was archived.
+ */
+function report_dimension_summary_frozen_before(): ?string {
+    try {
+        $cutoff = db()->query("SELECT MAX(cutoff_date) FROM ellsms_bulk_archive_runs
+                               WHERE status IN ('approved','running','completed') OR last_archived_item_id > 0")->fetchColumn();
+    } catch (Throwable) {
+        return null; // 2026_08_31_bulk_archive.sql not applied
+    }
+    return $cutoff ? (string)$cutoff : null;
+}
+
+/**
+ * Rebuilds the bulk side of the summary from ellsms_bulk_items — and replaces only what those rows can
+ * still answer for: the days that hold live terminal items, from the archive freeze on
+ * (report_dimension_summary_frozen_before()). A day whose items are gone — archived, or left out of a
+ * restored backup (app/Backup.php keeps the summaries, not the items) — keeps the rows it was given
+ * while they were there. Direct / scheduled / auto-reply sends are in ellsms_report_daily_send_summary
+ * and are never touched.
+ *
+ * The first rebuild after 2026_11_12_dimension_summary_sources.sql (rebuild_all) empties the table
+ * first, once: until then direct-send rows were mixed into it, and they are now in their own table.
+ *
+ * Covers the items up to the newest id when it starts; the incremental pass carries on from there.
+ *
+ * @return array{rows:int,last_bulk_item_id:int,days:int}
  */
 function report_dimension_summary_full_rebuild(): array {
     $lock = (int)db()->query("SELECT GET_LOCK('ellsms_report_dimension_summary_rebuild', 0)")->fetchColumn();
     if ($lock !== 1) {
-        return ['rows' => 0, 'last_bulk_item_id' => (int)(report_dimension_summary_state()['last_bulk_item_id'] ?? 0)];
+        return ['rows' => 0, 'last_bulk_item_id' => (int)(report_dimension_summary_state()['last_bulk_item_id'] ?? 0), 'days' => 0];
     }
 
     try {
-        return db_transaction(function (PDO $db): array {
-            $db->exec('DELETE FROM ellsms_report_daily_dimension_summary');
-            $sql = 'INSERT INTO ellsms_report_daily_dimension_summary (' . report_dimension_summary_columns() . ')
-                    ' . report_dimension_summary_select_sql('1=1');
-            $rows = (int)$db->exec($sql);
-            $lastId = (int)$db->query('SELECT COALESCE(MAX(id),0) FROM ellsms_bulk_items')->fetchColumn();
+        $state = report_dimension_summary_state();
+        $wipeAll = !empty($state['rebuild_all']);
+        $frozenBefore = $wipeAll ? null : report_dimension_summary_frozen_before();
+        $lastId = (int)db()->query('SELECT COALESCE(MAX(id),0) FROM ellsms_bulk_items')->fetchColumn();
+        $params = [$lastId];
+        $filter = 'i.id <= ?';
+        if ($frozenBefore !== null) {
+            $filter .= ' AND i.created_at >= ?';
+            $params[] = $frozenBefore . ' 00:00:00';
+        }
+        $st = db()->prepare(report_dimension_summary_select_sql($filter));
+        $st->execute($params);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        $days = array_values(array_unique(array_map('strval', array_column($rows, 'period_date'))));
+
+        return db_transaction(function (PDO $db) use ($rows, $days, $lastId, $wipeAll, $state): array {
+            if ($wipeAll) {
+                $db->exec('DELETE FROM ellsms_report_daily_dimension_summary');
+            } else {
+                foreach (array_chunk($days, 500) as $chunk) {
+                    $db->prepare('DELETE FROM ellsms_report_daily_dimension_summary WHERE period_date IN (' . implode(',', array_fill(0, count($chunk), '?')) . ')')
+                       ->execute($chunk);
+                }
+            }
+            if ($rows !== []) {
+                $columns = array_keys($rows[0]);
+                $tuple = '(' . implode(',', array_fill(0, count($columns), '?')) . ')';
+                foreach (array_chunk($rows, 500) as $chunk) {
+                    $db->prepare('INSERT INTO ellsms_report_daily_dimension_summary (' . implode(', ', $columns) . ')
+                                  VALUES ' . implode(',', array_fill(0, count($chunk), $tuple)))
+                       ->execute(array_merge(...array_map('array_values', $chunk)));
+                }
+            }
             $st = $db->prepare(
                 'UPDATE ellsms_report_dimension_summary_state
-                 SET last_bulk_item_id = ?, last_incremental_at = NOW(), last_full_rebuild_at = NOW()
+                 SET last_bulk_item_id = ?, last_incremental_at = NOW(), last_full_rebuild_at = NOW()'
+                 . (array_key_exists('rebuild_all', $state) ? ', rebuild_all = 0' : '') . '
                  WHERE id = 1'
             );
             $st->execute([$lastId]);
-            return ['rows' => $rows, 'last_bulk_item_id' => $lastId];
+            return ['rows' => count($rows), 'last_bulk_item_id' => $lastId, 'days' => count($days)];
         });
     } finally {
         try { db()->query("SELECT RELEASE_LOCK('ellsms_report_dimension_summary_rebuild')"); } catch (Throwable) {}
@@ -204,9 +265,24 @@ function report_dimension_summary_backlog(int $lastId): array {
     return ['backlog_rows' => (int)$rows, 'backlog_lag_seconds' => (int)$lagSeconds];
 }
 
+/** Whether direct sends have their own summary table (2026_11_12_dimension_summary_sources.sql). */
+function report_dimension_send_summary_available(): bool {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = (int)db()->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()
+                                     AND table_name = 'ellsms_report_daily_send_summary'")->fetchColumn() === 1;
+        } catch (Throwable) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
 /**
  * Management-report read path: pre-aggregated, filtered by any subset of the six dimensions plus a
- * date range. Never touches ellsms_bulk_items directly.
+ * date range — bulk sends and direct / scheduled / auto-reply sends together (two tables, one
+ * answer). Never touches ellsms_bulk_items directly.
  *
  * @param array{organization_id?:int,message_type?:string,sender_number?:string,route_id?:int,operator_id?:int,status?:string} $filters
  * @return list<array<string,mixed>>
@@ -230,13 +306,20 @@ function report_dimension_summary_query(string $from, string $to, array $filters
         }
     }
 
-    $sql = 'SELECT organization_id, message_type, sender_number, route_id, operator_id, status, SUM(message_count) AS message_count,
-                   ' . (report_dimension_summary_has_parts() ? 'SUM(part_count)' : 'NULL') . ' AS part_count
-            FROM ellsms_report_daily_dimension_summary
-            WHERE ' . implode(' AND ', $where) . '
-            GROUP BY organization_id, message_type, sender_number, route_id, operator_id, status
-            ORDER BY message_count DESC';
+    $w = implode(' AND ', $where);
+    $dims = 'organization_id, message_type, sender_number, route_id, operator_id, status';
+    $sources = ["SELECT {$dims}, message_count, " . (report_dimension_summary_has_parts() ? 'part_count' : 'NULL') . " AS part_count
+                 FROM ellsms_report_daily_dimension_summary WHERE {$w}"];
+    $allParams = $params;
+    if (report_dimension_send_summary_available()) {
+        $sources[] = "SELECT {$dims}, message_count, part_count FROM ellsms_report_daily_send_summary WHERE {$w}";
+        $allParams = array_merge($params, $params);
+    }
+    $sql = "SELECT {$dims}, SUM(message_count) AS message_count, SUM(part_count) AS part_count
+            FROM (" . implode(' UNION ALL ', $sources) . ") u
+            GROUP BY {$dims}
+            ORDER BY message_count DESC";
     $st = db()->prepare($sql);
-    $st->execute($params);
+    $st->execute($allParams);
     return $st->fetchAll();
 }

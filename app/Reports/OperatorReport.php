@@ -219,6 +219,17 @@ function operator_report_summary_scope_sql(?array $scope): array {
     return [$sql, $p];
 }
 
+/**
+ * Whether $from..$to holds a day whose part totals are unknown (parts_built 2: its messages were no
+ * longer all in the tables when part totals were added), so the parts shown leave its messages out.
+ */
+function operator_report_parts_incomplete(string $from, string $to): bool {
+    if (!operator_report_summary_available() || !operator_report_summary_has_parts()) return false;
+    $st = db()->prepare('SELECT 1 FROM ellsms_operator_report_days WHERE period_date BETWEEN ? AND ? AND parts_built = 2 LIMIT 1');
+    $st->execute([$from, $to]);
+    return (bool)$st->fetchColumn();
+}
+
 /** Whether the summary keeps part totals (`part_count`, `parts_built` — 2026_11_11_report_parts.sql). */
 function operator_report_summary_has_parts(): bool {
     static $has = null;
@@ -281,14 +292,17 @@ function operator_report_summary_available(): bool {
 
 /**
  * The days in $from..$to the summary holds with the current layout: 'Y-m-d' => built_at (UTC), in
- * order. Empty when the summary is not available — every day is then counted live.
+ * order — with part totals (parts_built 1), or kept with its counts because its messages were no
+ * longer all in the tables when part totals were added (parts_built 2, see
+ * operator_report_rebuild_day()). Empty when the summary is not available — every day is then
+ * counted live.
  *
  * @return array<string,string>
  */
 function operator_report_built_days(string $from, string $to): array {
     if (!operator_report_summary_available()) return [];
     $st = db()->prepare('SELECT period_date, built_at FROM ellsms_operator_report_days
-                         WHERE period_date BETWEEN ? AND ? AND layout >= ?' . (operator_report_summary_has_parts() ? ' AND parts_built = 1' : '') . ' ORDER BY period_date');
+                         WHERE period_date BETWEEN ? AND ? AND layout >= ?' . (operator_report_summary_has_parts() ? ' AND parts_built <> 0' : '') . ' ORDER BY period_date');
     $st->execute([$from, $to, OPERATOR_REPORT_SUMMARY_LAYOUT]);
     $built = [];
     foreach ($st->fetchAll() as $r) $built[(string)$r['period_date']] = (string)$r['built_at'];
@@ -555,9 +569,16 @@ function operator_report_legacy_id_bounds(string $fromUtc, string $toUtcExclusiv
 /**
  * Rebuilds one Tehran day of the summary from the message tables (DELETE + INSERT in one transaction).
  *
- * @return array{groups:int,messages:int,ms:int}
+ * $upgradeOnly: the day is rebuilt only to add part totals (it was built before they existed). Such a
+ * day can be long past, and its messages may no longer all be in the tables — archived
+ * (app/BulkArchive.php), or left out of a restored backup (app/Backup.php keeps the summary, not the
+ * messages). A rebuild that would count fewer messages than the day already holds therefore keeps the
+ * day as it is and marks it parts_built = 2: counts kept, part totals unknown
+ * (operator_report_parts_incomplete()). An upgrade never shrinks a day.
+ *
+ * @return array{groups:int,messages:int,ms:int,kept?:bool}
  */
-function operator_report_rebuild_day(string $day): array {
+function operator_report_rebuild_day(string $day, bool $upgradeOnly = false): array {
     $started = microtime(true);
     [$fromUtc, $toUtcExclusive] = local_day_range_to_utc($day, $day);
     $raw = operator_report_raw_rows($fromUtc, $toUtcExclusive, null, null, null, false, true);
@@ -583,6 +604,14 @@ function operator_report_rebuild_day(string $day): array {
     $ms = (int)round((microtime(true) - $started) * 1000);
     // part_count (the group's part total) and parts_built come from 2026_11_11_report_parts.sql.
     $withParts = operator_report_summary_has_parts();
+    if ($upgradeOnly && $withParts) {
+        $st = db()->prepare('SELECT COALESCE(SUM(message_count), 0) FROM ellsms_operator_report_daily WHERE period_date = ?');
+        $st->execute([$day]);
+        if ($messages < (int)$st->fetchColumn()) {
+            db()->prepare('UPDATE ellsms_operator_report_days SET parts_built = 2 WHERE period_date = ? AND parts_built = 0')->execute([$day]);
+            return ['groups' => count($groups), 'messages' => $messages, 'ms' => $ms, 'kept' => true];
+        }
+    }
     db_transaction(static function (PDO $db) use ($day, $groups, $queued, $ms, $withParts): void {
         $db->prepare('DELETE FROM ellsms_operator_report_daily WHERE period_date = ?')->execute([$day]);
         foreach (array_chunk(array_values($groups), 500) as $chunk) {
@@ -665,17 +694,25 @@ function operator_report_worker_pass(int $budgetSeconds, int $backfillDays, int 
         }
         $due = operator_report_days_due($today, $built, time(), $backfillDays, $freshSeconds);
         // Days built by an older layout or without part totals, whatever their age: the reports count
-        // them live until they are rebuilt. After today/yesterday, newest first.
-        $old = db()->prepare('SELECT period_date FROM ellsms_operator_report_days WHERE layout < ?'
+        // them live until they are rebuilt. After today/yesterday, newest first. A current-layout day
+        // rebuilt only to add part totals never shrinks (operator_report_rebuild_day()).
+        $old = db()->prepare('SELECT period_date, layout' . (operator_report_summary_has_parts() ? ', parts_built' : ', 1 AS parts_built')
+            . ' FROM ellsms_operator_report_days WHERE layout < ?'
             . (operator_report_summary_has_parts() ? ' OR parts_built = 0' : '') . ' ORDER BY period_date DESC');
         $old->execute([OPERATOR_REPORT_SUMMARY_LAYOUT]);
-        $due = operator_report_with_upgrades($due, array_map('strval', $old->fetchAll(PDO::FETCH_COLUMN)), $today);
+        $oldRows = $old->fetchAll();
+        $upgradeOnly = [];
+        foreach ($oldRows as $r) {
+            if ((int)$r['layout'] >= OPERATOR_REPORT_SUMMARY_LAYOUT && (int)$r['parts_built'] === 0) $upgradeOnly[(string)$r['period_date']] = true;
+        }
+        $upgradeOnly = array_diff_key($upgradeOnly, array_flip($due));
+        $due = operator_report_with_upgrades($due, array_map(static fn(array $r): string => (string)$r['period_date'], $oldRows), $today);
         $deadline = microtime(true) + $budgetSeconds;
         $rebuilt = 0;
         $messages = 0;
         foreach ($due as $day) {
             if (microtime(true) >= $deadline) break;
-            $messages += operator_report_rebuild_day($day)['messages'];
+            $messages += operator_report_rebuild_day($day, isset($upgradeOnly[$day]))['messages'];
             $rebuilt++;
         }
         return ['rebuilt' => $rebuilt, 'due' => count($due), 'messages' => $messages];

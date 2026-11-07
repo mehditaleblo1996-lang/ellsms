@@ -9,8 +9,10 @@
  * gateway-path success had its route/operator recorded on ellsms_message_attempts but never
  * aggregated daily. This file is the missing piece: record the six reporting dimensions at dispatch
  * time (never message content, never destination numbers, never provider identifiers), then fold
- * those rows into the SAME ellsms_report_daily_dimension_summary table issue #12 already built and
- * public/reports-bulk.php already reads from -- no second aggregate table, no second UI.
+ * those rows into ellsms_report_daily_send_summary, which public/reports-bulk.php reads together with
+ * issue #12's bulk table through report_dimension_summary_query() -- one breakdown, one UI. (They
+ * used to share issue #12's table, whose hourly full rebuild then deleted every row folded here; see
+ * db/migrations/2026_11_12_dimension_summary_sources.sql.)
  *
  * KNOWN GAP (2026-09-02 audit, undocumented until now, not fixed here): 'status' below is
  * PROVIDER-SUBMISSION outcome (sent/failed at dispatch time), not final delivery outcome -- a row
@@ -96,15 +98,6 @@ function send_dimension_summary_state(): array {
     }
 }
 
-/**
- * Folds new ellsms_send_dimension_log rows into ellsms_report_daily_dimension_summary. Unlike
- * issue #12's bulk aggregation, this needs no periodic full rebuild: every log row's status is
- * already final at write time (recorded once the provider answered, never while still pending), so
- * there is no "late status change" to reconcile later -- a straightforward high-water-mark fold,
- * still one atomic transaction per chunk for the same restart-safe/idempotent guarantee.
- *
- * @return array{processed:int,last_log_id:int,has_more:bool}
- */
 /** Whether the log keeps SMS part totals (2026_11_11_report_parts.sql). */
 function send_dimension_log_has_parts(): bool {
     static $has = null;
@@ -119,10 +112,36 @@ function send_dimension_log_has_parts(): bool {
     return $has;
 }
 
+/**
+ * Where the log is folded and which state column is its cursor: the sends' own table
+ * ellsms_report_daily_send_summary (cursor summary_log_id), which the bulk full rebuild never touches —
+ * or, before 2026_11_12_dimension_summary_sources.sql, the shared table (cursor last_log_id).
+ *
+ * @return array{table:string,cursor:string,parts:bool}
+ */
+function send_dimension_summary_target(): array {
+    if (report_dimension_send_summary_available() && array_key_exists('summary_log_id', send_dimension_summary_state())) {
+        return ['table' => 'ellsms_report_daily_send_summary', 'cursor' => 'summary_log_id', 'parts' => send_dimension_log_has_parts()];
+    }
+    return ['table' => 'ellsms_report_daily_dimension_summary', 'cursor' => 'last_log_id',
+            'parts' => send_dimension_log_has_parts() && report_dimension_summary_has_parts()];
+}
+
+/**
+ * Folds new ellsms_send_dimension_log rows into the sends' summary table (send_dimension_summary_target()).
+ * Unlike issue #12's bulk aggregation, this needs no periodic full rebuild: every log row's status is
+ * already final at write time (recorded once the provider answered, never while still pending), so
+ * there is no "late status change" to reconcile later -- a straightforward high-water-mark fold,
+ * still one atomic transaction per chunk for the same restart-safe/idempotent guarantee. Its rows are
+ * its own: nothing else writes or deletes them.
+ *
+ * @return array{processed:int,last_log_id:int,has_more:bool}
+ */
 function send_dimension_summary_incremental_chunk(int $chunkRows = 5000): array {
     $chunkRows = max(100, min(50000, $chunkRows));
+    ['table' => $table, 'cursor' => $cursor, 'parts' => $parts] = send_dimension_summary_target();
     $state = send_dimension_summary_state();
-    $lastId = (int)($state['last_log_id'] ?? 0);
+    $lastId = (int)($state[$cursor] ?? 0);
 
     $high = db()->prepare(
         "SELECT COALESCE(MAX(id),0) FROM (
@@ -136,10 +155,8 @@ function send_dimension_summary_incremental_chunk(int $chunkRows = 5000): array 
         return ['processed' => 0, 'last_log_id' => $lastId, 'has_more' => false];
     }
 
-    // Part totals travel with the counts once both tables have them (2026_11_11_report_parts.sql).
-    $parts = send_dimension_log_has_parts() && report_dimension_summary_has_parts();
-    $result = db_transaction(function (PDO $db) use ($lastId, $highId, $parts): int {
-        $sql = "INSERT INTO ellsms_report_daily_dimension_summary
+    $result = db_transaction(function (PDO $db) use ($lastId, $highId, $parts, $table, $cursor): int {
+        $sql = "INSERT INTO {$table}
                     (period_date, organization_id, message_type, sender_number, route_id, operator_id, status, message_count" . ($parts ? ', part_count' : '') . ", updated_at)
                 SELECT DATE(created_at), organization_id, message_type, sender_number, route_id, operator_id, status,
                        SUM(message_count)" . ($parts ? ', SUM(part_count)' : '') . ", NOW()
@@ -157,7 +174,7 @@ function send_dimension_summary_incremental_chunk(int $chunkRows = 5000): array 
         $count->execute([$lastId, $highId]);
         $processed = (int)$count->fetchColumn();
 
-        $up = $db->prepare('UPDATE ellsms_send_dimension_summary_state SET last_log_id = ?, last_incremental_at = NOW() WHERE id = 1 AND last_log_id = ?');
+        $up = $db->prepare("UPDATE ellsms_send_dimension_summary_state SET {$cursor} = ?, last_incremental_at = NOW() WHERE id = 1 AND {$cursor} = ?");
         $up->execute([$highId, $lastId]);
         if ($up->rowCount() !== 1) {
             throw new RuntimeException('send dimension summary high-water mark changed concurrently');

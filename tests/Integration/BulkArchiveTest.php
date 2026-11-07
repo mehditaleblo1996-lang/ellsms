@@ -221,5 +221,12 @@ final class BulkArchiveTest extends IntegrationTestCase
             "SELECT SUM(message_count) FROM ellsms_report_daily_dimension_summary WHERE period_date = '2020-01-01'"
         )->fetchColumn();
         $this->assertSame((int)$before, (int)$after, 'archiving raw items must never change the already-computed daily aggregate');
+
+        // Nor may the next full rebuild, although the day's items are no longer in ellsms_bulk_items.
+        \report_dimension_summary_full_rebuild();
+        $rebuilt = \db()->query(
+            "SELECT SUM(message_count) FROM ellsms_report_daily_dimension_summary WHERE period_date = '2020-01-01'"
+        )->fetchColumn();
+        $this->assertSame((int)$before, (int)$rebuilt, 'a full rebuild after archiving must keep the archived day');
     }
 }

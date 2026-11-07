@@ -71,6 +71,9 @@ if (lazy_part_begin('report')) {
     if ($asOf !== null): ?>
 <p class="hint op-asof">آمار هر چند دقیقه به‌روز می‌شود؛ آخرین به‌روزرسانی: <span class="num"><?= jdate_from_utc($asOf) ?></span></p>
 <?php endif;
+    if (operator_report_parts_incomplete($from, $to)): ?>
+<p class="hint op-parts-note">برای بعضی روزهای این بازه تعداد پارت در دسترس نیست (پیام‌های آن روزها پیش از ثبت تعداد پارت بایگانی شده‌اند)؛ ستون‌های پارت پیام‌های آن روزها را شامل نمی‌شوند. تعداد پیام‌ها کامل است.</p>
+<?php endif;
 
     if ($view === 'all'):
         // Messages that went out, per encoding, per operator (in queue / cancelled never reached it).

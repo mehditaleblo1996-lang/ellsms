@@ -46,13 +46,50 @@ used, from `dispatch_message_raw()`'s existing `$gatewayMeta`). It never duplica
 message storage: no content, no destination numbers, no provider identifiers — only the six
 reporting dimensions, grouped by (route, operator, outcome) so a multi-destination call costs at
 most a handful of rows, not one per recipient. `send_dimension_summary_worker_pass()` folds it into
-the *same* `ellsms_report_daily_dimension_summary` table the bulk pass already maintains — one
-aggregate table, one read path (`report_dimension_summary_query()`), regardless of send origin.
+its own `ellsms_report_daily_send_summary` (same columns and key as the bulk table) — one read path
+(`report_dimension_summary_query()` sums both tables), regardless of send origin.
 `outbound_message` (backend-owned) is never written to or modified.
+
+## Sources: two tables, and a rebuild that only replaces what it can rebuild
+
+Until `db/migrations/2026_11_12_dimension_summary_sources.sql` both passes wrote into
+`ellsms_report_daily_dimension_summary`, and the bulk pass's hourly full rebuild emptied the whole
+table and refilled it from `ellsms_bulk_items` alone. Three things were lost every hour:
+
+1. **Direct / scheduled / auto-reply rows** — folded once from the log (the send pass never refolds a
+   log row), deleted by the next rebuild. The breakdown showed them for an hour at most.
+2. **Archived days** — once `app/BulkArchive.php` moved a day's items to `ellsms_bulk_items_archive`,
+   the next rebuild had nothing to rebuild that day from.
+3. **Restored history** — a backup keeps the report summaries but not the message rows
+   (`app/Backup.php`), so the first rebuild after a restore erased what the restore brought back.
+
+Now:
+
+- **Sends have their own table**, `ellsms_report_daily_send_summary`, which only the send pass
+  writes. Its cursor is `ellsms_send_dimension_summary_state.summary_log_id`; the migration starts it
+  at 0, so the whole log — the rows lost so far included — is folded in again over the next passes.
+  (`last_log_id` is the cursor of the old shared fold, used only before the migration.)
+- **The bulk full rebuild replaces only what the live items can answer for**
+  (`report_dimension_summary_full_rebuild()`): it aggregates the items up to the newest id at its
+  start, then replaces the rows of exactly the days that aggregate holds. A day with no live terminal
+  items — archived, or left out of a restored backup — keeps the rows built while its items were
+  there. Days before the cutoff of an archive run that has archived (or is approved to archive)
+  anything are never rebuilt (`report_dimension_summary_frozen_before()`), so a day half-way through
+  an archive run is not replaced with the half that is left.
+- **Once after the migration** (`ellsms_report_dimension_summary_state.rebuild_all = 1`, which also
+  brings the rebuild forward to the worker's next pass) the rebuild empties the table first, to clear
+  the direct-send rows mixed into it until then; they are in the new table.
+
+Tests: `ReportDimensionSummaryTest` (a day with no live items keeps its rows; archive-frozen days;
+the one-time emptying), `SendDimensionLogTest::testTheHourlyBulkRebuildNeverDeletesTheSendsRows`,
+`SendDimensionLogTest::testTheWholeLogIsFoldedAgainIntoTheNewTable`,
+`BulkArchiveTest::testAggregatedDailyDimensionSummaryIsUnaffectedByArchivingRawItems` (now across a
+full rebuild too).
 
 ## Design (mirrors the existing report_summary_cache shape)
 
-- **Table**: `ellsms_report_daily_dimension_summary` — `(period_date, organization_id, message_type,
+- **Tables**: `ellsms_report_daily_dimension_summary` (bulk) and `ellsms_report_daily_send_summary`
+  (direct / scheduled / auto-reply) — each `(period_date, organization_id, message_type,
   sender_number, route_id, operator_id, status)` primary key, one `message_count` per tuple and
   its SMS part total `part_count` (`db/migrations/2026_11_11_report_parts.sql`; bulk items' stored
   `parts`, and for the sidecar log `ellsms_send_dimension_log.part_count`, written at dispatch —
@@ -71,7 +108,7 @@ aggregate table, one read path (`report_dimension_summary_query()`), regardless 
   (`sent`/`failed`/`cancelled`) are ever aggregated. An item still `pending` when the incremental
   pass advances past its id is invisible to that pass — the periodic full rebuild (same cadence knob
   as `report_summary_cache`, `REPORT_DIMENSION_SUMMARY_FULL_REBUILD_SECONDS`, default 1h) is what
-  reconciles it once it settles.
+  reconciles it once it settles. It replaces only the days its live items still cover (§Sources).
 
   **Unresolved semantic gap, found in the 2026-09-02 final audit, not fixed in this pass**: "status"
   here means **provider-submission outcome** (did the queue/worker successfully hand the message to
@@ -99,8 +136,9 @@ aggregate table, one read path (`report_dimension_summary_query()`), regardless 
   (duration, via `Metrics::time`), `.processed` (rows), `.pass.failed` (failures), and
   `.backlog_rows`/`.backlog_lag_seconds` (lag: how many terminal items are past the high-water mark,
   and how old the oldest one is).
-- **Read path**: `report_dimension_summary_query($from, $to, $filters)` — pre-aggregated, filterable
-  by any subset of the six dimensions, never touches `ellsms_bulk_items` directly. Wired into
+- **Read path**: `report_dimension_summary_query($from, $to, $filters)` — pre-aggregated over both
+  tables (`UNION ALL`, then summed), filterable by any subset of the six dimensions, never touches
+  `ellsms_bulk_items` directly. The Prometheus `ellsms_send_dimension_total` counter sums both too. Wired into
   `public/reports-bulk.php` as a breakdown table (shown only when no free-text/destination/user
   drill-down filter is active, since — like the totals cache before it — those were never made
   dimensions of the aggregate).

@@ -47,8 +47,13 @@ regardless of age.
   called again) is a harmless no-op, never a duplicate or an error.
 - **Aggregated daily metadata is unaffected**: `ellsms_report_daily_dimension_summary` (issue #12) is
   a separate table already fully computed from the raw rows before they age past six months in any
-  realistic deployment; archiving raw items never touches it
-  (`BulkArchiveTest::testAggregatedDailyDimensionSummaryIsUnaffectedByArchivingRawItems`).
+  realistic deployment; archiving raw items never touches it, and neither does the summary's hourly
+  full rebuild afterwards: it replaces only days that still hold live items, and never a day before
+  the cutoff of a run that has archived anything (`report_dimension_summary_frozen_before()`,
+  docs/daily-metadata-aggregation.md §Sources). Until 2026-11 the rebuild emptied the whole table, so
+  an archived day's counts disappeared at the next hourly rebuild
+  (`BulkArchiveTest::testAggregatedDailyDimensionSummaryIsUnaffectedByArchivingRawItems` now checks
+  across a rebuild).
 
 ## Restore / retrieval procedure (documented and tested)
 
