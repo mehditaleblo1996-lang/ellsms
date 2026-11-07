@@ -191,7 +191,7 @@ function received_report_forwards(array $rows): array {
    List and detail
    ========================================================================== */
 
-/** Display fields for received rows: line owner, sender's operator, forward state, preview fields. */
+/** Display fields for received rows: line owner, sender's operator, forward state, SMS part count, preview fields. */
 function received_report_decorate(array $rows): array {
     if ($rows === []) return [];
     $owners = received_report_line_owners(array_column($rows, 'destination'));
@@ -209,6 +209,7 @@ function received_report_decorate(array $rows): array {
         $r['forwards'] = $forwards[$r['id']] ?? [];
         $r['forward_state'] = received_report_forward_state(array_column($r['forwards'], 'status'));
         $r['forward_label'] = received_report_forward_label($r['forward_state']);
+        $r['parts'] = message_parts_of_row($r); // stored on ELLSMS's own store; the backend's: from the text
     }
     unset($r);
     return $rows;
@@ -244,7 +245,6 @@ function received_report_find(int $id, array $allowedLines, bool $isAdmin): ?arr
     $row['store'] = $store;
     $content = (string)($row['content'] ?? '');
     $row['characters'] = mb_strlen($content, 'UTF-8');
-    $row['parts'] = message_parts_of_row($row); // stored on ELLSMS's own store; the backend's: from the text
     $row['format'] = $content === '' ? '—' : sent_report_format($content);
     $row['gateway_name'] = $isAdmin ? sent_report_lookup_name('ellsms_sms_gateways', (int)($row['gateway_id'] ?? 0)) : null;
     return $row;

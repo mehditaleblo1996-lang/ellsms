@@ -22,6 +22,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../Backend/report_dimension_summary.php'; // the summary this folds into (report_dimension_summary_has_parts())
+
 /**
  * Called once per dispatch_message()/dispatch_message_retryable() call (never per bulk item --
  * bulk has its own path). Groups destinations by (resolved route, resolved destination operator,
@@ -32,10 +34,13 @@ declare(strict_types=1);
  * resolved the same prefix-based way issue #8's routing already does, purely for reporting -- this
  * NEVER feeds back into route selection.
  *
+ * $partsPerMessage is the SMS part count of the call's one text (sms_parts()); each row stores
+ * message_count × it, so the breakdown shows parts next to messages (docs/message-parts.md).
+ *
  * @param list<string> $destinations   every destination this call attempted
  * @param list<string> $sentDestinations  the subset the provider actually accepted
  */
-function send_dimension_log_record(?int $organizationId, string $messageType, string $sender, string $referenceType, array $destinations, array $sentDestinations, ?array $gatewayMeta = null): void {
+function send_dimension_log_record(?int $organizationId, string $messageType, string $sender, string $referenceType, array $destinations, array $sentDestinations, ?array $gatewayMeta = null, int $partsPerMessage = 0): void {
     if ($destinations === []) {
         return;
     }
@@ -59,15 +64,18 @@ function send_dimension_log_record(?int $organizationId, string $messageType, st
     }
 
     try {
+        $withParts = send_dimension_log_has_parts();
         $stmt = db()->prepare(
             'INSERT INTO ellsms_send_dimension_log
-                (organization_id, message_type, sender_number, reference_type, route_id, operator_id, status, message_count)
-             VALUES (?,?,?,?,?,?,?,?)'
+                (organization_id, message_type, sender_number, reference_type, route_id, operator_id, status, message_count'
+                . ($withParts ? ', part_count' : '') . ')
+             VALUES (?,?,?,?,?,?,?,?' . ($withParts ? ',?' : '') . ')'
         );
         foreach ($buckets as $bucket) {
             $stmt->execute([
                 $organizationId ?? 0, $messageType, $sender, $referenceType,
                 $bucket['route_id'], $bucket['operator_id'], $bucket['status'], $bucket['count'],
+                ...($withParts ? [$bucket['count'] * max(0, $partsPerMessage)] : []),
             ]);
         }
     } catch (Throwable $t) {
@@ -97,6 +105,20 @@ function send_dimension_summary_state(): array {
  *
  * @return array{processed:int,last_log_id:int,has_more:bool}
  */
+/** Whether the log keeps SMS part totals (2026_11_11_report_parts.sql). */
+function send_dimension_log_has_parts(): bool {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = (int)db()->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE()
+                                     AND table_name = 'ellsms_send_dimension_log' AND column_name = 'part_count'")->fetchColumn() === 1;
+        } catch (Throwable) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
 function send_dimension_summary_incremental_chunk(int $chunkRows = 5000): array {
     $chunkRows = max(100, min(50000, $chunkRows));
     $state = send_dimension_summary_state();
@@ -114,16 +136,19 @@ function send_dimension_summary_incremental_chunk(int $chunkRows = 5000): array 
         return ['processed' => 0, 'last_log_id' => $lastId, 'has_more' => false];
     }
 
-    $result = db_transaction(function (PDO $db) use ($lastId, $highId): int {
+    // Part totals travel with the counts once both tables have them (2026_11_11_report_parts.sql).
+    $parts = send_dimension_log_has_parts() && report_dimension_summary_has_parts();
+    $result = db_transaction(function (PDO $db) use ($lastId, $highId, $parts): int {
         $sql = "INSERT INTO ellsms_report_daily_dimension_summary
-                    (period_date, organization_id, message_type, sender_number, route_id, operator_id, status, message_count, updated_at)
+                    (period_date, organization_id, message_type, sender_number, route_id, operator_id, status, message_count" . ($parts ? ', part_count' : '') . ", updated_at)
                 SELECT DATE(created_at), organization_id, message_type, sender_number, route_id, operator_id, status,
-                       SUM(message_count), NOW()
+                       SUM(message_count)" . ($parts ? ', SUM(part_count)' : '') . ", NOW()
                 FROM ellsms_send_dimension_log
                 WHERE id > ? AND id <= ?
                 GROUP BY DATE(created_at), organization_id, message_type, sender_number, route_id, operator_id, status
                 ON DUPLICATE KEY UPDATE
-                    message_count = message_count + VALUES(message_count),
+                    message_count = message_count + VALUES(message_count),"
+                    . ($parts ? ' part_count = part_count + VALUES(part_count),' : '') . "
                     updated_at    = NOW()";
         $stmt = $db->prepare($sql);
         $stmt->execute([$lastId, $highId]);

@@ -73,8 +73,11 @@ and a jump to a page number reads only row keys, from the nearer end. See
 `ellsms_message_attempts`, `ellsms_inbound_messages`) stores its SMS part count in `parts` — written
 with the message (the same `sms_parts()` count the send was priced with), and filled into older rows
 by the `message-parts` scheduler job a bounded slice a minute (`make message-parts-status` shows how
-far it has come). Migration `db/migrations/2026_11_10_message_parts.sql`. See
-[`docs/message-parts.md`](docs/message-parts.md).
+far it has come). Migration `db/migrations/2026_11_10_message_parts.sql`. Every report that counts
+messages shows a separate «تعداد پارت» column next to each count — the sent and received lists,
+«گزارش ارسال حجیم» and each bulk send's page, the delivery history, «گزارش اپراتورها» (all three views)
+and «گزارش تعداد پیام‌های ارسالی / دریافتی»; the pre-built report tables keep part totals too
+(`db/migrations/2026_11_11_report_parts.sql`). See [`docs/message-parts.md`](docs/message-parts.md).
 
 ## Voice messages (ZarinCall)
 

@@ -202,7 +202,9 @@ function backend_inbound_rows(string $whereSql, array $params, int $limit, int $
     $rows = [];
     $ellsmsCount = inbound_ellsms_count($whereSql, $params);
     if ($offset < $ellsmsCount) {
-        $st = db()->prepare('SELECT ' . INBOUND_ELLSMS_COLUMNS . " FROM ellsms_inbound_messages WHERE {$whereSql} ORDER BY id DESC LIMIT {$limit} OFFSET {$offset}");
+        // + the stored SMS part count for the received list (app/MessageParts.php), once it exists.
+        $parts = message_parts_available('ellsms_inbound_messages') ? ', parts' : '';
+        $st = db()->prepare('SELECT ' . INBOUND_ELLSMS_COLUMNS . "{$parts} FROM ellsms_inbound_messages WHERE {$whereSql} ORDER BY id DESC LIMIT {$limit} OFFSET {$offset}");
         $st->execute($params);
         $rows = $st->fetchAll();
     }
@@ -211,7 +213,8 @@ function backend_inbound_rows(string $whereSql, array $params, int $limit, int $
         $backendOffset = max(0, $offset - $ellsmsCount);
         $st = db()->prepare("SELECT * FROM inbound_message WHERE {$whereSql} ORDER BY id DESC LIMIT {$remaining} OFFSET {$backendOffset}");
         $st->execute($params);
-        $rows = array_merge($rows, $st->fetchAll());
+        // The backend's table: whatever it holds, the part count is ELLSMS's own (from the text).
+        $rows = array_merge($rows, array_map(static function (array $r): array { unset($r['parts']); return $r; }, $st->fetchAll()));
     }
     return $rows;
 }

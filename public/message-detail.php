@@ -88,7 +88,8 @@ if ($attempt !== null) {
     // content), so the part count comes from the pricing snapshot that was frozen at acceptance.
     // Where no snapshot exists the count is genuinely unavailable rather than guessed from a text
     // this page does not have.
-    $segments = report_segment_count($snapshot, null);
+    $segments = report_segment_count($snapshot, isset($attempt['content']) ? (string)$attempt['content'] : null,
+        isset($attempt['parts']) ? (int)$attempt['parts'] : null);
 
     // ONE bounded lookup for every name on the page, rather than one per row.
     $names = report_resolve_names(
@@ -110,7 +111,11 @@ if ($bulkJob !== null) {
     // used only to describe the ENCODING of a template-style job; the authoritative part count still
     // comes from the acceptance snapshot, which covers every recipient.
     $sampleContent = (string)($bulkJob['template'] ?? ($items[0]['content'] ?? ''));
-    $segments = report_segment_count($snapshot, $sampleContent);
+    $segments = report_segment_count($snapshot, $sampleContent, isset($items[0]['parts']) && !empty($bulkJob['template']) ? (int)$items[0]['parts'] : null);
+    // Every recipient's parts together — a personalized job's texts differ in length.
+    $partsSt = db()->prepare('SELECT COUNT(*) n, SUM(' . message_parts_sql('ellsms_bulk_items', 'bi', 'bi.content') . ') p FROM ellsms_bulk_items bi WHERE bi.job_id = ?');
+    $partsSt->execute([(int)$bulkJob['id']]);
+    $jobParts = $partsSt->fetch() ?: ['n' => 0, 'p' => 0];
     $encoding = report_message_encoding($sampleContent);
 
     // Collect every id across all recipient rows first, then resolve them in three queries total.
@@ -225,9 +230,11 @@ require __DIR__ . '/../app/views/header.php';
     <tr><th>شناسه</th><td class="num"><?= to_persian_digits((string)$bulkJob['id']) ?></td>
         <th>فرستنده</th><td class="msisdn"><?= e((string)($bulkJob['originator'] ?? $dash)) ?></td></tr>
     <tr><th>فرمت</th><td><?= e($encoding['label']) ?></td>
-        <th>تعداد پارت</th>
+        <th><?= empty($bulkJob['template']) ? 'تعداد پارت (نمونه)' : 'تعداد پارت هر پیام' ?></th>
         <td class="num"><?= to_persian_digits((string)$segments['parts']) ?>
           <?php if ($segments['source'] === 'snapshot'): ?><small style="opacity:.7">(ثبت‌شده هنگام ارسال)</small><?php endif; ?></td></tr>
+    <tr><th>تعداد پیام‌ها</th><td class="num"><?= to_persian_digits(number_format((int)$jobParts['n'])) ?></td>
+        <th>مجموع پارت‌ها</th><td class="num"><?= to_persian_digits(number_format((int)$jobParts['p'])) ?></td></tr>
     <tr><th>زمان ثبت</th><td class="num"><?= $time($bulkJob['created_at'] ?? null) ?></td>
         <th>تعداد گیرندگان</th><td class="num"><?= to_persian_digits((string)(int)($bulkJob['total_rows'] ?? count($items))) ?></td></tr>
   </table>
@@ -245,7 +252,7 @@ require __DIR__ . '/../app/views/header.php';
   <div class="table-wrap">
   <table>
     <tr>
-      <th>ردیف</th><th>شماره</th><th>اپراتور</th><th>شناسه اپراتور</th>
+      <th>ردیف</th><th>شماره</th><th>اپراتور</th><th>تعداد پارت</th><th>شناسه اپراتور</th>
       <th>وضعیت</th><th>تعداد تلاش استعلام</th><th>آخرین استعلام</th><th>زمان تحویل</th>
     </tr>
     <?php foreach ($items as $i => $item): ?>
@@ -253,6 +260,7 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= to_persian_digits((string)($i + 1)) ?></td>
         <td class="msisdn"><?= e(bulk_recipient_display((string)$item['mobile'], !empty($bulkJob['recipients_masked']))) ?></td>
         <td><?= isset($names['operators'][(int)($item['operator_id'] ?? 0)]) ? operator_label($names['operators'][(int)$item['operator_id']], $names['operators'][(int)$item['operator_id']]) : e($dash) ?></td>
+        <td class="num"><?= to_persian_digits((string)message_parts_of_row($item)) ?></td>
         <td class="provider-ref"><?= e((string)($item['provider_message_id'] ?? $dash)) ?></td>
         <?php $itemStatus = report_canonical_status($item['delivery_status']); ?>
         <td><span class="badge badge-<?= e($itemStatus['class']) ?>">
@@ -262,7 +270,7 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= !empty($item['delivered_at']) ? $time($item['delivered_at']) : $dash ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$items): ?><tr><td colspan="8" class="empty">گیرنده‌ای ثبت نشده است.</td></tr><?php endif; ?>
+    <?php if (!$items): ?><tr><td colspan="9" class="empty">گیرنده‌ای ثبت نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>

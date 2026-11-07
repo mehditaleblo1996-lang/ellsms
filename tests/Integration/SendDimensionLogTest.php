@@ -102,6 +102,21 @@ final class SendDimensionLogTest extends IntegrationTestCase
         $this->assertSame(2, (int)$count, 'the sidecar log must fold into the SAME daily dimension summary table issue #12 already built');
     }
 
+    public function testEachRowCarriesItsSmsPartsIntoTheSummary(): void {
+        $orgId = $this->makeOrganizationId();
+        $baseline = (int)\db()->query('SELECT COALESCE(MAX(id),0) FROM ellsms_send_dimension_log')->fetchColumn();
+        \db()->prepare('UPDATE ellsms_send_dimension_summary_state SET last_log_id = ? WHERE id = 1')->execute([$baseline]);
+
+        // Three recipients of one 2-part text: two accepted, one turned down.
+        \send_dimension_log_record($orgId, 'otp', '5907', 'direct_send', ['989120000001', '989120000002', '989120000003'], ['989120000001', '989120000002'], null, 2);
+        $logged = \db()->query("SELECT status, message_count, part_count FROM ellsms_send_dimension_log WHERE id > {$baseline} ORDER BY status")->fetchAll();
+        $this->assertSame([['failed', 1, 2], ['sent', 2, 4]], array_map(static fn(array $r): array => [$r['status'], (int)$r['message_count'], (int)$r['part_count']], $logged));
+
+        \send_dimension_summary_worker_pass(5000, 5000);
+        $parts = \db()->query("SELECT SUM(part_count) FROM ellsms_report_daily_dimension_summary WHERE organization_id = {$orgId} AND sender_number = '5907'")->fetchColumn();
+        $this->assertSame(6, (int)$parts);
+    }
+
     public function testRerunningTheAggregationPassIsIdempotentAndNeverDoubleCounts(): void {
         require_once __DIR__ . '/../../app/Backend/report_dimension_summary.php';
         $orgId = $this->makeOrganizationId();

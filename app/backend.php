@@ -644,7 +644,7 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     // gateway path (route/operator as ACTUALLY used, from $gatewayMeta) -- see
     // app/Reports/SendDimensionLog.php. Never influences routing; write failure never affects the
     // send outcome above.
-    send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta);
+    send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta, sms_parts($content));
 
     // Settlement reads the ALREADY-ACCEPTED per-recipient prices; it never re-resolves a rate, so an
     // admin price change between acceptance and the gateway's reply cannot alter what this send
@@ -792,7 +792,7 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
     // an in-flight retry is not yet a final outcome, and logging every attempt would double-count
     // one logical send across its retries.
     if ($isTerminal) {
-        send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta);
+        send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta, sms_parts($content));
     }
     $settlement = sms_pricing_settlement($priced, $sentDestinations, $sentCount);
     if ($worstCaseCost > 0 && $isTerminal) {

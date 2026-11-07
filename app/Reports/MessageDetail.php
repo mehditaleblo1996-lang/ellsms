@@ -180,9 +180,20 @@ function report_message_encoding(string $content): array {
     ];
 }
 
-function report_segment_count(?array $snapshot, ?string $content): array {
+/**
+ * One message's SMS part count: the count stored on its row ($stored, app/MessageParts.php), else the
+ * price snapshot frozen at acceptance — whose segment_count is the whole group's, so it is divided by
+ * the group's recipients — else its text's. 'source' says which.
+ *
+ * @return array{parts:int, source:string}
+ */
+function report_segment_count(?array $snapshot, ?string $content, ?int $stored = null): array {
+    if ($stored !== null) {
+        return ['parts' => $stored, 'source' => 'snapshot'];
+    }
     if ($snapshot !== null && (int)($snapshot['segment_count'] ?? 0) > 0) {
-        return ['parts' => (int)$snapshot['segment_count'], 'source' => 'snapshot'];
+        $recipients = max(1, (int)($snapshot['recipient_count'] ?? 1));
+        return ['parts' => (int)round((int)$snapshot['segment_count'] / $recipients), 'source' => 'snapshot'];
     }
     if ($content === null || $content === '') {
         return ['parts' => 0, 'source' => 'unavailable'];

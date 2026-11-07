@@ -53,7 +53,10 @@ aggregate table, one read path (`report_dimension_summary_query()`), regardless 
 ## Design (mirrors the existing report_summary_cache shape)
 
 - **Table**: `ellsms_report_daily_dimension_summary` — `(period_date, organization_id, message_type,
-  sender_number, route_id, operator_id, status)` primary key, one `message_count` per tuple.
+  sender_number, route_id, operator_id, status)` primary key, one `message_count` per tuple and
+  its SMS part total `part_count` (`db/migrations/2026_11_11_report_parts.sql`; bulk items' stored
+  `parts`, and for the sidecar log `ellsms_send_dimension_log.part_count`, written at dispatch —
+  docs/message-parts.md).
   `organization_id = 0` means no tenant; `route_id = 0` means legacy backend / not gateway-routed;
   `operator_id = 0` means unresolved.
 - **Idempotent, restart-safe**: `ellsms_report_dimension_summary_state` tracks a high-water mark

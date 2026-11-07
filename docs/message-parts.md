@@ -73,20 +73,57 @@ make message-parts-backfill    # a 10-minute run now, instead of waiting for the
 
 Equivalent CLI: `php cron/message-parts-backfill.php [--status] [--seconds=N] [--chunk=N]`.
 
+## In the reports — a «تعداد پارت» column next to every count
+
+Every report that counts messages also shows how many SMS parts those messages were, in its own
+column, to admins and customers alike. A count and its parts always cover the same messages.
+
+| Report | Where the parts are |
+|---|---|
+| «لیست پیام‌های ارسالی» (`/messages/reports`) | column «تعداد پارت» per message; the detail drawer «N پارت» |
+| «لیست پیام‌های دریافتی» (`/inbox.php`) | column «تعداد پارت» per message; the detail drawer |
+| «گزارش ارسال حجیم» (`/reports-bulk.php`) | each summary card «N پارت»; breakdown column «تعداد پارت»; list column «تعداد پارت» |
+| A bulk send's page (`/bulk-job.php`) | each card «N پارت»; list column «تعداد پارت» |
+| Delivery history (`/message-detail.php`) | a send: «تعداد پارت»; a bulk send: «تعداد پارت هر پیام» (or «(نمونه)» for a personalized one), «تعداد پیام‌ها» and «مجموع پارت‌ها», a «تعداد پارت» column per recipient |
+| «گزارش اپراتورها» — all, «بر اساس شماره», «بر اساس تأمین‌کننده» (`/operator-reports.php`) | share table and per-language table: a parts column after each count; admin status table: «پارت ارسال‌شده» after «مجموع ارسال‌شده» and «پارت تحویل گرفته‌شده» after «مجموع تحویل گرفته‌شده» (the other status columns stay counts only); customer table: «تعداد پارت» after each of its columns |
+| «گزارش تعداد پیام‌های ارسالی» (`/sent-count-report.php`) | «تعداد پارت تعاملی», «… بالک درخواستی», «… بالک ارسال‌شده» after each count; the cards; the CSV |
+| «گزارش تعداد پیام‌های دریافتی» (`/received-count-report.php`) | «تعداد پارت» after the received count; the card; the CSV |
+| `public/analytics.php` | «مجموع واحد پیامک» (unchanged, now from the stored counts) |
+| Report CSV export | column «تعداد پارت» (unchanged, now from the stored counts) |
+
+A bulk request (regional or aimed) sends one text to every number, so «پارت بالک درخواستی» is the
+number count times that text's parts; «پارت بالک ارسال‌شده» of an aimed request is its sent items'
+own parts.
+
+### The pre-built report tables — `db/migrations/2026_11_11_report_parts.sql`
+
+Two reports read tables built ahead of time, which now keep part totals too:
+
+- **`ellsms_operator_report_daily.part_count`** (operator reports, «گزارش تعداد پیام‌های ارسالی»).
+  `ellsms_operator_report_days.parts_built` marks a day built with part totals. A day without them
+  (every day built before the migration) is counted live from the message tables, exactly like a day
+  not built yet, so its numbers are never missing. `report-summary-worker` rebuilds those days,
+  newest first and whatever their age, right after today and yesterday
+  (`operator_report_with_upgrades()`); a day takes a few seconds. The page is slower for wide ranges
+  only until then.
+- **`ellsms_report_daily_dimension_summary.part_count`** (the breakdown of «گزارش ارسال حجیم»). The
+  migration brings the next hourly full rebuild forward to the worker's next pass, which fills it.
+  Direct / scheduled / auto-reply sends reach the same table through `ellsms_send_dimension_log`,
+  whose new `part_count` is written at dispatch (`send_dimension_log_record()`: the recipients ×
+  their text's parts).
+
 ## Where it is read
 
 Every reader uses the stored count and falls back to the text for a row not filled yet. During the
-backfill a report therefore shows the same numbers as before, never a gap.
-
-| Reader | How |
-|---|---|
-| «لیست پیام‌های ارسالی» (column «تعداد پیام») and its detail drawer | `sent_report_select_sql()` selects `parts`; `sent_report_decorate()` → `message_parts_of_row()` |
-| «لیست پیام‌های دریافتی» detail drawer | `received_report_find()` → `message_parts_of_row()` |
-| `public/analytics.php` part totals («مجموع واحد پیامک») | `SUM(message_parts_sql(...))` = `COALESCE(parts, sms_parts_sql(content))` |
-| Report CSV export (`cron/export-worker.php`) | the `parts` the export pages select (`app/Reports/ExportJobs.php`) |
+backfill a report therefore shows the same numbers as before, never a gap: `message_parts_sql()`
+(`COALESCE(parts, sms_parts_sql(content))`) in SQL, `message_parts_of_row()` in PHP. The backend's
+`outbound_message` / `inbound_message` rows are always counted from their text.
 
 ## Files
 
 `app/MessageParts.php` (writers' column check, readers' SQL, backfill pass and status) ·
 `cron/message-parts-backfill.php` · `db/migrations/2026_11_10_message_parts.sql` ·
-tests `tests/Integration/MessagePartsTest.php`, `tests/Unit/MessagePartsTest.php`.
+`db/migrations/2026_11_11_report_parts.sql` · tests `tests/Integration/MessagePartsTest.php`,
+`tests/Unit/MessagePartsTest.php`, and the part columns in `OperatorReportHttpTest`,
+`CustomerMessageCountsHttpTest`, `ReportDimensionSummaryTest`, `SendDimensionLogTest`,
+`tests/Unit/OperatorReportTest.php`, `tests/Unit/CustomerMessageCountsTest.php`.

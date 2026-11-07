@@ -106,7 +106,7 @@ if (lazy_part_begin('list')) {
   <div class="table-wrap"><table data-cards class="report-table">
     <thead><tr>
       <th>ردیف</th><th>شناسه</th><th>فرستنده</th><?php if ($showUser): ?><th>نام کاربری</th><?php endif; ?><th>اپراتور</th>
-      <th>گیرنده</th><th>محتوا</th><th>فرمت</th><th>تعداد پیام</th><th>نوع درخواست</th><th>زمان درخواست</th><?php if ($showDelivery): ?><th>زمان تحویل</th><?php endif; ?><th>وضعیت</th><th><span class="sr-only">جزئیات</span></th>
+      <th>گیرنده</th><th>محتوا</th><th>فرمت</th><th>تعداد پارت</th><th>نوع درخواست</th><th>زمان درخواست</th><?php if ($showDelivery): ?><th>زمان تحویل</th><?php endif; ?><th>وضعیت</th><th><span class="sr-only">جزئیات</span></th>
     </tr></thead>
     <tbody>
     <?php foreach ($rows as $n => $r):

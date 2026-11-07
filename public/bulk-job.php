@@ -83,12 +83,18 @@ END" : "CASE
     ELSE 'pending'
 END";
 
+// Each count with its SMS part total (docs/message-parts.md).
+$partsSql = message_parts_sql('ellsms_bulk_items', 'bi', 'bi.content');
 $sumSt = db()->prepare("SELECT
     COUNT(*) total,
     SUM(({$canonicalStatusSql})='pending') pending_count,
     SUM(({$canonicalStatusSql})='sent') sent_count,
     SUM(({$canonicalStatusSql})='delivered') delivered_count,
-    SUM(({$canonicalStatusSql})='failed') failed_count
+    SUM(({$canonicalStatusSql})='failed') failed_count,
+    SUM({$partsSql}) total_parts,
+    SUM(IF(({$canonicalStatusSql})='pending', {$partsSql}, 0)) pending_parts,
+    SUM(IF(({$canonicalStatusSql}) IN ('sent','delivered'), {$partsSql}, 0)) sent_parts,
+    SUM(IF(({$canonicalStatusSql})='failed', {$partsSql}, 0)) failed_parts
 FROM ellsms_bulk_items bi WHERE bi.job_id=?");
 $sumSt->execute([$jobId]);
 $summary = $sumSt->fetch() ?: ['total'=>0,'pending_count'=>0,'sent_count'=>0,'delivered_count'=>0,'failed_count'=>0];
@@ -125,7 +131,7 @@ if (count($where) === 1) {
 
 $sql = "SELECT bi.id,bi.mobile,bi.content,bi.status queue_status,bi.provider_message_id,
                bi.delivery_status,bi.delivery_attempts,bi.delivery_checked_at,bi.created_at,
-               {$canonicalStatusSql} canonical_status
+               {$canonicalStatusSql} canonical_status, {$partsSql} parts
         FROM ellsms_bulk_items bi
         WHERE " . implode(' AND ', $where) . "
         ORDER BY bi.id DESC
@@ -182,10 +188,11 @@ require __DIR__ . '/../app/views/header.php';
     </form>
   <?php endif; ?>
   <div class="grid grid-4">
-    <div class="stat"><div class="stat-label">کل</div><div class="stat-value"><?= to_persian_digits(number_format($total)) ?></div></div>
-    <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال/تحویل' : 'ارسال‌شده' ?></div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['sent_count'] + (int)$summary['delivered_count'])) ?></div></div>
-    <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['failed_count'])) ?></div></div>
-    <div class="stat"><div class="stat-label">باقی‌مانده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['pending_count'])) ?></div></div>
+    <?php $partsMeta = static fn(string $k): string => '<div class="stat-meta">' . to_persian_digits(number_format((int)($summary[$k] ?? 0))) . ' پارت</div>'; ?>
+    <div class="stat"><div class="stat-label">کل</div><div class="stat-value"><?= to_persian_digits(number_format($total)) ?></div><?= $partsMeta('total_parts') ?></div>
+    <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال/تحویل' : 'ارسال‌شده' ?></div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['sent_count'] + (int)$summary['delivered_count'])) ?></div><?= $partsMeta('sent_parts') ?></div>
+    <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['failed_count'])) ?></div><?= $partsMeta('failed_parts') ?></div>
+    <div class="stat"><div class="stat-label">باقی‌مانده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['pending_count'])) ?></div><?= $partsMeta('pending_parts') ?></div>
   </div>
 
   <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
@@ -216,12 +223,13 @@ require __DIR__ . '/../app/views/header.php';
   </form>
 
   <div class="table-wrap"><table>
-    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>Provider ID</th><?php if ($showDelivery): ?><th>دفعات استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
+    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>تعداد پارت</th><th>وضعیت</th><th>Provider ID</th><?php if ($showDelivery): ?><th>دفعات استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
     <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
         <td class="msisdn"><?= e(bulk_recipient_display((string)$r['mobile'], !empty($job['recipients_masked']))) ?></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,80,'…')) ?></td>
+        <td class="num"><?= to_persian_digits((string)(int)$r['parts']) ?></td>
         <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
         <td class="ltr num"><?= !empty($r['provider_message_id']) ? e((string)$r['provider_message_id']) : '—' ?></td>
         <?php if ($showDelivery): ?><td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td><?php endif; ?>
@@ -229,7 +237,7 @@ require __DIR__ . '/../app/views/header.php';
         <?php if ($showDelivery): ?><td class="num"><?= !empty($r['delivery_checked_at']) ? jdate((string)$r['delivery_checked_at']) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= $showDelivery ? 8 : 6 ?>" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= $showDelivery ? 9 : 7 ?>" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
   </table></div>
 
   <?= pager_links($page, pager_pages($listTotal, $per), array_filter(array_diff_key($_GET, ['before_id' => 1, 'after_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $listTotal) ?>

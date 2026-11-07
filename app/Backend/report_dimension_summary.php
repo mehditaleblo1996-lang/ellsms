@@ -32,7 +32,29 @@ function report_dimension_summary_state(): array {
  */
 const REPORT_DIMENSION_SUMMARY_TERMINAL_STATUSES = "'sent','failed','cancelled'";
 
+/** Whether the summary keeps SMS part totals (2026_11_11_report_parts.sql). */
+function report_dimension_summary_has_parts(): bool {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = (int)db()->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE()
+                                     AND table_name = 'ellsms_report_daily_dimension_summary' AND column_name = 'part_count'")->fetchColumn() === 1;
+        } catch (Throwable) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
+/** The summary's column list for an INSERT ... SELECT (part_count once it exists). */
+function report_dimension_summary_columns(): string {
+    return 'period_date, organization_id, message_type, sender_number, route_id, operator_id, status, message_count'
+        . (report_dimension_summary_has_parts() ? ', part_count' : '') . ', updated_at';
+}
+
 function report_dimension_summary_select_sql(string $itemFilter): string {
+    // Each item's stored SMS part count, else its text's (app/MessageParts.php).
+    $parts = report_dimension_summary_has_parts() ? 'SUM(' . message_parts_sql('ellsms_bulk_items', 'i', 'i.content') . ') AS part_count,' : '';
     return "SELECT DATE(i.created_at) AS period_date,
                    COALESCE(j.organization_id, 0) AS organization_id,
                    j.message_class AS message_type,
@@ -41,6 +63,7 @@ function report_dimension_summary_select_sql(string $itemFilter): string {
                    COALESCE(i.operator_id, 0) AS operator_id,
                    i.status AS status,
                    COUNT(*) AS message_count,
+                   {$parts}
                    NOW() AS updated_at
             FROM ellsms_bulk_items i
             JOIN ellsms_bulk_jobs j ON j.id = i.job_id
@@ -60,8 +83,7 @@ function report_dimension_summary_full_rebuild(): array {
     try {
         return db_transaction(function (PDO $db): array {
             $db->exec('DELETE FROM ellsms_report_daily_dimension_summary');
-            $sql = 'INSERT INTO ellsms_report_daily_dimension_summary
-                        (period_date, organization_id, message_type, sender_number, route_id, operator_id, status, message_count, updated_at)
+            $sql = 'INSERT INTO ellsms_report_daily_dimension_summary (' . report_dimension_summary_columns() . ')
                     ' . report_dimension_summary_select_sql('1=1');
             $rows = (int)$db->exec($sql);
             $lastId = (int)$db->query('SELECT COALESCE(MAX(id),0) FROM ellsms_bulk_items')->fetchColumn();
@@ -104,11 +126,11 @@ function report_dimension_summary_incremental_chunk(int $chunkRows = 5000): arra
     }
 
     $result = db_transaction(function (PDO $db) use ($lastId, $highId): array {
-        $sql = 'INSERT INTO ellsms_report_daily_dimension_summary
-                    (period_date, organization_id, message_type, sender_number, route_id, operator_id, status, message_count, updated_at)
+        $sql = 'INSERT INTO ellsms_report_daily_dimension_summary (' . report_dimension_summary_columns() . ')
                 ' . report_dimension_summary_select_sql('i.id > ? AND i.id <= ?') . '
                 ON DUPLICATE KEY UPDATE
-                    message_count = message_count + VALUES(message_count),
+                    message_count = message_count + VALUES(message_count),'
+                    . (report_dimension_summary_has_parts() ? ' part_count = part_count + VALUES(part_count),' : '') . '
                     updated_at    = NOW()';
         $st = $db->prepare($sql);
         $st->execute([$lastId, $highId]);
@@ -208,7 +230,8 @@ function report_dimension_summary_query(string $from, string $to, array $filters
         }
     }
 
-    $sql = 'SELECT organization_id, message_type, sender_number, route_id, operator_id, status, SUM(message_count) AS message_count
+    $sql = 'SELECT organization_id, message_type, sender_number, route_id, operator_id, status, SUM(message_count) AS message_count,
+                   ' . (report_dimension_summary_has_parts() ? 'SUM(part_count)' : 'NULL') . ' AS part_count
             FROM ellsms_report_daily_dimension_summary
             WHERE ' . implode(' AND ', $where) . '
             GROUP BY organization_id, message_type, sender_number, route_id, operator_id, status

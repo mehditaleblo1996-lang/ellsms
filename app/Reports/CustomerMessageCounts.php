@@ -44,28 +44,34 @@ const CUSTOMER_COUNTS_INBOUND_ID_MARGIN = 20000;
    ========================================================================== */
 
 /**
- * Received messages per customer over the Tehran days $from..$to (Y-m-d).
+ * Received messages per customer over the Tehran days $from..$to (Y-m-d), with their SMS part totals
+ * (the stored count on ELLSMS's own store, else the text's — docs/message-parts.md).
  *
- * @return array{rows:list<array{user_id:int,received:int,lines:array<string,int>}>,unowned:array{received:int,lines:array<string,int>}}
+ * @return array{rows:list<array{user_id:int,received:int,parts:int,lines:array<string,int>}>,unowned:array{received:int,parts:int,lines:array<string,int>}}
  */
 function customer_counts_received(string $from, string $to): array {
     $fromLocal = $from . ' 00:00:00';
     $toLocal = (new DateTimeImmutable($to))->modify('+1 day')->format('Y-m-d 00:00:00');
     $byLine = [];
-    $add = static function (array $rows) use (&$byLine): void {
-        foreach ($rows as $r) $byLine[(string)$r['line']] = ($byLine[(string)$r['line']] ?? 0) + (int)$r['c'];
+    $partsByLine = [];
+    $add = static function (array $rows) use (&$byLine, &$partsByLine): void {
+        foreach ($rows as $r) {
+            $byLine[(string)$r['line']] = ($byLine[(string)$r['line']] ?? 0) + (int)$r['c'];
+            $partsByLine[(string)$r['line']] = ($partsByLine[(string)$r['line']] ?? 0) + (int)$r['p'];
+        }
     };
 
     if (inbound_ellsms_store_available()) {
-        $st = db()->prepare('SELECT destination line, COUNT(*) c FROM ellsms_inbound_messages
-                             WHERE received_at >= ? AND received_at < ? GROUP BY destination');
+        $st = db()->prepare('SELECT im.destination line, COUNT(*) c, SUM(' . message_parts_sql('ellsms_inbound_messages', 'im', 'im.content') . ') p
+                             FROM ellsms_inbound_messages im
+                             WHERE im.received_at >= ? AND im.received_at < ? GROUP BY im.destination');
         $st->execute([$fromLocal, $toLocal]);
         $add($st->fetchAll());
     }
     try {
         $ids = customer_counts_inbound_id_bounds($fromLocal, $toLocal);
         if ($ids !== null) {
-            $st = db()->prepare('SELECT destination line, COUNT(*) c FROM inbound_message
+            $st = db()->prepare('SELECT destination line, COUNT(*) c, SUM(' . sms_parts_sql('content') . ') p FROM inbound_message
                                  WHERE id >= ? AND id < ? AND received_at >= ? AND received_at < ? GROUP BY destination');
             $st->execute([$ids[0], $ids[1], $fromLocal, $toLocal]);
             $add($st->fetchAll());
@@ -74,31 +80,36 @@ function customer_counts_received(string $from, string $to): array {
         // Gateway-only install: no backend inbound store.
     }
 
-    return customer_counts_fold_received($byLine, received_report_line_owners(array_keys($byLine)));
+    return customer_counts_fold_received($byLine, received_report_line_owners(array_keys($byLine)), $partsByLine);
 }
 
 /**
- * Pure: line => count folded into one row per owner (most received first) and the lines nobody owns.
+ * Pure: line => count (and line => SMS parts) folded into one row per owner (most received first)
+ * and the lines nobody owns.
  *
  * @param array<string,int> $byLine
  * @param array<string,int> $owners line => user id
- * @return array{rows:list<array{user_id:int,received:int,lines:array<string,int>}>,unowned:array{received:int,lines:array<string,int>}}
+ * @param array<string,int> $partsByLine
+ * @return array{rows:list<array{user_id:int,received:int,parts:int,lines:array<string,int>}>,unowned:array{received:int,parts:int,lines:array<string,int>}}
  */
-function customer_counts_fold_received(array $byLine, array $owners): array {
+function customer_counts_fold_received(array $byLine, array $owners, array $partsByLine = []): array {
     $rows = [];
-    $unowned = ['received' => 0, 'lines' => []];
+    $unowned = ['received' => 0, 'parts' => 0, 'lines' => []];
     foreach ($byLine as $line => $n) {
         $line = (string)$line;
         $n = (int)$n;
         if ($n <= 0) continue;
+        $parts = (int)($partsByLine[$line] ?? 0);
         $uid = (int)($owners[$line] ?? 0);
         if ($uid <= 0) {
             $unowned['received'] += $n;
+            $unowned['parts'] += $parts;
             $unowned['lines'][$line] = $n;
             continue;
         }
-        $rows[$uid] ??= ['user_id' => $uid, 'received' => 0, 'lines' => []];
+        $rows[$uid] ??= ['user_id' => $uid, 'received' => 0, 'parts' => 0, 'lines' => []];
         $rows[$uid]['received'] += $n;
+        $rows[$uid]['parts'] += $parts;
         $rows[$uid]['lines'][$line] = $n;
     }
     foreach ($rows as &$r) arsort($r['lines']);
@@ -141,30 +152,36 @@ function customer_counts_inbound_id_bounds(string $fromLocal, string $toLocal): 
    Sent
    ========================================================================== */
 
+/** The count columns of a sent row, each with its SMS part total under `<name>_parts`. */
+const CUSTOMER_COUNTS_SENT_COLUMNS = ['interactive', 'interactive_parts', 'bulk_requested', 'bulk_requested_parts', 'bulk_sent', 'bulk_sent_parts'];
+
 /**
- * Sent messages per customer over the Tehran days $from..$to (Y-m-d). $asOf receives when the
- * newest summary day in the range was built (UTC), or null when nothing came from the summary.
+ * Sent messages per customer over the Tehran days $from..$to (Y-m-d), each count with its SMS part
+ * total (docs/message-parts.md). $asOf receives when the newest summary day in the range was built
+ * (UTC), or null when nothing came from the summary.
  *
- * @return list<array{user_id:int,interactive:int,bulk_requested:int,bulk_sent:int}> most interactive first
+ * @return list<array{user_id:int,interactive:int,interactive_parts:int,bulk_requested:int,bulk_requested_parts:int,bulk_sent:int,bulk_sent_parts:int}> most interactive first
  */
 function customer_counts_sent(string $from, string $to, ?string &$asOf = null): array {
     [$fromUtc, $toUtcExclusive] = local_day_range_to_utc($from, $to);
-    $sent = customer_counts_operator_sent($from, $to, $asOf);
-    $aimedInRange = customer_counts_aimed_items_left($fromUtc, $toUtcExclusive);
+    $sent = customer_counts_operator_sent($from, $to, $asOf, $sentParts);
+    $aimedInRange = customer_counts_aimed_items_left($fromUtc, $toUtcExclusive, $aimedParts);
     $bulk = customer_counts_bulk($fromUtc, $toUtcExclusive);
-    return customer_counts_fold_sent($sent, $aimedInRange, $bulk);
+    return customer_counts_fold_sent($sent, $aimedInRange, $bulk, $sentParts, $aimedParts);
 }
 
 /**
  * Pure: one row per customer from the operator report's sent counts, the aimed-bulk items among them
- * (taken back out of «تعاملی») and the bulk requests.
+ * (taken back out of «تعاملی») and the bulk requests — the same for their part totals.
  *
  * @param array<int,int> $sent user => «مجموع ارسال‌شده», every source
  * @param array<int,int> $aimedInRange user => aimed-bulk items in $sent
- * @param array<int,array{requested:int,sent:int}> $bulk
- * @return list<array{user_id:int,interactive:int,bulk_requested:int,bulk_sent:int}>
+ * @param array<int,array{requested:int,sent:int,requested_parts?:int,sent_parts?:int}> $bulk
+ * @param array<int,int> $sentParts user => parts of $sent
+ * @param array<int,int> $aimedParts user => parts of $aimedInRange
+ * @return list<array{user_id:int,interactive:int,interactive_parts:int,bulk_requested:int,bulk_requested_parts:int,bulk_sent:int,bulk_sent_parts:int}>
  */
-function customer_counts_fold_sent(array $sent, array $aimedInRange, array $bulk): array {
+function customer_counts_fold_sent(array $sent, array $aimedInRange, array $bulk, array $sentParts = [], array $aimedParts = []): array {
     $rows = [];
     foreach (array_unique(array_merge(array_keys($sent), array_keys($bulk))) as $uid) {
         $uid = (int)$uid;
@@ -173,8 +190,11 @@ function customer_counts_fold_sent(array $sent, array $aimedInRange, array $bulk
             'user_id' => $uid,
             // The summary is a few minutes behind the live aimed count, so the difference can dip below 0.
             'interactive' => max(0, (int)($sent[$uid] ?? 0) - (int)($aimedInRange[$uid] ?? 0)),
+            'interactive_parts' => max(0, (int)($sentParts[$uid] ?? 0) - (int)($aimedParts[$uid] ?? 0)),
             'bulk_requested' => (int)($bulk[$uid]['requested'] ?? 0),
+            'bulk_requested_parts' => (int)($bulk[$uid]['requested_parts'] ?? 0),
             'bulk_sent' => (int)($bulk[$uid]['sent'] ?? 0),
+            'bulk_sent_parts' => (int)($bulk[$uid]['sent_parts'] ?? 0),
         ];
         if ($row['interactive'] + $row['bulk_requested'] + $row['bulk_sent'] > 0) $rows[] = $row;
     }
@@ -184,48 +204,50 @@ function customer_counts_fold_sent(array $sent, array $aimedInRange, array $bulk
 }
 
 /**
- * Pure: the column totals of customer_counts_fold_sent()'s rows.
+ * Pure: the column totals of customer_counts_fold_sent()'s rows (CUSTOMER_COUNTS_SENT_COLUMNS).
  *
- * @param list<array{interactive:int,bulk_requested:int,bulk_sent:int}> $rows
- * @return array{interactive:int,bulk_requested:int,bulk_sent:int}
+ * @param list<array<string,int>> $rows
+ * @return array<string,int>
  */
 function customer_counts_sent_totals(array $rows): array {
-    $t = ['interactive' => 0, 'bulk_requested' => 0, 'bulk_sent' => 0];
-    foreach ($rows as $r) foreach ($t as $k => $_) $t[$k] += (int)$r[$k];
+    $t = array_fill_keys(CUSTOMER_COUNTS_SENT_COLUMNS, 0);
+    foreach ($rows as $r) foreach ($t as $k => $_) $t[$k] += (int)($r[$k] ?? 0);
     return $t;
 }
 
 /**
  * The operator report's «مجموع ارسال‌شده» per user: summed from ellsms_operator_report_daily for the
- * days it holds, counted live for any other day (operator_report_counts() does the same per operator).
+ * days it holds (with part totals), counted live for any other day (operator_report_counts() does the
+ * same per operator). $parts receives user => the SMS parts of those messages.
  *
  * @return array<int,int>
  */
-function customer_counts_operator_sent(string $from, string $to, ?string &$asOf): array {
+function customer_counts_operator_sent(string $from, string $to, ?string &$asOf, ?array &$parts = null): array {
     $asOf = null;
-    $built = [];
-    if (operator_report_summary_available()) {
-        $st = db()->prepare('SELECT period_date, built_at FROM ellsms_operator_report_days WHERE period_date BETWEEN ? AND ? ORDER BY period_date');
-        $st->execute([$from, $to]);
-        foreach ($st->fetchAll() as $r) $built[(string)$r['period_date']] = (string)$r['built_at'];
-    }
+    $parts = [];
+    $built = operator_report_built_days($from, $to);
     $notSent = implode(',', array_map(static fn(string $s): string => "'{$s}'", OPERATOR_REPORT_NOT_SENT));
 
     $out = [];
     if ($built !== []) {
         $asOf = $built[max(array_keys($built))];
         $days = array_keys($built);
-        $st = db()->prepare('SELECT user_id uid, SUM(message_count) c FROM ellsms_operator_report_daily
-                             WHERE period_date IN (' . implode(',', array_fill(0, count($days), '?')) . ") AND status NOT IN ({$notSent})
+        $partSum = operator_report_summary_has_parts() ? 'SUM(part_count)' : '0';
+        $st = db()->prepare("SELECT user_id uid, SUM(message_count) c, {$partSum} p FROM ellsms_operator_report_daily
+                             WHERE period_date IN (" . implode(',', array_fill(0, count($days), '?')) . ") AND status NOT IN ({$notSent})
                              GROUP BY user_id");
         $st->execute($days);
-        foreach ($st->fetchAll() as $r) $out[(int)$r['uid']] = (int)$r['c'];
+        foreach ($st->fetchAll() as $r) {
+            $out[(int)$r['uid']] = (int)$r['c'];
+            $parts[(int)$r['uid']] = (int)$r['p'];
+        }
     }
     foreach (operator_report_unbuilt_spans($from, $to, array_keys($built)) as [$spanFrom, $spanTo]) {
         [$fromUtc, $toUtcExclusive] = local_day_range_to_utc($spanFrom, $spanTo);
         foreach (operator_report_raw_rows($fromUtc, $toUtcExclusive, null, null, null, false, true) as $r) {
             if (in_array((string)$r['st'], OPERATOR_REPORT_NOT_SENT, true)) continue;
             $out[(int)$r['uid']] = ($out[(int)$r['uid']] ?? 0) + (int)$r['c'];
+            $parts[(int)$r['uid']] = ($parts[(int)$r['uid']] ?? 0) + (int)$r['p'];
         }
     }
     return $out;
@@ -233,11 +255,12 @@ function customer_counts_operator_sent(string $from, string $to, ?string &$asOf)
 
 /**
  * Aimed-bulk items created in [$fromUtc, $toUtcExclusive) that left for the operator, per user — the
- * part of the operator report's count that is bulk, not interactive.
+ * part of the operator report's count that is bulk, not interactive. $parts receives their SMS parts.
  *
  * @return array<int,int>
  */
-function customer_counts_aimed_items_left(string $fromUtc, string $toUtcExclusive): array {
+function customer_counts_aimed_items_left(string $fromUtc, string $toUtcExclusive, ?array &$parts = null): array {
+    $parts = [];
     try {
         // A request's items are staged after it is created, so earlier requests cannot hold items in range.
         $st = db()->prepare('SELECT DISTINCT bulk_job_id FROM ellsms_aimed_bulk_requests WHERE bulk_job_id IS NOT NULL AND created_at < ?');
@@ -249,44 +272,55 @@ function customer_counts_aimed_items_left(string $fromUtc, string $toUtcExclusiv
     $out = [];
     $left = implode(',', array_map(static fn(string $s): string => "'{$s}'", CUSTOMER_COUNTS_BULK_ITEM_LEFT));
     foreach (array_chunk($jobIds, 500) as $chunk) {
-        $st = db()->prepare('SELECT bj.user_id uid, COUNT(*) c FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
+        $st = db()->prepare('SELECT bj.user_id uid, COUNT(*) c, SUM(' . message_parts_sql('ellsms_bulk_items', 'bi', 'bi.content') . ') p
+                             FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
                              WHERE bi.job_id IN (' . implode(',', array_fill(0, count($chunk), '?')) . ")
                                AND bi.created_at >= ? AND bi.created_at < ? AND bi.status IN ({$left})
                              GROUP BY bj.user_id");
         $st->execute(array_merge($chunk, [$fromUtc, $toUtcExclusive]));
-        foreach ($st->fetchAll() as $r) $out[(int)$r['uid']] = ($out[(int)$r['uid']] ?? 0) + (int)$r['c'];
+        foreach ($st->fetchAll() as $r) {
+            $out[(int)$r['uid']] = ($out[(int)$r['uid']] ?? 0) + (int)$r['c'];
+            $parts[(int)$r['uid']] = ($parts[(int)$r['uid']] ?? 0) + (int)$r['p'];
+        }
     }
     return $out;
 }
 
 /**
  * Bulk requests confirmed in [$fromUtc, $toUtcExclusive), per user: numbers requested and messages
- * sent, regional and aimed together.
+ * sent, regional and aimed together, each with its SMS parts. A request sends one text to every
+ * number, so its requested parts are the count times that text's parts; an aimed request's sent parts
+ * are its items' own.
  *
- * @return array<int,array{requested:int,sent:int}>
+ * @return array<int,array{requested:int,sent:int,requested_parts:int,sent_parts:int}>
  */
 function customer_counts_bulk(string $fromUtc, string $toUtcExclusive): array {
     $out = [];
-    $add = static function (int $uid, int $requested, int $sent) use (&$out): void {
-        $out[$uid] ??= ['requested' => 0, 'sent' => 0];
+    $add = static function (int $uid, int $requested, int $sent, int $requestedParts, int $sentParts) use (&$out): void {
+        $out[$uid] ??= ['requested' => 0, 'sent' => 0, 'requested_parts' => 0, 'sent_parts' => 0];
         $out[$uid]['requested'] += $requested;
         $out[$uid]['sent'] += $sent;
+        $out[$uid]['requested_parts'] += $requestedParts;
+        $out[$uid]['sent_parts'] += $sentParts;
     };
 
     try {
         $statuses = implode(',', array_map(static fn(string $s): string => "'{$s}'", CUSTOMER_COUNTS_REGIONAL_CONFIRMED));
-        $st = db()->prepare("SELECT user_id uid, SUM(COALESCE(total_request, estimated_count, 0)) requested, SUM(COALESCE(total_sent, 0)) sent
+        $textParts = sms_parts_sql('content');
+        $st = db()->prepare("SELECT user_id uid, SUM(COALESCE(total_request, estimated_count, 0)) requested, SUM(COALESCE(total_sent, 0)) sent,
+                                    SUM(COALESCE(total_request, estimated_count, 0) * {$textParts}) requested_parts,
+                                    SUM(COALESCE(total_sent, 0) * {$textParts}) sent_parts
                              FROM ellsms_regional_bulk_requests
                              WHERE status IN ({$statuses}) AND confirmed_at >= ? AND confirmed_at < ? GROUP BY user_id");
         $st->execute([$fromUtc, $toUtcExclusive]);
-        foreach ($st->fetchAll() as $r) $add((int)$r['uid'], (int)$r['requested'], (int)$r['sent']);
+        foreach ($st->fetchAll() as $r) $add((int)$r['uid'], (int)$r['requested'], (int)$r['sent'], (int)$r['requested_parts'], (int)$r['sent_parts']);
     } catch (PDOException) {
         // 2026_09_29_regional_bulk.sql not applied
     }
 
     try {
         // A confirmed request stays 'confirmed' (it is cancelled as a bulk job), so «درخواستی» keeps it.
-        $st = db()->prepare("SELECT user_id uid, bulk_job_id job, staged_rows requested FROM ellsms_aimed_bulk_requests
+        $st = db()->prepare("SELECT user_id uid, bulk_job_id job, staged_rows requested, content FROM ellsms_aimed_bulk_requests
                              WHERE status = 'confirmed' AND confirmed_at >= ? AND confirmed_at < ?");
         $st->execute([$fromUtc, $toUtcExclusive]);
         $requests = $st->fetchAll();
@@ -295,14 +329,22 @@ function customer_counts_bulk(string $fromUtc, string $toUtcExclusive): array {
     }
     $jobIds = array_values(array_unique(array_filter(array_map(static fn(array $r): int => (int)$r['job'], $requests))));
     $sentByJob = [];
+    $sentPartsByJob = [];
     $left = implode(',', array_map(static fn(string $s): string => "'{$s}'", CUSTOMER_COUNTS_BULK_ITEM_LEFT));
     foreach (array_chunk($jobIds, 500) as $chunk) {
-        $st = db()->prepare('SELECT job_id, COUNT(*) c FROM ellsms_bulk_items WHERE job_id IN (' . implode(',', array_fill(0, count($chunk), '?')) . ")
-                               AND status IN ({$left}) GROUP BY job_id");
+        $st = db()->prepare('SELECT bi.job_id, COUNT(*) c, SUM(' . message_parts_sql('ellsms_bulk_items', 'bi', 'bi.content') . ') p
+                             FROM ellsms_bulk_items bi WHERE bi.job_id IN (' . implode(',', array_fill(0, count($chunk), '?')) . ")
+                               AND bi.status IN ({$left}) GROUP BY bi.job_id");
         $st->execute($chunk);
-        foreach ($st->fetchAll() as $r) $sentByJob[(int)$r['job_id']] = (int)$r['c'];
+        foreach ($st->fetchAll() as $r) {
+            $sentByJob[(int)$r['job_id']] = (int)$r['c'];
+            $sentPartsByJob[(int)$r['job_id']] = (int)$r['p'];
+        }
     }
-    foreach ($requests as $r) $add((int)$r['uid'], (int)$r['requested'], $sentByJob[(int)$r['job']] ?? 0);
+    foreach ($requests as $r) {
+        $add((int)$r['uid'], (int)$r['requested'], $sentByJob[(int)$r['job']] ?? 0,
+            (int)$r['requested'] * sms_parts((string)$r['content']), $sentPartsByJob[(int)$r['job']] ?? 0);
+    }
     return $out;
 }
 

@@ -117,12 +117,13 @@ function operator_report_route_filter(string $col, ?array $routeIds, array &$p):
 
 /**
  * Message counts for the report: operator name => encoding => status => count, over the Tehran days
- * $from..$to (Y-m-d).
+ * $from..$to (Y-m-d). $parts receives the same map with SMS part totals (docs/message-parts.md).
  *
- * Days the worker has built are summed from ellsms_operator_report_daily (a few hundred rows a day,
- * whatever the volume); any other day — not built yet, or before the backfill horizon — is counted
- * live from the message tables. $asOf receives when the newest built day in the range was built (UTC),
- * or null when nothing came from the summary.
+ * Days the worker has built — with part totals (parts_built) — are summed from
+ * ellsms_operator_report_daily (a few hundred rows a day, whatever the volume); any other day — not
+ * built yet, built before part totals existed, or before the backfill horizon — is counted live from
+ * the message tables. $asOf receives when the newest built day in the range was built (UTC), or null
+ * when nothing came from the summary.
  *
  * $sender narrows to one sender line (normalized digits); $routeIds to those routes (a provider's
  * routes; null = no filter, [] = nothing) — legacy backend sends have no route, so a route filter
@@ -131,14 +132,9 @@ function operator_report_route_filter(string $col, ?array $routeIds, array &$p):
  * @param array{members:?list<int>,bulk_org:int,bulk_user:int} $scope
  * @return array<string,array<string,array<string,int>>>
  */
-function operator_report_counts(array $scope, string $from, string $to, ?string $sender, ?array $routeIds, bool $hideRemoved, ?string &$asOf = null): array {
+function operator_report_counts(array $scope, string $from, string $to, ?string $sender, ?array $routeIds, bool $hideRemoved, ?string &$asOf = null, ?array &$parts = null): array {
     $asOf = null;
-    $built = [];
-    if (operator_report_summary_available()) {
-        $st = db()->prepare('SELECT period_date, built_at FROM ellsms_operator_report_days WHERE period_date BETWEEN ? AND ? ORDER BY period_date');
-        $st->execute([$from, $to]);
-        foreach ($st->fetchAll() as $r) $built[(string)$r['period_date']] = (string)$r['built_at'];
-    }
+    $built = operator_report_built_days($from, $to);
 
     $rows = [];
     if ($built !== []) {
@@ -157,7 +153,8 @@ function operator_report_counts(array $scope, string $from, string $to, ?string 
         if ($sender !== null) { $w .= ' AND sender = ?'; $p[] = $sender; }
         $w .= operator_report_route_filter('route_id', $routeIds, $p);
         if ($hideRemoved) $w .= ' AND hidden = 0';
-        $st = db()->prepare("SELECT operator name, encoding enc, status st, SUM(message_count) c FROM ellsms_operator_report_daily
+        $partSum = operator_report_summary_has_parts() ? 'SUM(part_count)' : '0';
+        $st = db()->prepare("SELECT operator name, encoding enc, status st, SUM(message_count) c, {$partSum} p FROM ellsms_operator_report_daily
                              WHERE {$w} GROUP BY operator, encoding, status");
         $st->execute($p);
         $rows = $st->fetchAll();
@@ -169,7 +166,37 @@ function operator_report_counts(array $scope, string $from, string $to, ?string 
         array_push($rows, ...operator_report_raw_rows($fromUtc, $toUtcExclusive, $scope, $sender, $routeIds, $hideRemoved, false));
     }
 
-    return operator_report_fold($rows, operator_report_operator_names());
+    return operator_report_fold($rows, operator_report_operator_names(), $parts);
+}
+
+/**
+ * The days in $from..$to the summary can answer for, day => built_at (UTC): built, and — once
+ * 2026_11_11_report_parts.sql is applied — built with part totals. Any other day is counted live.
+ *
+ * @return array<string,string>
+ */
+function operator_report_built_days(string $from, string $to): array {
+    if (!operator_report_summary_available()) return [];
+    $st = db()->prepare('SELECT period_date, built_at FROM ellsms_operator_report_days WHERE period_date BETWEEN ? AND ?'
+        . (operator_report_summary_has_parts() ? ' AND parts_built = 1' : '') . ' ORDER BY period_date');
+    $st->execute([$from, $to]);
+    $built = [];
+    foreach ($st->fetchAll() as $r) $built[(string)$r['period_date']] = (string)$r['built_at'];
+    return $built;
+}
+
+/** Whether the summary keeps part totals (2026_11_11_report_parts.sql). */
+function operator_report_summary_has_parts(): bool {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = (int)db()->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE()
+                                     AND table_name = 'ellsms_operator_report_days' AND column_name = 'parts_built'")->fetchColumn() === 1;
+        } catch (Throwable) {
+            $has = false;
+        }
+    }
+    return $has;
 }
 
 /**
@@ -212,8 +239,10 @@ function operator_report_summary_available(): bool {
 
 /**
  * Grouped counts straight from the three message tables for [$fromUtc, $toUtcExclusive): one row per
- * (operator id, number prefix, encoding, status) — plus source, user, organization, sender, route and
- * hidden when $withDimensions, which is what a summary day stores. $scope null = every account.
+ * (operator id, number prefix, encoding, status) with its message count `c` and part total `p` — plus
+ * source, user, organization, sender, route and hidden when $withDimensions, which is what a summary
+ * day stores. $scope null = every account. Parts are each row's stored count, else its text's
+ * (message_parts_sql()); the backend's legacy rows always from the text.
  *
  * @param array{members:?list<int>,bulk_org:int,bulk_user:int}|null $scope
  * @return list<array<string,mixed>>
@@ -255,7 +284,8 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
     $w .= $exclude('bulk_job', 'bj.id');
     [$sel, $grp] = $dims('bulk', 'bj.user_id', 'COALESCE(bj.organization_id, 0)', 'bj.originator', 'COALESCE(bi.route_id, 0)', $hiddenSql('bulk_job', 'bj.id'));
     $st = db()->prepare("SELECT STRAIGHT_JOIN {$sel}COALESCE(bi.operator_id, 0) op, CASE WHEN bi.operator_id IS NULL THEN LEFT(bi.mobile, 8) ELSE '' END pfx,
-                                {$encodingSql('bi.content')} enc, {$bulkStatus} st, COUNT(*) c
+                                {$encodingSql('bi.content')} enc, {$bulkStatus} st, COUNT(*) c,
+                                SUM(" . message_parts_sql('ellsms_bulk_items', 'bi', 'bi.content') . ") p
                          FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
                          WHERE {$w} GROUP BY op, pfx, enc, st{$grp}");
     $st->execute($p);
@@ -273,7 +303,8 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         $enc = $reportCols ? $encodingSql('a.content') : "'na'";
         [$sel, $grp] = $dims('gateway', 'a.user_id', 'COALESCE(a.organization_id, 0)', $reportCols ? "COALESCE(a.originator, '')" : "''", 'COALESCE(a.route_id, 0)', $hiddenSql('attempt', 'a.id'));
         $st = db()->prepare("SELECT {$sel}COALESCE(a.operator_id, 0) op, CASE WHEN a.operator_id IS NULL THEN LEFT(COALESCE(a.destination, ''), 8) ELSE '' END pfx,
-                                    {$enc} enc, {$deliverySql('a.delivery_status')} st, COUNT(*) c
+                                    {$enc} enc, {$deliverySql('a.delivery_status')} st, COUNT(*) c,
+                                    SUM(" . message_parts_sql('ellsms_message_attempts', 'a', $reportCols ? 'a.content' : 'NULL') . ") p
                              FROM ellsms_message_attempts a WHERE {$w} GROUP BY op, pfx, enc, st{$grp}");
         $st->execute($p);
         array_push($rows, ...$st->fetchAll());
@@ -289,7 +320,8 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         $legacyStatus = "CASE WHEN m.status = 'delivered' THEN 'delivered' WHEN m.status = 'failed' THEN 'undelivered'
                               WHEN m.status = 'send_failed' THEN 'rejected' WHEN m.status = 'sent' THEN 'sent' ELSE 'queued' END";
         [$sel, $grp] = $dims('legacy', 'm.sender_user_id', '0', 'm.originator', '0', $hiddenSql('outbound', 'm.id'));
-        $st = db()->prepare("SELECT {$sel}0 op, LEFT(m.destination, 8) pfx, {$encodingSql('m.content')} enc, {$legacyStatus} st, COUNT(*) c
+        $st = db()->prepare("SELECT {$sel}0 op, LEFT(m.destination, 8) pfx, {$encodingSql('m.content')} enc, {$legacyStatus} st, COUNT(*) c,
+                                    SUM(" . sms_parts_sql('m.content') . ") p
                              FROM outbound_message m WHERE {$w} GROUP BY pfx, enc, st{$grp}");
         $st->execute($p);
         array_push($rows, ...$st->fetchAll());
@@ -353,23 +385,27 @@ function operator_report_rebuild_day(string $day): array {
         $status = isset(OPERATOR_REPORT_STATUSES[$r['st']]) ? (string)$r['st'] : 'unknown';
         $row = [(string)$r['src'], (int)$r['uid'], (int)$r['org'], mb_substr((string)$r['snd'], 0, 32), (int)$r['rt'], $operator, $enc, $status, (int)(bool)$r['hid']];
         $key = implode("\x1f", $row);
-        $groups[$key] ??= $row + [9 => 0];
+        $groups[$key] ??= $row + [9 => 0, 10 => 0];
         $groups[$key][9] += (int)$r['c'];
+        $groups[$key][10] += (int)($r['p'] ?? 0);
         $messages += (int)$r['c'];
         if ($status === 'queued') $queued += (int)$r['c'];
     }
     $ms = (int)round((microtime(true) - $started) * 1000);
-    db_transaction(static function (PDO $db) use ($day, $groups, $queued, $ms): void {
+    $withParts = operator_report_summary_has_parts();
+    db_transaction(static function (PDO $db) use ($day, $groups, $queued, $ms, $withParts): void {
         $db->prepare('DELETE FROM ellsms_operator_report_daily WHERE period_date = ?')->execute([$day]);
         foreach (array_chunk(array_values($groups), 500) as $chunk) {
             $params = [];
-            foreach ($chunk as $g) array_push($params, $day, ...$g);
+            foreach ($chunk as $g) array_push($params, $day, ...($withParts ? $g : array_slice($g, 0, 10)));
             $db->prepare('INSERT INTO ellsms_operator_report_daily
-                              (period_date, source, user_id, organization_id, sender, route_id, operator, encoding, status, hidden, message_count)
-                          VALUES ' . implode(',', array_fill(0, count($chunk), '(?,?,?,?,?,?,?,?,?,?,?)')))
+                              (period_date, source, user_id, organization_id, sender, route_id, operator, encoding, status, hidden, message_count'
+                              . ($withParts ? ', part_count' : '') . ')
+                          VALUES ' . implode(',', array_fill(0, count($chunk), $withParts ? '(?,?,?,?,?,?,?,?,?,?,?,?)' : '(?,?,?,?,?,?,?,?,?,?,?)')))
                ->execute($params);
         }
-        $db->prepare('REPLACE INTO ellsms_operator_report_days (period_date, built_at, queued_count, build_ms) VALUES (?, UTC_TIMESTAMP(), ?, ?)')
+        $db->prepare('REPLACE INTO ellsms_operator_report_days (period_date, built_at, queued_count, build_ms' . ($withParts ? ', parts_built' : '') . ')
+                      VALUES (?, UTC_TIMESTAMP(), ?, ?' . ($withParts ? ', 1' : '') . ')')
            ->execute([$day, $queued, $ms]);
     });
     return ['groups' => count($groups), 'messages' => $messages, 'ms' => $ms];
@@ -404,6 +440,20 @@ function operator_report_days_due(string $today, array $built, int $now, int $ba
 }
 
 /**
+ * Pure: the due list with the days still lacking part totals ($upgrade, newest first) slotted in
+ * right after today and yesterday, each day once.
+ *
+ * @param list<string> $due
+ * @param list<string> $upgrade
+ * @return list<string>
+ */
+function operator_report_with_upgrades(array $due, array $upgrade, string $today): array {
+    $yesterday = (new DateTimeImmutable($today))->modify('-1 day')->format('Y-m-d');
+    $fresh = array_values(array_filter($due, static fn(string $d): bool => $d === $today || $d === $yesterday));
+    return array_values(array_unique(array_merge($fresh, $upgrade, $due)));
+}
+
+/**
  * One worker pass (cron/report-summary-worker.php): rebuilds due days until $budgetSeconds is spent.
  * One pass at a time across workers (named lock).
  *
@@ -423,6 +473,12 @@ function operator_report_worker_pass(int $budgetSeconds, int $backfillDays, int 
             $built[(string)$r['period_date']] = ['built_at' => (int)strtotime($r['built_at'] . ' UTC'), 'queued' => (int)$r['queued_count']];
         }
         $due = operator_report_days_due($today, $built, time(), $backfillDays, $freshSeconds);
+        // Days built before part totals existed (2026_11_11_report_parts.sql), whatever their age: the
+        // reports count them live until they are rebuilt. After today/yesterday, newest first.
+        if (operator_report_summary_has_parts()) {
+            $old = db()->query('SELECT period_date FROM ellsms_operator_report_days WHERE parts_built = 0 ORDER BY period_date DESC')->fetchAll(PDO::FETCH_COLUMN);
+            $due = operator_report_with_upgrades($due, array_map('strval', $old), $today);
+        }
         $deadline = microtime(true) + $budgetSeconds;
         $rebuilt = 0;
         $messages = 0;
@@ -457,20 +513,23 @@ function operator_report_row_operator(array $r, array $operatorNames, array &$by
 }
 
 /**
- * Folds grouped rows (live or summary) into operator name => encoding => status => count.
+ * Folds grouped rows (live or summary) into operator name => encoding => status => count; $parts
+ * receives the same map with the rows' part totals (`p`).
  *
  * @param list<array<string,mixed>> $rows
  * @param array<int,string> $operatorNames
  * @return array<string,array<string,array<string,int>>>
  */
-function operator_report_fold(array $rows, array $operatorNames): array {
+function operator_report_fold(array $rows, array $operatorNames, ?array &$parts = null): array {
     $out = [];
+    $parts = [];
     $byPrefix = [];
     foreach ($rows as $r) {
         $name = operator_display_name(operator_report_row_operator($r, $operatorNames, $byPrefix));
         $enc = isset(OPERATOR_REPORT_ENCODINGS[$r['enc']]) ? (string)$r['enc'] : 'na';
         $st = isset(OPERATOR_REPORT_STATUSES[$r['st']]) ? (string)$r['st'] : 'unknown';
         $out[$name][$enc][$st] = ($out[$name][$enc][$st] ?? 0) + (int)$r['c'];
+        $parts[$name][$enc][$st] = ($parts[$name][$enc][$st] ?? 0) + (int)($r['p'] ?? 0);
     }
     return $out;
 }

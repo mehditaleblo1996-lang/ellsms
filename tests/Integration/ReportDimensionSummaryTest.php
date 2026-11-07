@@ -77,6 +77,29 @@ final class ReportDimensionSummaryTest extends IntegrationTestCase
         $this->assertSame('5300', $byKey['7:42:sent']['sender_number']);
     }
 
+    public function testEveryGroupCarriesItsSmsPartTotalThroughRebuildAndIncrement(): void {
+        $orgId = $this->makeOrganizationId();
+        $userId = $this->makeUser(['originator' => '5301']);
+        $jobId = $this->seedJob($userId, $orgId, '5301', 'advertising');
+        \db()->prepare('DELETE FROM ellsms_bulk_items WHERE job_id = ?')->execute([$jobId]);
+        $long = $this->seedTerminalItem($jobId, 'sent', 7, 42);
+        \db()->prepare('UPDATE ellsms_bulk_items SET content = ?, parts = NULL WHERE id = ?')->execute([str_repeat('س', 71), $long]); // 2 parts, from its text
+        $stored = $this->seedTerminalItem($jobId, 'sent', 7, 42);
+        \db()->prepare('UPDATE ellsms_bulk_items SET parts = 5 WHERE id = ?')->execute([$stored]); // the stored count wins
+
+        \report_dimension_summary_full_rebuild();
+        $partsOf = static fn(): int => (int)\db()->query(
+            "SELECT part_count FROM ellsms_report_daily_dimension_summary WHERE organization_id = {$orgId} AND route_id = 7 AND status = 'sent'"
+        )->fetchColumn();
+        $this->assertSame(7, $partsOf());
+
+        $this->seedTerminalItem($jobId, 'sent', 7, 42); // 'x': 1 part
+        \report_dimension_summary_incremental_chunk();
+        $this->assertSame(8, $partsOf(), 'an incremental step adds its parts to the group');
+        $rows = \report_dimension_summary_query('2000-01-01', '2100-01-01', ['organization_id' => $orgId]);
+        $this->assertSame(['message_count' => 3, 'part_count' => 8], ['message_count' => (int)$rows[0]['message_count'], 'part_count' => (int)$rows[0]['part_count']]);
+    }
+
     public function testRerunningAFullRebuildIsIdempotentAndNeverDoubleCounts(): void {
         $orgId = $this->makeOrganizationId();
         $userId = $this->makeUser(['originator' => '5301']);

@@ -74,7 +74,7 @@ if (!$showDelivery) {
     <div class="detail-bubble" dir="auto"><?= $content !== '' ? e($content) : '<span class="muted">متن این پیام ثبت نشده است.</span>' ?></div>
     <div class="detail-message-meta">
       <span><?= to_persian_digits((string)$m['characters']) ?> نویسه</span>
-      <span><?= to_persian_digits((string)$m['parts']) ?> بخش</span>
+      <span><?= to_persian_digits((string)$m['parts']) ?> پارت</span>
       <span class="ltr"><?= e($m['format']) ?></span>
     </div>
   </section>

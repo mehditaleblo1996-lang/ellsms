@@ -18,17 +18,19 @@ $to   = jalali_request_to_gregorian('to')   ?? $today;
 if ($from > $to) [$from, $to] = [$to, $from];
 $dateQuery = customer_counts_date_query($from, $to);
 
-/** @return array{rows:list<array>,unowned:array{received:int,lines:array<string,int>},total:int} */
+/** @return array{rows:list<array>,unowned:array{received:int,parts:int,lines:array<string,int>},total:int,total_parts:int} */
 $load = static function () use ($from, $to): array {
     $report = customer_counts_received($from, $to);
     $who = customer_counts_identities(array_column($report['rows'], 'user_id'));
     $total = $report['unowned']['received'];
+    $totalParts = $report['unowned']['parts'];
     foreach ($report['rows'] as &$r) {
         $r += $who[$r['user_id']];
         $total += $r['received'];
+        $totalParts += $r['parts'];
     }
     unset($r);
-    return $report + ['total' => $total];
+    return $report + ['total' => $total, 'total_parts' => $totalParts];
 };
 
 if (isset($_GET['export'])) {
@@ -37,14 +39,14 @@ if (isset($_GET['export'])) {
     header('Content-Disposition: attachment; filename="ellsms-received-counts-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['ردیف', 'شناسه کاربر', 'نام کاربری', 'نام و نام خانوادگی', 'نام شرکت', 'خط‌های دریافت', 'تعداد پیام‌های دریافتی']);
+    fputcsv($out, ['ردیف', 'شناسه کاربر', 'نام کاربری', 'نام و نام خانوادگی', 'نام شرکت', 'خط‌های دریافت', 'تعداد پیام‌های دریافتی', 'تعداد پارت']);
     foreach ($report['rows'] as $i => $r) {
-        fputcsv($out, [$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], implode(' ', array_keys($r['lines'])), $r['received']]);
+        fputcsv($out, [$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], implode(' ', array_keys($r['lines'])), $r['received'], $r['parts']]);
     }
     if ($report['unowned']['received'] > 0) {
-        fputcsv($out, ['', '', '', 'خط‌های بدون مشتری', '', implode(' ', array_keys($report['unowned']['lines'])), $report['unowned']['received']]);
+        fputcsv($out, ['', '', '', 'خط‌های بدون مشتری', '', implode(' ', array_keys($report['unowned']['lines'])), $report['unowned']['received'], $report['unowned']['parts']]);
     }
-    fputcsv($out, ['', '', '', 'جمع کل', '', '', $report['total']]);
+    fputcsv($out, ['', '', '', 'جمع کل', '', '', $report['total'], $report['total_parts']]);
     exit;
 }
 
@@ -76,7 +78,8 @@ if (lazy_part_begin('report')) {
     <div class="stat-value cc-range"><?= $from === $to ? jdate($from, false) : jdate($from, false) . ' تا ' . jdate($to, false) ?></div>
     <div class="stat-meta">تا ساعت <span class="num"><?= to_persian_digits($asOf) ?></span></div>
   </div>
-  <div class="stat"><div class="stat-label">مجموع پیام‌های دریافتی</div><div class="stat-value"><?= operator_report_num($report['total']) ?></div></div>
+  <div class="stat"><div class="stat-label">مجموع پیام‌های دریافتی</div><div class="stat-value"><?= operator_report_num($report['total']) ?></div>
+    <div class="stat-meta"><?= operator_report_num($report['total_parts']) ?> پارت</div></div>
   <div class="stat"><div class="stat-label">مشتریان دارای پیام دریافتی</div><div class="stat-value"><?= operator_report_num(count($rows)) ?></div></div>
   <div class="stat"><div class="stat-label">خط‌های دریافت‌کننده</div><div class="stat-value"><?= operator_report_num($lineCount) ?></div>
     <?php if ($unowned['received'] > 0): ?><div class="stat-meta"><?= operator_report_num(count($unowned['lines'])) ?> خط بدون مشتری</div><?php endif; ?></div>
@@ -90,6 +93,7 @@ if (lazy_part_begin('report')) {
       <th data-sort="text" aria-sort="none">نام شرکت</th>
       <th>خط‌های دریافت</th>
       <th data-sort="num" aria-sort="descending">تعداد پیام‌های دریافتی</th>
+      <th data-sort="num" aria-sort="none">تعداد پارت</th>
       <th><span class="sr-only">پیام‌ها</span></th>
     </tr></thead>
     <tbody>
@@ -100,11 +104,12 @@ if (lazy_part_begin('report')) {
         <td data-v="<?= e($r['company']) ?>"><?= $r['company'] !== '' ? e($r['company']) : '<span class="muted">—</span>' ?></td>
         <td class="cc-lines"><?= $lineChips($r['lines']) ?></td>
         <td class="num cc-count" data-v="<?= (int)$r['received'] ?>"><?= operator_report_num($r['received']) ?></td>
+        <td class="num cc-parts" data-v="<?= (int)$r['parts'] ?>"><?= operator_report_num($r['parts']) ?></td>
         <td><a class="icon-button report-eye" href="/inbox.php?<?= e(http_build_query(['user_id' => $r['user_id']] + $dateQuery)) ?>" title="پیام‌های دریافتی این مشتری" aria-label="پیام‌های دریافتی <?= e($r['name']) ?>"><?= panel_icon('eye') ?></a></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$rows && $unowned['received'] === 0): ?>
-      <tr><td colspan="6" class="empty-cell"><?= panel_empty_state('در این بازه پیامی دریافت نشده', 'بازه‌ی تاریخ را بزرگ‌تر کنید تا پیام‌های دریافتی مشتریان را ببینید.', null, 'inbox') ?></td></tr>
+      <tr><td colspan="7" class="empty-cell"><?= panel_empty_state('در این بازه پیامی دریافت نشده', 'بازه‌ی تاریخ را بزرگ‌تر کنید تا پیام‌های دریافتی مشتریان را ببینید.', null, 'inbox') ?></td></tr>
     <?php endif; ?>
     </tbody>
     <?php if ($rows || $unowned['received'] > 0): ?>
@@ -116,10 +121,11 @@ if (lazy_part_begin('report')) {
         <td><span class="muted">—</span></td>
         <td class="cc-lines"><?= $lineChips($unowned['lines']) ?></td>
         <td class="num cc-count"><?= operator_report_num($unowned['received']) ?></td>
+        <td class="num cc-parts"><?= operator_report_num($unowned['parts']) ?></td>
         <td><a class="icon-button report-eye" href="/inbox.php?<?= e(http_build_query($dateQuery)) ?>" title="همه‌ی پیام‌های دریافتی" aria-label="همه‌ی پیام‌های دریافتی"><?= panel_icon('eye') ?></a></td>
       </tr>
       <?php endif; ?>
-      <tr class="cc-total"><td></td><td>جمع کل</td><td></td><td></td><td class="num cc-count"><?= operator_report_num($report['total']) ?></td><td></td></tr>
+      <tr class="cc-total"><td></td><td>جمع کل</td><td></td><td></td><td class="num cc-count"><?= operator_report_num($report['total']) ?></td><td class="num cc-parts"><?= operator_report_num($report['total_parts']) ?></td><td></td></tr>
     </tfoot>
     <?php endif; ?>
   </table></div>

@@ -118,19 +118,22 @@ final class CustomerMessageCountsHttpTest extends TestCase
 
     /**
      * Received (Tehran time): alice's line 3000881 three, bob's 3000882 two, unowned 3000889 one, and
-     * one for alice the next day. => alice 3, bob 2, unowned 1, total 6.
+     * one for alice the next day. => alice 3, bob 2, unowned 1, total 6. Alice's first one is 71 Persian
+     * characters (2 SMS parts), every other text 1 part => parts alice 4, bob 2, unowned 1, total 7.
      *
      * Sent (UTC, 08:00 = 11:30 Tehran): alice — a smart job (2 sent, 1 rejected, 1 queued, 1
      * cancelled = 3 left), 2 gateway sends, 1 legacy send, and an aimed request for 4 numbers whose
      * job sent 3 (1 still queued); bob — a regional request for 1000, 950 sent.
      * => alice interactive 6, bulk 4 / 3; bob 0, bulk 1000 / 950.
+     * Parts: the gateway sends are 71 Persian characters (2 each) and bob's regional text 161 Latin
+     * characters (2), everything else 1 => alice interactive 8, bulk 4 / 3; bob bulk 2000 / 1900.
      */
     private function seed(): void
     {
         $db = db();
         $st = $db->prepare('INSERT INTO inbound_message (originator, destination, content, received_at) VALUES (?,?,?,?)');
         foreach ([['3000881', '10:00:00'], ['3000881', '11:00:00'], ['3000881', '23:59:00'], ['3000882', '00:00:00'], ['3000882', '12:00:00'], ['3000889', '13:00:00']] as [$line, $time]) {
-            $st->execute(['989121234567', $line, 'سلام', self::DAY_UTC . ' ' . $time]);
+            $st->execute(['989121234567', $line, $line === '3000881' && $time === '10:00:00' ? str_repeat('س', 71) : 'سلام', self::DAY_UTC . ' ' . $time]);
             $this->inboundIds[] = (int)$db->lastInsertId();
         }
         $st->execute(['989121234567', '3000881', 'next day', date('Y-m-d', strtotime(self::DAY_UTC . ' +1 day')) . ' 00:00:00']);
@@ -153,9 +156,9 @@ final class CustomerMessageCountsHttpTest extends TestCase
         $aimedJob = $job('p2p', ['sent', 'sent', 'sent', 'pending']);
 
         $st = $db->prepare("INSERT INTO ellsms_message_attempts (user_id, reference_type, reference_id, status, destination, delivery_status, attempted_at, originator, content)
-                            VALUES (?, 'direct_send', ?, 'accepted', '989122222222', 'delivered', ?, '3000881', 'سلام')");
+                            VALUES (?, 'direct_send', ?, 'accepted', '989122222222', 'delivered', ?, '3000881', ?)");
         for ($i = 0; $i < 2; $i++) {
-            $st->execute([$this->aliceId, 'ccr-' . bin2hex(random_bytes(6)), $at]);
+            $st->execute([$this->aliceId, 'ccr-' . bin2hex(random_bytes(6)), $at, str_repeat('س', 71)]);
             $this->attemptIds[] = (int)$db->lastInsertId();
         }
         $db->prepare("INSERT INTO outbound_message (sender_user_id, originator, destination, content, status, sent_at) VALUES (?, '3000881', '09191111111', 'x', 'sent', ?)")
@@ -167,8 +170,8 @@ final class CustomerMessageCountsHttpTest extends TestCase
            ->execute([$this->orgId, $this->aliceId, $at, $aimedJob, $at, $at]);
         $this->aimedId = (int)$db->lastInsertId();
         $db->prepare("INSERT INTO ellsms_regional_bulk_requests (user_id, criteria_json, originator, content, status, total_request, total_sent, confirmed_at, created_at)
-                      VALUES (?, '{}', '3000882', 'hi', 'done', 1000, 950, ?, ?)")
-           ->execute([$this->bobId, $at, $at]);
+                      VALUES (?, '{}', '3000882', ?, 'done', 1000, 950, ?, ?)")
+           ->execute([$this->bobId, str_repeat('a', 161), $at, $at]);
         $this->regionalId = (int)$db->lastInsertId();
     }
 
@@ -201,16 +204,16 @@ final class CustomerMessageCountsHttpTest extends TestCase
         $r = $this->request('/received-count-report.php?' . $this->dayQuery(['_part' => 'report']), $session);
         $this->assertSame(200, $r['code'], substr($r['body'], 0, 300));
         $body = $r['body'];
-        $this->assertSame(['آلیس آزمون', 'شرکت آزمون پیام', '3'], self::rowValues($body, $this->aliceId));
-        $this->assertSame([$this->bobUsername, '', '2'], self::rowValues($body, $this->bobId), 'no name: the username; no organization: no company');
-        $this->assertMatchesRegularExpression('~<tr class="cc-unowned">.*?3000889.*?<td class="num cc-count">' . self::n(1) . '</td>~s', $body);
-        $this->assertStringContainsString('<td>جمع کل</td><td></td><td></td><td class="num cc-count">' . self::n(6) . '</td>', $body);
+        $this->assertSame(['آلیس آزمون', 'شرکت آزمون پیام', '3', '4'], self::rowValues($body, $this->aliceId), 'received, then its SMS parts');
+        $this->assertSame([$this->bobUsername, '', '2', '2'], self::rowValues($body, $this->bobId), 'no name: the username; no organization: no company');
+        $this->assertMatchesRegularExpression('~<tr class="cc-unowned">.*?3000889.*?<td class="num cc-count">' . self::n(1) . '</td>\s*<td class="num cc-parts">' . self::n(1) . '</td>~s', $body);
+        $this->assertStringContainsString('<td>جمع کل</td><td></td><td></td><td class="num cc-count">' . self::n(6) . '</td><td class="num cc-parts">' . self::n(7) . '</td>', $body);
         $this->assertStringContainsString('/inbox.php?user_id=' . $this->aliceId . '&amp;', $body);
         $this->assertStringContainsString('<a href="/users.php?edit=' . $this->aliceId . '#personal"', $body, 'the name opens the customer\'s profile');
 
         $csv = $this->request('/received-count-report.php?' . $this->dayQuery(['export' => 1]), $session);
         $this->assertSame(200, $csv['code']);
-        $this->assertStringContainsString(',"آلیس آزمون","شرکت آزمون پیام",3000881,3', $csv['body']);
+        $this->assertStringContainsString(',"آلیس آزمون","شرکت آزمون پیام",3000881,3,4', $csv['body']);
     }
 
     public function testSentCountsSplitInteractiveFromBulkLiveAndFromTheSummary(): void
@@ -219,11 +222,12 @@ final class CustomerMessageCountsHttpTest extends TestCase
         $query = '/sent-count-report.php?' . $this->dayQuery(['_part' => 'report']);
         $live = $this->request($query, $session);
         $this->assertSame(200, $live['code'], substr($live['body'], 0, 300));
-        $this->assertSame(['آلیس آزمون', 'شرکت آزمون پیام', '6', '4', '3'], self::rowValues($live['body'], $this->aliceId));
-        $this->assertSame(['0', '1000', '950'], array_slice((array)self::rowValues($live['body'], $this->bobId), 2));
-        $this->assertStringContainsString('<td class="num cc-count">' . self::n(6) . '</td>
-        <td class="num">' . self::n(1004) . '</td>
-        <td class="num">' . self::n(953) . '</td>', $live['body']);
+        // Each count, then its SMS parts: interactive, bulk requested, bulk sent.
+        $this->assertSame(['آلیس آزمون', 'شرکت آزمون پیام', '6', '8', '4', '4', '3', '3'], self::rowValues($live['body'], $this->aliceId));
+        $this->assertSame(['0', '0', '1000', '2000', '950', '1900'], array_slice((array)self::rowValues($live['body'], $this->bobId), 2));
+        $flat = (string)preg_replace('~>\s+<~', '><', $live['body']);
+        $this->assertStringContainsString('<td class="num cc-count">' . self::n(6) . '</td><td class="num cc-parts">' . self::n(8) . '</td><td class="num">' . self::n(1004)
+            . '</td><td class="num cc-parts">' . self::n(2004) . '</td><td class="num">' . self::n(953) . '</td><td class="num cc-parts">' . self::n(1903) . '</td>', $flat, 'the totals row');
 
         operator_report_rebuild_day(self::DAY_UTC);
         $fromSummary = $this->request($query, $session)['body'];
