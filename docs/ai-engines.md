@@ -16,7 +16,11 @@ Platform admins only.
 | `app/Ai/AiSecrets.php` | the AI key vault (AES-256-GCM) |
 | `app/Ai/AiAdapters.php` | the wire protocol of each provider type (pure functions) and the one network entry point |
 | `app/Ai/AiEngines.php` | everything that touches the database, including model-access resolution |
+| `db/migrations/2026_11_09_ai_provider_balance.sql` | provider credit balance, recorded top-ups, alert thresholds ([below](#provider-balance-and-alerts)) |
+| `app/Ai/AiBalance.php` | credit left per provider, days left, low-balance alerts |
+| `cron/ai-balance-check.php` | the scheduler job `ai-balance` (every 15 minutes) |
 | `tests/Unit/AiAdaptersTest.php` | adapters, policy, vault and access rules, without DB or network |
+| `tests/Unit/AiBalanceTest.php` | out-of-credit errors, OpenRouter credit, days left, alert levels |
 | `tests/Integration/AiEnginesHttpTest.php` | the whole admin flow over HTTP against a fake Hermes (`tests/fixtures/fake-openai-server.php`) |
 
 ## Setup
@@ -63,7 +67,8 @@ the relay ([below](#proxy-and-relay-phase-5)).
   OpenRouter's activity page. An extra header `X-Title` overrides it.
 - **Key credit:** «تست اتصال» also reads `GET {base}/key` and shows the key's usage, and either its
   remaining limit or that it has no limit and spends the account's credit. A free-tier key is
-  flagged. If this call fails, the connection test still passes.
+  flagged. If this call fails, the connection test still passes. The balance check reads the same
+  endpoint and `GET {base}/credits` every 15 minutes ([below](#provider-balance-and-alerts)).
 
 ## GapGPT
 
@@ -174,6 +179,75 @@ Resolution happens in `ai_access_resolve()`, which is pure and unit-tested:
 Only enabled models on enabled providers are ever effective. The default model is the nearest one in
 the chain that is still allowed, then the platform default if it is allowed, then the first allowed
 model.
+
+## Provider balance and alerts
+
+AI providers sell prepaid credit (USD, or Rial on an Iranian gateway), not tokens. Each provider has
+a **«موجودی و هشدار»** tab (provider → «موجودی و هشدار») and a «موجودی» column in the provider list
+that show the credit left, the average daily spend over the last 7 days, and how many days the
+credit lasts at that rate. When it runs low, an alert goes out through the unified alert subsystem
+([docs/alerting.md](alerting.md)): Telegram and email, repeated until someone acknowledges it in
+«هشدارها» (`/admin/alerts`), sent again if it gets worse, and a «برطرف شد» notice once the provider
+is topped up. The alert key is `ai_balance:<provider code>`.
+
+Needs `db/migrations/2026_11_09_ai_provider_balance.sql` (tables `ellsms_ai_provider_balance` and
+`ellsms_ai_provider_topups`). Until it is applied, the tab and the column are hidden and the job does
+nothing.
+
+### Where the balance comes from
+
+| Provider | Source | Badge |
+|---|---|---|
+| OpenRouter | read from the API: `GET {base}/key` (the key's remaining limit) and `GET {base}/credits` (the account's credit). The smaller of the two counts. | «زنده از API» |
+| GapGPT, OpenAI, Anthropic, OpenAI-compatible, Ollama | estimated: the top-ups the admin records, minus the purchase cost of every answer and test since | «تخمینی» |
+
+For an estimated balance, record what you do in the provider's panel:
+
+- **«شارژ کردم»** adds the amount to the balance;
+- **«موجودی واقعی الان»** replaces the estimate with the exact figure from the provider's panel. Do
+  this now and then; the estimate restarts from it.
+
+Spend is the `cost_estimate` of secretary, Telegram and «پیام اول» jobs (`ellsms_ai_jobs`; OpenRouter's
+real cost when it reports one) plus model tests, playground messages and «آزمایش منشی» priced at the
+model's per-million purchase prices (`ellsms_ai_test_runs`). Only models whose «ارز» matches the
+provider's balance currency are counted, so enter purchase prices for every model you use. Calls
+that leave no record (the «پیش‌نمایش» of «پیام اول», a failed attempt the provider still billed) are
+not counted, which is another reason to record the real balance now and then. A new
+GapGPT provider starts in `IRR`, every other type in `USD`; change it under «آستانه‌های هشدار».
+OpenRouter is always USD.
+
+### Levels and thresholds
+
+| Level | When (defaults) | Alert severity |
+|---|---|---|
+| «کافی» | none of the below | none (an open alert is resolved) |
+| «رو به اتمام» | 7 days or less left (or below «هشدار: موجودی کمتر از», empty by default) | `warning` |
+| «بحرانی» | 2 days or less left, 1 USD or less (`critical_amount`, set by default only for USD providers), or zero | `critical` |
+| «تمام شده» | the provider refused a call for lack of credit | `emergency` |
+| «نامشخص» | no balance known yet (nothing recorded, API not answering) | none |
+
+All four thresholds and «هشدار فعال باشد» are per provider; an empty field is not checked. «Days
+left» needs spend in the last 7 days; with none, only the amount thresholds apply. For a Rial
+provider, set the amount thresholds in Rial yourself.
+
+### "Out of credit" from the provider
+
+Whatever the estimate says, `ai_http_send()` recognises a provider that refuses a call for lack of
+credit (`ai_error_is_out_of_credit()`): HTTP 402 (OpenRouter), an error code such as
+`insufficient_quota` (OpenAI, sent with 429), or a message such as «credit balance is too low»
+(Anthropic) or a Persian «موجودی ... کافی نیست». The call fails with the error code
+`provider_out_of_credit` («اعتبار حساب ارائه‌دهنده تمام شده است…») instead of `rate_limited` /
+`bad_request`, so the secretary does not retry it, and `ai_balance_on_out_of_credit()` marks the
+provider exhausted and raises the `emergency` alert at once, without waiting for the next check. The
+flag clears when a top-up is recorded, OpenRouter reports a positive balance, or a model answers
+successfully afterwards (a model «تست», the playground, or a secretary answer) and the next check runs
+(«بررسی الان» runs it immediately).
+
+### The job
+
+`ai-balance` in the scheduler (`cron/ai-balance-check.php`, every 15 minutes,
+[docs/scheduler.md](scheduler.md)) re-checks every provider. A disabled provider, or one with alerts
+off, only has its open alert resolved. Run it by hand with `php cron/scheduler.php --run=ai-balance`.
 
 ## Test history
 

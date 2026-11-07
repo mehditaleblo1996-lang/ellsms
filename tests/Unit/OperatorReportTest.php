@@ -78,4 +78,26 @@ final class OperatorReportTest extends TestCase
         $this->assertSame('ایرانسل', \operator_display_name('ایرانسل'));
         $this->assertSame('سایر اپراتورها', \operator_label('mock', 'Mock Operator'));
     }
+
+    public function testDaysBuiltBeforePartTotalsAreRebuiltRightAfterTodayAndYesterday(): void
+    {
+        $due = ['2026-11-07', '2026-11-06', '2026-11-01', '2026-10-30'];
+        $upgrade = ['2026-11-01', '2025-03-04'];
+        $this->assertSame(['2026-11-07', '2026-11-06', '2026-11-01', '2025-03-04', '2026-10-30'],
+            \operator_report_with_upgrades($due, $upgrade, '2026-11-07'), 'each day once; an old day beyond the horizon still gets its parts');
+        $this->assertSame(['2025-03-04'], \operator_report_with_upgrades([], ['2025-03-04'], '2026-11-07'));
+    }
+
+    public function testRowsFoldWithTheirPartTotals(): void
+    {
+        $counts = \operator_report_fold([
+            ['name' => 'همراه اول', 'enc' => 'fa', 'st' => 'delivered', 'c' => 3, 'p' => 7],
+            ['name' => 'همراه اول', 'enc' => 'fa', 'st' => 'delivered', 'c' => 1, 'p' => 2],
+            ['name' => 'همراه اول', 'enc' => 'en', 'st' => 'queued', 'c' => 2, 'p' => 2],
+        ], [], $parts);
+        $this->assertSame(4, $counts['همراه اول']['fa']['delivered']);
+        $this->assertSame(9, $parts['همراه اول']['fa']['delivered']);
+        $this->assertSame(['total_sent' => 9, 'received' => 9], \operator_report_derive(\operator_report_statuses($parts['همراه اول'])),
+            'the derived totals work on part maps the same way: queued parts are not «ارسال‌شده»');
+    }
 }

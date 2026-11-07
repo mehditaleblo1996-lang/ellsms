@@ -16,6 +16,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/SentMessages.php';
 
 const RECEIVED_REPORT_PER_PAGE = [25, 50, 100];
+/** Rows a page shows unless the viewer picks another «تعداد در صفحه». */
+const RECEIVED_REPORT_DEFAULT_PER_PAGE = 100;
 
 /** Pure: the received list's filters from its GET parameters (dates as sent_report_filters()). */
 function received_report_filters(array $query, bool $isAdmin, string $today): array {
@@ -27,7 +29,7 @@ function received_report_filters(array $query, bool $isAdmin, string $today): ar
     $toLocal = $toTime === ''
         ? (new DateTimeImmutable($to))->modify('+1 day')->format('Y-m-d 00:00:00')
         : (new DateTimeImmutable($to . ' ' . $toTime . ':00'))->modify('+1 minute')->format('Y-m-d H:i:s');
-    $per = (int)($query['per_page'] ?? 50);
+    $per = (int)($query['per_page'] ?? RECEIVED_REPORT_DEFAULT_PER_PAGE);
     $digits = static fn(string $key): string => preg_replace('/\D/', '', report_latin_digits((string)($query[$key] ?? ''))) ?? '';
     return [
         'from' => $from, 'to' => $to, 'from_time' => $fromTime, 'to_time' => $toTime,
@@ -37,7 +39,7 @@ function received_report_filters(array $query, bool $isAdmin, string $today): ar
         'sender' => $digits('sender'),
         'dest' => $digits('dest'),
         'q' => mb_substr(trim((string)($query['q'] ?? '')), 0, 200),
-        'per_page' => in_array($per, RECEIVED_REPORT_PER_PAGE, true) ? $per : 50,
+        'per_page' => in_array($per, RECEIVED_REPORT_PER_PAGE, true) ? $per : RECEIVED_REPORT_DEFAULT_PER_PAGE,
     ];
 }
 
@@ -189,7 +191,7 @@ function received_report_forwards(array $rows): array {
    List and detail
    ========================================================================== */
 
-/** Display fields for received rows: line owner, sender's operator, forward state, preview fields. */
+/** Display fields for received rows: line owner, sender's operator, forward state, SMS part count, preview fields. */
 function received_report_decorate(array $rows): array {
     if ($rows === []) return [];
     $owners = received_report_line_owners(array_column($rows, 'destination'));
@@ -207,6 +209,7 @@ function received_report_decorate(array $rows): array {
         $r['forwards'] = $forwards[$r['id']] ?? [];
         $r['forward_state'] = received_report_forward_state(array_column($r['forwards'], 'status'));
         $r['forward_label'] = received_report_forward_label($r['forward_state']);
+        $r['parts'] = message_parts_of_row($r); // stored on ELLSMS's own store; the backend's: from the text
     }
     unset($r);
     return $rows;
@@ -225,7 +228,8 @@ function received_report_find(int $id, array $allowedLines, bool $isAdmin): ?arr
     $row = false;
     $store = 'ellsms';
     if (inbound_ellsms_store_available()) {
-        $st = db()->prepare("SELECT id, gateway_id, originator, destination, content, received_at, provider_message_id, created_at
+        $parts = message_parts_available('ellsms_inbound_messages') ? ', parts' : '';
+        $st = db()->prepare("SELECT id, gateway_id, originator, destination, content, received_at, provider_message_id, created_at{$parts}
                              FROM ellsms_inbound_messages WHERE id = ?{$scopeSql}");
         $st->execute($params);
         $row = $st->fetch();
@@ -241,7 +245,6 @@ function received_report_find(int $id, array $allowedLines, bool $isAdmin): ?arr
     $row['store'] = $store;
     $content = (string)($row['content'] ?? '');
     $row['characters'] = mb_strlen($content, 'UTF-8');
-    $row['parts'] = sms_parts($content);
     $row['format'] = $content === '' ? '—' : sent_report_format($content);
     $row['gateway_name'] = $isAdmin ? sent_report_lookup_name('ellsms_sms_gateways', (int)($row['gateway_id'] ?? 0)) : null;
     return $row;

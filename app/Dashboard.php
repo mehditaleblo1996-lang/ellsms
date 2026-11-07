@@ -49,7 +49,7 @@ function dashboard_today_range(): array {
  */
 function dashboard_today_counts(?array $userIds): array {
     [$from, $to] = dashboard_today_range();
-    return dashboard_counts_between($userIds, $from, $to);
+    return dashboard_counts_between($userIds, $from, $to, true);
 }
 
 /**
@@ -65,21 +65,38 @@ function dashboard_yesterday_counts_so_far(?array $userIds): array {
 }
 
 /**
- * dashboard_today_counts() for any UTC [from, to) window.
- * @return array{sent:int,delivered:int,failed:int,send_failed:int}
+ * dashboard_today_counts() for any UTC [from, to) window. With $withParts, each count also comes with
+ * its SMS parts (sent_parts, delivered_parts, failed_parts, send_failed_parts — the count stored on
+ * each row, else derived from its text: message_parts_sql()).
+ * @return array{sent:int,delivered:int,failed:int,send_failed:int,sent_parts?:int,delivered_parts?:int,failed_parts?:int,send_failed_parts?:int}
  */
-function dashboard_counts_between(?array $userIds, string $from, string $to): array {
+function dashboard_counts_between(?array $userIds, string $from, string $to, bool $withParts = false): array {
     $undelivered = "'" . implode("','", DASHBOARD_UNDELIVERED) . "'";
     // send_failed: refused at send time only — what a customer without delivery-based billing sees as
     // «ناموفق» (delivery_status_visible()), where 'failed' also counts messages reported undelivered.
     $out = ['sent' => 0, 'delivered' => 0, 'failed' => 0, 'send_failed' => 0];
+    if ($withParts) $out += ['sent_parts' => 0, 'delivered_parts' => 0, 'failed_parts' => 0, 'send_failed_parts' => 0];
+    // The same conditions as the counts, summing each message's parts instead of 1.
+    $partsSql = static function (array $conditions, string $table, string $alias, string $content) use ($withParts): string {
+        if (!$withParts) return '';
+        $parts = message_parts_sql($table, $alias, $content);
+        $sql = '';
+        foreach ($conditions as $key => $cond) $sql .= ", COALESCE(SUM(CASE WHEN {$cond} THEN {$parts} ELSE 0 END), 0) {$key}_parts";
+        return $sql;
+    };
 
     [$scope, $scopeParams] = dashboard_bulk_scope($userIds);
+    $bulk = [
+        'sent' => "i.status = 'sent'",
+        'delivered' => "i.status = 'sent' AND i.delivery_status = 'delivered'",
+        'failed' => "i.status = 'failed' OR (i.status = 'sent' AND i.delivery_status IN ({$undelivered}))",
+        'send_failed' => "i.status = 'failed'",
+    ];
     $st = db()->prepare(
-        "SELECT COALESCE(SUM(i.status = 'sent'), 0) sent,
-                COALESCE(SUM(i.status = 'sent' AND i.delivery_status = 'delivered'), 0) delivered,
-                COALESCE(SUM(i.status = 'failed' OR (i.status = 'sent' AND i.delivery_status IN ({$undelivered}))), 0) failed,
-                COALESCE(SUM(i.status = 'failed'), 0) send_failed
+        "SELECT COALESCE(SUM({$bulk['sent']}), 0) sent,
+                COALESCE(SUM({$bulk['delivered']}), 0) delivered,
+                COALESCE(SUM({$bulk['failed']}), 0) failed,
+                COALESCE(SUM({$bulk['send_failed']}), 0) send_failed" . $partsSql($bulk, 'ellsms_bulk_items', 'i', 'i.content') . "
          FROM ellsms_bulk_items i
          WHERE i.claimed_at >= ? AND i.claimed_at < ?{$scope}"
     );
@@ -89,11 +106,18 @@ function dashboard_counts_between(?array $userIds, string $from, string $to): ar
 
     [$scope, $scopeParams] = dashboard_attempt_scope($userIds);
     $types = "'" . implode("','", DASHBOARD_DIRECT_TYPES) . "'";
+    $attempt = [
+        'sent' => "a.status = 'accepted'",
+        'delivered' => "a.status = 'accepted' AND a.delivery_status = 'delivered'",
+        'failed' => "a.status = 'failed' OR (a.status = 'accepted' AND a.delivery_status IN ({$undelivered}))",
+        'send_failed' => "a.status = 'failed'",
+    ];
+    $attemptContent = backend_message_attempts_have_report_columns() ? 'a.content' : 'NULL';
     $st = db()->prepare(
-        "SELECT COALESCE(SUM(a.status = 'accepted'), 0) sent,
-                COALESCE(SUM(a.status = 'accepted' AND a.delivery_status = 'delivered'), 0) delivered,
-                COALESCE(SUM(a.status = 'failed' OR (a.status = 'accepted' AND a.delivery_status IN ({$undelivered}))), 0) failed,
-                COALESCE(SUM(a.status = 'failed'), 0) send_failed
+        "SELECT COALESCE(SUM({$attempt['sent']}), 0) sent,
+                COALESCE(SUM({$attempt['delivered']}), 0) delivered,
+                COALESCE(SUM({$attempt['failed']}), 0) failed,
+                COALESCE(SUM({$attempt['send_failed']}), 0) send_failed" . $partsSql($attempt, 'ellsms_message_attempts', 'a', $attemptContent) . "
          FROM ellsms_message_attempts a
          WHERE a.status IN ('accepted', 'failed') AND a.attempted_at >= ? AND a.attempted_at < ?
            AND a.reference_type IN ({$types}){$scope}"

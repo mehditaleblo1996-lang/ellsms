@@ -239,7 +239,19 @@ function import_job_analyze_pass(array $job): void {
             }
         }
 
-        import_chunk_completed((int)$chunk['id'], $chunkCounters);
+        // The blacklisted rows, for «لیست سیاه» in the status report (app/SendContext.php). Written in
+        // the chunk's own transaction; counted once the job is actually sent.
+        $blockedRows = array_values(array_filter($candidates, static fn(array $c): bool => isset($blockedMobiles[$c['mobile']])));
+        import_chunk_completed((int)$chunk['id'], $chunkCounters, true, $blockedRows === [] ? null : [
+            'user_id' => $userId,
+            'organization_id' => (int)($job['organization_id'] ?? 0),
+            'sender' => (string)($job['originator'] ?? ''),
+            'channel' => (string)($job['source_type'] ?? 'p2p'),
+            'import_job_id' => $jobId,
+            'chunk_no' => (int)$chunk['chunk_no'],
+            'destinations' => array_column($blockedRows, 'mobile'),
+            'contents' => array_column($blockedRows, 'content'),
+        ]);
         foreach ($chunkCounters as $k => $v) {
             $counters[$k] += $v;
         }
@@ -529,7 +541,9 @@ function import_process_insert_chunk(array $chunk): void {
 }
 
 /**
- * Insert a bounded batch of bulk_items rows in a single multi-row statement.
+ * Insert a bounded batch of bulk_items rows in a single multi-row statement. Each row's SMS part
+ * count (sms_parts() of its text, index 2) is added here, once the column exists
+ * (app/MessageParts.php), so callers pass the same 8 values as before.
  *
  * @param list<array{0:int,1:string,2:string,3:int,4:int,5:string,6:?int,7:string}> $rows
  */
@@ -537,12 +551,16 @@ function import_insert_bulk_items_batch(PDO $db, array $rows): void {
     if ($rows === []) {
         return;
     }
-    $placeholders = implode(',', array_fill(0, count($rows), '(?,?,?,?,?,?,?,?)'));
+    $withParts = message_parts_available('ellsms_bulk_items');
+    if ($withParts) {
+        $rows = array_map(static fn(array $r): array => [...array_values($r), sms_parts((string)$r[2])], $rows);
+    }
+    $placeholders = implode(',', array_fill(0, count($rows), $withParts ? '(?,?,?,?,?,?,?,?,?)' : '(?,?,?,?,?,?,?,?)'));
     $flat = array_merge([], ...$rows);
     $db->prepare(
         "INSERT INTO ellsms_bulk_items
            (job_id, mobile, content, unit_price_millicredits, price_cost_credits,
-            price_operator_code, price_route_id, price_group_key)
+            price_operator_code, price_route_id, price_group_key" . ($withParts ? ', parts' : '') . ")
          VALUES {$placeholders}"
     )->execute($flat);
 }

@@ -97,9 +97,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $dests = array_values(array_unique($dests));
 
     $blockedCount = 0;
+    $blockedDests = [];
     if (!empty($_POST['use_blacklist'])) {
+        $beforeBlacklist = $dests;
         [$dests, $blockedCount] = filter_blacklist((int)$me['id'], $dests, $originator);
+        $blockedDests = $blockedCount > 0 ? array_values(array_diff($beforeBlacklist, $dests)) : [];
     }
+    // The blacklisted recipients of a send that went ahead, for «لیست سیاه» in the status report
+    // (app/SendContext.php) — never for a preview or a refused request.
+    $recordBlocked = static function (string $channel, array $source = []) use ($blockedDests, $me, $originator, $content): void {
+        if ($blockedDests === []) return;
+        send_drops_record((int)$me['id'], isset($me['organization_id']) ? (int)$me['organization_id'] : null, (string)$originator,
+            'blacklist', $blockedDests, (string)$content, ['channel' => $channel] + $source);
+    };
 
     // Cost preview (read-only) — evaluated before ANY of the branches below, so no campaign is
     // saved, no schedule is created, no bulk job is queued and no message is dispatched when the
@@ -176,6 +186,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $throttleMinutes = $mode === 'gradual' ? max(1, (int)($_POST['throttle_minutes'] ?? 5)) : null;
             $created = import_create_job($me, $mode === 'gradual' ? 'gradual' : 'p2p', $originator, $title, $storageKey, $throttleCount, $throttleMinutes);
             if ($created['ok']) {
+                $recordBlocked($mode === 'gradual' ? 'gradual' : 'p2p', ['import_job_id' => (int)$created['job_id']]);
                 audit((int)$me['id'], 'new_send.' . $mode . '.large', count($dests) . ' dest');
                 redirect('/import.php?id=' . $created['job_id']);
             } else {
@@ -187,6 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // #42 — the Bale channel is offered only while it is configured; 'sms' is the unchanged path.
         $channel = in_array($_POST['channel'] ?? '', MESSAGE_CHANNELS, true) ? (string)$_POST['channel'] : 'sms';
         [$ok, $info] = dispatch_with_channel($me, $originator, $dests, $content, $channel);
+        $recordBlocked('panel');
         flash($ok ? 'success' : 'error', $info . $blockedNote);
         audit((int)$me['id'], 'new_send.direct', count($dests) . ' dest, ok=' . (int)$ok);
         if ($ok) redirect('/reports.php');
@@ -218,6 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$slot['ok']) {
                 flash('error', 'به سقف تعداد زمان‌بندی‌های فعال پلن فعلی رسیده‌اید (' . to_persian_digits((string)$slot['limit']) . ' مورد). زمان‌بندی‌های موجود دست‌نخورده باقی می‌مانند.');
             } else {
+                $recordBlocked('schedule');
                 audit((int)$me['id'], 'new_send.recurring', count($dests) . ' dest @ ' . $runAt);
                 flash('success', 'زمان‌بندی شد برای ' . jdate($runAt) . $blockedNote);
                 redirect('/schedules.php');
@@ -230,6 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         [$ok, $info, $jobId] = bulk_queue_job($me, 'gradual', $notes ?: 'ارسال تدریجی', $originator, null, $items, $throttleCount, $throttleMinutes);
         if ($ok) {
+            $recordBlocked('gradual');
             audit((int)$me['id'], 'new_send.gradual', count($dests) . " dest, {$throttleCount}/{$throttleMinutes}min");
             flash('success', $info . " — {$throttleCount} پیام هر {$throttleMinutes} دقیقه." . $blockedNote);
             redirect('/messages/p2p');

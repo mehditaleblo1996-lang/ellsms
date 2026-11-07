@@ -28,6 +28,8 @@ if (!in_array($view, ['all', 'number', 'route'], true) || ($view === 'route' && 
 $from = jalali_request_to_gregorian('from') ?? date('Y-m-d', strtotime('-29 day'));
 $to   = jalali_request_to_gregorian('to')   ?? date('Y-m-d');
 $userId = $admin ? (int)($_GET['user_id'] ?? 0) : 0;
+// «مشتری ویژه» filter (app/VipCustomers.php): admins can count VIP or regular customers only.
+$vip = $admin ? vip_filter_from($_GET) : '';
 $senderRaw = $view === 'number' ? trim((string)($_GET['sender'] ?? '')) : '';
 $sender = $senderRaw !== '' ? normalize_originator($senderRaw) : null;
 $providerId = $view === 'route' ? (int)($_GET['provider_id'] ?? 0) : 0;
@@ -43,16 +45,22 @@ if ($providerId > 0) {
 }
 
 if (lazy_part_begin('report')) {
-    $counts = operator_report_counts(operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeIds, hidden_messages_apply_to_viewer(), $asOf);
+    $counts = operator_report_counts(['vip' => $vip] + operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeIds, hidden_messages_apply_to_viewer(), $asOf, $partsMap);
     $operators = operator_report_operator_order($counts);
+    // Every count has its SMS part total beside it (docs/message-parts.md): the same maps over $partsMap.
     $statusByOp = [];
     $derivedByOp = [];
+    $statusPartsByOp = [];
+    $derivedPartsByOp = [];
     foreach ($operators as $op) {
         $statusByOp[$op] = operator_report_statuses($counts[$op] ?? []);
         $derivedByOp[$op] = operator_report_derive($statusByOp[$op]);
+        $statusPartsByOp[$op] = operator_report_statuses($partsMap[$op] ?? []);
+        $derivedPartsByOp[$op] = operator_report_derive($statusPartsByOp[$op]);
     }
     $statusTotal = operator_report_statuses($statusByOp);
     $derivedTotal = operator_report_derive($statusTotal);
+    $derivedPartsTotal = operator_report_derive(operator_report_statuses($statusPartsByOp));
     $grandTotal = $derivedTotal['total_sent'];
     $opColor = [];
     foreach (array_values($operators) as $i => $op) $opColor[$op] = OPERATOR_REPORT_PALETTE[$i % count(OPERATOR_REPORT_PALETTE)];
@@ -63,15 +71,22 @@ if (lazy_part_begin('report')) {
     if ($asOf !== null): ?>
 <p class="hint op-asof">آمار هر چند دقیقه به‌روز می‌شود؛ آخرین به‌روزرسانی: <span class="num"><?= jdate_from_utc($asOf) ?></span></p>
 <?php endif;
+    if (operator_report_parts_incomplete($from, $to)): ?>
+<p class="hint op-parts-note">برای بعضی روزهای این بازه تعداد پارت در دسترس نیست (پیام‌های آن روزها پیش از ثبت تعداد پارت بایگانی شده‌اند)؛ ستون‌های پارت پیام‌های آن روزها را شامل نمی‌شوند. تعداد پیام‌ها کامل است.</p>
+<?php endif;
 
     if ($view === 'all'):
         // Messages that went out, per encoding, per operator (in queue / cancelled never reached it).
         $encByOp = [];
+        $encPartsByOp = [];
         $encTotal = array_fill_keys(array_keys(OPERATOR_REPORT_ENCODINGS), 0);
+        $encPartsTotal = $encTotal;
         foreach ($operators as $op) {
             foreach (array_keys(OPERATOR_REPORT_ENCODINGS) as $enc) {
                 $encByOp[$op][$enc] = operator_report_derive($counts[$op][$enc] ?? [])['total_sent'];
+                $encPartsByOp[$op][$enc] = operator_report_derive($partsMap[$op][$enc] ?? [])['total_sent'];
                 $encTotal[$enc] += $encByOp[$op][$enc];
+                $encPartsTotal[$enc] += $encPartsByOp[$op][$enc];
             }
         }
         $encodings = array_keys(OPERATOR_REPORT_ENCODINGS);
@@ -85,11 +100,11 @@ if (lazy_part_begin('report')) {
         'label' => $op === OPERATOR_REPORT_UNKNOWN ? 'نامشخص' : $op, 'value' => $derivedByOp[$op]['total_sent'], 'color' => $opColor[$op],
     ], $operators), 'میزان ارسال هر اپراتور') ?>
     <div class="table-wrap"><table class="op-table">
-      <tr><th>اپراتور</th><th>تعداد پیام‌های ارسالی</th><th>سهم</th></tr>
+      <tr><th>اپراتور</th><th>تعداد پیام‌های ارسالی</th><th>تعداد پارت</th><th>سهم</th></tr>
       <?php foreach ($operators as $op): ?>
-      <tr><td><?= $opCell($op) ?></td><td class="num"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td><td class="num"><?= to_persian_digits((string)operator_report_percent($derivedByOp[$op]['total_sent'], $grandTotal)) ?>٪</td></tr>
+      <tr><td><?= $opCell($op) ?></td><td class="num"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td><td class="num"><?= operator_report_num($derivedPartsByOp[$op]['total_sent']) ?></td><td class="num"><?= to_persian_digits((string)operator_report_percent($derivedByOp[$op]['total_sent'], $grandTotal)) ?>٪</td></tr>
       <?php endforeach; ?>
-      <tr class="op-total"><td>جمع کل</td><td class="num"><?= operator_report_num($grandTotal) ?></td><td class="num"><?= $grandTotal > 0 ? '۱۰۰٪' : '۰٪' ?></td></tr>
+      <tr class="op-total"><td>جمع کل</td><td class="num"><?= operator_report_num($grandTotal) ?></td><td class="num"><?= operator_report_num($derivedPartsTotal['total_sent']) ?></td><td class="num"><?= $grandTotal > 0 ? '۱۰۰٪' : '۰٪' ?></td></tr>
     </table></div>
   </div>
 </div>
@@ -107,11 +122,11 @@ if (lazy_part_begin('report')) {
   </div>
   <?php endif; ?>
   <div class="table-wrap"><table class="op-table">
-    <tr><th>اپراتور</th><?php foreach ($encodings as $enc): ?><th><?= e(OPERATOR_REPORT_ENCODINGS[$enc]) ?></th><?php endforeach; ?><th>همه</th></tr>
+    <tr><th>اپراتور</th><?php foreach ($encodings as $enc): ?><th><?= e(OPERATOR_REPORT_ENCODINGS[$enc]) ?></th><th>پارت <?= e(OPERATOR_REPORT_ENCODINGS[$enc]) ?></th><?php endforeach; ?><th>همه</th><th>پارت همه</th></tr>
     <?php foreach ($operators as $op): ?>
-    <tr><td><?= $opCell($op) ?></td><?php foreach ($encodings as $enc): ?><td class="num"><?= operator_report_num($encByOp[$op][$enc]) ?></td><?php endforeach; ?><td class="num"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td></tr>
+    <tr><td><?= $opCell($op) ?></td><?php foreach ($encodings as $enc): ?><td class="num"><?= operator_report_num($encByOp[$op][$enc]) ?></td><td class="num"><?= operator_report_num($encPartsByOp[$op][$enc]) ?></td><?php endforeach; ?><td class="num"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td><td class="num"><?= operator_report_num($derivedPartsByOp[$op]['total_sent']) ?></td></tr>
     <?php endforeach; ?>
-    <tr class="op-total"><td>جمع کل</td><?php foreach ($encodings as $enc): ?><td class="num"><?= operator_report_num($encTotal[$enc]) ?></td><?php endforeach; ?><td class="num"><?= operator_report_num($grandTotal) ?></td></tr>
+    <tr class="op-total"><td>جمع کل</td><?php foreach ($encodings as $enc): ?><td class="num"><?= operator_report_num($encTotal[$enc]) ?></td><td class="num"><?= operator_report_num($encPartsTotal[$enc]) ?></td><?php endforeach; ?><td class="num"><?= operator_report_num($grandTotal) ?></td><td class="num"><?= operator_report_num($derivedPartsTotal['total_sent']) ?></td></tr>
   </table></div>
 </div>
 <?php
@@ -141,41 +156,46 @@ if (lazy_part_begin('report')) {
       <th><?= e(OPERATOR_REPORT_STATUSES['queued']) ?></th>
       <th title="ارسال‌شده‌هایی که هنوز گزارش تحویل ندارند"><?= e(OPERATOR_REPORT_STATUSES['sent']) ?></th>
       <th class="op-key" title="همه‌ی پیام‌هایی که به اپراتور ارسال شده‌اند">مجموع ارسال‌شده</th>
+      <th class="op-key" title="تعداد پارت پیامک‌های «مجموع ارسال‌شده»">پارت ارسال‌شده</th>
       <th title="فقط پیام‌هایی که تحویلشان تأیید شده"><?= e(OPERATOR_REPORT_STATUSES['delivered']) ?></th>
       <th class="op-key" title="تحویل‌شده + ارسال‌شده‌ی بدون گزارش">مجموع تحویل گرفته‌شده</th>
-      <?php foreach (['undelivered', 'expired', 'rejected', 'cancelled', 'unknown'] as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
+      <th class="op-key" title="تعداد پارت پیامک‌های «مجموع تحویل گرفته‌شده»">پارت تحویل گرفته‌شده</th>
+      <?php foreach (OPERATOR_REPORT_TAIL_STATUSES as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
     </tr>
     <?php
-    $statusRow = static function (string $label, array $s, array $d, bool $total = false): string {
+    // $d / $pd: the two key totals in messages and in SMS parts.
+    $statusRow = static function (string $label, array $s, array $d, array $pd, bool $total = false): string {
         $cells = '<td class="num">' . operator_report_num($s['queued']) . '</td>'
             . '<td class="num">' . operator_report_num($s['sent']) . '</td>'
             . '<td class="num op-key">' . operator_report_num($d['total_sent']) . '</td>'
+            . '<td class="num op-key">' . operator_report_num($pd['total_sent']) . '</td>'
             . '<td class="num">' . operator_report_num($s['delivered']) . '</td>'
-            . '<td class="num op-key">' . operator_report_num($d['received']) . '</td>';
-        foreach (['undelivered', 'expired', 'rejected', 'cancelled', 'unknown'] as $st) $cells .= '<td class="num">' . operator_report_num($s[$st]) . '</td>';
+            . '<td class="num op-key">' . operator_report_num($d['received']) . '</td>'
+            . '<td class="num op-key">' . operator_report_num($pd['received']) . '</td>';
+        foreach (OPERATOR_REPORT_TAIL_STATUSES as $st) $cells .= '<td class="num">' . operator_report_num($s[$st]) . '</td>';
         return '<tr' . ($total ? ' class="op-total"' : '') . '><td>' . $label . '</td>' . $cells . '</tr>';
     };
-    foreach ($operators as $op) echo $statusRow($opCell($op), $statusByOp[$op], $derivedByOp[$op]);
-    echo $statusRow('جمع کل', $statusTotal, $derivedTotal, true);
+    foreach ($operators as $op) echo $statusRow($opCell($op), $statusByOp[$op], $derivedByOp[$op], $derivedPartsByOp[$op]);
+    echo $statusRow('جمع کل', $statusTotal, $derivedTotal, $derivedPartsTotal, true);
     ?>
   </table></div>
-  <p class="hint op-note"><span class="op-key-chip"></span> ستون‌های رنگی همان دو ستونی‌اند که مشتری در پنل خود می‌بیند: «مجموع ارسال‌شده» همه‌ی پیام‌های رفته به اپراتور است و «مجموع تحویل گرفته‌شده» تحویل‌شده‌ها به‌علاوه‌ی ارسال‌شده‌هایی که هنوز گزارش تحویل ندارند. ستون «ارسال‌شده» فقط پیام‌هایی را نشان می‌دهد که در وضعیت ارسال مانده‌اند و «تحویل گرفته‌شده» فقط تحویل‌های تأییدشده را.</p>
+  <p class="hint op-note"><span class="op-key-chip"></span> ستون‌های رنگی همان ستون‌هایی‌اند که مشتری در پنل خود می‌بیند: «مجموع ارسال‌شده» همه‌ی پیام‌های رفته به اپراتور است و «مجموع تحویل گرفته‌شده» تحویل‌شده‌ها به‌علاوه‌ی ارسال‌شده‌هایی که هنوز گزارش تحویل ندارند؛ ستون «پارت» کنار هر کدام، تعداد پارت پیامک‌های همان ستون است. ستون «ارسال‌شده» فقط پیام‌هایی را نشان می‌دهد که در وضعیت ارسال مانده‌اند و «تحویل گرفته‌شده» فقط تحویل‌های تأییدشده را. «لیست سیاه»: پاسخ لیست سیاه مخابرات و گیرندگانی که با ۱۱ لغو عضویت کرده‌اند؛ «فرستنده نامعتبر»: رد به‌دلیل شماره‌ی فرستنده (جزئیات در «گزارش وضعیت‌ها»).</p>
 
   <?php if ($view === 'all' && $withData): ?>
   <h3 class="op-sub">جزئیات هر اپراتور به تفکیک زبان پیام</h3>
   <?php foreach ($withData as $op): ?>
   <details class="op-detail">
-    <summary><?= $opCell($op) ?> <span class="hint">— <?= operator_report_num($derivedByOp[$op]['total_sent']) ?> پیام ارسالی</span></summary>
+    <summary><?= $opCell($op) ?> <span class="hint">— <?= operator_report_num($derivedByOp[$op]['total_sent']) ?> پیام ارسالی · <?= operator_report_num($derivedPartsByOp[$op]['total_sent']) ?> پارت</span></summary>
     <div class="table-wrap"><table class="op-table op-status-table">
       <tr>
-        <th>زبان پیام</th><th><?= e(OPERATOR_REPORT_STATUSES['queued']) ?></th><th><?= e(OPERATOR_REPORT_STATUSES['sent']) ?></th><th class="op-key">مجموع ارسال‌شده</th>
-        <th><?= e(OPERATOR_REPORT_STATUSES['delivered']) ?></th><th class="op-key">مجموع تحویل گرفته‌شده</th>
-        <?php foreach (['undelivered', 'expired', 'rejected', 'cancelled', 'unknown'] as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
+        <th>زبان پیام</th><th><?= e(OPERATOR_REPORT_STATUSES['queued']) ?></th><th><?= e(OPERATOR_REPORT_STATUSES['sent']) ?></th><th class="op-key">مجموع ارسال‌شده</th><th class="op-key">پارت ارسال‌شده</th>
+        <th><?= e(OPERATOR_REPORT_STATUSES['delivered']) ?></th><th class="op-key">مجموع تحویل گرفته‌شده</th><th class="op-key">پارت تحویل گرفته‌شده</th>
+        <?php foreach (OPERATOR_REPORT_TAIL_STATUSES as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
       </tr>
       <?php foreach (array_keys(OPERATOR_REPORT_ENCODINGS) as $enc):
           if (!isset($counts[$op][$enc])) continue;
           $s = array_merge(array_fill_keys(array_keys(OPERATOR_REPORT_STATUSES), 0), $counts[$op][$enc]);
-          echo $statusRow(e(OPERATOR_REPORT_ENCODINGS[$enc]), $s, operator_report_derive($s));
+          echo $statusRow(e(OPERATOR_REPORT_ENCODINGS[$enc]), $s, operator_report_derive($s), operator_report_derive($partsMap[$op][$enc] ?? []));
       endforeach; ?>
     </table></div>
   </details>
@@ -184,11 +204,11 @@ if (lazy_part_begin('report')) {
 
   <?php else: ?>
   <div class="table-wrap"><table class="op-table op-status-table">
-    <tr><th>اپراتور</th><th class="op-key">مجموع ارسال‌شده</th><?php if ($showDelivery): ?><th class="op-key">تحویل گرفته‌شده</th><?php endif; ?></tr>
+    <tr><th>اپراتور</th><th class="op-key">مجموع ارسال‌شده</th><th class="op-key">تعداد پارت</th><?php if ($showDelivery): ?><th class="op-key">تحویل گرفته‌شده</th><th class="op-key">تعداد پارت</th><?php endif; ?></tr>
     <?php foreach ($operators as $op): ?>
-    <tr><td><?= $opCell($op) ?></td><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td><?php if ($showDelivery): ?><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['received']) ?></td><?php endif; ?></tr>
+    <tr><td><?= $opCell($op) ?></td><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['total_sent']) ?></td><td class="num op-key"><?= operator_report_num($derivedPartsByOp[$op]['total_sent']) ?></td><?php if ($showDelivery): ?><td class="num op-key"><?= operator_report_num($derivedByOp[$op]['received']) ?></td><td class="num op-key"><?= operator_report_num($derivedPartsByOp[$op]['received']) ?></td><?php endif; ?></tr>
     <?php endforeach; ?>
-    <tr class="op-total"><td>جمع کل</td><td class="num op-key"><?= operator_report_num($derivedTotal['total_sent']) ?></td><?php if ($showDelivery): ?><td class="num op-key"><?= operator_report_num($derivedTotal['received']) ?></td><?php endif; ?></tr>
+    <tr class="op-total"><td>جمع کل</td><td class="num op-key"><?= operator_report_num($derivedTotal['total_sent']) ?></td><td class="num op-key"><?= operator_report_num($derivedPartsTotal['total_sent']) ?></td><?php if ($showDelivery): ?><td class="num op-key"><?= operator_report_num($derivedTotal['received']) ?></td><td class="num op-key"><?= operator_report_num($derivedPartsTotal['received']) ?></td><?php endif; ?></tr>
   </table></div>
   <?php endif; ?>
 </div>
@@ -216,7 +236,7 @@ require __DIR__ . '/../app/views/header.php';
       'route'  => ['بر اساس تأمین‌کننده', $admin],
   ], static fn(array $v): bool => $v[1]) as $key => [$label]): ?>
     <?php if ($key === $view): ?><span class="btn btn-primary" aria-current="page"><?= e($label) ?></span>
-    <?php else: ?><a class="btn btn-ghost" href="/operator-reports.php?<?= e(http_build_query(array_filter(['view' => $key === 'all' ? null : $key, 'user_id' => $userId ?: null]))) ?>"><?= e($label) ?></a><?php endif; ?>
+    <?php else: ?><a class="btn btn-ghost" href="/operator-reports.php?<?= e(http_build_query(array_filter(['view' => $key === 'all' ? null : $key, 'user_id' => $userId ?: null, 'vip' => $vip ?: null]))) ?>"><?= e($label) ?></a><?php endif; ?>
   <?php endforeach; ?>
 </div>
 
@@ -226,9 +246,10 @@ require __DIR__ . '/../app/views/header.php';
     <?php if ($admin): ?>
       <label>نام مشتری
         <select name="user_id"><option value="0">همه</option>
-          <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>" <?= $userId === (int)$u['id'] ? 'selected' : '' ?>><?= e($u['username']) ?></option><?php endforeach; ?>
+          <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>" <?= $userId === (int)$u['id'] ? 'selected' : '' ?>><?= e((vip_is((int)$u['id']) ? '★ ' : '') . $u['username']) ?></option><?php endforeach; ?>
         </select>
       </label>
+      <?= vip_filter_select($vip) ?>
     <?php endif; ?>
     <?php if ($view === 'number'): ?>
       <label>شماره

@@ -651,6 +651,9 @@ require __DIR__ . '/../app/views/header.php';
       <label style="display:block">نگاشت خطا (JSON)
         <textarea name="error_mapping_json" rows="3" class="ltr" style="width:100%"><?= e((string)($connectorRow['error_mapping_json'] ?? '')) ?></textarea>
       </label>
+      <p class="muted">کد خطای ارائه‌دهنده ← یکی از کلاس‌های <span class="ltr"><?= e(implode('، ', GATEWAY_ERROR_CLASSES)) ?></span>.
+        <span class="ltr">BackendInvalidSender</span> و <span class="ltr">BackendBlacklisted</span> در «گزارش وضعیت‌ها» زیر «شماره فرستنده نامعتبر» و «لیست سیاه» شمرده می‌شوند؛
+        مثال: <span class="ltr">{"13": "BackendInvalidSender", "27": "BackendBlacklisted"}</span></p>
       <label style="display:block">نگاشت پاسخ دسته‌ای (JSON)
         <textarea name="batch_mapping_json" rows="3" class="ltr" style="width:100%"><?= e((string)($connectorRow['batch_mapping_json'] ?? '')) ?></textarea>
       </label>
@@ -712,7 +715,9 @@ require __DIR__ . '/../app/views/header.php';
         <label>حداکثر تعداد استعلام <input type="number" name="poll_max_attempts" class="ltr" value="<?= (int)($connectorRow['poll_max_attempts'] ?? 6) ?>"></label>
         <label>حداکثر عمر پیام (ثانیه) <input type="number" name="poll_max_age_seconds" class="ltr" value="<?= (int)($connectorRow['poll_max_age_seconds'] ?? 86400) ?>"></label>
       </div>
-      <p class="muted">وضعیت نگاشت‌نشده همیشه «نامشخص» می‌شود و هرگز «تحویل‌شده» در نظر گرفته نمی‌شود.</p>
+      <p class="muted">وضعیت نگاشت‌نشده همیشه «نامشخص» می‌شود و هرگز «تحویل‌شده» در نظر گرفته نمی‌شود.
+        وضعیت‌های مجاز: <span class="ltr"><?= e(implode('، ', GATEWAY_DELIVERY_STATES)) ?></span>؛ <span class="ltr">blacklisted</span> (لیست سیاه مخابرات) مثل «رد شده» ثبت می‌شود
+        و در «گزارش وضعیت‌ها» زیر «لیست سیاه» می‌آید — مثال: <span class="ltr">{"11": "blacklisted"}</span></p>
     <?php endif; ?>
 
     <button class="btn btn-primary">ذخیره‌ی کانکتور</button>

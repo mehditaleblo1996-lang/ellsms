@@ -156,9 +156,13 @@ where JSONPath implementations grow evaluation engines.
 
 **Error mapping** — a provider error code to one of the **finite** internal error classes
 (`BackendUnavailable`, `BackendTimeout`, `BackendUnauthorized`, `BackendRejected`, `BackendConflict`,
-`BackendInvalidResponse`, `BackendPermanentFailure`). Configuration can select from that set and
-cannot extend it, because that set is what decides whether the worker retries — and "retryable"
-written into a config field is how a permanent auth failure becomes an infinite retry storm.
+`BackendInvalidResponse`, `BackendPermanentFailure`, `BackendInvalidSender`, `BackendBlacklisted`).
+Configuration can select from that set and cannot extend it, because that set is what decides whether
+the worker retries — and "retryable" written into a config field is how a permanent auth failure
+becomes an infinite retry storm. `BackendInvalidSender` (the sender line was refused) and
+`BackendBlacklisted` (the recipient is on the operator's blacklist) are permanent like
+`BackendRejected`; they exist so the status report shows such refusals under «شماره فرستنده نامعتبر»
+and «لیست سیاه» (`docs/status-report.md`), e.g. `{"13": "BackendInvalidSender", "27": "BackendBlacklisted"}`.
 
 Anything unmapped falls back to the same status-code rules `backend_api_request()` has always used,
 which is why the migrated legacy gateway classifies failures identically.
@@ -291,6 +295,11 @@ Bounded by construction:
   guard is enforced twice — in PHP and again in the `UPDATE`'s `WHERE`.
 - **An unmapped provider status becomes `unknown`, never `delivered`.** Reporting an undelivered
   message as delivered is the one error here with real-world consequences.
+- **`blacklisted` is a mapping target, stored as `rejected`.** A status mapping may send a provider
+  token to `blacklisted` (the operator refused the recipient as blacklisted, e.g. `{"11": "blacklisted"}`).
+  `gateway_status_record()` stores it as `rejected`, so it is terminal and billing, delivery refunds,
+  webhooks and DLR forwarding treat it as the rejection it is; the raw token stays in `provider_status`
+  and the status report reads it back through the same mapping (`docs/status-report.md`).
 - Three limits stop a provider that never returns a terminal state from being polled forever:
   `poll_initial_delay_seconds`, `poll_max_attempts`, `poll_max_age_seconds`.
 

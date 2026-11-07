@@ -31,8 +31,8 @@ $status = $_GET['status'] ?? '';
 $dest   = trim($_GET['dest'] ?? '');
 $text   = trim($_GET['q'] ?? '');
 $userId = is_admin() ? (int)($_GET['user_id'] ?? 0) : 0;
-$per    = (int)($_GET['per_page'] ?? 50);
-if (!in_array($per, [25, 50, 100, 200], true)) $per = 50;
+$per    = (int)($_GET['per_page'] ?? 100);
+if (!in_array($per, [25, 50, 100, 200], true)) $per = 100;
 
 // Delivery states (تحویل‌شده / تحویل نشده, delivery checks) only for admins and customers on
 // delivery-based billing (delivery_status_visible()); anyone else sees a message as sent or failed.
@@ -94,29 +94,37 @@ $statusFa = ['sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','f
 $statusClass = ['sent'=>'success','delivered'=>'success','failed'=>'error','pending'=>'pending'];
 
 if (lazy_part_begin('summary')) {
+    // Every count with its SMS part total beside it (docs/message-parts.md).
+    $partsSql = message_parts_sql('ellsms_bulk_items', 'bi', 'bi.content');
     $summarySql = "SELECT
         COUNT(*) AS total,
         SUM(({$canonicalStatusSql}) IN ('sent','delivered')) AS ok_count,
         SUM(({$canonicalStatusSql}) = 'delivered') AS delivered_count,
         SUM(({$canonicalStatusSql}) = 'failed') AS failed_count,
-        SUM(({$canonicalStatusSql}) = 'pending') AS pending_count
+        SUM(({$canonicalStatusSql}) = 'pending') AS pending_count,
+        SUM({$partsSql}) AS total_parts,
+        SUM(IF(({$canonicalStatusSql}) IN ('sent','delivered'), {$partsSql}, 0)) AS ok_parts,
+        SUM(IF(({$canonicalStatusSql}) = 'delivered', {$partsSql}, 0)) AS delivered_parts,
+        SUM(IF(({$canonicalStatusSql}) = 'failed', {$partsSql}, 0)) AS failed_parts,
+        SUM(IF(({$canonicalStatusSql}) = 'pending', {$partsSql}, 0)) AS pending_parts
     FROM ellsms_bulk_items bi
     JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
     WHERE {$W}";
     $summarySt = db()->prepare($summarySql);
     $summarySt->execute($params);
-    $S = $summarySt->fetch() ?: ['total'=>0,'ok_count'=>0,'delivered_count'=>0,'failed_count'=>0,'pending_count'=>0];
-    $cnt = (int)$S['total'];
+    $S = $summarySt->fetch() ?: [];
+    $cnt = (int)($S['total'] ?? 0);
+    $fa = static fn(string $k): string => to_persian_digits(number_format((int)($S[$k] ?? 0)));
 
     ?>
 <div class="grid grid-4">
-  <div class="stat"><div class="stat-label">تعداد پیام‌های حجیم</div><div class="stat-value"><?= to_persian_digits(number_format($cnt)) ?></div></div>
-  <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال‌شده / تحویل‌شده' : 'ارسال‌شده' ?></div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['ok_count'])) ?></div></div>
-  <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['failed_count'])) ?></div></div>
+  <div class="stat"><div class="stat-label">تعداد پیام‌های حجیم</div><div class="stat-value"><?= to_persian_digits(number_format($cnt)) ?></div><div class="stat-meta"><?= $fa('total_parts') ?> پارت</div></div>
+  <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال‌شده / تحویل‌شده' : 'ارسال‌شده' ?></div><div class="stat-value"><?= $fa('ok_count') ?></div><div class="stat-meta"><?= $fa('ok_parts') ?> پارت</div></div>
+  <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= $fa('failed_count') ?></div><div class="stat-meta"><?= $fa('failed_parts') ?> پارت</div></div>
   <?php if ($showDelivery): ?>
-  <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['delivered_count'])) ?></div></div>
+  <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= $fa('delivered_count') ?></div><div class="stat-meta"><?= $fa('delivered_parts') ?> پارت</div></div>
   <?php else: ?>
-  <div class="stat"><div class="stat-label">در انتظار ارسال</div><div class="stat-value"><?= to_persian_digits(number_format((int)$S['pending_count'])) ?></div></div>
+  <div class="stat"><div class="stat-label">در انتظار ارسال</div><div class="stat-value"><?= $fa('pending_count') ?></div><div class="stat-meta"><?= $fa('pending_parts') ?> پارت</div></div>
   <?php endif; ?>
 </div>
 
@@ -152,7 +160,7 @@ if (lazy_part_begin('breakdown')) {
   <h2>تفکیک بر اساس نوع پیام، ارائه‌دهنده و اپراتور</h2>
   <p class="muted">داده‌ی از پیش تجمیع‌شده‌ی روزانه (issue #12) — بدون اسکن مستقیم پیام‌ها.</p>
   <div class="table-wrap"><table>
-    <tr><th>نوع پیام</th><th>خط ارسال‌کننده</th><th>ارائه‌دهنده</th><th>اپراتور مقصد</th><th>وضعیت</th><th>تعداد</th></tr>
+    <tr><th>نوع پیام</th><th>خط ارسال‌کننده</th><th>ارائه‌دهنده</th><th>اپراتور مقصد</th><th>وضعیت</th><th>تعداد</th><th>تعداد پارت</th></tr>
     <?php foreach ($dimensionBreakdown as $d): if (!$showDelivery && $d['status'] === 'delivered') $d['status'] = 'sent'; ?>
     <tr>
       <td><?= e((string)$d['message_type']) ?></td>
@@ -161,6 +169,7 @@ if (lazy_part_begin('breakdown')) {
       <td><?= (int)$d['operator_id'] === 0 ? 'نامشخص' : operator_label($names['operators'][(int)$d['operator_id']] ?? null, $names['operators'][(int)$d['operator_id']] ?? ('#' . (int)$d['operator_id'])) ?></td>
       <td><span class="badge badge-<?= $statusClass[$d['status']] ?? 'pending' ?>"><?= e($statusFa[$d['status']] ?? (string)$d['status']) ?></span></td>
       <td class="ltr"><?= to_persian_digits(number_format((int)$d['message_count'])) ?></td>
+      <td class="ltr"><?= $d['part_count'] !== null ? to_persian_digits(number_format((int)$d['part_count'])) : '—' ?></td>
     </tr>
     <?php endforeach; ?>
   </table></div>
@@ -182,7 +191,7 @@ if (lazy_part_begin('rows')) {
         bi.gateway_id, bi.provider_message_id, bi.delivery_status, bi.delivery_attempts,
         bi.delivery_checked_at, bi.created_at, bi.route_id, bi.operator_id,
         bj.user_id, bj.organization_id, bj.originator, bj.source_import_job_id, " . bulk_job_masked_sql('bj') . " AS recipients_masked,
-        {$canonicalStatusSql} AS canonical_status
+        {$canonicalStatusSql} AS canonical_status, " . message_parts_sql('ellsms_bulk_items', 'bi', 'bi.content') . " AS parts
     FROM ellsms_bulk_items bi
     JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
     WHERE {$W}
@@ -195,7 +204,7 @@ if (lazy_part_begin('rows')) {
 
     ?>
   <div class="table-wrap"><table data-cards>
-    <tr><th>#</th><th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن</th><th>وضعیت</th><th>مرجع اپراتور</th><?php if ($showDelivery): ?><th>استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
+    <tr><th>#</th><th>Job</th><?php if (is_admin()): ?><th>کاربر</th><?php endif; ?><th>خط ارسال</th><th>گیرنده</th><th>متن</th><th>تعداد پارت</th><th>وضعیت</th><th>مرجع اپراتور</th><?php if ($showDelivery): ?><th>استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
     <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
@@ -204,6 +213,7 @@ if (lazy_part_begin('rows')) {
         <td class="msisdn"><?= e((string)$r['originator']) ?></td>
         <td class="msisdn"><?= e(bulk_recipient_display((string)$r['destination'], !empty($r['recipients_masked']))) ?></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,60,'…')) ?></td>
+        <td class="num"><?= to_persian_digits((string)(int)$r['parts']) ?></td>
         <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
         <td class="num ltr"><?= $r['provider_message_id'] !== null && $r['provider_message_id'] !== '' ? e((string)$r['provider_message_id']) : '—' ?></td>
         <?php if ($showDelivery): ?><td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td><?php endif; ?>
@@ -211,7 +221,7 @@ if (lazy_part_begin('rows')) {
         <?php if ($showDelivery): ?><td class="num"><?= !empty($r['delivery_checked_at']) ? bulk_report_jdate((string)$r['delivery_checked_at']) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= (is_admin() ? 11 : 10) - ($showDelivery ? 0 : 2) ?>" class="empty-cell"><?= panel_empty_state('هیچ پیام حجیمی با این فیلترها یافت نشد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= (is_admin() ? 12 : 11) - ($showDelivery ? 0 : 2) ?>" class="empty-cell"><?= panel_empty_state('هیچ پیام حجیمی با این فیلترها یافت نشد', 'بازه‌ی زمانی یا فیلترها را تغییر دهید.', null, 'search') ?></td></tr><?php endif; ?>
   </table></div>
 
   <?= pager_links($page, pager_pages($cnt, $per), array_filter(array_diff_key($_GET, ['before_bulk_id' => 1, 'after_bulk_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $cnt) ?>

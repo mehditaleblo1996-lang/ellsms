@@ -287,6 +287,10 @@ function bulk_archive_restore(array $actor, int $runId, ?int $jobId = null): arr
             if ($payload === []) {
                 continue;
             }
+            // Archived before items stored their part count (app/MessageParts.php): count it now.
+            if (isset($liveColumns['parts']) && !isset($payload['parts']) && isset($payload['content'])) {
+                $payload['parts'] = sms_parts((string)$payload['content']);
+            }
             $cols = array_keys($payload);
             $placeholders = implode(',', array_fill(0, count($cols), '?'));
             $colList = implode(',', $cols);

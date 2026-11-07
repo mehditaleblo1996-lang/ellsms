@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save', 'vip_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -168,6 +168,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ? ($result['reason'] === 'unchanged' ? 'تغییری در تنظیمات ارسال بر اساس تحویل نبود.'
                     : ($enabled ? 'ارسال بر اساس تحویل فعال شد؛ از همین لحظه برای پیام‌های جدید اعمال می‌شود.' : 'ارسال بر اساس تحویل غیرفعال شد.'))
                 : delivery_billing_error_message((string)$result['reason']));
+        } elseif ($do === 'vip_save') {
+            // «مشتری ویژه» (app/VipCustomers.php): admin-only, never shown to the customer.
+            $vip = !empty($_POST['is_vip']);
+            if (!vip_available()) {
+                flash('error', 'برای علامت‌گذاری مشتری ویژه ابتدا مهاجرت 2026_11_12_vip_customers.sql را اجرا کنید.');
+            } elseif (vip_set($id, $vip, (int)$me['id'])) {
+                flash('success', $vip ? 'این کاربر به‌عنوان «مشتری ویژه» علامت خورد.' : 'این کاربر از مشتریان ویژه خارج شد.');
+            } else {
+                flash('info', 'تغییری در «مشتری ویژه» نبود.');
+            }
         } elseif ($do === 'menu_save') {
             $roleId = (int)($_POST['menu_role_id'] ?? 0) ?: null;
             $result = menu_user_access_save($id, $roleId, (array)($_POST['menu_override'] ?? []), null, (int)$me['id']);
@@ -239,6 +249,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         : ['ok' => false, 'reason' => 'invalid_organization'];
                 });
                 audit((int)$me['id'], 'user.create_account', $username . ' type=' . $identity['account_type']);
+                if (!empty($_POST['is_vip'])) {
+                    vip_set($newUserId, true, (int)$me['id']); // «مشتری ویژه» ticked on the create form
+                }
                 if ($profileResult['ok']) {
                     flash('success', 'حساب «' . $username . '» ساخته شد و دسترسی داتیس رایان گستر ایرانیان نیز فعال شد.');
                 } else {
@@ -375,7 +388,7 @@ if (!empty($_GET['edit'])) {
 // the identity/message repositories and merged in PHP, instead of one query joining across the
 // ownership boundary.
 $metaRows = db()->query(
-    "SELECT m.user_id, m.panel_access, m.is_admin, m.originator, m.twofa_enabled
+    "SELECT m.user_id, m.panel_access, m.is_admin, m.originator, m.twofa_enabled" . (vip_available() ? ', m.is_vip' : ', 0 AS is_vip') . "
      FROM ellsms_meta m WHERE m.panel_access = 1"
 )->fetchAll();
 $userIds = array_column($metaRows, 'user_id');
@@ -440,6 +453,10 @@ foreach ($metaRows as $meta) {
     ]);
 }
 usort($panelUsers, static fn($a, $b) => ((int)$b['is_admin'] <=> (int)$a['is_admin']) ?: ($a['username'] <=> $b['username']));
+// «مشتری ویژه» (app/VipCustomers.php): the list can show VIP customers only.
+$vipCount = count(array_filter($panelUsers, static fn(array $u): bool => (int)$u['is_vip'] === 1));
+$vipOnly = vip_available() && ($_GET['vip'] ?? '') === '1';
+$listedUsers = $vipOnly ? array_values(array_filter($panelUsers, static fn(array $u): bool => (int)$u['is_vip'] === 1)) : $panelUsers;
 
 $domains = backend_list_domains();
 
@@ -450,7 +467,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <div class="card-head">
     <div>
-      <h2><?= e($editUser['username']) ?></h2>
+      <h2><?= e($editUser['username']) ?><?= vip_is((int)$editUser['id']) ? ' ' . vip_badge() : '' ?></h2>
       <p class="hint"><?= e(trim($editUser['first_name'] . ' ' . $editUser['last_name'])) ?></p>
     </div>
     <a class="btn btn-sm btn-ghost" href="/users.php">← بازگشت به فهرست</a>
@@ -476,6 +493,22 @@ require __DIR__ . '/../app/views/header.php';
       <div class="summary-label">ورود دومرحله‌ای</div>
       <div class="summary-value"><span class="badge badge-<?= $editUser['twofa_enabled'] ? 'ok' : 'off' ?>"><?= $editUser['twofa_enabled'] ? 'فعال' : 'غیرفعال' ?></span></div>
     </div>
+    <?php if (vip_available()): $editVip = vip_details((int)$editUser['id']); ?>
+    <div class="summary-item<?= $editVip ? ' summary-vip' : '' ?>">
+      <div class="summary-label">مشتری ویژه</div>
+      <form method="post" class="summary-value vip-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="do" value="vip_save">
+        <input type="hidden" name="id" value="<?= (int)$editUser['id'] ?>">
+        <input type="hidden" name="back" value="1">
+        <label class="check"><input type="checkbox" name="is_vip" value="1"<?= $editVip ? ' checked' : '' ?>> مشتری ویژه</label>
+        <button class="btn btn-sm">ثبت</button>
+      </form>
+      <?php if ($editVip && $editVip['marked_at'] !== null): ?>
+        <div class="hint">از <?= jdate_from_utc($editVip['marked_at']) ?><?php if ($editVip['marked_by'] !== null): ?> — <?= e(backend_usernames_by_ids([$editVip['marked_by']])[$editVip['marked_by']] ?? '#' . $editVip['marked_by']) ?><?php endif; ?></div>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
   </div>
 
   <div class="toolbar" style="margin:var(--sp-4) 0 0">
@@ -979,12 +1012,23 @@ if ($editOrganizationId > 0) {
     <input type="hidden" name="do" value="enable_2fa_all">
     <button class="btn btn-sm">فعال‌سازی ورود دومرحله‌ای برای همه</button>
   </form>
+  <?php if (vip_available()): ?>
+  <nav class="vip-filter" aria-label="نمایش مشتریان">
+    <?php if ($vipOnly): ?>
+      <a class="btn btn-sm btn-ghost" href="/users.php">همه‌ی حساب‌ها (<?= to_persian_digits((string)count($panelUsers)) ?>)</a>
+      <span class="btn btn-sm btn-primary" aria-current="page">★ مشتریان ویژه (<?= to_persian_digits((string)$vipCount) ?>)</span>
+    <?php else: ?>
+      <span class="btn btn-sm btn-primary" aria-current="page">همه‌ی حساب‌ها (<?= to_persian_digits((string)count($panelUsers)) ?>)</span>
+      <a class="btn btn-sm btn-ghost" href="/users.php?vip=1">★ مشتریان ویژه (<?= to_persian_digits((string)$vipCount) ?>)</a>
+    <?php endif; ?>
+  </nav>
+  <?php endif; ?>
   <div class="table-wrap">
   <table>
     <tr><th>نام کاربری</th><th>نام</th><th>نقش</th><th>نوع حساب</th><th>نوع مشتری</th><th>خط</th><th>اعتبار (ریال)</th><th>ارسال‌شده</th><th>۲مرحله‌ای</th><th>وضعیت</th><th></th></tr>
-    <?php foreach ($panelUsers as $u): ?>
-      <tr>
-        <td><?= e($u['username']) ?></td>
+    <?php foreach ($listedUsers as $u): ?>
+      <tr<?= (int)$u['is_vip'] === 1 ? ' class="row-vip"' : '' ?>>
+        <td><?= e($u['username']) ?><?= (int)$u['is_vip'] === 1 ? ' ' . vip_badge() : '' ?></td>
         <td><?= e(trim($u['first_name'] . ' ' . $u['last_name'])) ?></td>
         <td><span class="badge badge-<?= $u['is_admin'] ? 'admin' : 'user' ?>"><?= $u['is_admin'] ? 'مدیر' : 'کاربر' ?></span></td>
         <td>
@@ -1016,7 +1060,8 @@ if ($editOrganizationId > 0) {
         </td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$panelUsers): ?><tr><td colspan="11" class="empty">هنوز حسابی وجود ندارد — از تب «ساخت حساب تازه» یا «دسترسی به حساب موجود» شروع کنید.</td></tr><?php endif; ?>
+    <?php if (!$panelUsers): ?><tr><td colspan="11" class="empty">هنوز حسابی وجود ندارد — از تب «ساخت حساب تازه» یا «دسترسی به حساب موجود» شروع کنید.</td></tr>
+    <?php elseif (!$listedUsers): ?><tr><td colspan="11" class="empty">هنوز هیچ کاربری «مشتری ویژه» نشده است — از صفحه‌ی ویرایش هر کاربر تیک «مشتری ویژه» را بزنید.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>
@@ -1056,6 +1101,9 @@ if ($editOrganizationId > 0) {
           </select>
         </label>
         <label>سقف ارسال روزانه <input type="number" name="daily_limit" value="1000" min="1"></label>
+        <?php if (vip_available()): ?>
+        <label class="check vip-check"><input type="checkbox" name="is_vip" value="1"> مشتری ویژه <span class="hint">(فقط برای مدیران دیده می‌شود)</span></label>
+        <?php endif; ?>
       </div>
     </div>
     <div class="form-actions"><button class="btn btn-primary">ساخت حساب</button></div>

@@ -77,6 +77,92 @@ final class ReportDimensionSummaryTest extends IntegrationTestCase
         $this->assertSame('5300', $byKey['7:42:sent']['sender_number']);
     }
 
+    public function testEveryGroupCarriesItsSmsPartTotalThroughRebuildAndIncrement(): void {
+        $orgId = $this->makeOrganizationId();
+        $userId = $this->makeUser(['originator' => '5301']);
+        $jobId = $this->seedJob($userId, $orgId, '5301', 'advertising');
+        \db()->prepare('DELETE FROM ellsms_bulk_items WHERE job_id = ?')->execute([$jobId]);
+        $long = $this->seedTerminalItem($jobId, 'sent', 7, 42);
+        \db()->prepare('UPDATE ellsms_bulk_items SET content = ?, parts = NULL WHERE id = ?')->execute([str_repeat('س', 71), $long]); // 2 parts, from its text
+        $stored = $this->seedTerminalItem($jobId, 'sent', 7, 42);
+        \db()->prepare('UPDATE ellsms_bulk_items SET parts = 5 WHERE id = ?')->execute([$stored]); // the stored count wins
+
+        \report_dimension_summary_full_rebuild();
+        $partsOf = static fn(): int => (int)\db()->query(
+            "SELECT part_count FROM ellsms_report_daily_dimension_summary WHERE organization_id = {$orgId} AND route_id = 7 AND status = 'sent'"
+        )->fetchColumn();
+        $this->assertSame(7, $partsOf());
+
+        $this->seedTerminalItem($jobId, 'sent', 7, 42); // 'x': 1 part
+        \report_dimension_summary_incremental_chunk();
+        $this->assertSame(8, $partsOf(), 'an incremental step adds its parts to the group');
+        $rows = \report_dimension_summary_query('2000-01-01', '2100-01-01', ['organization_id' => $orgId]);
+        $this->assertSame(['message_count' => 3, 'part_count' => 8], ['message_count' => (int)$rows[0]['message_count'], 'part_count' => (int)$rows[0]['part_count']]);
+    }
+
+    /** A summary row as an earlier build (or a restored backup) left it. */
+    private function seedSummaryRow(string $day, int $orgId, string $sender, int $count): void {
+        \db()->prepare("INSERT INTO ellsms_report_daily_dimension_summary
+                            (period_date, organization_id, message_type, sender_number, route_id, operator_id, status, message_count, part_count, updated_at)
+                         VALUES (?, ?, 'advertising', ?, 0, 0, 'sent', ?, ?, NOW())")
+            ->execute([$day, $orgId, $sender, $count, $count]);
+    }
+
+    private function summaryCount(string $day, int $orgId, string $sender): ?int {
+        $st = \db()->prepare("SELECT message_count FROM ellsms_report_daily_dimension_summary WHERE period_date = ? AND organization_id = ? AND sender_number = ?");
+        $st->execute([$day, $orgId, $sender]);
+        $v = $st->fetchColumn();
+        return $v === false ? null : (int)$v;
+    }
+
+    public function testADayWhoseItemsAreGoneKeepsItsRows(): void {
+        // After an archive or a restore the items of a day are gone; the summary is the record.
+        \db()->prepare('UPDATE ellsms_report_dimension_summary_state SET rebuild_all = 0 WHERE id = 1')->execute();
+        $orgId = $this->makeOrganizationId();
+        $this->seedSummaryRow('2019-05-05', $orgId, '5310', 40);
+
+        $userId = $this->makeUser(['originator' => '5311']);
+        $jobId = $this->seedJob($userId, $orgId, '5311', 'advertising');
+        \db()->prepare('DELETE FROM ellsms_bulk_items WHERE job_id = ?')->execute([$jobId]);
+        $this->seedTerminalItem($jobId, 'sent', 2, 2);
+
+        $result = \report_dimension_summary_full_rebuild();
+        $this->assertSame(40, $this->summaryCount('2019-05-05', $orgId, '5310'), 'a day with no live items is left as it was');
+        $this->assertSame(1, $this->summaryCount(date('Y-m-d'), $orgId, '5311'), 'a day with live items is rebuilt');
+        $this->assertGreaterThanOrEqual(1, $result['days']);
+    }
+
+    public function testDaysBeforeAnArchiveCutoffAreFrozen(): void {
+        \db()->prepare('UPDATE ellsms_report_dimension_summary_state SET rebuild_all = 0 WHERE id = 1')->execute();
+        $orgId = $this->makeOrganizationId();
+        $userId = $this->makeUser(['originator' => '5312']);
+        $jobId = $this->seedJob($userId, $orgId, '5312', 'advertising');
+        \db()->prepare('DELETE FROM ellsms_bulk_items WHERE job_id = ?')->execute([$jobId]);
+        // A day an archive run is half way through: 3 messages counted, 1 item still live.
+        $this->seedSummaryRow('2019-06-01', $orgId, '5312', 3);
+        $item = $this->seedTerminalItem($jobId, 'sent');
+        \db()->prepare("UPDATE ellsms_bulk_items SET created_at = '2019-06-01 10:00:00' WHERE id = ?")->execute([$item]);
+        \db()->prepare("INSERT INTO ellsms_bulk_archive_runs (requested_by_user_id, cutoff_date, status, last_archived_item_id) VALUES (?, '2019-07-01', 'running', 1)")
+            ->execute([$userId]);
+
+        \report_dimension_summary_full_rebuild();
+        $this->assertSame(3, $this->summaryCount('2019-06-01', $orgId, '5312'), 'a day before the cutoff is not rebuilt from the items left');
+    }
+
+    public function testTheFirstRebuildAfterTheMigrationEmptiesTheTableOnce(): void {
+        $orgId = $this->makeOrganizationId();
+        $this->seedSummaryRow('2019-05-06', $orgId, '5313', 7); // e.g. a direct-send row mixed in before
+        \db()->prepare('UPDATE ellsms_report_dimension_summary_state SET rebuild_all = 1 WHERE id = 1')->execute();
+
+        \report_dimension_summary_full_rebuild();
+        $this->assertNull($this->summaryCount('2019-05-06', $orgId, '5313'));
+        $this->assertSame(0, (int)\db()->query('SELECT rebuild_all FROM ellsms_report_dimension_summary_state WHERE id = 1')->fetchColumn());
+
+        $this->seedSummaryRow('2019-05-06', $orgId, '5313', 7);
+        \report_dimension_summary_full_rebuild();
+        $this->assertSame(7, $this->summaryCount('2019-05-06', $orgId, '5313'), 'only once');
+    }
+
     public function testRerunningAFullRebuildIsIdempotentAndNeverDoubleCounts(): void {
         $orgId = $this->makeOrganizationId();
         $userId = $this->makeUser(['originator' => '5301']);

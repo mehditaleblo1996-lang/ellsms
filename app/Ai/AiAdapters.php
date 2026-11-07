@@ -92,6 +92,7 @@ function ai_error_label(string $code): string {
         'empty_response'       => 'ارائه‌دهنده پاسخ متنی برنگرداند.',
         'reasoning_exhausted'  => 'مدل همه‌ی توکن‌های خروجی را صرف استدلال کرد و به نوشتن پاسخ نرسید؛ «حداکثر خروجی» این مدل را بیشتر کنید (مثلاً ۸۰۰۰).',
         'refusal'              => 'مدل از پاسخ‌دادن خودداری کرد.',
+        'provider_out_of_credit' => 'اعتبار حساب ارائه‌دهنده تمام شده است؛ حساب ارائه‌دهنده را شارژ کنید.',
         'models_not_supported' => 'این سرور فهرست مدل‌ها را ارائه نمی‌کند؛ مدل را دستی اضافه کنید.',
         'secret_unavailable'   => 'کلید API ذخیره‌شده قابل رمزگشایی نیست (کلید اصلی تغییر کرده است).',
         default                => 'خطای نامشخص.',
@@ -112,6 +113,7 @@ function ai_scrub_secret(string $text, ?string $secret): string {
  */
 function ai_classify_http_error(int $status, ?array $json, string $rawBody, ?string $secret = null): array {
     $code = match (true) {
+        ai_error_is_out_of_credit($status, $json, $rawBody) => 'provider_out_of_credit',
         $status === 401 || $status === 403 => 'auth_failed',
         $status === 404                    => 'not_found',
         $status === 429                    => 'rate_limited',
@@ -136,6 +138,46 @@ function ai_classify_http_error(int $status, ?array $json, string $rawBody, ?str
     }
     $message = mb_strimwidth(ai_scrub_secret(preg_replace('/\s+/u', ' ', $message) ?? '', $secret), 0, 300, '…');
     return [$code, $message];
+}
+
+/** The provider error codes / types that mean "your account has no credit left". */
+const AI_OUT_OF_CREDIT_CODES = ['insufficient_quota', 'insufficient_credits', 'insufficient_credit', 'insufficient_balance',
+                                'insufficient_funds', 'billing_error', 'billing_hard_limit_reached', 'payment_required'];
+
+/**
+ * Pure: whether an HTTP error says the provider account ran out of credit — HTTP 402 (OpenRouter),
+ * an error code such as OpenAI's insufficient_quota (sent with 429), or a message such as
+ * Anthropic's "Your credit balance is too low" (sent with 400) or a Persian «موجودی کافی نیست».
+ * A plain rate limit is not one.
+ */
+function ai_error_is_out_of_credit(int $status, ?array $json, string $rawBody): bool {
+    if ($status === 402) return true;
+    $texts = [];
+    if (is_array($json)) {
+        $error = $json['error'] ?? null;
+        if (is_array($error)) {
+            foreach (['code', 'type'] as $k) {
+                if (is_string($error[$k] ?? null) && in_array(strtolower($error[$k]), AI_OUT_OF_CREDIT_CODES, true)) return true;
+            }
+            if (is_string($error['message'] ?? null)) $texts[] = $error['message'];
+        } elseif (is_string($error)) {
+            $texts[] = $error;
+        }
+        foreach (['code', 'type'] as $k) {
+            if (is_string($json[$k] ?? null) && in_array(strtolower($json[$k]), AI_OUT_OF_CREDIT_CODES, true)) return true;
+        }
+        foreach (['message', 'detail'] as $k) {
+            if (is_string($json[$k] ?? null)) $texts[] = $json[$k];
+        }
+    } else {
+        $texts[] = $rawBody;
+    }
+    $pattern = '/credit balance is too low|insufficient[ _](?:quota|credits?|balance|funds)|exceeded your current quota'
+        . '|out of credits?|not enough (?:credits?|balance)|(?:موجودی|اعتبار|شارژ)[^.\n]{0,25}(?:کافی نیست|ناکافی|کم است|تمام شده)/iu';
+    foreach ($texts as $text) {
+        if (preg_match($pattern, $text) === 1) return true;
+    }
+    return false;
 }
 
 /* ==========================================================================
@@ -575,6 +617,31 @@ function ai_parse_key_info(array $json): array {
             'remaining' => $num($d['limit_remaining'] ?? null), 'free_tier' => ($d['is_free_tier'] ?? false) === true];
 }
 
+/** Pure: OpenRouter's GET {base}/credits (the whole account's credit, in USD). */
+function ai_build_credits_request(array $cfg): array {
+    return ['method' => 'GET', 'url' => ai_join_url((string)$cfg['base_url'], 'credits'), 'headers' => ai_request_headers($cfg, false), 'body' => null];
+}
+
+/** Pure: OpenRouter's credits response -> what is left on the account (USD), or null when absent. */
+function ai_parse_credits(array $json): ?float {
+    $d = is_array($json['data'] ?? null) ? $json['data'] : [];
+    $total = $d['total_credits'] ?? null;
+    $used = $d['total_usage'] ?? null;
+    if (!(is_int($total) || is_float($total)) || !(is_int($used) || is_float($used))) return null;
+    return (float)$total - (float)$used;
+}
+
+/**
+ * Pure: the credit that is really left, from a key's info and the account's credits (either may be
+ * null): the smaller one, since a key with a limit can still run out when the account does.
+ */
+function ai_remaining_credit(?array $keyInfo, ?float $accountCredit): ?float {
+    $candidates = [];
+    if ($keyInfo !== null && $keyInfo['remaining'] !== null) $candidates[] = (float)$keyInfo['remaining'];
+    if ($accountCredit !== null) $candidates[] = $accountCredit;
+    return $candidates === [] ? null : max(0.0, min($candidates));
+}
+
 /* ==========================================================================
    Network
    ========================================================================== */
@@ -671,6 +738,15 @@ function ai_http_send(array $request, array $cfg): array {
     $json = json_decode($body, true);
     if ($status < 200 || $status > 299) {
         [$code, $message] = ai_classify_http_error($status, is_array($json) ? $json : null, $body, $secret);
+        if ($code === 'provider_out_of_credit' && isset($cfg['provider_id']) && function_exists('ai_balance_on_out_of_credit')) {
+            // The provider account is empty: alert now, not at the next balance check
+            // (app/Ai/AiBalance.php). Never lets the alert path change what the caller sees.
+            try {
+                ai_balance_on_out_of_credit((int)$cfg['provider_id'], $message);
+            } catch (Throwable $t) {
+                Logger::warning('ai.balance.out_of_credit_hook_failed', ['provider_id' => (int)$cfg['provider_id'], 'error' => $t->getMessage()]);
+            }
+        }
         throw new AiProviderException($code, $message !== '' ? ai_error_label($code) . ' — ' . $message : '', $status);
     }
     if (!is_array($json)) {
@@ -767,6 +843,21 @@ function ai_key_info(array $cfg): ?array {
     } catch (AiProviderException) {
         return null;
     }
+}
+
+/**
+ * The credit left on the provider account as the provider itself reports it (USD), or null when the
+ * provider type has no balance API (everything but OpenRouter) or it did not answer.
+ */
+function ai_provider_credit(array $cfg): ?float {
+    if (($cfg['type'] ?? '') !== 'openrouter') return null;
+    $key = ai_key_info($cfg);
+    try {
+        $account = ai_parse_credits(ai_http_send(ai_build_credits_request($cfg), $cfg)['json']);
+    } catch (AiProviderException) {
+        $account = null; // /credits may need a management key; the key's own limit still counts
+    }
+    return ai_remaining_credit($key, $account);
 }
 
 /** Pure: a one-line Persian summary of ai_key_info() for the connection test. */

@@ -8,7 +8,8 @@
  *
  * Views:
  *   providers (default)  provider list + «ارائه‌دهنده‌ی جدید»; with ?provider=ID its tabs:
- *                        settings (connection, API key, «تست اتصال», «تشخیص مدل‌ها»), models, history
+ *                        settings (connection, API key, «تست اتصال», «تشخیص مدل‌ها»), models, history,
+ *                        balance («موجودی و هشدار»: credit left, top-ups, alert thresholds)
  *   access               platform default model + which models each account may use
  *   playground           send one message to any model (or as an account) and see the reply
  *
@@ -25,7 +26,8 @@ if (!in_array($view, ['providers', 'access', 'pricing', 'usage', 'playground'], 
 if (in_array($view, ['pricing', 'usage'], true) && !ai_billing_available()) $view = 'providers';
 $providerId = (int)($_GET['provider'] ?? $_POST['provider_id'] ?? 0);
 $tab = (string)($_GET['tab'] ?? $_POST['tab'] ?? 'settings');
-if (!in_array($tab, ['settings', 'models', 'history'], true)) $tab = 'settings';
+if (!in_array($tab, ['settings', 'models', 'history', 'balance'], true)) $tab = 'settings';
+if ($tab === 'balance' && !ai_balance_available()) $tab = 'settings';
 
 if (!ai_engines_available()) {
     require __DIR__ . '/../app/views/header.php';
@@ -155,6 +157,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            case 'balance_check': {
+                $row = ai_balance_check_provider(ai_provider_find($providerId) ?? throw new AppException('ارائه‌دهنده پیدا نشد.'));
+                flash('success', 'موجودی بررسی شد: ' . ai_balance_format($row['balance'] !== null ? (float)$row['balance'] : null, (string)$row['currency'])
+                    . ' — ' . (AI_BALANCE_LEVEL_LABELS[$row['level']] ?? $row['level']) . '.');
+                $tab = 'balance';
+                break;
+            }
+
+            case 'balance_record': {
+                $row = ai_balance_record($providerId, (string)($_POST['kind'] ?? ''), (string)($_POST['amount'] ?? ''), (string)($_POST['note'] ?? ''), $actor);
+                flash('success', 'ثبت شد. موجودی ' . ($row['balance_source'] === 'api' ? '' : 'تخمینی ') . 'فعلی: '
+                    . ai_balance_format($row['balance'] !== null ? (float)$row['balance'] : null, (string)$row['currency']) . '.');
+                $tab = 'balance';
+                break;
+            }
+
+            case 'balance_settings_save':
+                ai_balance_settings_save($providerId, $_POST, $actor);
+                ai_balance_check_provider(ai_provider_find($providerId));
+                flash('success', 'آستانه‌های هشدار ذخیره شد.');
+                $tab = 'balance';
+                break;
+
             case 'billing_settings_save':
                 ai_billing_settings_save($_POST, $actor);
                 flash('success', 'تنظیمات تعرفه‌ی هوش مصنوعی ذخیره شد.');
@@ -249,6 +274,11 @@ $provider = $providerId > 0 ? ai_provider_find($providerId) : null;
 $allModels = ai_models_all();
 $activeModels = array_values(array_filter($allModels, static fn(array $m): bool => $m['status'] === 'active' && $m['provider_status'] === 'active'));
 $secretsReady = ai_secrets_configured();
+$balances = ai_balance_available() ? ai_balance_rows() : null;
+$levelBadge = static function (string $level): string {
+    $color = ['ok' => '#15803d', 'warning' => '#b45309', 'critical' => '#b91c1c', 'emergency' => '#7f1d1d'][$level] ?? '#6b7280';
+    return '<strong style="color:' . $color . '">' . e(AI_BALANCE_LEVEL_LABELS[$level] ?? $level) . '</strong>';
+};
 
 if ($view === 'access' && isset($_GET['user']) && trim((string)$_GET['user']) !== '') {
     $needle = trim((string)$_GET['user']);
@@ -309,7 +339,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2>ارائه‌دهنده‌ها</h2>
   <table class="table">
-    <thead><tr><th>شناسه</th><th>نام</th><th>نوع</th><th>آدرس</th><th>وضعیت</th><th>مدل‌ها (فعال/کل)</th><th>آخرین تست</th><th></th></tr></thead>
+    <thead><tr><th>شناسه</th><th>نام</th><th>نوع</th><th>آدرس</th><th>وضعیت</th><th>مدل‌ها (فعال/کل)</th><th>آخرین تست</th><?php if ($balances !== null): ?><th>موجودی</th><?php endif; ?><th></th></tr></thead>
     <tbody>
     <?php foreach ($providers as $row): ?>
       <tr>
@@ -324,10 +354,21 @@ require __DIR__ . '/../app/views/header.php';
           <?php if ($row['last_latency_ms'] !== null): ?><span class="muted ltr"><?= (int)$row['last_latency_ms'] ?> ms</span><?php endif; ?>
           <?php if ($row['last_test_status'] === 'unhealthy' && $row['last_error_code']): ?><br><span class="muted"><?= e(ai_error_label((string)$row['last_error_code'])) ?></span><?php endif; ?>
         </td>
+        <?php if ($balances !== null): ?>
+        <td><?php $b = $balances[(int)$row['id']] ?? null; ?>
+          <?php if ($b === null || ($b['balance'] === null && $b['level'] !== 'emergency')): ?>
+            <a class="muted" href="/ai-engines.php?provider=<?= (int)$row['id'] ?>&tab=balance">ثبت نشده</a>
+          <?php else: ?>
+            <a href="/ai-engines.php?provider=<?= (int)$row['id'] ?>&tab=balance"><?= $levelBadge((string)$b['level']) ?></a>
+            <span class="ltr"><?= e(ai_balance_format($b['balance'] !== null ? (float)$b['balance'] : null, (string)$b['currency'])) ?></span>
+            <?php if ($b['days_left'] !== null): ?><br><span class="muted"><?= e(ai_balance_days_text((float)$b['days_left'])) ?></span><?php endif; ?>
+          <?php endif; ?>
+        </td>
+        <?php endif; ?>
         <td><a class="btn" href="/ai-engines.php?provider=<?= (int)$row['id'] ?>&tab=settings">مدیریت</a></td>
       </tr>
     <?php endforeach; ?>
-    <?php if ($providers === []): ?><tr><td colspan="8" class="muted">هنوز ارائه‌دهنده‌ای تعریف نشده است.</td></tr><?php endif; ?>
+    <?php if ($providers === []): ?><tr><td colspan="9" class="muted">هنوز ارائه‌دهنده‌ای تعریف نشده است.</td></tr><?php endif; ?>
     </tbody>
   </table>
 
@@ -382,7 +423,7 @@ require __DIR__ . '/../app/views/header.php';
 <?php $pid = (int)$provider['id']; $keySet = ai_secret_is_set($pid, 'api_key'); ?>
 <div class="card">
   <div class="toolbar">
-    <?php foreach (['settings' => 'اتصال و کلید', 'models' => 'مدل‌ها', 'history' => 'تاریخچه‌ی تست'] as $key => $label): ?>
+    <?php foreach (['settings' => 'اتصال و کلید', 'models' => 'مدل‌ها', 'history' => 'تاریخچه‌ی تست'] + ($balances !== null ? ['balance' => 'موجودی و هشدار'] : []) as $key => $label): ?>
       <a class="btn<?= $tab === $key ? ' btn-primary' : '' ?>" href="/ai-engines.php?provider=<?= $pid ?>&tab=<?= $key ?>"><?= $label ?></a>
     <?php endforeach; ?>
     <form method="post" style="display:inline">
@@ -556,6 +597,98 @@ require __DIR__ . '/../app/views/header.php';
     <label>نام نمایشی <input type="text" name="display_name" placeholder="Hermes"></label>
     <button class="btn btn-primary">افزودن</button>
   </form>
+</div>
+
+<?php elseif ($tab === 'balance'): ?>
+<?php
+$bal = ai_balance_row($provider);
+$cur = (string)$bal['currency'];
+$topups = ai_balance_topups($pid);
+$num = static fn($v): string => $v === null ? '' : rtrim(rtrim((string)$v, '0'), '.');
+?>
+<div class="card">
+  <h2>موجودی حساب ارائه‌دهنده</h2>
+  <?php if ($bal['exhausted_at'] !== null): ?>
+    <p><strong style="color:#7f1d1d">ارائه‌دهنده از <?= jdate((string)$bal['exhausted_at']) ?> درخواست‌ها را به دلیل نبود اعتبار رد می‌کند.</strong>
+      <?php if ($bal['exhausted_message']): ?><br><span class="muted"><?= e((string)$bal['exhausted_message']) ?></span><?php endif; ?>
+      <br><span class="muted">بعد از شارژ، آن را در فرم زیر ثبت کنید، یا «تست» یک مدل را بزنید و بعد «بررسی الان» تا وضعیت پاک شود.</span></p>
+  <?php endif; ?>
+  <table class="table">
+    <tbody>
+      <tr><th>وضعیت</th><td><?= $levelBadge((string)$bal['level']) ?></td></tr>
+      <tr><th>موجودی</th><td><span class="ltr"><?= e(ai_balance_format($bal['balance'] !== null ? (float)$bal['balance'] : null, $cur)) ?></span>
+        <?php if ($bal['balance_source'] === 'api'): ?> <span class="badge">زنده از API</span>
+        <?php elseif ($bal['balance_source'] === 'ledger'): ?> <span class="badge">تخمینی</span>
+        <?php else: ?> <span class="muted">— هنوز شارژی ثبت نشده است.</span><?php endif; ?>
+        <?php if ($bal['balance_at']): ?><span class="muted">(<?= jdate((string)$bal['balance_at']) ?>)</span><?php endif; ?></td></tr>
+      <tr><th>مصرف روزانه (میانگین ۷ روز)</th><td class="ltr"><?= e(ai_balance_format($bal['daily_burn'] !== null ? (float)$bal['daily_burn'] : null, $cur)) ?></td></tr>
+      <tr><th>کافی برای</th><td><?= e(ai_balance_days_text($bal['days_left'] !== null ? (float)$bal['days_left'] : null)) ?></td></tr>
+      <?php if ($bal['last_check_error']): ?><tr><th>خطای آخرین بررسی</th><td><?= e((string)$bal['last_check_error']) ?></td></tr><?php endif; ?>
+    </tbody>
+  </table>
+  <form method="post" style="display:inline">
+    <?= csrf_field() ?><input type="hidden" name="do" value="balance_check"><input type="hidden" name="provider_id" value="<?= $pid ?>"><input type="hidden" name="tab" value="balance">
+    <button class="btn">بررسی الان</button>
+  </form>
+  <p class="muted">
+    <?php if ($provider['type'] === 'openrouter'): ?>
+      OpenRouter موجودی را خودش گزارش می‌کند (سقف کلید و اعتبار حساب) و هر ۱۵ دقیقه خوانده می‌شود. ثبت دستی فقط وقتی به کار می‌آید که این خواندن ناموفق باشد.
+    <?php else: ?>
+      این ارائه‌دهنده موجودی را از طریق API گزارش نمی‌کند؛ موجودی از شارژهای ثبت‌شده منهای هزینه‌ی خرید هر پاسخ و تست تخمین زده می‌شود
+      (با قیمت خرید مدل‌ها به ارز <?= e($cur) ?>؛ مدلی که قیمت خرید یا ارز دیگری دارد حساب نمی‌شود). گاهی موجودی واقعی را از پنل ارائه‌دهنده
+      با «موجودی واقعی الان» ثبت کنید تا تخمین اصلاح شود.
+    <?php endif; ?>
+    اگر ارائه‌دهنده درخواستی را به دلیل نبود اعتبار رد کند، همان لحظه هشدار «تمام شده» فرستاده می‌شود.
+  </p>
+</div>
+
+<div class="card">
+  <h2>ثبت شارژ</h2>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="do" value="balance_record"><input type="hidden" name="provider_id" value="<?= $pid ?>"><input type="hidden" name="tab" value="balance">
+    <label>نوع
+      <select name="kind">
+        <option value="topup">شارژ کردم (به موجودی اضافه شود)</option>
+        <option value="set">موجودی واقعی الان (جایگزین تخمین شود)</option>
+      </select>
+    </label>
+    <label>مبلغ (<?= e($cur) ?>) <input type="text" name="amount" class="ltr" inputmode="decimal" required placeholder="<?= $cur === 'USD' ? '20' : '5000000' ?>"></label>
+    <label>یادداشت <input type="text" name="note" maxlength="255" placeholder="اختیاری"></label>
+    <button class="btn btn-primary">ثبت</button>
+  </form>
+  <table class="table">
+    <thead><tr><th>زمان</th><th>نوع</th><th>مبلغ</th><th>یادداشت</th></tr></thead>
+    <tbody>
+    <?php foreach ($topups as $t): ?>
+      <tr>
+        <td><?= jdate((string)$t['created_at']) ?></td>
+        <td><?= $t['kind'] === 'set' ? 'موجودی واقعی' : 'شارژ' ?></td>
+        <td class="ltr"><?= e(ai_balance_format((float)$t['amount'], (string)$t['currency'])) ?></td>
+        <td><?= e((string)($t['note'] ?? '')) ?></td>
+      </tr>
+    <?php endforeach; ?>
+    <?php if ($topups === []): ?><tr><td colspan="4" class="muted">هنوز چیزی ثبت نشده است.</td></tr><?php endif; ?>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>آستانه‌های هشدار</h2>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="do" value="balance_settings_save"><input type="hidden" name="provider_id" value="<?= $pid ?>"><input type="hidden" name="tab" value="balance">
+    <label>ارز حساب <input type="text" name="currency" class="ltr" size="4" maxlength="3" value="<?= e($cur) ?>"<?= $provider['type'] === 'openrouter' ? ' readonly' : '' ?>></label>
+    <label>هشدار: کمتر از (روز) <input type="text" name="warn_days" class="ltr" size="5" value="<?= e($num($bal['warn_days'])) ?>"></label>
+    <label>بحرانی: کمتر از (روز) <input type="text" name="critical_days" class="ltr" size="5" value="<?= e($num($bal['critical_days'])) ?>"></label>
+    <label>هشدار: موجودی کمتر از <input type="text" name="warn_amount" class="ltr" size="10" value="<?= e($num($bal['warn_amount'])) ?>"></label>
+    <label>بحرانی: موجودی کمتر از <input type="text" name="critical_amount" class="ltr" size="10" value="<?= e($num($bal['critical_amount'])) ?>"></label>
+    <label><input type="checkbox" name="alerts_enabled" value="1"<?= $bal['alerts_enabled'] ? ' checked' : '' ?>> هشدار فعال باشد</label>
+    <button class="btn btn-primary">ذخیره</button>
+  </form>
+  <p class="muted">
+    مقدارها «مساوی یا کمتر» حساب می‌شوند؛ فیلد خالی یعنی آن شرط بررسی نشود. پیش‌فرض: هشدار در ۷ روز مانده، بحرانی در ۲ روز مانده یا ۱ دلار
+    (مبلغ‌ها به ارز حساب). هشدار با تلگرام و ایمیلِ <a href="/admin/alerts">مدیریت هشدارها</a> فرستاده می‌شود و تا «دیدم» زده نشود تکرار می‌شود؛
+    اگر وضعیت بدتر شود (مثلاً از هشدار به بحرانی) دوباره فرستاده می‌شود و بعد از شارژ پیام «برطرف شد» می‌آید.
+  </p>
 </div>
 
 <?php else: ?>

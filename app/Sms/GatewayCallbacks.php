@@ -48,7 +48,9 @@ const SMS_CALLBACK_DLR_TIME_KEYS   = ['dl_time', 'done_date', 'delivered_at', 'd
 const SMS_CALLBACK_DEFAULT_STATUSES = [
     'delivrd' => 'delivered', 'delivered' => 'delivered', 'deliver' => 'delivered', 'success' => 'delivered',
     'undeliv' => 'failed', 'undelivered' => 'failed', 'undeliverable' => 'failed', 'failed' => 'failed', 'fail' => 'failed',
-    'rejectd' => 'rejected', 'rejected' => 'rejected', 'reject' => 'rejected', 'blacklisted' => 'rejected',
+    'rejectd' => 'rejected', 'rejected' => 'rejected', 'reject' => 'rejected',
+    // Stored as 'rejected' (gateway_state_storable()); the status report shows it as «لیست سیاه».
+    'blacklisted' => 'blacklisted', 'blacklist' => 'blacklisted', 'black_list' => 'blacklisted',
     'expired' => 'expired', 'expire' => 'expired',
     'enroute' => 'sent', 'sent' => 'sent', 'submitted' => 'sent',
     'acceptd' => 'accepted', 'accepted' => 'accepted',

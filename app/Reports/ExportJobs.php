@@ -59,6 +59,7 @@ function report_export_path(string $storageKey): string {
  *   sender            sender-line substring (digits only)
  *   q                 message-content substring
  *   user_id           a specific sender (admin-only; ignored otherwise)
+ *   vip               «مشتری ویژه» filter — '' / 'vip' / 'regular' (admin-only; app/VipCustomers.php)
  *   member_ids        the organization member ids an ordinary user may see
  *   is_admin          whether the REQUESTER was an admin when the job was created
  *
@@ -77,6 +78,7 @@ function report_export_filter_sql(array $filters): array {
             $where[]  = 'm.sender_user_id = ?';
             $params[] = $userId;
         }
+        report_export_vip_clause('m.sender_user_id', $filters, $where, $params);
     } else {
         // TENANT ISOLATION. outbound_message is backend-owned and has no organization_id column, so
         // the scope is expressed as "sender_user_id IN (members of my organization)" — the same
@@ -123,6 +125,17 @@ function report_export_date_clause(string $column, array $filters): array {
         return [["{$column} >= ?", "{$column} < ?"], [(string)$filters['from_utc'], (string)$filters['to_utc']]];
     }
     return [["{$column} >= ?", "{$column} < DATE_ADD(?, INTERVAL 1 DAY)"], [(string)($filters['from'] ?? ''), (string)($filters['to'] ?? '')]];
+}
+
+/**
+ * Appends an admin export's «مشتری ویژه» filter (app/VipCustomers.php) on $userColumn. Evaluated when
+ * the export runs, against who is VIP then.
+ */
+function report_export_vip_clause(string $userColumn, array $filters, array &$where, array &$params): void {
+    [$sql, $ids] = vip_condition_sql((string)($filters['vip'] ?? ''), vip_user_ids(), $userColumn);
+    if ($sql === '') return;
+    $where[] = substr($sql, 5); // without its leading ' AND '
+    array_push($params, ...$ids);
 }
 
 /** Appends the destination / sender / content substring filters shared by every source. */
@@ -177,6 +190,7 @@ function report_export_gateway_filter_sql(array $filters): array {
             $where[]  = 'a.user_id = ?';
             $params[] = (int)$filters['user_id'];
         }
+        report_export_vip_clause('a.user_id', $filters, $where, $params);
     } else {
         report_export_member_clause('a.user_id', $filters, $where, $params);
     }
@@ -210,6 +224,7 @@ function report_export_bulk_filter_sql(array $filters): array {
             $where[]  = 'bj.user_id = ?';
             $params[] = (int)$filters['user_id'];
         }
+        report_export_vip_clause('bj.user_id', $filters, $where, $params);
     } elseif ((int)($filters['organization_id'] ?? 0) > 0) {
         $where[]  = 'bj.organization_id = ?';
         $params[] = (int)$filters['organization_id'];
@@ -254,7 +269,7 @@ function report_export_gateway_page(string $whereSql, array $params, int $limit,
     $st = db()->prepare(
         "SELECT a.id, a.user_id, {$text}, a.destination, a.reference_type, a.reference_id, a.error_code,
                 a.provider_message_id, a.provider_status, a.delivery_status, a.delivery_attempts,
-                a.delivery_checked_at, a.delivered_at, a.attempted_at
+                a.delivery_checked_at, a.delivered_at, a.attempted_at" . (message_parts_available('ellsms_message_attempts') ? ', a.parts' : '') . "
          FROM ellsms_message_attempts a
          WHERE {$whereSql}
          ORDER BY a.id DESC
@@ -279,7 +294,7 @@ function report_export_bulk_page(string $whereSql, array $params, int $limit, in
     $st = db()->prepare(
         "SELECT bi.id, bi.job_id, bj.user_id, bj.originator, bi.mobile AS destination, " . bulk_job_masked_sql('bj') . " AS recipients_masked, bi.content, bi.status, bi.error,
                 bi.provider_message_id, bi.provider_status, bi.delivery_status, bi.delivery_attempts,
-                bi.delivery_checked_at, bi.delivered_at, COALESCE(bi.claimed_at, bi.created_at) AS sent_at
+                bi.delivery_checked_at, bi.delivered_at, COALESCE(bi.claimed_at, bi.created_at) AS sent_at" . (message_parts_available('ellsms_bulk_items') ? ', bi.parts' : '') . "
          FROM ellsms_bulk_items bi
          JOIN ellsms_bulk_jobs bj ON bj.id = bi.job_id
          WHERE {$whereSql}
@@ -325,6 +340,7 @@ function report_export_filters_from_request(array $me, array $query, bool $isAdm
         'sender'          => preg_replace('/\D/', '', (string)($query['sender'] ?? '')) ?? '',
         'q'               => mb_substr(trim((string)($query['q'] ?? '')), 0, 200),
         'user_id'         => $isAdmin ? max(0, (int)($query['user_id'] ?? 0)) : 0,
+        'vip'             => $isAdmin ? vip_filter_from($query) : '',
         'member_ids'      => $memberIds,
         'organization_id' => $orgId,
         'is_admin'        => $isAdmin,
@@ -362,7 +378,7 @@ function report_export_queue(int $organizationId, int $userId, array $filters, s
         // Filter VALUES are deliberately not logged: a destination or search term is customer data.
         // Which filters were used is enough to debug a slow export.
         'filters_used'    => array_values(array_filter(
-            ['status', 'dest', 'q', 'user_id'],
+            ['status', 'dest', 'q', 'user_id', 'vip'],
             static fn(string $k): bool => !empty($filters[$k])
         )),
     ]);

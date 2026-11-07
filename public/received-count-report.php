@@ -17,34 +17,50 @@ $from = jalali_request_to_gregorian('from') ?? $today;
 $to   = jalali_request_to_gregorian('to')   ?? $today;
 if ($from > $to) [$from, $to] = [$to, $from];
 $dateQuery = customer_counts_date_query($from, $to);
+// «مشتری ویژه» filter (app/VipCustomers.php): every customer, VIP customers only, or regular ones only.
+$vip = vip_filter_from($_GET);
+$filterQuery = $dateQuery + ($vip !== '' ? ['vip' => $vip] : []);
 
-/** @return array{rows:list<array>,unowned:array{received:int,lines:array<string,int>},total:int} */
-$load = static function () use ($from, $to): array {
+/**
+ * @return array{rows:list<array>,unowned:array{received:int,parts:int,lines:array<string,int>},total:int,total_parts:int,vip_total:?array{received:int,parts:int}}
+ *   lines nobody owns belong to no customer, so they are shown only with every customer
+ */
+$load = static function () use ($from, $to, $vip): array {
     $report = customer_counts_received($from, $to);
+    $report['rows'] = customer_counts_vip_rows($report['rows'], $vip, vip_user_ids());
+    if ($vip !== '') $report['unowned'] = ['received' => 0, 'parts' => 0, 'lines' => []];
     $who = customer_counts_identities(array_column($report['rows'], 'user_id'));
     $total = $report['unowned']['received'];
+    $totalParts = $report['unowned']['parts'];
+    $vipTotal = ['received' => 0, 'parts' => 0];
     foreach ($report['rows'] as &$r) {
         $r += $who[$r['user_id']];
         $total += $r['received'];
+        $totalParts += $r['parts'];
+        if ($r['vip']) { $vipTotal['received'] += $r['received']; $vipTotal['parts'] += $r['parts']; }
     }
     unset($r);
-    return $report + ['total' => $total];
+    $hasVip = array_filter($report['rows'], static fn(array $r): bool => $r['vip']) !== [];
+    return $report + ['total' => $total, 'total_parts' => $totalParts, 'vip_total' => $vip === '' && $hasVip ? $vipTotal : null];
 };
 
 if (isset($_GET['export'])) {
     $report = $load();
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ellsms-received-counts-' . $from . '_' . $to . '.csv"');
+    header('Content-Disposition: attachment; filename="received-counts-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['ردیف', 'شناسه کاربر', 'نام کاربری', 'نام و نام خانوادگی', 'نام شرکت', 'خط‌های دریافت', 'تعداد پیام‌های دریافتی']);
+    fputcsv($out, ['ردیف', 'شناسه کاربر', 'نام کاربری', 'نام و نام خانوادگی', 'نام شرکت', 'خط‌های دریافت', 'تعداد پیام‌های دریافتی', 'تعداد پارت', 'مشتری ویژه']);
     foreach ($report['rows'] as $i => $r) {
-        fputcsv($out, [$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], implode(' ', array_keys($r['lines'])), $r['received']]);
+        fputcsv($out, [$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], implode(' ', array_keys($r['lines'])), $r['received'], $r['parts'], $r['vip'] ? 'بله' : '']);
+    }
+    if ($report['vip_total'] !== null) {
+        fputcsv($out, ['', '', '', 'جمع مشتریان ویژه', '', '', $report['vip_total']['received'], $report['vip_total']['parts'], 'بله']);
     }
     if ($report['unowned']['received'] > 0) {
-        fputcsv($out, ['', '', '', 'خط‌های بدون مشتری', '', implode(' ', array_keys($report['unowned']['lines'])), $report['unowned']['received']]);
+        fputcsv($out, ['', '', '', 'خط‌های بدون مشتری', '', implode(' ', array_keys($report['unowned']['lines'])), $report['unowned']['received'], $report['unowned']['parts']]);
     }
-    fputcsv($out, ['', '', '', 'جمع کل', '', '', $report['total']]);
+    fputcsv($out, ['', '', '', 'جمع کل', '', '', $report['total'], $report['total_parts']]);
     exit;
 }
 
@@ -74,9 +90,10 @@ if (lazy_part_begin('report')) {
   <div class="stat stat-accent">
     <div class="stat-label">گزارش سریع</div>
     <div class="stat-value cc-range"><?= $from === $to ? jdate($from, false) : jdate($from, false) . ' تا ' . jdate($to, false) ?></div>
-    <div class="stat-meta">تا ساعت <span class="num"><?= to_persian_digits($asOf) ?></span></div>
+    <div class="stat-meta">تا ساعت <span class="num"><?= to_persian_digits($asOf) ?></span><?= $vip !== '' ? ' · ' . e(VIP_FILTERS[$vip]) : '' ?></div>
   </div>
-  <div class="stat"><div class="stat-label">مجموع پیام‌های دریافتی</div><div class="stat-value"><?= operator_report_num($report['total']) ?></div></div>
+  <div class="stat"><div class="stat-label">مجموع پیام‌های دریافتی</div><div class="stat-value"><?= operator_report_num($report['total']) ?></div>
+    <div class="stat-meta"><?= operator_report_num($report['total_parts']) ?> پارت</div></div>
   <div class="stat"><div class="stat-label">مشتریان دارای پیام دریافتی</div><div class="stat-value"><?= operator_report_num(count($rows)) ?></div></div>
   <div class="stat"><div class="stat-label">خط‌های دریافت‌کننده</div><div class="stat-value"><?= operator_report_num($lineCount) ?></div>
     <?php if ($unowned['received'] > 0): ?><div class="stat-meta"><?= operator_report_num(count($unowned['lines'])) ?> خط بدون مشتری</div><?php endif; ?></div>
@@ -90,21 +107,23 @@ if (lazy_part_begin('report')) {
       <th data-sort="text" aria-sort="none">نام شرکت</th>
       <th>خط‌های دریافت</th>
       <th data-sort="num" aria-sort="descending">تعداد پیام‌های دریافتی</th>
+      <th data-sort="num" aria-sort="none">تعداد پارت</th>
       <th><span class="sr-only">پیام‌ها</span></th>
     </tr></thead>
     <tbody>
     <?php foreach ($rows as $i => $r): ?>
-      <tr data-user="<?= (int)$r['user_id'] ?>" data-search="<?= e(mb_strtolower($r['name'] . ' ' . $r['username'] . ' ' . $r['company'] . ' ' . implode(' ', array_keys($r['lines'])))) ?>">
+      <tr data-user="<?= (int)$r['user_id'] ?>"<?= $r['vip'] ? ' class="row-vip"' : '' ?> data-search="<?= e(mb_strtolower($r['name'] . ' ' . $r['username'] . ' ' . $r['company'] . ' ' . implode(' ', array_keys($r['lines'])) . ($r['vip'] ? ' ویژه' : ''))) ?>">
         <td class="num" data-v="<?= $i + 1 ?>"><?= to_persian_digits((string)($i + 1)) ?></td>
         <?= customer_counts_name_cell($r) ?>
         <td data-v="<?= e($r['company']) ?>"><?= $r['company'] !== '' ? e($r['company']) : '<span class="muted">—</span>' ?></td>
         <td class="cc-lines"><?= $lineChips($r['lines']) ?></td>
         <td class="num cc-count" data-v="<?= (int)$r['received'] ?>"><?= operator_report_num($r['received']) ?></td>
+        <td class="num cc-parts" data-v="<?= (int)$r['parts'] ?>"><?= operator_report_num($r['parts']) ?></td>
         <td><a class="icon-button report-eye" href="/inbox.php?<?= e(http_build_query(['user_id' => $r['user_id']] + $dateQuery)) ?>" title="پیام‌های دریافتی این مشتری" aria-label="پیام‌های دریافتی <?= e($r['name']) ?>"><?= panel_icon('eye') ?></a></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$rows && $unowned['received'] === 0): ?>
-      <tr><td colspan="6" class="empty-cell"><?= panel_empty_state('در این بازه پیامی دریافت نشده', 'بازه‌ی تاریخ را بزرگ‌تر کنید تا پیام‌های دریافتی مشتریان را ببینید.', null, 'inbox') ?></td></tr>
+      <tr><td colspan="7" class="empty-cell"><?= panel_empty_state('در این بازه پیامی دریافت نشده', 'بازه‌ی تاریخ را بزرگ‌تر کنید تا پیام‌های دریافتی مشتریان را ببینید.', null, 'inbox') ?></td></tr>
     <?php endif; ?>
     </tbody>
     <?php if ($rows || $unowned['received'] > 0): ?>
@@ -116,10 +135,14 @@ if (lazy_part_begin('report')) {
         <td><span class="muted">—</span></td>
         <td class="cc-lines"><?= $lineChips($unowned['lines']) ?></td>
         <td class="num cc-count"><?= operator_report_num($unowned['received']) ?></td>
+        <td class="num cc-parts"><?= operator_report_num($unowned['parts']) ?></td>
         <td><a class="icon-button report-eye" href="/inbox.php?<?= e(http_build_query($dateQuery)) ?>" title="همه‌ی پیام‌های دریافتی" aria-label="همه‌ی پیام‌های دریافتی"><?= panel_icon('eye') ?></a></td>
       </tr>
       <?php endif; ?>
-      <tr class="cc-total"><td></td><td>جمع کل</td><td></td><td></td><td class="num cc-count"><?= operator_report_num($report['total']) ?></td><td></td></tr>
+      <?php if ($report['vip_total'] !== null): ?>
+      <tr class="cc-vip-total row-vip"><td></td><td>جمع مشتریان ویژه <?= vip_badge() ?></td><td></td><td></td><td class="num"><?= operator_report_num($report['vip_total']['received']) ?></td><td class="num cc-parts"><?= operator_report_num($report['vip_total']['parts']) ?></td><td></td></tr>
+      <?php endif; ?>
+      <tr class="cc-total"><td></td><td>جمع کل</td><td></td><td></td><td class="num cc-count"><?= operator_report_num($report['total']) ?></td><td class="num cc-parts"><?= operator_report_num($report['total_parts']) ?></td><td></td></tr>
     </tfoot>
     <?php endif; ?>
   </table></div>
@@ -140,10 +163,11 @@ require __DIR__ . '/../app/views/header.php';
   <div class="report-filter-grid">
     <label>از تاریخ <?= jalali_date_select('from', $from) ?></label>
     <label>تا تاریخ <?= jalali_date_select('to', $to) ?></label>
+    <?= vip_filter_select($vip) ?>
   </div>
   <div class="report-actions">
     <button class="btn btn-primary"><?= panel_icon('search') ?> جستجو</button>
-    <a class="btn" href="/received-count-report.php?<?= e(http_build_query($dateQuery + ['export' => 1])) ?>"><?= panel_icon('download') ?> دانلود</a>
+    <a class="btn" href="/received-count-report.php?<?= e(http_build_query($filterQuery + ['export' => 1])) ?>"><?= panel_icon('download') ?> دانلود</a>
   </div>
 </form>
 

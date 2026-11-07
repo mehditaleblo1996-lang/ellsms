@@ -103,10 +103,11 @@ final class OperatorReportHttpTest extends TestCase
     }
 
     /**
-     * MCI (0912…): bulk delivered «سلام», bulk sent «hello», bulk cancelled, bulk pending, 3 gateway
-     * sends delivered «سلام» from line 5000, 1 legacy sent «x» (0919…).
+     * MCI (0912…): bulk delivered «سلام», bulk sent «hello…» (161 Latin characters: 2 SMS parts), bulk
+     * cancelled, bulk pending, 3 gateway sends delivered «سلام» from line 5000, 1 legacy sent «x» (0919…).
      * MTN (0935…): bulk rejected at submission «hi», bulk undelivered «x».
-     * => MCI total 6 / received 6, MTN total 2 / received 0; Persian 4, English 4.
+     * => MCI total 6 / received 6 (parts 7 / 7), MTN total 2 / received 0 (parts 2 / 0);
+     *    Persian 4 (parts 4), English 4 (parts 5). Every other text is 1 part.
      */
     private function seedSends(): void
     {
@@ -118,7 +119,7 @@ final class OperatorReportHttpTest extends TestCase
         $this->jobId = (int)$db->lastInsertId();
         $items = [
             ['989121111111', 'سلام', 'sent', 'delivered'],
-            ['989121111114', 'hello', 'sent', null],
+            ['989121111114', 'hello' . str_repeat('o', 156), 'sent', null],
             ['989121111112', 'cancelled', 'cancelled', null],
             ['989121111115', 'later', 'pending', null],
             ['989351111111', 'hi', 'failed', null],
@@ -165,22 +166,29 @@ final class OperatorReportHttpTest extends TestCase
         $body = $r['body'];
         $n = static fn(int $v): string => self::n($v);
 
-        // Status table total: queued 1, sent 2, total 8, delivered 4, received 6, undelivered 1, expired 0, rejected 1, cancelled 1, unknown 0.
+        // Status table total: queued 1, sent 2, total 8 (9 parts), delivered 4, received 6 (7 parts), undelivered 1, expired 0, rejected 1,
+        // blacklist 0, invalid sender 0, cancelled 1, unknown 0.
         $this->assertStringContainsString(
             '<tr class="op-total"><td>جمع کل</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(2) . '</td><td class="num op-key">' . $n(8)
-            . '</td><td class="num">' . $n(4) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0)
-            . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0) . '</td></tr>',
+            . '</td><td class="num op-key">' . $n(9) . '</td><td class="num">' . $n(4) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num op-key">' . $n(7)
+            . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0)
+            . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0)
+            . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0) . '</td></tr>',
             $body
         );
-        // MCI's row: 1 queued, 2 sent, 6 total, 4 delivered, 6 received, nothing failed, 1 cancelled.
+        // MCI's row: 1 queued, 2 sent, 6 total (7 parts), 4 delivered, 6 received (7 parts), nothing failed, 1 cancelled.
         $this->assertStringContainsString(
-            '<td class="num">' . $n(1) . '</td><td class="num">' . $n(2) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num">' . $n(4)
-            . '</td><td class="num op-key">' . $n(6) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0)
-            . '</td><td class="num">' . $n(1) . '</td>',
+            '<td class="num">' . $n(1) . '</td><td class="num">' . $n(2) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num op-key">' . $n(7)
+            . '</td><td class="num">' . $n(4) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num op-key">' . $n(7)
+            . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0)
+            . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(1) . '</td>',
             $body
         );
-        // Encoding table total: Persian 4, English 4, all 8.
-        $this->assertStringContainsString('<tr class="op-total"><td>جمع کل</td><td class="num">' . $n(4) . '</td><td class="num">' . $n(4) . '</td><td class="num">' . $n(8) . '</td></tr>', $body);
+        // Encoding table total: Persian 4 (4 parts), English 4 (5 parts), all 8 (9 parts).
+        $this->assertStringContainsString('<tr class="op-total"><td>جمع کل</td><td class="num">' . $n(4) . '</td><td class="num">' . $n(4) . '</td><td class="num">' . $n(4)
+            . '</td><td class="num">' . $n(5) . '</td><td class="num">' . $n(8) . '</td><td class="num">' . $n(9) . '</td></tr>', $body);
+        // Share table total: 8 messages, 9 parts.
+        $this->assertStringContainsString('<tr class="op-total"><td>جمع کل</td><td class="num">' . $n(8) . '</td><td class="num">' . $n(9) . '</td><td class="num">۱۰۰٪</td></tr>', $body);
         $this->assertStringContainsString(e(detect_operator('989121111111')), $body);
         $this->assertStringContainsString(e(detect_operator('989351111111')), $body);
         $this->assertStringContainsString('op-donut-ring', $body);
@@ -196,9 +204,11 @@ final class OperatorReportHttpTest extends TestCase
         $r = $this->request('/operator-reports.php?' . $this->dayQuery(['_part' => 'report']), $session);
         $this->assertSame(200, $r['code'], substr($r['body'], 0, 300));
         $body = $r['body'];
+        // Not on delivery-based billing (delivery_status_visible()): «مجموع ارسال‌شده» only, with its SMS parts.
         $this->assertStringContainsString(
-            '<tr class="op-total"><td>جمع کل</td><td class="num op-key">' . self::n(8) . '</td><td class="num op-key">' . self::n(6) . '</td></tr>',
-            $body
+            '<tr class="op-total"><td>جمع کل</td><td class="num op-key">' . self::n(8) . '</td><td class="num op-key">' . self::n(9) . '</td></tr>',
+            $body,
+            'the customer\'s column with its SMS parts beside it'
         );
         foreach (['در صف ارسال', 'تحویل داده‌نشده', 'منقضی‌شده', 'رد شده', 'مجموع تحویل گرفته‌شده'] as $hidden) {
             $this->assertStringNotContainsString('<th>' . $hidden . '</th>', $body, "customer sees «{$hidden}»");
@@ -236,8 +246,16 @@ final class OperatorReportHttpTest extends TestCase
         $liveCustomer = $this->request($customerQuery, $customer)['body'];
         $this->assertStringNotContainsString('آخرین به‌روزرسانی', $liveAdmin, 'nothing is built yet: counted live');
 
+        // A day built before part totals existed is not trusted for them: still counted live.
+        operator_report_rebuild_day(self::DAY_UTC);
+        db()->prepare('UPDATE ellsms_operator_report_days SET parts_built = 0 WHERE period_date = ?')->execute([self::DAY_UTC]);
+        $this->assertStringNotContainsString('آخرین به‌روزرسانی', $this->request($adminQuery, $admin)['body'], 'a day without part totals is counted live');
+
         $built = operator_report_rebuild_day(self::DAY_UTC);
         $this->assertGreaterThanOrEqual(10, $built['messages']);
+        $st = db()->prepare('SELECT parts_built FROM ellsms_operator_report_days WHERE period_date = ?');
+        $st->execute([self::DAY_UTC]);
+        $this->assertSame(1, (int)$st->fetchColumn(), 'a rebuild stores part totals');
 
         // A message added after the build is not counted until the day is rebuilt: proof the page now
         // reads the summary, not the message tables.
@@ -255,9 +273,9 @@ final class OperatorReportHttpTest extends TestCase
 
         operator_report_rebuild_day(self::DAY_UTC);
         $this->assertStringContainsString(
-            '<tr class="op-total"><td>جمع کل</td><td class="num op-key">' . self::n(9) . '</td><td class="num op-key">' . self::n(7) . '</td></tr>',
+            '<tr class="op-total"><td>جمع کل</td><td class="num op-key">' . self::n(9) . '</td><td class="num op-key">' . self::n(10) . '</td></tr>',
             $this->request($customerQuery, $customer)['body'],
-            'the rebuilt day counts the late message'
+            'the rebuilt day counts the late message and its part'
         );
     }
 

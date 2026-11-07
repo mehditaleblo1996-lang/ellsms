@@ -45,6 +45,8 @@ require_once __DIR__ . '/../../app/Api/Handlers/Telegram.php';
 Logger::setCliMirror(false); // pure JSON stdout even if this ever runs under `php -S` for testing (Phase 11 precedent)
 
 $startedAt = microtime(true);
+// «عامل ارسال پیام»: every message sent from this request is an API send (app/SendContext.php).
+send_context(['channel' => 'api']);
 
 $path = (string)parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH);
 // WebEngage dictates its own response shape ({"status":"sms_rejected","statusCode":N,...}), so every

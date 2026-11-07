@@ -33,7 +33,7 @@ if (isset($_GET['export'])) {
     // actual SELECT execution lives in app/Backend/messages.php.
     $exportRows = backend_inbound_export_rows($W, $params, 100000);
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ellsms-inbox-' . $f['from'] . '_' . $f['to'] . '.csv"');
+    header('Content-Disposition: attachment; filename="inbox-' . $f['from'] . '_' . $f['to'] . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
     fputcsv($out, ['شناسه','فرستنده','گیرنده','متن پیام','زمان دریافت']);
@@ -45,14 +45,14 @@ if (lazy_part_begin('list')) {
     $cnt = backend_inbound_count($W, $params);
     [$page, $offset] = pager_offset($cnt, $f['per_page']);
     $rows = received_report_decorate(backend_inbound_rows($W, $params, $f['per_page'], $offset));
-    $cols = $showOwner ? 9 : 8;
+    $cols = $showOwner ? 10 : 9;
     ?>
 <div class="card report-list">
   <p class="hint report-count"><?= to_persian_digits(number_format($cnt)) ?> پیام دریافتی در این بازه</p>
   <div class="table-wrap"><table data-cards class="report-table">
     <thead><tr>
       <th>ردیف</th><th>فرستنده</th><th>اپراتور فرستنده</th><th>گیرنده (خط)</th><?php if ($showOwner): ?><th>نام مشتری</th><?php endif; ?>
-      <th>وضعیت فوروارد</th><th>تاریخ دریافت</th><th>محتوا</th><th><span class="sr-only">جزئیات</span></th>
+      <th>وضعیت فوروارد</th><th>تاریخ دریافت</th><th>محتوا</th><th>تعداد پارت</th><th><span class="sr-only">جزئیات</span></th>
     </tr></thead>
     <tbody>
     <?php foreach ($rows as $n => $m): ?>
@@ -65,6 +65,7 @@ if (lazy_part_begin('list')) {
         <td><span class="forward-status is-<?= e($m['forward_state']) ?>"><?= e($m['forward_label']) ?></span></td>
         <td class="num"><?= received_report_datetime((string)$m['received_at']) ?></td>
         <td class="msg-preview" dir="auto"><?= (string)$m['content'] !== '' ? e(mb_strimwidth((string)$m['content'], 0, 60, '…')) : '—' ?></td>
+        <td class="num"><?= to_persian_digits((string)$m['parts']) ?></td>
         <td><button type="button" class="icon-button report-eye" data-detail="<?= (int)$m['id'] ?>" aria-label="جزئیات پیام <?= to_persian_digits((string)$m['id']) ?>" title="جزئیات"><?= panel_icon('eye') ?></button></td>
       </tr>
     <?php endforeach; ?>

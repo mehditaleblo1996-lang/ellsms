@@ -172,6 +172,7 @@ if (PHP_SAPI !== 'cli') {
                 '/operator-reports.php' => '/messages/reports/operators',
                 '/received-count-report.php' => '/messages/reports/received-counts',
                 '/sent-count-report.php' => '/messages/reports/sent-counts',
+                '/status-report.php' => '/messages/reports/status',
                 '/bulk-job.php' => '/messages/bulk-jobs',
                 '/integrations.php' => '/integrations',
                 '/otp-templates.php' => '/integrations/otp',

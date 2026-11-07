@@ -44,3 +44,8 @@
 .op-detail summary { cursor: pointer; padding: 10px 14px; display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .op-detail .table-wrap { padding: 0 10px 10px; }
 .op-asof { margin: 14px 4px 0; }
+
+/* SMS parts (تعداد بخش) beside each message count — the same figure, a quieter colour. */
+.op-table td.op-parts { color: var(--muted); }
+.op-table tr.op-total td.op-parts { color: var(--ink); }
+.op-table td.op-key.op-parts { font-weight: 500; }

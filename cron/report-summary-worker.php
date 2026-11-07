@@ -109,10 +109,11 @@ do {
     }
 
     // Issue #12 re-audit: folds app/Reports/SendDimensionLog.php's sidecar rows (direct/scheduled/
-    // auto-reply sends -- the previously-undimensioned gap) into the SAME
-    // ellsms_report_daily_dimension_summary table the bulk pass above already maintains. No full
-    // rebuild needed here (see that file's docblock: every log row's status is already final at
-    // write time, so there is no late-status-change drift to reconcile).
+    // auto-reply sends -- the previously-undimensioned gap) into their own
+    // ellsms_report_daily_send_summary, which the bulk pass's full rebuild above never touches;
+    // report_dimension_summary_query() reads the two together. No full rebuild needed here (see that
+    // file's docblock: every log row's status is already final at write time, so there is no
+    // late-status-change drift to reconcile).
     $sendLogStarted = microtime(true);
     try {
         $sendLogStats = Metrics::time(

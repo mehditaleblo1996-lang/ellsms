@@ -51,7 +51,8 @@ function analytics_table(array $buckets, callable $label): void { ?>
  * report): bulk recipients (ellsms_bulk_items, by claimed_at), gateway direct/scheduled/auto-reply
  * sends (ellsms_message_attempts) and the legacy backend's outbound_message. Each is aggregated in
  * SQL -- one grouped scan, never the messages themselves in PHP -- by sender line, user, destination
- * prefix and status. Parts are counted by sms_parts_sql(), the SQL twin of sms_parts().
+ * prefix and status. Parts are each row's stored count (app/MessageParts.php), or — on a row not
+ * filled yet — sms_parts_sql(), the SQL twin of sms_parts().
  *
  * The operator is resolved per destination PREFIX instead of per number: operator detection is pure
  * prefix matching (sms_pricing_match_prefix()), so the first N characters, N = the longest
@@ -86,7 +87,7 @@ if (lazy_part_begin('traffic')) {
                       WHEN i.delivery_status = 'delivered' THEN 'delivered'
                       WHEN i.delivery_status IN ({$undelivered}) THEN 'failed'
                       ELSE 'sent' END msg_status,
-                 COUNT(*) n, SUM(" . sms_parts_sql('i.content') . ") units
+                 COUNT(*) n, SUM(" . message_parts_sql('ellsms_bulk_items', 'i', 'i.content') . ") units
           FROM ellsms_bulk_items i JOIN ellsms_bulk_jobs j ON j.id = i.job_id
           WHERE i.claimed_at >= ? AND i.claimed_at < ? AND i.status <> 'cancelled'
           GROUP BY j.originator, j.user_id, prefix, full_mobile, msg_status", [$fromUtc, $toUtc]],
@@ -96,7 +97,7 @@ if (lazy_part_begin('traffic')) {
                       WHEN a.delivery_status = 'delivered' THEN 'delivered'
                       WHEN a.delivery_status IN ({$undelivered}) THEN 'failed'
                       ELSE 'sent' END msg_status,
-                 COUNT(*) n, SUM(" . sms_parts_sql($attemptContent) . ") units
+                 COUNT(*) n, SUM(" . message_parts_sql('ellsms_message_attempts', 'a', $attemptContent) . ") units
           FROM ellsms_message_attempts a
           WHERE a.status IN ('accepted', 'failed') AND a.attempted_at >= ? AND a.attempted_at < ?
             AND a.reference_type IN ('direct_send', 'schedule', 'autoreply')

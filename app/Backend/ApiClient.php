@@ -42,6 +42,10 @@ final class BackendError
     public const CONFLICT         = 'BackendConflict';
     public const INVALID_RESPONSE = 'BackendInvalidResponse';
     public const PERMANENT        = 'BackendPermanentFailure';
+    // Permanent refusals a gateway's error mapping can name, so the status report («گزارش وضعیت‌ها»)
+    // can tell them apart from any other rejection. Never retried, like REJECTED.
+    public const INVALID_SENDER   = 'BackendInvalidSender';
+    public const BLACKLISTED      = 'BackendBlacklisted';
 
     /** Whether Phase 4's worker retry logic should treat this class as transient (retry) or permanent (don't). */
     public static function isRetryable(string $errorClass): bool {

@@ -388,10 +388,16 @@ final class PrometheusExporter
         if (!$exists) {
             return;
         }
+        // Bulk sends and direct / scheduled / auto-reply sends are summed in two tables
+        // (2026_11_12_dimension_summary_sources.sql); the metric covers both.
+        $sources = ['SELECT message_type, status, message_count FROM ellsms_report_daily_dimension_summary'];
+        if ($db->query("SHOW TABLES LIKE 'ellsms_report_daily_send_summary'")->fetch()) {
+            $sources[] = 'SELECT message_type, status, message_count FROM ellsms_report_daily_send_summary';
+        }
         $rows = $db->query(
-            "SELECT message_type, status, SUM(message_count) AS total
-             FROM ellsms_report_daily_dimension_summary
-             GROUP BY message_type, status"
+            'SELECT message_type, status, SUM(message_count) AS total
+             FROM (' . implode(' UNION ALL ', $sources) . ') u
+             GROUP BY message_type, status'
         )->fetchAll();
         $statusEnum = ['sent', 'failed', 'cancelled'];
         foreach ($rows as $row) {

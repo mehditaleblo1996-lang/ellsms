@@ -58,6 +58,14 @@ function scheduler_jobs(): array {
         // Shared sending service (docs/shared-service.md): approved and promotional-window messages, review expiry.
         'shared-service' => ['title' => 'ارسال پیام‌های صف سرویس اشتراکی', 'every' => 60,
             'steps' => [['shared-service-worker.php']], 'timeout' => 900],
+        // AI provider credit (app/Ai/AiBalance.php): what is left on each provider account and how
+        // many days it lasts; alerts when it runs low. A no-op until its migration is applied.
+        'ai-balance' => ['title' => 'بررسی اعتبار ارائه‌دهنده‌های هوش مصنوعی', 'every' => 900,
+            'steps' => [['ai-balance-check.php']], 'timeout' => 300],
+        // SMS part counts (app/MessageParts.php): fills `parts` into message rows written before it
+        // was stored, a bounded slice a minute; once caught up, only the rows added since the last run.
+        'message-parts' => ['title' => 'ثبت تعداد پارت پیامک‌های قبلی', 'every' => 60,
+            'steps' => [['message-parts-backfill.php']], 'timeout' => 600],
         'backup' => ['title' => 'بکاپ روزانه‌ی پایگاه داده', 'daily' => scheduler_backup_time(),
             'steps' => [['backup.php'], ['backup-prune.php'], ['backup-offsite.php']], 'timeout' => 4 * 3600],
         'usage-reconcile' => ['title' => 'تطبیق شمارنده‌های مصرف', 'daily' => '04:10',

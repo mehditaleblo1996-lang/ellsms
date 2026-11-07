@@ -11,9 +11,11 @@
  *                                                   (SMS_GATEWAY_TRANSPORT=0 and older history)
  *
  * Nothing is copied into a new table. Each source is queried with the same filters and its own
- * index-friendly time column, newest first, and the pages are merged in PHP with a keyset cursor
- * (time, source, id), so page 50 costs what page 1 costs and no UNION over millions of bulk rows
- * is ever sorted. A message is addressed as <letter><id> (B12, D34, L56) — see sent_report_ref().
+ * index-friendly time column, newest first, and the pages are merged in PHP. The list has numbered
+ * pages: «بعدی» carries a keyset cursor (time, source, id), so walking forward costs at any depth
+ * what page 1 costs; a page opened by its number is found by position on the (time, id) keys alone
+ * and from whichever end of the list is nearer (sent_report_offset_rows()), and only that page's
+ * rows are read in full. A message is addressed as <letter><id> (B12, D34, L56) — see sent_report_ref().
  *
  * Tenant scope is the dashboard's (dashboard_scope_user_ids()): an admin sees everyone, anyone else
  * the members of their organization. Rows an admin removed (app/HiddenMessages.php) stay out for
@@ -31,6 +33,8 @@ const SENT_REPORT_SOURCES = ['bulk' => 'B', 'attempt' => 'D', 'legacy' => 'L'];
 const SENT_REPORT_SOURCE_RANK = ['bulk' => 3, 'attempt' => 2, 'legacy' => 1];
 const SENT_REPORT_UNDELIVERED = ['failed', 'rejected', 'expired'];
 const SENT_REPORT_PER_PAGE = [25, 50, 100];
+/** Rows a page shows unless the viewer picks another «تعداد در صفحه». */
+const SENT_REPORT_DEFAULT_PER_PAGE = 100;
 /** Content search is a LIKE over every message in the window, so the window it may span is bounded. */
 const SENT_REPORT_TEXT_SEARCH_MAX_DAYS = 7;
 
@@ -244,7 +248,7 @@ function sent_report_filters(array $query, bool $isAdmin, string $today): array 
     $toTime = sent_report_query_time($query, 'to_time');
     $type = (string)($query['type'] ?? '');
     $status = (string)($query['status'] ?? '');
-    $per = (int)($query['per_page'] ?? 50);
+    $per = (int)($query['per_page'] ?? SENT_REPORT_DEFAULT_PER_PAGE);
     $digits = static fn(string $key): string => preg_replace('/\D/', '', report_latin_digits((string)($query[$key] ?? ''))) ?? '';
     return [
         'from' => $from, 'to' => $to, 'from_time' => $fromTime, 'to_time' => $toTime,
@@ -257,7 +261,9 @@ function sent_report_filters(array $query, bool $isAdmin, string $today): array 
         'q' => $q,
         'type' => array_key_exists($type, sent_report_types()) ? $type : '',
         'status' => array_key_exists($status, sent_report_statuses()) ? $status : '',
-        'per_page' => in_array($per, SENT_REPORT_PER_PAGE, true) ? $per : 50,
+        'per_page' => in_array($per, SENT_REPORT_PER_PAGE, true) ? $per : SENT_REPORT_DEFAULT_PER_PAGE,
+        // «مشتری ویژه» filter (app/VipCustomers.php), admins only.
+        'vip' => $isAdmin ? vip_filter_from($query) : '',
         'notice' => $notice,
     ];
 }
@@ -353,6 +359,13 @@ function sent_report_source_query(string $source, array $f, ?array $scope, bool 
         $where[] = "{$userCol} = ?";
         $params[] = $f['user_id'];
     }
+    if (($f['vip'] ?? '') !== '') {
+        [$vipSql, $vipIds] = vip_condition_sql($f['vip'], vip_user_ids(), $userCol);
+        if ($vipSql !== '') {
+            $where[] = substr($vipSql, 5); // without its leading ' AND '
+            array_push($params, ...$vipIds);
+        }
+    }
     if ($scope !== null) {
         $scope = array_values(array_map('intval', $scope));
         $where[] = $scope === [] ? '1 = 0' : "{$userCol} IN (" . implode(',', array_fill(0, count($scope), '?')) . ')';
@@ -401,16 +414,18 @@ function sent_report_source_query(string $source, array $f, ?array $scope, bool 
 function sent_report_select_sql(string $source): string {
     $report = backend_message_attempts_have_report_columns();
     $status = sent_report_status_sql($source) . ' AS report_status, ' . sent_report_type_sql($source) . ' AS report_type';
+    // The stored part count (app/MessageParts.php); NULL where none is stored — decorate counts the text then.
+    $parts = static fn(string $table, string $alias): string => message_parts_available($table) ? "{$alias}.parts" : 'NULL AS parts';
     return match ($source) {
         'bulk' => "i.id, i.created_at AS sort_time, i.created_at AS requested_at, i.claimed_at AS sent_at, i.delivered_at,
                    j.user_id, j.originator, i.mobile AS destination, i.content, i.operator_id, i.job_id,
-                   " . bulk_job_masked_sql('j') . " AS masked, {$status}",
+                   " . bulk_job_masked_sql('j') . " AS masked, " . $parts('ellsms_bulk_items', 'i') . ", {$status}",
         'attempt' => "a.id, a.attempted_at AS sort_time, a.attempted_at AS requested_at, a.attempted_at AS sent_at, a.delivered_at,
                       a.user_id, " . ($report ? 'a.originator, a.content' : 'NULL AS originator, NULL AS content') . ",
-                      a.destination, a.operator_id, NULL AS job_id, 0 AS masked, {$status}",
+                      a.destination, a.operator_id, NULL AS job_id, 0 AS masked, " . $parts('ellsms_message_attempts', 'a') . ", {$status}",
         default => "m.id, m.sent_at AS sort_time, m.sent_at AS requested_at, m.sent_at, m.delivered_at,
                     m.sender_user_id AS user_id, m.originator, m.destination, m.content, NULL AS operator_id,
-                    NULL AS job_id, 0 AS masked, {$status}",
+                    NULL AS job_id, 0 AS masked, NULL AS parts, {$status}",
     };
 }
 
@@ -419,30 +434,33 @@ function sent_report_select_sql(string $source): string {
    ========================================================================== */
 
 /**
- * One page of the merged list, newest first.
+ * One page of the merged list, newest first: the rows after $cursor (the last row of the page
+ * before — what «بعدی» carries; an index seek at any depth), or else the rows from position
+ * $offset on (a page opened by its number; sent_report_offset_rows()). $total is
+ * sent_report_count(), which lets a page in the older half be counted from the oldest end.
  *
  * @return array{rows:list<array>, next:?string}
  */
-function sent_report_page(array $f, ?array $scope, bool $hide, ?string $cursor = null): array {
+function sent_report_page(array $f, ?array $scope, bool $hide, ?string $cursor = null, int $offset = 0, ?int $total = null): array {
     $per = $f['per_page'];
     $decoded = $cursor !== null ? sent_report_cursor_decode($cursor) : null;
-    $rows = [];
+    $queries = [];
     foreach (array_keys(SENT_REPORT_SOURCES) as $source) {
         $q = sent_report_source_query($source, $f, $scope, $hide);
-        if ($q === null) continue;
-        [$cursorSql, $cursorParams] = sent_report_cursor_sql($decoded, $source, $q['time'], $q['id']);
-        $limit = $per + 1;
-        $st = db()->prepare('SELECT ' . sent_report_select_sql($source) . " FROM {$q['from']} WHERE {$q['where']}{$cursorSql}
-                             ORDER BY {$q['time']} DESC, {$q['id']} DESC LIMIT {$limit}");
-        $st->execute(array_merge($q['params'], $cursorParams));
-        foreach ($st->fetchAll() as $row) {
-            $row['source'] = $source;
-            $row['id'] = (int)$row['id'];
-            $row['sort_time'] = (string)$row['sort_time'];
-            $rows[] = $row;
-        }
+        if ($q !== null) $queries[$source] = $q;
     }
-    $merged = sent_report_merge($rows, $per);
+    if ($decoded === null && $offset > 0) {
+        $merged = sent_report_offset_rows($queries, $offset, $per, $total);
+    } else {
+        $rows = [];
+        foreach ($queries as $source => $q) {
+            [$cursorSql, $cursorParams] = sent_report_cursor_sql($decoded, $source, $q['time'], $q['id']);
+            $limit = $per + 1;
+            array_push($rows, ...sent_report_source_rows($source, 'SELECT ' . sent_report_select_sql($source) . " FROM {$q['from']} WHERE {$q['where']}{$cursorSql}
+                             ORDER BY {$q['time']} DESC, {$q['id']} DESC LIMIT {$limit}", array_merge($q['params'], $cursorParams)));
+        }
+        $merged = sent_report_merge($rows, $per);
+    }
     $last = end($merged['rows']);
     return [
         'rows' => sent_report_decorate($merged['rows']),
@@ -450,29 +468,126 @@ function sent_report_page(array $f, ?array $scope, bool $hide, ?string $cursor =
     ];
 }
 
+/** Runs one source's row query and tags each row with its source — the shape sent_report_merge() sorts. */
+function sent_report_source_rows(string $source, string $sql, array $params): array {
+    $st = db()->prepare($sql);
+    $st->execute($params);
+    $rows = [];
+    foreach ($st->fetchAll() as $row) {
+        $row['source'] = $source;
+        $row['id'] = (int)$row['id'];
+        $row['sort_time'] = (string)$row['sort_time'];
+        $rows[] = $row;
+    }
+    return $rows;
+}
+
 /**
- * Counts by report status under the filters (the status filter itself included).
+ * Pure: how to read positions $offset … $offset+$per-1 of a merged list of $total rows — from the
+ * newest end, or, for a page in the older half, from the oldest end ('ASC'), so the last page costs
+ * what the first does. 'skip'/'take' are the positions counted from that end; a newest-end read
+ * takes one row more than it shows, to learn whether another page follows.
  *
- * @return array<string,int> status => count, plus 'total'
+ * @return array{dir:string, skip:int, take:int}
  */
-function sent_report_summary(array $f, ?array $scope, bool $hide): array {
-    $out = array_fill_keys(array_keys(sent_report_statuses()), 0);
+function sent_report_offset_plan(int $offset, int $per, ?int $total): array {
+    if ($total !== null && $offset * 2 >= $total) {
+        $take = max(0, min($per, $total - $offset));
+        return ['dir' => 'ASC', 'skip' => max(0, $total - $offset - $take), 'take' => $take];
+    }
+    return ['dir' => 'DESC', 'skip' => $offset, 'take' => $per + 1];
+}
+
+/**
+ * The rows at positions $offset … $offset+$per-1 of the merged order (time, source, id — newest
+ * first), for a page opened by its number. The positions are found on the keys alone: each source's
+ * first skip+take (time, id) pairs from the nearer end (sent_report_offset_plan()), merged in one
+ * UNION ALL inside the database; then only the page's own rows are read in full, by id.
+ *
+ * @param array<string,array> $queries source => sent_report_source_query()
+ * @return array{rows:list<array>, has_more:bool}
+ */
+function sent_report_offset_rows(array $queries, int $offset, int $per, ?int $total): array {
+    $plan = sent_report_offset_plan($offset, $per, $total);
+    if ($queries === [] || $plan['take'] === 0) return ['rows' => [], 'has_more' => false];
+    ['dir' => $dir, 'skip' => $skip, 'take' => $take] = $plan;
+    $branches = [];
+    $params = [];
+    foreach ($queries as $source => $q) {
+        $rank = SENT_REPORT_SOURCE_RANK[$source];
+        $branches[] = "(SELECT {$q['time']} AS sort_time, {$rank} AS rnk, {$q['id']} AS id FROM {$q['from']} WHERE {$q['where']}
+                        ORDER BY {$q['time']} {$dir}, {$q['id']} {$dir} LIMIT " . ($skip + $take) . ')';
+        array_push($params, ...$q['params']);
+    }
+    $st = db()->prepare('SELECT sort_time, rnk, id FROM (' . implode(' UNION ALL ', $branches) . ") u
+                         ORDER BY sort_time {$dir}, rnk {$dir}, id {$dir} LIMIT {$take} OFFSET {$skip}");
+    $st->execute($params);
+    $keys = $st->fetchAll();
+    $hasMore = $dir === 'DESC' ? count($keys) > $per : $offset + count($keys) < (int)$total;
+
+    $ids = [];
+    $sourceOfRank = array_flip(SENT_REPORT_SOURCE_RANK);
+    foreach (array_slice($keys, 0, $per) as $key) {
+        $ids[$sourceOfRank[(int)$key['rnk']]][] = (int)$key['id'];
+    }
+    $rows = [];
+    foreach ($ids as $source => $list) {
+        $q = $queries[$source];
+        array_push($rows, ...sent_report_source_rows($source, 'SELECT ' . sent_report_select_sql($source) . " FROM {$q['from']}
+                         WHERE {$q['id']} IN (" . implode(',', array_fill(0, count($list), '?')) . ')', $list));
+    }
+    return ['rows' => sent_report_merge($rows, $per)['rows'], 'has_more' => $hasMore];
+}
+
+/** How many rows the list holds under the filters — what the numbered pager divides into pages. */
+function sent_report_count(array $f, ?array $scope, bool $hide): int {
+    $total = 0;
     foreach (array_keys(SENT_REPORT_SOURCES) as $source) {
         $q = sent_report_source_query($source, $f, $scope, $hide);
         if ($q === null) continue;
-        $st = db()->prepare('SELECT ' . sent_report_status_sql($source) . " AS s, COUNT(*) c FROM {$q['from']} WHERE {$q['where']} GROUP BY s");
+        $st = db()->prepare("SELECT COUNT(*) FROM {$q['from']} WHERE {$q['where']}");
+        $st->execute($q['params']);
+        $total += (int)$st->fetchColumn();
+    }
+    return $total;
+}
+
+/**
+ * Counts by report status under the filters (the status filter itself included). $parts receives the
+ * same keys counting SMS parts (تعداد بخش) instead of messages — each row's stored count, else the
+ * count of its text (message_parts_sql()); the legacy backend's rows from their text.
+ *
+ * @return array<string,int> status => count, plus 'total'
+ */
+function sent_report_summary(array $f, ?array $scope, bool $hide, ?array &$parts = null): array {
+    $out = array_fill_keys(array_keys(sent_report_statuses()), 0);
+    $parts = $out;
+    $reportCols = backend_message_attempts_have_report_columns();
+    foreach (array_keys(SENT_REPORT_SOURCES) as $source) {
+        $q = sent_report_source_query($source, $f, $scope, $hide);
+        if ($q === null) continue;
+        $partsSql = match ($source) {
+            'bulk' => message_parts_sql('ellsms_bulk_items', 'i', 'i.content'),
+            'attempt' => message_parts_sql('ellsms_message_attempts', 'a', $reportCols ? 'a.content' : 'NULL'),
+            default => sms_parts_sql('m.content'),
+        };
+        $st = db()->prepare('SELECT ' . sent_report_status_sql($source) . ' AS s, COUNT(*) c, SUM(' . $partsSql . ") p
+                             FROM {$q['from']} WHERE {$q['where']} GROUP BY s");
         $st->execute($q['params']);
         foreach ($st->fetchAll() as $row) {
-            if (isset($out[$row['s']])) $out[$row['s']] += (int)$row['c'];
+            if (!isset($out[$row['s']])) continue;
+            $out[$row['s']] += (int)$row['c'];
+            $parts[$row['s']] += (int)$row['p'];
         }
     }
     $out['total'] = array_sum($out);
+    $parts['total'] = array_sum($parts);
     return $out;
 }
 
 /**
  * Display fields for list rows: user names, operator, recipient as the viewer may see it, format,
- * part count, labels and the message reference.
+ * part count (the stored one, else counted from the text), labels and the message reference.
  */
 function sent_report_decorate(array $rows): array {
     if ($rows === []) return [];
@@ -483,6 +598,7 @@ function sent_report_decorate(array $rows): array {
     foreach ($rows as &$row) {
         $user = $users[(int)$row['user_id']] ?? null;
         $row['username'] = $user ? (string)$user['username'] : '#' . $row['user_id'];
+        $row['vip'] = vip_is((int)$row['user_id']); // shown to admins only (public/reports-v2.php)
         $row['user_full_name'] = $user ? trim($user['first_name'] . ' ' . $user['last_name']) : '';
         $destination = (string)($row['destination'] ?? '');
         $row['destination_display'] = bulk_recipient_display($destination, !empty($row['masked']));
@@ -491,7 +607,7 @@ function sent_report_decorate(array $rows): array {
         $row['operator_code'] = $opId > 0 && isset($operators[$opId]) ? $operators[$opId]['code'] : $row['operator_name'];
         $content = (string)($row['content'] ?? '');
         $row['format'] = $content === '' ? '—' : sent_report_format($content);
-        $row['parts'] = sms_parts($content);
+        $row['parts'] = message_parts_of_row($row);
         $row['ref'] = sent_report_ref($row['source'], (int)$row['id']);
         $row['type_label'] = $types[$row['report_type']] ?? $row['report_type'];
         $row['status_label'] = $statuses[$row['report_status']] ?? $row['report_status'];
@@ -562,6 +678,7 @@ function sent_report_find(string $ref, ?array $scope, bool $hide, bool $isAdmin)
         'attempt' => sent_report_attempt_type((string)($row['reference_type'] ?? '')),
         default => 'direct',
     };
+    if ($source === 'legacy') unset($row['parts']); // the backend's table: whatever it holds, the count is ELLSMS's own
     [$row] = sent_report_decorate([$row]);
     $row['characters'] = mb_strlen((string)($row['content'] ?? ''), 'UTF-8');
 

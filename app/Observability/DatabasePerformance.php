@@ -164,6 +164,7 @@ function db_performance_hot_tables(): array
         'ellsms_bulk_jobs',
         'ellsms_message_attempts',
         'ellsms_report_daily_dimension_summary',
+        'ellsms_report_daily_send_summary',
         'ellsms_send_dimension_log',
         'ellsms_report_exports',
         'ellsms_bulk_items_archive',
@@ -208,6 +209,7 @@ function db_performance_index_expectations(): array
         'ellsms_bulk_items' => ['idx_bulk_items_claimed_by_id'],
         'ellsms_message_attempts' => ['idx_attempt_destination_status', 'idx_attempt_delivery_polling', 'idx_attempt_reference'],
         'ellsms_report_daily_dimension_summary' => ['PRIMARY', 'idx_dimension_summary_period', 'idx_dimension_summary_org_period'],
+        'ellsms_report_daily_send_summary' => ['PRIMARY', 'idx_send_summary_period', 'idx_send_summary_org_period'],
         'ellsms_report_exports' => ['idx_export_org_id'],
     ];
 }

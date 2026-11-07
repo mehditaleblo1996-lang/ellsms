@@ -39,6 +39,8 @@ if ($me['role'] !== 'admin') {
 }
 // Operator reports (public/operator-reports.php) open with the send report's menu; by provider is admin-only.
 if ($me['role'] === 'admin' || menu_access_allows($me, 'reports')) {
+    // «گزارش وضعیت‌ها» (public/status-report.php): messages and parts per state, per month or day.
+    $nav['status_report'] = ['/status-report.php', 'گزارش وضعیت‌ها', '≣'];
     $nav['operator_reports'] = ['/operator-reports.php', 'گزارش اپراتورها', '≣'];
     $nav['operator_reports_number'] = ['/operator-reports.php?view=number', 'گزارش اپراتورها بر اساس شماره', '≣'];
     if ($me['role'] === 'admin') {

@@ -58,6 +58,27 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 ELLSMS has its own push receivers, with the same URLs the backend platform used: `https://<host>/mo?from=…&to=…&content=…` for inbound SMS (Persian and emoji supported) and `https://<host>/delivery?id=…&status=…` for delivery reports. Guard them with `SMS_CALLBACK_TOKEN` and/or `SMS_CALLBACK_ALLOWED_IPS`. See [`docs/sms-callbacks.md`](docs/sms-callbacks.md).
 
+## Message reports (لیست پیام‌های ارسالی / دریافتی)
+
+«لیست پیام‌های ارسالی» (`/messages/reports`, also `/reports.php`) lists every sent message — direct, API,
+scheduled, secretary, p2p/smart/gradual and bulk — one row per recipient, with a detail drawer, status
+cards and a background CSV export. «لیست پیام‌های دریافتی» (`/inbox.php`) lists inbound SMS on the viewer's
+lines, and «خلاصه‌ی ارسال‌های حجیم» (`/reports-bulk.php`) the bulk sends. All three show **100 rows a page**
+by default («تعداد در صفحه» changes it) with a numbered pager — «قبلی ۱ … ۵ [۶] ۷ … ۱۲۰ بعدی», the total,
+and a «برو به صفحه» box on long lists. The sent list stays fast at any depth: «بعدی» walks a keyset cursor
+and a jump to a page number reads only row keys, from the nearer end. See
+[`docs/reporting-scalability.md`](docs/reporting-scalability.md).
+
+**Part count per message.** Every message row in ELLSMS's own tables (`ellsms_bulk_items`,
+`ellsms_message_attempts`, `ellsms_inbound_messages`) stores its SMS part count in `parts` — written
+with the message (the same `sms_parts()` count the send was priced with), and filled into older rows
+by the `message-parts` scheduler job a bounded slice a minute (`make message-parts-status` shows how
+far it has come). Migration `db/migrations/2026_11_10_message_parts.sql`. Every report that counts
+messages shows a separate «تعداد پارت» column next to each count — the sent and received lists,
+«گزارش ارسال حجیم» and each bulk send's page, the delivery history, «گزارش اپراتورها» (all three views)
+and «گزارش تعداد پیام‌های ارسالی / دریافتی»; the pre-built report tables keep part totals too
+(`db/migrations/2026_11_11_report_parts.sql`). See [`docs/message-parts.md`](docs/message-parts.md).
+
 ## Voice messages (ZarinCall)
 
 Customers can send voice files (uploaded WAV/MP3 or generated from Persian text) by phone call to a
@@ -134,6 +155,12 @@ customer writes, and the answer is sent from the same line.
   vault. «تست اتصال» and «تشخیص مدل‌ها» are available, models start disabled, and admins give
   accounts the models they may use (resellers' customers never get more than their reseller). There
   is a playground. See [`docs/ai-engines.md`](docs/ai-engines.md).
+- **AI provider credit alerts** (provider → «موجودی و هشدار»): the credit left on each provider
+  account (read from OpenRouter's API, or estimated from recorded top-ups minus spend), the days it
+  lasts at the last 7 days' spend, and Telegram/email alerts through «هشدارها»: warning at 7 days,
+  critical at 2 days or 1 USD, emergency the moment a provider refuses a call for lack of credit.
+  Scheduler job `ai-balance`, every 15 minutes. See
+  [`docs/ai-engines.md`](docs/ai-engines.md#provider-balance-and-alerts).
 - **Secretary** («منشی هوشمند», `/messages/ai-secretary`): one assistant per line, with business or
   general mode, templates, conversation memory, reply length, caps, a fallback text, a test box and
   the conversation log. Order: «۱۱/۱۲» opt-outs, then keyword auto-reply rules, then the AI. Guards
@@ -157,9 +184,16 @@ customer writes, and the answer is sent from the same line.
   - Long documents (txt/docx/pdf) become searchable.
   - AI providers can be reached through a proxy or the relay kit in `ops/ai-relay/`.
   - Anthropic prompt caching.
+- **Public showcase**: the landing page advertises the secretary with banner slide 6, a feature tile
+  and a seven-step slider at `/landing.php#ai-secretary` ([`docs/landing.md`](docs/landing.md)).
 
 Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
-`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`.
+`2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`,
+`2026_11_09_ai_provider_balance.sql`.
+
+Next phases (6–12: actions and booking, reminders, «بنویس برام», Bale/Telegram bots, insights, public
+API, packages and fallback) are specified for implementing agents in
+[`docs/ai-roadmap.md`](docs/ai-roadmap.md).
 No public API routes.
 
 ## Delivery-based billing (ارسال بر اساس تحویل)
@@ -171,6 +205,36 @@ exactly once, as a `delivery_refund` ledger entry. Messages with no final report
 percentage that applies is the one in force when the message was sent. The scheduler job
 `delivery-refunds` catches anything the status path missed. See
 [`docs/delivery-based-billing.md`](docs/delivery-based-billing.md).
+
+## Status report (گزارش وضعیت‌ها) and SMS parts
+
+**«گزارش و دریافت» → «گزارش وضعیت‌ها»** (`/messages/reports/status`, `public/status-report.php`) shows, per
+Jalali month of a year (or per day of a month / a range up to 62 days), how many messages **and how many
+SMS parts (بخش)** were رسیده به گوشی, رسیده به مخابرات, نرسیده به گوشی, لیست سیاه, نرسیده به مخابرات or
+شماره فرستنده نامعتبر (plus در صف ارسال when any wait), with the totals, a bar chart per period, a donut
+of the range, print and a CSV (Excel) download. Filters: organization (admins), sender lines, user,
+language (نوع پیام), operator, year, month, start/end date, part count and send channel (عامل ارسال پیام:
+panel, API, scheduled, auto-reply, AI secretary, p2p, smart, gradual, bulk). Admins see everyone; a customer sees their
+organization, without the delivery columns unless they are on delivery-based billing. It reads the
+operator report's daily summary (now with channel and part-count dimensions) and records the recipients
+the panel drops before sending — customer blacklist, opt-outs (11), a disallowed sender line — in
+`ellsms_send_drops`. A gateway's error mapping can name provider codes `BackendInvalidSender` /
+`BackendBlacklisted`, and its status mapping can map a token to `blacklisted` (stored as `rejected`).
+Every main report also shows the parts («پارت») next to its message counts — including the sent list's
+summary cards and the dashboard's today cards ([`docs/message-parts.md`](docs/message-parts.md)). No
+public API route. Migration:
+`db/migrations/2026_11_11_status_report.sql` (empties the operator summary; `report-summary-worker`
+rebuilds it). See [`docs/status-report.md`](docs/status-report.md).
+
+## VIP customers (مشتری ویژه)
+
+A platform admin ticks **«مشتری ویژه»** on a user (**Users → user**, or on «ساخت حساب تازه»). VIP
+customers are highlighted in gold in the customer list, which can also show VIP customers only
+(`/users.php?vip=1`), and the admin reports get a **«مشتری ویژه»** filter (همه / فقط مشتریان ویژه /
+بدون مشتریان ویژه): «گزارش تعداد پیام‌های ارسالی / دریافتی» (with a VIP subtotal and highlighted rows), «گزارش
+وضعیت‌ها», «گزارش اپراتورها» and «لیست پیام‌های ارسالی» (and its CSV export). Customers and resellers
+never see it; every change is audited. No public API route. Migration
+`db/migrations/2026_11_12_vip_customers.sql`. See [`docs/vip-customers.md`](docs/vip-customers.md).
 
 ## Login model
 
@@ -299,7 +363,8 @@ The panel now has a real mobile navigation drawer instead of stacking the entire
 
 `/index.php` (the site root) now shows `/landing.php` to anyone not logged in instead of bouncing straight to `/login.php` — the dashboard behavior for logged-in users is unchanged. Login is still reachable from the landing page's own CTA. Everything under this section is public, unauthenticated, and shares one chrome (`app/views/public_header.php` / `public_footer.php`) separate from the logged-in app shell in `app/views/header.php`.
 
-- **Hero slider** — an admin-managed (Settings → اسلایدر صفحه‌ی اصلی, `/slides.php`) image carousel spanning the full page width directly under the nav, above the hero text. Each slide is an image + title + optional short text + optional link. Falls back to a static decorative mockup when no slides are configured, so the page never looks broken on a fresh install. Images upload straight into `public/assets/img/slides/` (gitignored, like `storage/kyc/`) since these are public marketing banners, not sensitive documents — no access-control script needed the way `kyc-photo.php` has one.
+- **Top banner** — six animated slides (bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») spanning the full page width directly under the nav. They are fixed HTML/CSS/SVG in `landing.php` (no video, no library): auto-advance, pause on hover/focus/off-screen, a «توقف اسلایدها» button, keyboard and swipe, and a still first slide for reduced motion. Admin slides from Settings → اسلایدر صفحه‌ی اصلی (`/slides.php`) are not shown on the landing page. See [`docs/landing.md`](docs/landing.md).
+- **«منشی هوشمند» on the landing page** — a full-width «منشی هوشمند با هوش مصنوعی» tile in the features grid, a nav link, an FAQ entry, and a seven-step showcase slider at `/landing.php#ai-secretary` (answering, setup, message flow, data tables, hand-off, «پیام اول», guards and cost), each step with an animated CSS/SVG scene. Styles in `public/assets/css/landing-ai.css`, loaded only on that page through the public header's `$extraStyles`. See [`docs/landing.md`](docs/landing.md).
 - **بسته‌های پیامک / pricing cards** (`/pricing.php` to manage, shown on `/landing.php#pricing`) — a separate marketing-only table (`ellsms_pricing_packages`: name, credit amount, price in Rial, feature bullets, a "پیشنهاد ویژه" badge). Deliberately independent from the real purchase in `buy-credit.php` (one Rial paid before VAT = one Rial of credit) — this is just what's advertised.
 - **راهنمای استفاده** — a public FAQ/guide page (`/guide.php`, plain `<details>`/`<summary>` accordion, no JS needed) backed by admin-editable articles (`/guide-admin.php`, `ellsms_guide_articles`). Body text is plain, rendered with `nl2br()` — no markdown parser, consistent with this project having no `vendor/` directory anywhere else.
 - **تماس با ما** (`/contact.php`) — shows an address/phone block from Settings → تماس با ما (hidden entirely if never configured) plus a ticket form. Submitting the form doesn't write to a table — `app/telegram.php` relays it as a plain chat message to a Telegram bot via the official `sendMessage` endpoint, using a Bot Token + Chat ID configured the same `.env`-with-Settings-override pattern as ZarinPal (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`). Create the bot with `@BotFather`.
@@ -513,6 +578,7 @@ updated in the same change** — see `CLAUDE.md`.
 [ai-secretary](docs/ai-secretary.md) ·
 [ai-data](docs/ai-data.md) ·
 [ai-outreach](docs/ai-outreach.md) ·
+[ai-roadmap](docs/ai-roadmap.md) ·
 [webengage](docs/webengage.md) ·
 [telegram-invoice-bot](docs/telegram-invoice-bot.md)
 
@@ -530,12 +596,14 @@ updated in the same change** — see `CLAUDE.md`.
 [billing-operations](docs/billing-operations.md)
 
 **Customers, resellers & access**
+[vip-customers](docs/vip-customers.md) ·
 [resellers-and-menu-access](docs/resellers-and-menu-access.md) ·
 [reseller-panel](docs/reseller-panel.md) ·
 [customer-profile](docs/customer-profile.md) ·
 [registration](docs/registration.md) ·
 [profile-kyc](docs/profile-kyc.md) ·
-[admin-impersonation](docs/admin-impersonation.md)
+[admin-impersonation](docs/admin-impersonation.md) ·
+[landing](docs/landing.md)
 
 **API & integrations**
 [public-api](docs/public-api.md) ·
@@ -557,12 +625,18 @@ updated in the same change** — see `CLAUDE.md`.
 [observability-dod-checklist](docs/observability-dod-checklist.md) ·
 [slo-latency-targets](docs/slo-latency-targets.md) ·
 [reporting-scalability](docs/reporting-scalability.md) ·
+[message-parts](docs/message-parts.md) ·
 [daily-metadata-aggregation](docs/daily-metadata-aggregation.md) ·
 [mysql-performance-audit](docs/mysql-performance-audit.md) ·
 [sms-load-testing](docs/sms-load-testing.md) ·
 [capacity-load-test-2026-08-31](docs/capacity-load-test-2026-08-31.md) ·
 [security-review](docs/security-review.md) ·
 [technical-debt](docs/technical-debt.md)
+
+**Panel reports**
+[status-report](docs/status-report.md) ·
+[reporting-scalability](docs/reporting-scalability.md) ·
+[daily-metadata-aggregation](docs/daily-metadata-aggregation.md)
 
 **User flows** — [docs/flows/](docs/flows/) (authentication, send, bulk, scheduled, auto-reply, credit, payment)
 

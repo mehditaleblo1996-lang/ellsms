@@ -25,7 +25,11 @@ and provider-response logs, webhook deliveries, … — `BACKUP_SCHEMA_ONLY_TABL
 their rows. They are the largest tables by far and grow with every send, while what a restore must
 bring back is accounts, wallets and ledger, payments, invoices, prices and configuration — all kept.
 After a restore those tables exist, empty; message history stays in the backend platform's own
-backups and the daily report summaries (kept). `BACKUP_SCHEMA_ONLY_TABLES` replaces the list,
+backups and the daily report summaries (kept). The bulk breakdown's hourly rebuild only replaces days
+whose items are still there, so it does not erase the restored days
+(docs/daily-metadata-aggregation.md §Sources); neither does adding part totals to an old
+operator-report day (docs/message-parts.md). The operator report's regular rebuild of the last 35
+days still recounts them from the (now empty) message tables. `BACKUP_SCHEMA_ONLY_TABLES` replaces the list,
 `none` backs up every row. The manifest records the list (`schema_only_tables`) and says
 `table_scope: complete_database_without_message_rows`.
 

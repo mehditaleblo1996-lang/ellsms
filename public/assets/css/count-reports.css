@@ -35,3 +35,6 @@ th[aria-sort="descending"] .cc-sort::after { opacity: 1; }
 .cc-table tfoot td { font-weight: 700; background: var(--tint); }
 .cc-table tfoot tr.cc-unowned td { font-weight: 500; background: var(--canvas); }
 .cc-note { margin: 14px 0 0; }
+.cc-table td.cc-parts { color: var(--muted); }
+.cc-table tfoot td.cc-parts { color: var(--ink); }
+.cc-table tfoot tr.cc-vip-total td { font-weight: 700; background: #fff3cc; }

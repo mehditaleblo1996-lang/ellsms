@@ -62,7 +62,7 @@ if ($pdf === null) {
     telegram_webhook_ack();
 }
 
-$filename = preg_replace('/[^A-Za-z0-9._-]+/', '_', $doc['invoice_no'] ?: 'ellsms-invoice') . '.pdf';
+$filename = preg_replace('/[^A-Za-z0-9._-]+/', '_', $doc['invoice_no'] ?: 'invoice') . '.pdf';
 [$ok, $msg] = telegram_send_document_to($chatId, $filename, $pdf, 'فاکتور ' . $doc['invoice_no']);
 if (!$ok) {
     Logger::warning('telegram.webhook.send_failed', ['chat_id' => $chatId, 'message' => $msg]);

@@ -13,9 +13,11 @@ before.
 | `delivery-refunds` | every 5 min | refunds undelivered messages of delivery-based-billing users that the status path itself missed (`docs/delivery-based-billing.md`); a no-op until an admin switches the service on for someone |
 | `subscription-lifecycle` | every 15 min | trial and grace expiry, period rollover, stale usage reservations (skips itself while `BILLING_ENABLED=0`) |
 | `bulk-archive` | every minute | advances approved bulk-archive runs one bounded pass |
+| `message-parts` | every minute | fills the SMS part count (`parts`) into message rows written before it was stored — a bounded slice per run (at most 50 s); once caught up, only the rows added since the last run (`docs/message-parts.md`) |
 | `voice-worker` | every minute | sends due scheduled voice messages, polls ZarinCall for answered / not answered calls and settles their cost (`docs/voice-messages.md`) |
 | `lba-worker` | every minute | polls LBA audiences the provider is still building, follows one-off LBA sends and charges / settles periodic ones (`docs/lba.md`) |
 | `shared-service` | every minute | sends approved and promotional-window messages of the shared sending service and expires held messages nobody reviewed (`docs/shared-service.md`) |
+| `ai-balance` | every 15 min | reads each AI provider's credit (OpenRouter's API, or the estimate from recorded top-ups minus spend), the days it lasts at the last 7 days' spend, and raises / resolves the `ai_balance:<code>` alert (`docs/ai-engines.md` §Provider balance and alerts); a no-op until `2026_11_09_ai_provider_balance.sql` is applied |
 | `backup` | daily `BACKUP_DAILY_AT` (03:30) | backup without message rows → retention prune → off-server copy (`docs/backup-and-disaster-recovery.md` §1, §17) |
 | `usage-reconcile` | daily 04:10 | rebuilds usage counters' `reserved` from the live reservations |
 | `idempotency-prune` | daily 04:20 | deletes completed Idempotency-Key records past their TTL |
@@ -42,6 +44,14 @@ second (`docs/telegram-user-service.md`). The `ai-worker` container answers AI s
 an hour (`docs/ai-secretary.md`); the `worker` container's auto-reply pass enqueues the SMS jobs. Each
 `ai-worker` pass also turns Telegram messages the `tg-worker` stored into jobs, sends «پیام اول»
 campaigns (`docs/ai-outreach.md`) and marks finished campaigns done.
+
+The `report-summary-worker` container (`cron/report-summary-worker.php`) also builds, every pass, the
+daily summary behind the operator report and the status report (`ellsms_operator_report_daily`,
+`operator_report_worker_pass()`): today and yesterday every `OPERATOR_REPORT_FRESH_SECONDS` (300), the
+last week hourly, the last five weeks daily, never-built days back to `OPERATOR_REPORT_BACKFILL_DAYS`
+(400) newest first, `OPERATOR_REPORT_PASS_SECONDS` (40) per pass. Each day now carries the send channel
+and the per-message part count; days built before `2026_11_11_status_report.sql` are rebuilt
+(`docs/status-report.md`).
 
 **Maintenance mode** pauses the scheduler entirely, like the workers.
 

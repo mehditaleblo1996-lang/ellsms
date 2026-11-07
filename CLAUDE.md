@@ -31,3 +31,9 @@ in the docs, and does a customer-facing service appear in `public/guide.php`?
 
 - UI text is Persian; docs are written in English with the Persian UI names in «…».
 - Commit messages describe the feature in one line, then the details.
+
+## AI secretary roadmap
+
+Phases 6–12 of the AI secretary are specified in `docs/ai-roadmap.md`. An agent implementing one of
+them reads §0 (shared rules: branch, shared ENUM values, tests, docs, definition of done) and its own
+phase, and updates the status table there.

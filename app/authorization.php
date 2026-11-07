@@ -61,6 +61,10 @@ function user_has_no_send_line(array $user): bool {
 
 /** Shown wherever a non-admin user with no sendable line tries to send. */
 const NO_ASSIGNED_LINE_MESSAGE = 'هنوز هیچ خط ارسالی به حساب شما اختصاص داده نشده است؛ تا زمان تخصیص خط از سوی مدیر، امکان ارسال پیامک وجود ندارد.';
+/** A send from a line the sender may not use (dispatch_message_raw()). A bulk row keeps it as its error, which the status report reads. */
+const ORIGINATOR_NOT_ALLOWED_ERROR = 'استفاده از این خط ارسال برای شما مجاز نیست — از خطوط تخصیص‌یافته به خودتان استفاده کنید.';
+/** A send with no usable sender line at all; read back by the status report like the one above. */
+const ORIGINATOR_EMPTY_ERROR = 'خط ارسال‌کننده خالی یا غیرعددی است — آن را بالا یا در تنظیمات وارد کنید.';
 
 function user_assigned_numbers(array $user): array {
     if (($user['role'] ?? null) === 'admin') return [];

@@ -34,7 +34,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_POST['do'] ?? '') === 'e
         $exportQuery['status'] = ['queued' => 'pending'][$_GET['status'] ?? ''] ?? ($_GET['status'] ?? '');
         $exportFilters = report_export_filters_from_request($me, $exportQuery, is_admin());
         $exportId = report_export_queue((int)($me['organization_id'] ?? 0), (int)$me['id'], $exportFilters,
-            'ellsms-report-' . $exportFilters['from'] . '-to-' . $exportFilters['to'] . '.csv');
+            'report-' . $exportFilters['from'] . '-to-' . $exportFilters['to'] . '.csv');
         audit((int)$me['id'], 'report_export_request', 'export_id=' . $exportId);
         flash('success', 'خروجی در صف آماده‌سازی قرار گرفت؛ پس از آماده شدن از همین صفحه دانلود کنید.');
     }
@@ -52,11 +52,11 @@ $statuses = sent_report_statuses();
 $canHide = $isAdmin && hidden_messages_available();
 // The filters every link keeps — only these, so paging parameters (this page's cursor, or an old
 // bookmark's before_id / gw_page) never ride along into a filter link or the export.
-$filterKeys = ['user_id', 'ref', 'sender', 'dest', 'q', 'type', 'status', 'from_y', 'from_m', 'from_d', 'to_y', 'to_m', 'to_d', 'from_time', 'to_time', 'per_page'];
+$filterKeys = ['user_id', 'vip', 'ref', 'sender', 'dest', 'q', 'type', 'status', 'from_y', 'from_m', 'from_d', 'to_y', 'to_m', 'to_d', 'from_time', 'to_time', 'per_page'];
 $filterQuery = array_filter(array_intersect_key($_GET, array_flip($filterKeys)), static fn($v) => is_scalar($v) && $v !== '');
 
 if (lazy_part_begin('summary')) {
-    $s = sent_report_summary($f, $scope, $hideRemoved);
+    $s = sent_report_summary($f, $scope, $hideRemoved, $sParts);
     $cards = $showDelivery ? [
         ''          => ['کل پیام‌ها', 'stat-accent'],
         'delivered' => ['تحویل‌شده', ''],
@@ -72,11 +72,11 @@ if (lazy_part_begin('summary')) {
     if ($s['cancelled'] > 0) $cards['cancelled'] = ['لغوشده', ''];
     ?>
 <div class="report-stats">
-  <?php foreach ($cards as $key => [$label, $class]): $value = $key === '' ? $s['total'] : $s[$key]; $isOn = $f['status'] === $key; ?>
+  <?php foreach ($cards as $key => [$label, $class]): $value = $key === '' ? $s['total'] : $s[$key]; $partsValue = $key === '' ? $sParts['total'] : $sParts[$key]; $isOn = $f['status'] === $key; ?>
     <a class="stat <?= $class ?><?= $isOn ? ' is-on' : '' ?>" href="?<?= e(http_build_query(array_merge($filterQuery, ['status' => $key]))) ?>"<?= $isOn ? ' aria-current="true"' : '' ?>>
       <div class="stat-label"><?= e($label) ?></div>
       <div class="stat-value"><?= to_persian_digits(number_format($value)) ?></div>
-      <?php if ($key !== '' && $s['total'] > 0): ?><div class="stat-meta"><?= to_persian_digits((string)round($value / $s['total'] * 100)) ?>٪</div><?php endif; ?>
+      <div class="stat-meta"><span class="report-parts"><?= to_persian_digits(number_format($partsValue)) ?> پارت</span><?php if ($key !== '' && $s['total'] > 0): ?> · <?= to_persian_digits((string)round($value / $s['total'] * 100)) ?>٪<?php endif; ?></div>
     </a>
   <?php endforeach; ?>
 </div>
@@ -85,11 +85,15 @@ if (lazy_part_begin('summary')) {
 }
 
 if (lazy_part_begin('list')) {
+    // Numbered pages. «بعدی» also carries the last row's keyset cursor, so walking forward is an
+    // index seek at any depth; a page opened by its number (or a stale link, clamped to the last
+    // page) is read by position instead — see sent_report_page().
+    $total = sent_report_count($f, $scope, $hideRemoved);
+    [$page, $offset] = pager_offset($total, $f['per_page']);
     $cursor = (string)($_GET['cursor'] ?? '');
-    $page = max(1, (int)($_GET['page'] ?? 1));
-    $result = sent_report_page($f, $scope, $hideRemoved, $cursor !== '' ? $cursor : null);
+    $useCursor = $cursor !== '' && $page > 1 && $page === pager_page();
+    $result = sent_report_page($f, $scope, $hideRemoved, $useCursor ? $cursor : null, $offset, $total);
     $rows = $result['rows'];
-    $offset = ($page - 1) * $f['per_page'];
     $hidden = [];
     if ($canHide) {
         foreach (['bulk' => 'bulk_job', 'attempt' => 'attempt', 'legacy' => 'outbound'] as $source => $hiddenSource) {
@@ -102,16 +106,16 @@ if (lazy_part_begin('list')) {
   <div class="table-wrap"><table data-cards class="report-table">
     <thead><tr>
       <th>ردیف</th><th>شناسه</th><th>فرستنده</th><?php if ($showUser): ?><th>نام کاربری</th><?php endif; ?><th>اپراتور</th>
-      <th>گیرنده</th><th>محتوا</th><th>فرمت</th><th>تعداد پیام</th><th>نوع درخواست</th><th>زمان درخواست</th><?php if ($showDelivery): ?><th>زمان تحویل</th><?php endif; ?><th>وضعیت</th><th><span class="sr-only">جزئیات</span></th>
+      <th>گیرنده</th><th>محتوا</th><th>فرمت</th><th>تعداد پارت</th><th>نوع درخواست</th><th>زمان درخواست</th><?php if ($showDelivery): ?><th>زمان تحویل</th><?php endif; ?><th>وضعیت</th><th><span class="sr-only">جزئیات</span></th>
     </tr></thead>
     <tbody>
     <?php foreach ($rows as $n => $r):
         $isHidden = $canHide && isset($hidden[$r['source']][$r['source'] === 'bulk' ? (int)$r['job_id'] : (int)$r['id']]); ?>
-      <tr data-detail="<?= e($r['ref']) ?>" tabindex="0" class="is-clickable<?= $isHidden ? ' is-hidden-row' : '' ?>">
+      <tr data-detail="<?= e($r['ref']) ?>" tabindex="0" class="is-clickable<?= $isHidden ? ' is-hidden-row' : '' ?><?= $isAdmin && $r['vip'] ? ' row-vip' : '' ?>">
         <td class="num"><?= to_persian_digits((string)($offset + $n + 1)) ?></td>
         <td class="ltr report-ref"><?= e($r['ref']) ?></td>
         <td class="msisdn"><?= e(shared_line_mask((string)$r['originator'], $isAdmin)) ?: '—' ?></td>
-        <?php if ($showUser): ?><td><?= e($r['username']) ?></td><?php endif; ?>
+        <?php if ($showUser): ?><td><?= e($r['username']) ?><?= $isAdmin && $r['vip'] ? ' ' . vip_badge() : '' ?></td><?php endif; ?>
         <td><?= operator_label($r['operator_code'], $r['operator_name'], 18) ?></td>
         <td class="msisdn"><?= e($r['destination_display']) ?></td>
         <td class="msg-preview" dir="auto"><?= (string)$r['content'] !== '' ? e(mb_strimwidth((string)$r['content'], 0, 48, '…')) : '—' ?><?= $isHidden ? ' ' . hidden_messages_badge() : '' ?></td>
@@ -129,15 +133,7 @@ if (lazy_part_begin('list')) {
     <?php endif; ?>
     </tbody>
   </table></div>
-  <?php if ($page > 1 || $result['next'] !== null): ?>
-  <nav class="report-pager" aria-label="صفحه‌های فهرست">
-    <span class="hint">صفحه‌ی <?= to_persian_digits((string)$page) ?> · ردیف <?= to_persian_digits((string)($offset + 1)) ?> تا <?= to_persian_digits((string)($offset + count($rows))) ?></span>
-    <span class="report-pager-links">
-      <?php if ($page > 1): ?><a class="btn btn-sm btn-ghost" href="?<?= e(http_build_query($filterQuery)) ?>">→ جدیدترین‌ها</a><?php endif; ?>
-      <?php if ($result['next'] !== null): ?><a class="btn btn-sm" href="?<?= e(http_build_query(array_merge($filterQuery, ['cursor' => $result['next'], 'page' => $page + 1]))) ?>">قدیمی‌ترها ←</a><?php endif; ?>
-    </span>
-  </nav>
-  <?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $f['per_page']), $filterQuery, 'page', $total, '', $result['next'] !== null ? [$page + 1 => ['cursor' => $result['next']]] : []) ?>
 </div>
 <?php
     exit;
@@ -175,9 +171,10 @@ require __DIR__ . '/../app/views/header.php';
     <label>نام مشتری
       <select name="user_id">
         <option value="0">همه</option>
-        <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"<?= $f['user_id'] === (int)$u['id'] ? ' selected' : '' ?>><?= e($u['username']) ?></option><?php endforeach; ?>
+        <?php foreach ($users as $u): ?><option value="<?= (int)$u['id'] ?>"<?= $f['user_id'] === (int)$u['id'] ? ' selected' : '' ?>><?= e((vip_is((int)$u['id']) ? '★ ' : '') . $u['username']) ?></option><?php endforeach; ?>
       </select>
     </label>
+    <?= vip_filter_select($f['vip']) ?>
     <?php endif; ?>
     <label>شناسه پیام
       <input type="text" name="ref" value="<?= e($f['ref']) ?>" class="ltr" placeholder="B12 یا شناسه‌ی سرویس‌دهنده" autocomplete="off">
