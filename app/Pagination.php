@@ -54,14 +54,16 @@ function pager_window(int $page, int $pages, int $around = 2): array {
 /**
  * The pagination bar. $query is the current page's other query parameters (filters, tab…), kept on
  * every link; $param names this list's page parameter (a page with two lists uses two). Prints
- * nothing when everything fits on one page.
+ * nothing when everything fits on one page. $pageQuery adds parameters to the links of particular
+ * pages only — page number => [name => value] — e.g. a keyset cursor that makes the next page cheap
+ * to read; the «go to page» box never carries them.
  */
-function pager_links(int $page, int $pages, array $query = [], string $param = 'page', ?int $total = null, string $fragment = ''): string {
+function pager_links(int $page, int $pages, array $query = [], string $param = 'page', ?int $total = null, string $fragment = '', array $pageQuery = []): string {
     if ($pages <= 1) {
         return '';
     }
     unset($query[$param]);
-    $href = static fn(int $p): string => '?' . http_build_query($query + [$param => $p]) . ($fragment !== '' ? '#' . $fragment : '');
+    $href = static fn(int $p): string => '?' . http_build_query($query + [$param => $p] + ($pageQuery[$p] ?? [])) . ($fragment !== '' ? '#' . $fragment : '');
     $fa = static fn(int $n): string => to_persian_digits(number_format($n));
 
     $h = '<nav class="pagination pager" aria-label="صفحه‌ها">';

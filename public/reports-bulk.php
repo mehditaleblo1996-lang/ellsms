@@ -31,8 +31,8 @@ $status = $_GET['status'] ?? '';
 $dest   = trim($_GET['dest'] ?? '');
 $text   = trim($_GET['q'] ?? '');
 $userId = is_admin() ? (int)($_GET['user_id'] ?? 0) : 0;
-$per    = (int)($_GET['per_page'] ?? 50);
-if (!in_array($per, [25, 50, 100, 200], true)) $per = 50;
+$per    = (int)($_GET['per_page'] ?? 100);
+if (!in_array($per, [25, 50, 100, 200], true)) $per = 100;
 
 // Delivery states (تحویل‌شده / تحویل نشده, delivery checks) only for admins and customers on
 // delivery-based billing (delivery_status_visible()); anyone else sees a message as sent or failed.

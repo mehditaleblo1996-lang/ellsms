@@ -8,9 +8,9 @@ require_once dirname(__DIR__, 2) . '/app/Reports/SentMessages.php';
 
 /**
  * «لیست پیام‌های ارسالی» (app/Reports/SentMessages.php): bulk items, gateway send attempts and the
- * legacy outbound_message table read as one list — merged newest first, paged by a keyset cursor
- * that never repeats or skips a row, filtered identically in every source, and scoped to the
- * viewer's accounts.
+ * legacy outbound_message table read as one list — merged newest first, paged by number or by a
+ * keyset cursor without ever repeating or skipping a row, filtered identically in every source, and
+ * scoped to the viewer's accounts.
  */
 final class SentMessagesReportTest extends IntegrationTestCase
 {
@@ -53,6 +53,44 @@ final class SentMessagesReportTest extends IntegrationTestCase
             $cursor = $page['next'];
         }
         self::assertSame(array_column($all['rows'], 'ref'), $seen);
+    }
+
+    public function testANumberedPageHoldsTheSameRowsFromEitherEndAsTheCursorWalk(): void
+    {
+        foreach (['07', '08', '09'] as $hour) {
+            $this->bulkItem($this->job, '98912100' . $hour . '01', 'sent', null, "2026-10-20 {$hour}:00:00");
+            $this->bulkItem($this->job, '98912100' . $hour . '02', 'sent', null, "2026-10-20 {$hour}:00:00");
+            $this->attempt($this->owner, 'direct_send', '98912100' . $hour . '03', 'accepted', null, "2026-10-20 {$hour}:00:00");
+            $this->legacy($this->owner, '98912100' . $hour . '04', 'sent', "2026-10-20 {$hour}:00:00");
+        }
+        $this->attempt($this->other, 'direct_send', '989129999999', 'accepted', null, '2026-10-20 08:30:00');
+
+        $f = $this->filters([]);
+        self::assertSame(100, $f['per_page'], 'a hundred rows a page unless the viewer picks another size');
+        $all = array_column(sent_report_page($f, [$this->owner], true)['rows'], 'ref');
+        $total = sent_report_count($f, [$this->owner], true);
+        self::assertSame(12, $total);
+        self::assertCount(12, $all);
+
+        // Five rows a page: pages 1–3, each opened by its number — page 2 counted from the newest
+        // row, page 3 (the older half) from the oldest — read exactly the one-page list in order.
+        $f['per_page'] = 5;
+        $byNumber = [];
+        $nexts = [];
+        foreach ([0, 5, 10] as $offset) {
+            $page = sent_report_page($f, [$this->owner], true, null, $offset, $total);
+            array_push($byNumber, ...array_column($page['rows'], 'ref'));
+            $nexts[] = $page['next'];
+        }
+        self::assertSame($all, $byNumber);
+        self::assertNull($nexts[2], 'the last page has no next');
+        self::assertSame(array_slice($all, 5, 5), array_column(sent_report_page($f, [$this->owner], true, null, 5)['rows'], 'ref'),
+            'without a total the page is counted from the newest end, same rows');
+
+        // «بعدی» from page 2 carries a cursor; it lands on what page 3 by number shows.
+        self::assertNotNull($nexts[1]);
+        self::assertSame(array_slice($all, 10), array_column(sent_report_page($f, [$this->owner], true, $nexts[1], 10, $total)['rows'], 'ref'));
+        self::assertSame([], sent_report_page($f, [$this->owner], true, null, 15, $total)['rows'], 'past the end is empty');
     }
 
     public function testFiltersApplyToEverySource(): void

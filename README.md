@@ -58,6 +58,17 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 ELLSMS has its own push receivers, with the same URLs the backend platform used: `https://<host>/mo?from=…&to=…&content=…` for inbound SMS (Persian and emoji supported) and `https://<host>/delivery?id=…&status=…` for delivery reports. Guard them with `SMS_CALLBACK_TOKEN` and/or `SMS_CALLBACK_ALLOWED_IPS`. See [`docs/sms-callbacks.md`](docs/sms-callbacks.md).
 
+## Message reports (لیست پیام‌های ارسالی / دریافتی)
+
+«لیست پیام‌های ارسالی» (`/messages/reports`, also `/reports.php`) lists every sent message — direct, API,
+scheduled, secretary, p2p/smart/gradual and bulk — one row per recipient, with a detail drawer, status
+cards and a background CSV export. «لیست پیام‌های دریافتی» (`/inbox.php`) lists inbound SMS on the viewer's
+lines, and «خلاصه‌ی ارسال‌های حجیم» (`/reports-bulk.php`) the bulk sends. All three show **100 rows a page**
+by default («تعداد در صفحه» changes it) with a numbered pager — «قبلی ۱ … ۵ [۶] ۷ … ۱۲۰ بعدی», the total,
+and a «برو به صفحه» box on long lists. The sent list stays fast at any depth: «بعدی» walks a keyset cursor
+and a jump to a page number reads only row keys, from the nearer end. See
+[`docs/reporting-scalability.md`](docs/reporting-scalability.md).
+
 ## Voice messages (ZarinCall)
 
 Customers can send voice files (uploaded WAV/MP3 or generated from Persian text) by phone call to a

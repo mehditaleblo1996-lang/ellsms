@@ -16,6 +16,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/SentMessages.php';
 
 const RECEIVED_REPORT_PER_PAGE = [25, 50, 100];
+/** Rows a page shows unless the viewer picks another «تعداد در صفحه». */
+const RECEIVED_REPORT_DEFAULT_PER_PAGE = 100;
 
 /** Pure: the received list's filters from its GET parameters (dates as sent_report_filters()). */
 function received_report_filters(array $query, bool $isAdmin, string $today): array {
@@ -27,7 +29,7 @@ function received_report_filters(array $query, bool $isAdmin, string $today): ar
     $toLocal = $toTime === ''
         ? (new DateTimeImmutable($to))->modify('+1 day')->format('Y-m-d 00:00:00')
         : (new DateTimeImmutable($to . ' ' . $toTime . ':00'))->modify('+1 minute')->format('Y-m-d H:i:s');
-    $per = (int)($query['per_page'] ?? 50);
+    $per = (int)($query['per_page'] ?? RECEIVED_REPORT_DEFAULT_PER_PAGE);
     $digits = static fn(string $key): string => preg_replace('/\D/', '', report_latin_digits((string)($query[$key] ?? ''))) ?? '';
     return [
         'from' => $from, 'to' => $to, 'from_time' => $fromTime, 'to_time' => $toTime,
@@ -37,7 +39,7 @@ function received_report_filters(array $query, bool $isAdmin, string $today): ar
         'sender' => $digits('sender'),
         'dest' => $digits('dest'),
         'q' => mb_substr(trim((string)($query['q'] ?? '')), 0, 200),
-        'per_page' => in_array($per, RECEIVED_REPORT_PER_PAGE, true) ? $per : 50,
+        'per_page' => in_array($per, RECEIVED_REPORT_PER_PAGE, true) ? $per : RECEIVED_REPORT_DEFAULT_PER_PAGE,
     ];
 }
 

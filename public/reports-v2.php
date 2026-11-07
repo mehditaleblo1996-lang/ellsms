@@ -85,11 +85,15 @@ if (lazy_part_begin('summary')) {
 }
 
 if (lazy_part_begin('list')) {
+    // Numbered pages. «بعدی» also carries the last row's keyset cursor, so walking forward is an
+    // index seek at any depth; a page opened by its number (or a stale link, clamped to the last
+    // page) is read by position instead — see sent_report_page().
+    $total = sent_report_count($f, $scope, $hideRemoved);
+    [$page, $offset] = pager_offset($total, $f['per_page']);
     $cursor = (string)($_GET['cursor'] ?? '');
-    $page = max(1, (int)($_GET['page'] ?? 1));
-    $result = sent_report_page($f, $scope, $hideRemoved, $cursor !== '' ? $cursor : null);
+    $useCursor = $cursor !== '' && $page > 1 && $page === pager_page();
+    $result = sent_report_page($f, $scope, $hideRemoved, $useCursor ? $cursor : null, $offset, $total);
     $rows = $result['rows'];
-    $offset = ($page - 1) * $f['per_page'];
     $hidden = [];
     if ($canHide) {
         foreach (['bulk' => 'bulk_job', 'attempt' => 'attempt', 'legacy' => 'outbound'] as $source => $hiddenSource) {
@@ -129,15 +133,7 @@ if (lazy_part_begin('list')) {
     <?php endif; ?>
     </tbody>
   </table></div>
-  <?php if ($page > 1 || $result['next'] !== null): ?>
-  <nav class="report-pager" aria-label="صفحه‌های فهرست">
-    <span class="hint">صفحه‌ی <?= to_persian_digits((string)$page) ?> · ردیف <?= to_persian_digits((string)($offset + 1)) ?> تا <?= to_persian_digits((string)($offset + count($rows))) ?></span>
-    <span class="report-pager-links">
-      <?php if ($page > 1): ?><a class="btn btn-sm btn-ghost" href="?<?= e(http_build_query($filterQuery)) ?>">→ جدیدترین‌ها</a><?php endif; ?>
-      <?php if ($result['next'] !== null): ?><a class="btn btn-sm" href="?<?= e(http_build_query(array_merge($filterQuery, ['cursor' => $result['next'], 'page' => $page + 1]))) ?>">قدیمی‌ترها ←</a><?php endif; ?>
-    </span>
-  </nav>
-  <?php endif; ?>
+  <?= pager_links($page, pager_pages($total, $f['per_page']), $filterQuery, 'page', $total, '', $result['next'] !== null ? [$page + 1 => ['cursor' => $result['next']]] : []) ?>
 </div>
 <?php
     exit;

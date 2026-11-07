@@ -72,4 +72,15 @@ final class PaginationTest extends TestCase
         $last = pager_links(3, 3);
         $this->assertStringContainsString('<span class="btn btn-sm btn-ghost is-disabled">بعدی ←</span>', $last);
     }
+
+    public function testExtraParametersRideOnlyOnTheirOwnPagesLinks(): void
+    {
+        $html = pager_links(2, 20, ['status' => 'sent'], 'page', 2000, '', [3 => ['cursor' => 'abc']]);
+
+        $this->assertStringContainsString('href="?status=sent&amp;page=3&amp;cursor=abc" rel="next"', $html);
+        $this->assertStringContainsString('href="?status=sent&amp;page=3&amp;cursor=abc">۳<', $html, 'the number link of that page carries it too');
+        $this->assertStringContainsString('href="?status=sent&amp;page=1" rel="prev"', $html);
+        $this->assertStringContainsString('href="?status=sent&amp;page=4">۴<', $html);
+        $this->assertStringNotContainsString('name="cursor"', $html, 'the jump box goes to any page, so never with a cursor');
+    }
 }

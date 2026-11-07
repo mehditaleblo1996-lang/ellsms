@@ -197,9 +197,16 @@ final class LazyReportPartsHttpTest extends TestCase
     {
         $r = $this->request('/reports-v2.php?' . $this->dayQuery() . '&per_page=25&_part=list', $this->sessionFor($this->adminId));
         $this->assertSame(200, $r['code']);
-        $this->assertStringContainsString('page=2', $r['body'], 'no second page for 30 sends at 25 per page');
+        $this->assertStringContainsString('page=2', $r['body'], 'no second page for 31 rows at 25 per page');
         $this->assertStringContainsString('cursor=', $r['body']);
+        $this->assertStringContainsString('صفحه ' . to_persian_digits('1') . ' از ' . to_persian_digits('2') . ' · ' . to_persian_digits('31') . ' مورد', $r['body'], 'numbered pager with the total (the cancelled recipient included)');
         $this->assertStringNotContainsString('_part', $r['body']);
+
+        // Page 2 opened by its number (no cursor) holds the last 6 rows.
+        $r = $this->request('/reports-v2.php?' . $this->dayQuery() . '&per_page=25&page=2&_part=list', $this->sessionFor($this->adminId));
+        $this->assertSame(200, $r['code'], substr($r['body'], 0, 300));
+        $this->assertSame(6, substr_count($r['body'], '<tr data-detail='), 'page 2 of 31 rows at 25 per page');
+        $this->assertStringContainsString('aria-current="page">' . to_persian_digits('2') . '<', $r['body']);
     }
 
     public function testAPartWithoutASessionRedirectsToLoginInsteadOfAnsweringAsThePart(): void

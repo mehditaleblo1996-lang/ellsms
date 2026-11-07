@@ -17,22 +17,36 @@ rows, and what is measured rather than assumed.
 
 ## What changed
 
-### Keyset pagination
+### Numbered pages over a keyset list
 
-The report page pages by cursor, not offset. Links carry `before_id` / `after_id`; the query becomes
-`WHERE m.id < ? ORDER BY m.id DESC LIMIT 51`, which is an index seek at any depth.
+«لیست پیام‌های ارسالی» (`/messages/reports`, `public/reports-v2.php`, data in
+`app/Reports/SentMessages.php`) merges three sources — bulk items, gateway send attempts and the
+legacy `outbound_message` — newest first. It shows **100 rows a page** by default («تعداد در صفحه»:
+25 / 50 / 100) and a numbered pager under the table (`pager_links()`, `app/Pagination.php`):
+«→ قبلی ۱ … ۴ ۵ [۶] ۷ ۸ … ۱۲۰ بعدی ←», «صفحه ۶ از ۱۲۰ · N مورد» and, past seven pages, a
+«برو به صفحه» box. Every link keeps the filters.
 
-Two details that matter:
+A page is read in one of two ways:
 
-- **Direction changes the ORDER BY.** "The N rows immediately *newer* than id X" is only expressible
-  as `ORDER BY id ASC`. Keeping `DESC` would return the newest rows in the whole filtered set
-  instead of the page adjacent to the cursor, silently skipping everything between. The adapter
-  flips direction and the page re-reverses the result so the table still reads newest-first.
-- **No total page count is shown.** Deriving one needs `COUNT(*)` over the whole filtered set, which
-  is exactly what stops being affordable. One extra row is fetched (`LIMIT per+1`) purely to answer
-  "is there another page?", then trimmed before rendering.
+- **«بعدی» (and the next page's number) carry a keyset cursor** — the (time, source, id) of the
+  current page's last row. Each source then reads `WHERE time < ? … ORDER BY time DESC, id DESC
+  LIMIT per+1` — an index seek at any depth — and the rows are merged in PHP, so walking forward
+  page by page costs at page 500 what it costs at page 1.
+- **Any other page number** (a jump, «قبلی», the «برو به صفحه» box, a stale link clamped to the last
+  page) is read **by position** (`sent_report_offset_rows()`): each source contributes only its
+  (time, id) keys — up to offset+per of them, from whichever end of the list is nearer
+  (`sent_report_offset_plan()`), so the last page is as cheap as the first — merged in one
+  `UNION ALL` inside the database; then only the page's own rows are read in full, by id. The
+  deepest jump (the middle of the list) reads half the window's keys per source — never more than
+  the count below already reads.
 
-Page size defaults to 50 and is capped at 200.
+The page count comes from `sent_report_count()` — one `COUNT(*)` per source under the same
+filters, the same work the status cards above the list (`sent_report_summary()`) already do. The
+default window is one day, so this stays small unless a wide date range is chosen.
+
+«لیست پیام‌های دریافتی» (`public/inbox.php`) and «خلاصه‌ی ارسال‌های حجیم» (`public/reports-bulk.php`)
+use the same numbered pager with a plain count and `LIMIT/OFFSET`, also 100 rows a page by default
+(the bulk summary offers 200 too).
 
 ### Durable export jobs
 

@@ -11,9 +11,11 @@
  *                                                   (SMS_GATEWAY_TRANSPORT=0 and older history)
  *
  * Nothing is copied into a new table. Each source is queried with the same filters and its own
- * index-friendly time column, newest first, and the pages are merged in PHP with a keyset cursor
- * (time, source, id), so page 50 costs what page 1 costs and no UNION over millions of bulk rows
- * is ever sorted. A message is addressed as <letter><id> (B12, D34, L56) — see sent_report_ref().
+ * index-friendly time column, newest first, and the pages are merged in PHP. The list has numbered
+ * pages: «بعدی» carries a keyset cursor (time, source, id), so walking forward costs at any depth
+ * what page 1 costs; a page opened by its number is found by position on the (time, id) keys alone
+ * and from whichever end of the list is nearer (sent_report_offset_rows()), and only that page's
+ * rows are read in full. A message is addressed as <letter><id> (B12, D34, L56) — see sent_report_ref().
  *
  * Tenant scope is the dashboard's (dashboard_scope_user_ids()): an admin sees everyone, anyone else
  * the members of their organization. Rows an admin removed (app/HiddenMessages.php) stay out for
@@ -31,6 +33,8 @@ const SENT_REPORT_SOURCES = ['bulk' => 'B', 'attempt' => 'D', 'legacy' => 'L'];
 const SENT_REPORT_SOURCE_RANK = ['bulk' => 3, 'attempt' => 2, 'legacy' => 1];
 const SENT_REPORT_UNDELIVERED = ['failed', 'rejected', 'expired'];
 const SENT_REPORT_PER_PAGE = [25, 50, 100];
+/** Rows a page shows unless the viewer picks another «تعداد در صفحه». */
+const SENT_REPORT_DEFAULT_PER_PAGE = 100;
 /** Content search is a LIKE over every message in the window, so the window it may span is bounded. */
 const SENT_REPORT_TEXT_SEARCH_MAX_DAYS = 7;
 
@@ -244,7 +248,7 @@ function sent_report_filters(array $query, bool $isAdmin, string $today): array 
     $toTime = sent_report_query_time($query, 'to_time');
     $type = (string)($query['type'] ?? '');
     $status = (string)($query['status'] ?? '');
-    $per = (int)($query['per_page'] ?? 50);
+    $per = (int)($query['per_page'] ?? SENT_REPORT_DEFAULT_PER_PAGE);
     $digits = static fn(string $key): string => preg_replace('/\D/', '', report_latin_digits((string)($query[$key] ?? ''))) ?? '';
     return [
         'from' => $from, 'to' => $to, 'from_time' => $fromTime, 'to_time' => $toTime,
@@ -257,7 +261,7 @@ function sent_report_filters(array $query, bool $isAdmin, string $today): array 
         'q' => $q,
         'type' => array_key_exists($type, sent_report_types()) ? $type : '',
         'status' => array_key_exists($status, sent_report_statuses()) ? $status : '',
-        'per_page' => in_array($per, SENT_REPORT_PER_PAGE, true) ? $per : 50,
+        'per_page' => in_array($per, SENT_REPORT_PER_PAGE, true) ? $per : SENT_REPORT_DEFAULT_PER_PAGE,
         'notice' => $notice,
     ];
 }
@@ -419,35 +423,122 @@ function sent_report_select_sql(string $source): string {
    ========================================================================== */
 
 /**
- * One page of the merged list, newest first.
+ * One page of the merged list, newest first: the rows after $cursor (the last row of the page
+ * before — what «بعدی» carries; an index seek at any depth), or else the rows from position
+ * $offset on (a page opened by its number; sent_report_offset_rows()). $total is
+ * sent_report_count(), which lets a page in the older half be counted from the oldest end.
  *
  * @return array{rows:list<array>, next:?string}
  */
-function sent_report_page(array $f, ?array $scope, bool $hide, ?string $cursor = null): array {
+function sent_report_page(array $f, ?array $scope, bool $hide, ?string $cursor = null, int $offset = 0, ?int $total = null): array {
     $per = $f['per_page'];
     $decoded = $cursor !== null ? sent_report_cursor_decode($cursor) : null;
-    $rows = [];
+    $queries = [];
     foreach (array_keys(SENT_REPORT_SOURCES) as $source) {
         $q = sent_report_source_query($source, $f, $scope, $hide);
-        if ($q === null) continue;
-        [$cursorSql, $cursorParams] = sent_report_cursor_sql($decoded, $source, $q['time'], $q['id']);
-        $limit = $per + 1;
-        $st = db()->prepare('SELECT ' . sent_report_select_sql($source) . " FROM {$q['from']} WHERE {$q['where']}{$cursorSql}
-                             ORDER BY {$q['time']} DESC, {$q['id']} DESC LIMIT {$limit}");
-        $st->execute(array_merge($q['params'], $cursorParams));
-        foreach ($st->fetchAll() as $row) {
-            $row['source'] = $source;
-            $row['id'] = (int)$row['id'];
-            $row['sort_time'] = (string)$row['sort_time'];
-            $rows[] = $row;
-        }
+        if ($q !== null) $queries[$source] = $q;
     }
-    $merged = sent_report_merge($rows, $per);
+    if ($decoded === null && $offset > 0) {
+        $merged = sent_report_offset_rows($queries, $offset, $per, $total);
+    } else {
+        $rows = [];
+        foreach ($queries as $source => $q) {
+            [$cursorSql, $cursorParams] = sent_report_cursor_sql($decoded, $source, $q['time'], $q['id']);
+            $limit = $per + 1;
+            array_push($rows, ...sent_report_source_rows($source, 'SELECT ' . sent_report_select_sql($source) . " FROM {$q['from']} WHERE {$q['where']}{$cursorSql}
+                             ORDER BY {$q['time']} DESC, {$q['id']} DESC LIMIT {$limit}", array_merge($q['params'], $cursorParams)));
+        }
+        $merged = sent_report_merge($rows, $per);
+    }
     $last = end($merged['rows']);
     return [
         'rows' => sent_report_decorate($merged['rows']),
         'next' => $merged['has_more'] && $last ? sent_report_cursor_encode($last['sort_time'], $last['source'], $last['id']) : null,
     ];
+}
+
+/** Runs one source's row query and tags each row with its source — the shape sent_report_merge() sorts. */
+function sent_report_source_rows(string $source, string $sql, array $params): array {
+    $st = db()->prepare($sql);
+    $st->execute($params);
+    $rows = [];
+    foreach ($st->fetchAll() as $row) {
+        $row['source'] = $source;
+        $row['id'] = (int)$row['id'];
+        $row['sort_time'] = (string)$row['sort_time'];
+        $rows[] = $row;
+    }
+    return $rows;
+}
+
+/**
+ * Pure: how to read positions $offset … $offset+$per-1 of a merged list of $total rows — from the
+ * newest end, or, for a page in the older half, from the oldest end ('ASC'), so the last page costs
+ * what the first does. 'skip'/'take' are the positions counted from that end; a newest-end read
+ * takes one row more than it shows, to learn whether another page follows.
+ *
+ * @return array{dir:string, skip:int, take:int}
+ */
+function sent_report_offset_plan(int $offset, int $per, ?int $total): array {
+    if ($total !== null && $offset * 2 >= $total) {
+        $take = max(0, min($per, $total - $offset));
+        return ['dir' => 'ASC', 'skip' => max(0, $total - $offset - $take), 'take' => $take];
+    }
+    return ['dir' => 'DESC', 'skip' => $offset, 'take' => $per + 1];
+}
+
+/**
+ * The rows at positions $offset … $offset+$per-1 of the merged order (time, source, id — newest
+ * first), for a page opened by its number. The positions are found on the keys alone: each source's
+ * first skip+take (time, id) pairs from the nearer end (sent_report_offset_plan()), merged in one
+ * UNION ALL inside the database; then only the page's own rows are read in full, by id.
+ *
+ * @param array<string,array> $queries source => sent_report_source_query()
+ * @return array{rows:list<array>, has_more:bool}
+ */
+function sent_report_offset_rows(array $queries, int $offset, int $per, ?int $total): array {
+    $plan = sent_report_offset_plan($offset, $per, $total);
+    if ($queries === [] || $plan['take'] === 0) return ['rows' => [], 'has_more' => false];
+    ['dir' => $dir, 'skip' => $skip, 'take' => $take] = $plan;
+    $branches = [];
+    $params = [];
+    foreach ($queries as $source => $q) {
+        $rank = SENT_REPORT_SOURCE_RANK[$source];
+        $branches[] = "(SELECT {$q['time']} AS sort_time, {$rank} AS rnk, {$q['id']} AS id FROM {$q['from']} WHERE {$q['where']}
+                        ORDER BY {$q['time']} {$dir}, {$q['id']} {$dir} LIMIT " . ($skip + $take) . ')';
+        array_push($params, ...$q['params']);
+    }
+    $st = db()->prepare('SELECT sort_time, rnk, id FROM (' . implode(' UNION ALL ', $branches) . ") u
+                         ORDER BY sort_time {$dir}, rnk {$dir}, id {$dir} LIMIT {$take} OFFSET {$skip}");
+    $st->execute($params);
+    $keys = $st->fetchAll();
+    $hasMore = $dir === 'DESC' ? count($keys) > $per : $offset + count($keys) < (int)$total;
+
+    $ids = [];
+    $sourceOfRank = array_flip(SENT_REPORT_SOURCE_RANK);
+    foreach (array_slice($keys, 0, $per) as $key) {
+        $ids[$sourceOfRank[(int)$key['rnk']]][] = (int)$key['id'];
+    }
+    $rows = [];
+    foreach ($ids as $source => $list) {
+        $q = $queries[$source];
+        array_push($rows, ...sent_report_source_rows($source, 'SELECT ' . sent_report_select_sql($source) . " FROM {$q['from']}
+                         WHERE {$q['id']} IN (" . implode(',', array_fill(0, count($list), '?')) . ')', $list));
+    }
+    return ['rows' => sent_report_merge($rows, $per)['rows'], 'has_more' => $hasMore];
+}
+
+/** How many rows the list holds under the filters — what the numbered pager divides into pages. */
+function sent_report_count(array $f, ?array $scope, bool $hide): int {
+    $total = 0;
+    foreach (array_keys(SENT_REPORT_SOURCES) as $source) {
+        $q = sent_report_source_query($source, $f, $scope, $hide);
+        if ($q === null) continue;
+        $st = db()->prepare("SELECT COUNT(*) FROM {$q['from']} WHERE {$q['where']}");
+        $st->execute($q['params']);
+        $total += (int)$st->fetchColumn();
+    }
+    return $total;
 }
 
 /**
