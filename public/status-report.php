@@ -32,7 +32,7 @@ $rangeLabel = $f['from'] === $f['to'] ? jdate($f['from'], false) : jdate($f['fro
 if (isset($_GET['export'])) {
     $report = status_report_build($f, $scope, $hideRemoved, $showDelivery);
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ellsms-status-report-' . $f['from'] . '_' . $f['to'] . '.csv"');
+    header('Content-Disposition: attachment; filename="status-report-' . $f['from'] . '_' . $f['to'] . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
     $head = [$f['granularity'] === 'month' ? 'ماه' : 'روز'];
