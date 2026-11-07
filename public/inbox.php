@@ -33,7 +33,7 @@ if (isset($_GET['export'])) {
     // actual SELECT execution lives in app/Backend/messages.php.
     $exportRows = backend_inbound_export_rows($W, $params, 100000);
     header('Content-Type: text/csv; charset=utf-8');
-    header('Content-Disposition: attachment; filename="ellsms-inbox-' . $f['from'] . '_' . $f['to'] . '.csv"');
+    header('Content-Disposition: attachment; filename="inbox-' . $f['from'] . '_' . $f['to'] . '.csv"');
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
     fputcsv($out, ['شناسه','فرستنده','گیرنده','متن پیام','زمان دریافت']);
