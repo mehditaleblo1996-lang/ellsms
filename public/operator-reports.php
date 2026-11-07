@@ -155,7 +155,7 @@ if (lazy_part_begin('report')) {
       <th title="فقط پیام‌هایی که تحویلشان تأیید شده"><?= e(OPERATOR_REPORT_STATUSES['delivered']) ?></th>
       <th class="op-key" title="تحویل‌شده + ارسال‌شده‌ی بدون گزارش">مجموع تحویل گرفته‌شده</th>
       <th class="op-key" title="تعداد پارت پیامک‌های «مجموع تحویل گرفته‌شده»">پارت تحویل گرفته‌شده</th>
-      <?php foreach (['undelivered', 'expired', 'rejected', 'cancelled', 'unknown'] as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
+      <?php foreach (OPERATOR_REPORT_TAIL_STATUSES as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
     </tr>
     <?php
     // $d / $pd: the two key totals in messages and in SMS parts.
@@ -167,14 +167,14 @@ if (lazy_part_begin('report')) {
             . '<td class="num">' . operator_report_num($s['delivered']) . '</td>'
             . '<td class="num op-key">' . operator_report_num($d['received']) . '</td>'
             . '<td class="num op-key">' . operator_report_num($pd['received']) . '</td>';
-        foreach (['undelivered', 'expired', 'rejected', 'cancelled', 'unknown'] as $st) $cells .= '<td class="num">' . operator_report_num($s[$st]) . '</td>';
+        foreach (OPERATOR_REPORT_TAIL_STATUSES as $st) $cells .= '<td class="num">' . operator_report_num($s[$st]) . '</td>';
         return '<tr' . ($total ? ' class="op-total"' : '') . '><td>' . $label . '</td>' . $cells . '</tr>';
     };
     foreach ($operators as $op) echo $statusRow($opCell($op), $statusByOp[$op], $derivedByOp[$op], $derivedPartsByOp[$op]);
     echo $statusRow('جمع کل', $statusTotal, $derivedTotal, $derivedPartsTotal, true);
     ?>
   </table></div>
-  <p class="hint op-note"><span class="op-key-chip"></span> ستون‌های رنگی همان ستون‌هایی‌اند که مشتری در پنل خود می‌بیند: «مجموع ارسال‌شده» همه‌ی پیام‌های رفته به اپراتور است و «مجموع تحویل گرفته‌شده» تحویل‌شده‌ها به‌علاوه‌ی ارسال‌شده‌هایی که هنوز گزارش تحویل ندارند؛ ستون «پارت» کنار هر کدام، تعداد پارت پیامک‌های همان ستون است. ستون «ارسال‌شده» فقط پیام‌هایی را نشان می‌دهد که در وضعیت ارسال مانده‌اند و «تحویل گرفته‌شده» فقط تحویل‌های تأییدشده را.</p>
+  <p class="hint op-note"><span class="op-key-chip"></span> ستون‌های رنگی همان ستون‌هایی‌اند که مشتری در پنل خود می‌بیند: «مجموع ارسال‌شده» همه‌ی پیام‌های رفته به اپراتور است و «مجموع تحویل گرفته‌شده» تحویل‌شده‌ها به‌علاوه‌ی ارسال‌شده‌هایی که هنوز گزارش تحویل ندارند؛ ستون «پارت» کنار هر کدام، تعداد پارت پیامک‌های همان ستون است. ستون «ارسال‌شده» فقط پیام‌هایی را نشان می‌دهد که در وضعیت ارسال مانده‌اند و «تحویل گرفته‌شده» فقط تحویل‌های تأییدشده را. «لیست سیاه»: پاسخ لیست سیاه مخابرات و گیرندگانی که با ۱۱ لغو عضویت کرده‌اند؛ «فرستنده نامعتبر»: رد به‌دلیل شماره‌ی فرستنده (جزئیات در «گزارش وضعیت‌ها»).</p>
 
   <?php if ($view === 'all' && $withData): ?>
   <h3 class="op-sub">جزئیات هر اپراتور به تفکیک زبان پیام</h3>
@@ -185,7 +185,7 @@ if (lazy_part_begin('report')) {
       <tr>
         <th>زبان پیام</th><th><?= e(OPERATOR_REPORT_STATUSES['queued']) ?></th><th><?= e(OPERATOR_REPORT_STATUSES['sent']) ?></th><th class="op-key">مجموع ارسال‌شده</th><th class="op-key">پارت ارسال‌شده</th>
         <th><?= e(OPERATOR_REPORT_STATUSES['delivered']) ?></th><th class="op-key">مجموع تحویل گرفته‌شده</th><th class="op-key">پارت تحویل گرفته‌شده</th>
-        <?php foreach (['undelivered', 'expired', 'rejected', 'cancelled', 'unknown'] as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
+        <?php foreach (OPERATOR_REPORT_TAIL_STATUSES as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
       </tr>
       <?php foreach (array_keys(OPERATOR_REPORT_ENCODINGS) as $enc):
           if (!isset($counts[$op][$enc])) continue;

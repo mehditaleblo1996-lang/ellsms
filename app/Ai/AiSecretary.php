@@ -843,8 +843,9 @@ function ai_secretary_process_job(array $job): void {
     // Send — billed like an auto-reply; a retry reuses the stored answer, never asks the model again.
     $sendAttempts = (int)$job['send_attempts'] + 1;
     db()->prepare('UPDATE ellsms_ai_jobs SET send_attempts = ? WHERE id = ?')->execute([$sendAttempts, $jobId]);
-    [$ok, $info, $retryable] = dispatch_message_retryable($user, (string)$job['line'], [(string)$job['sender']], $reply,
-        'ai_secretary', (string)$jobId, $sendAttempts, null, 'transactional');
+    // «عامل ارسال پیام» = منشی هوشمند in the status report (app/SendContext.php).
+    [$ok, $info, $retryable] = send_context_with(['channel' => 'ai'], static fn(): array => dispatch_message_retryable($user, (string)$job['line'], [(string)$job['sender']], $reply,
+        'ai_secretary', (string)$jobId, $sendAttempts, null, 'transactional'));
     if ($ok) {
         $fields = ['info' => mb_strimwidth((string)$info, 0, 500, '…')];
         // The AI part is charged only now that the answer actually went out — a failed send never

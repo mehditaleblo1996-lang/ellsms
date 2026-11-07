@@ -43,13 +43,14 @@ if (lazy_part_begin('today')) {
   <div class="stat stat-accent">
     <div class="stat-label">ارسال امروز</div>
     <div class="stat-value"><?= to_persian_digits(number_format($today['sent'])) ?></div>
-    <div class="stat-foot"><?= $delta($today['sent'], $yesterday['sent']) ?></div>
+    <div class="stat-foot"><span class="stat-rate stat-parts"><?= to_persian_digits(number_format($today['sent_parts'])) ?> پارت</span><?= $delta($today['sent'], $yesterday['sent']) ?></div>
   </div>
   <?php if ($showDelivery): ?>
   <div class="stat">
     <div class="stat-label">تحویل‌شده امروز</div>
     <div class="stat-value"><?= to_persian_digits(number_format($today['delivered'])) ?></div>
     <div class="stat-foot">
+      <span class="stat-rate stat-parts"><?= to_persian_digits(number_format($today['delivered_parts'])) ?> پارت</span>
       <?php if ($deliveryRate !== null): ?><span class="stat-rate">نرخ تحویل <strong><?= to_persian_digits((string)$deliveryRate) ?>٪</strong></span><?php endif; ?>
       <?= $delta($today['delivered'], $yesterday['delivered']) ?>
     </div>
@@ -59,7 +60,7 @@ if (lazy_part_begin('today')) {
   <div class="stat">
     <div class="stat-label">ناموفق امروز</div>
     <div class="stat-value"><?= to_persian_digits(number_format($today[$failedKey])) ?></div>
-    <div class="stat-foot"><?= $delta($today[$failedKey], $yesterday[$failedKey], true) ?></div>
+    <div class="stat-foot"><span class="stat-rate stat-parts"><?= to_persian_digits(number_format($today[$failedKey . '_parts'])) ?> پارت</span><?= $delta($today[$failedKey], $yesterday[$failedKey], true) ?></div>
   </div>
   <div class="stat">
     <div class="stat-label">در صف ارسال</div>

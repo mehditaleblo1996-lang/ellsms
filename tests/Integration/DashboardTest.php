@@ -36,7 +36,9 @@ final class DashboardTest extends IntegrationTestCase
         )->execute([$owner]);
 
         $mine = dashboard_today_counts([$owner]);
-        self::assertSame(['sent' => 4, 'delivered' => 2, 'failed' => 2], $mine);
+        // Today's counts also carry their SMS parts: the bulk rows' one-part texts; the direct send has no text.
+        self::assertSame(['sent' => 4, 'delivered' => 2, 'failed' => 2, 'send_failed' => 1,
+                          'sent_parts' => 3, 'delivered_parts' => 1, 'failed_parts' => 2, 'send_failed_parts' => 1], $mine);
 
         $all = dashboard_today_counts(null);
         self::assertGreaterThanOrEqual(5, $all['sent'], 'an admin also sees the other account');
@@ -55,7 +57,7 @@ final class DashboardTest extends IntegrationTestCase
 
         $breakdown = dashboard_daily_breakdown([$owner], 7);
         self::assertSame(
-            ['sent' => 4, 'delivered' => 2, 'failed' => 2, 'pending' => 1],
+            ['sent' => 4, 'delivered' => 2, 'failed' => 2, 'pending' => 1, 'send_failed' => 1],
             end($breakdown),
             'today: expired + failed at send are failures, the one still "sent" waits for its report'
         );
@@ -68,7 +70,7 @@ final class DashboardTest extends IntegrationTestCase
         $this->item($job, 'sent', 'delivered', gmdate('Y-m-d H:i:s', time() - 86400 - 1)); // yesterday, before now
         $this->item($job, 'sent', 'delivered', gmdate('Y-m-d H:i:s', time() - 86400 + 600)); // yesterday, after now
 
-        self::assertSame(['sent' => 1, 'delivered' => 1, 'failed' => 0], dashboard_yesterday_counts_so_far([$owner]));
+        self::assertSame(['sent' => 1, 'delivered' => 1, 'failed' => 0, 'send_failed' => 0], dashboard_yesterday_counts_so_far([$owner]));
     }
 
     private function makeJob(int $userId, string $status, int $total): int

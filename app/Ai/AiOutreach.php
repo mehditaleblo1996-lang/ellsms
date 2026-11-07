@@ -264,10 +264,13 @@ function ai_outreach_process_job(array $job, array $assistant, array $user): voi
     $sendAttempts = (int)$job['send_attempts'] + 1;
     db()->prepare('UPDATE ellsms_ai_jobs SET send_attempts = ? WHERE id = ?')->execute([$sendAttempts, $jobId]);
     $messageType = (string)($context['message_type'] ?? 'transactional');
+    // «عامل ارسال پیام» = منشی هوشمند in the status report (app/SendContext.php).
     if ($campaign['channel'] === 'sms') {
-        [$ok, $info, $retryable] = dispatch_message_retryable($user, (string)$job['line'], [$phone], $reply, 'ai_outreach', (string)$jobId, $sendAttempts, null, $messageType);
+        [$ok, $info, $retryable] = send_context_with(['channel' => 'ai'], static fn(): array =>
+            dispatch_message_retryable($user, (string)$job['line'], [$phone], $reply, 'ai_outreach', (string)$jobId, $sendAttempts, null, $messageType));
     } else {
-        $r = dispatch_with_channel($user, (string)$job['line'], [$phone], $reply, (string)$campaign['channel'], 'ai_outreach', (string)$jobId, $messageType);
+        $r = send_context_with(['channel' => 'ai'], static fn(): array =>
+            dispatch_with_channel($user, (string)$job['line'], [$phone], $reply, (string)$campaign['channel'], 'ai_outreach', (string)$jobId, $messageType));
         [$ok, $info, $retryable] = [(bool)$r[0], (string)$r[1], (bool)$r[2]];
     }
     if ($ok) {

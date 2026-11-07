@@ -102,15 +102,30 @@ const GATEWAY_ERROR_CLASSES = [
     BackendError::CONFLICT,
     BackendError::INVALID_RESPONSE,
     BackendError::PERMANENT,
+    BackendError::INVALID_SENDER,
+    BackendError::BLACKLISTED,
 ];
 
-/** Canonical delivery states (STEP 22). `unknown` is a real state, not a failure to have one. */
+/**
+ * Canonical delivery states (STEP 22). `unknown` is a real state, not a failure to have one.
+ *
+ * `blacklisted` is a mapping target only: the operator refused the message because the recipient is
+ * on its blacklist. It is STORED as `rejected` (gateway_state_storable()), so billing, refunds,
+ * webhooks and every report keep treating it as the rejection it is; the provider's raw token stays in
+ * provider_status, and the status report reads it back through the same mapping
+ * (app/Reports/OperatorReport.php, operator_report_refine_status()).
+ */
 const GATEWAY_DELIVERY_STATES = [
-    'accepted', 'queued', 'sent', 'delivered', 'failed', 'rejected', 'expired', 'unknown',
+    'accepted', 'queued', 'sent', 'delivered', 'failed', 'rejected', 'expired', 'unknown', 'blacklisted',
 ];
+
+/** Pure: the state actually written to delivery_status for a canonical (mapped) state. */
+function gateway_state_storable(string $state): string {
+    return $state === 'blacklisted' ? 'rejected' : $state;
+}
 
 /** States from which no further polling is worthwhile — the message's fate is settled. */
-const GATEWAY_TERMINAL_STATES = ['delivered', 'failed', 'rejected', 'expired'];
+const GATEWAY_TERMINAL_STATES = ['delivered', 'failed', 'rejected', 'expired', 'blacklisted'];
 
 function gateway_state_is_terminal(string $state): bool {
     return in_array($state, GATEWAY_TERMINAL_STATES, true);

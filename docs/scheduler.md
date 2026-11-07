@@ -45,6 +45,14 @@ an hour (`docs/ai-secretary.md`); the `worker` container's auto-reply pass enque
 `ai-worker` pass also turns Telegram messages the `tg-worker` stored into jobs, sends «پیام اول»
 campaigns (`docs/ai-outreach.md`) and marks finished campaigns done.
 
+The `report-summary-worker` container (`cron/report-summary-worker.php`) also builds, every pass, the
+daily summary behind the operator report and the status report (`ellsms_operator_report_daily`,
+`operator_report_worker_pass()`): today and yesterday every `OPERATOR_REPORT_FRESH_SECONDS` (300), the
+last week hourly, the last five weeks daily, never-built days back to `OPERATOR_REPORT_BACKFILL_DAYS`
+(400) newest first, `OPERATOR_REPORT_PASS_SECONDS` (40) per pass. Each day now carries the send channel
+and the per-message part count; days built before `2026_11_11_status_report.sql` are rebuilt
+(`docs/status-report.md`).
+
 **Maintenance mode** pauses the scheduler entirely, like the workers.
 
 **Only one scheduler runs jobs** (MySQL named lock `ellsms_scheduler`); never scale the service.

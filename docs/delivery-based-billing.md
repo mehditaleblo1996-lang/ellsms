@@ -29,7 +29,8 @@ as «ارسال‌شده» once the provider took it, «ناموفق» only when
 no «تحویل‌شده» / «منتظر گزارش تحویل», delivery times, delivery rate or status-check counts. This
 applies to «لیست پیام‌های ارسالی» and its detail drawer (`sent_report_show_delivery()`), «گزارش ارسال
 حجیم» and each bulk send's page, the dashboard (cards and 7-day chart), «گزارش اپراتورها» (the
-«تحویل گرفته‌شده» column), the reseller and sub-account send summaries, and CSV exports (the flag is
+«تحویل گرفته‌شده» column), «گزارش وضعیت‌ها» (no «رسیده / نرسیده به گوشی»; everything the operator
+reported on counts as «رسیده به مخابرات», `docs/status-report.md`), the reseller and sub-account send summaries, and CSV exports (the flag is
 stored with the export as `show_delivery`, and the delivery columns are dropped). The delivery history
 page `message-detail.php` redirects such a customer to the report.
 
@@ -37,7 +38,7 @@ page `message-detail.php` redirects such a customer to the report.
 
 | Final delivery state | Refunded? |
 |---|---|
-| `failed`, `rejected`, `expired` | yes, `refund_percent` of the message's charge, rounded down to whole Rials |
+| `failed`, `rejected`, `expired` | yes, `refund_percent` of the message's charge, rounded down to whole Rials (an operator-blacklist answer is stored as `rejected`) |
 | `delivered` | no |
 | no final report (`sent`, `queued`, `unknown`, or polling gave up) | no: without a report there is no proof the message wasn't delivered |
 | refused at send time (the item is `failed` and never sent) | already free: a message is only charged once the gateway accepts it |

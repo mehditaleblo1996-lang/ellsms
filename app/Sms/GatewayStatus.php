@@ -495,6 +495,9 @@ function gateway_status_table(string $source): string {
  */
 function gateway_status_record(string $source, int $rowId, ?string $current, string $next, ?string $deliveredAt, ?string $providerStatus = null): bool {
     $table = gateway_status_table($source);
+    // An operator-blacklist answer is stored as the rejection it is (gateway_state_storable()); the raw
+    // token kept in provider_status is what lets the status report show it as «لیست سیاه».
+    $next = gateway_state_storable($next);
 
     if (!gateway_status_may_transition($current, $next)) {
         // Refused transition, but the raw token is still worth keeping: a row stuck at `unknown`

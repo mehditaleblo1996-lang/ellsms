@@ -167,6 +167,8 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
     if ($recordTransport) {
         $referenceType = $scheduleId !== null ? 'schedule' : 'direct_send';
         $referenceId   = $scheduleId !== null ? (string)$scheduleId : dispatch_direct_send_dedup_key((int)($user['id'] ?? 0), $originator, $destinations, $content);
+        // «عامل ارسال پیام» for the status report (app/SendContext.php): panel, API or auto-reply.
+        $sendChannel   = $scheduleId !== null ? 'schedule' : send_channel();
         foreach ($result['sent'] as $destination) {
             $recorded = backend_record_gateway_send(
                 isset($user['organization_id']) ? (int)$user['organization_id'] : null,
@@ -183,6 +185,7 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                     'request_id'             => Logger::currentRequestId(),
                     'originator'             => $originator,
                     'content'                => $content,
+                    'send_channel'           => $sendChannel,
                 ]
             );
             if ($recorded) {
@@ -214,6 +217,7 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                     'provider_audit_id'      => $meta['provider_audit_ids'][$destination] ?? null,
                     'originator'             => $originator,
                     'content'                => $content,
+                    'send_channel'           => $sendChannel,
                 ]
             );
         }
@@ -314,20 +318,34 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
     // A suspended or expired line (app/NumberDetails.php) gets its own message rather than the
     // generic "not allowed" below, so the sender knows to ask for it to be renewed. Only for a line
     // that is theirs: anyone else just gets that generic refusal from can_use_originator().
+    // A send refused for its sender line is counted under «شماره فرستنده نامعتبر» in the status report
+    // (app/SendContext.php). Bulk rows ($recordTransport false) carry the refusal on their own row.
+    $dropChannel = ['channel' => $scheduleId !== null ? 'schedule' : send_channel()];
+    $dropInvalidSender = static function () use ($recordTransport, $user, $originator, $destinations, $content, $perDestinationContent, $dropChannel): void {
+        if ($recordTransport) {
+            send_drops_record((int)($user['id'] ?? 0), isset($user['organization_id']) ? (int)$user['organization_id'] : null,
+                (string)$originator, 'invalid_sender', array_values(array_map('strval', $destinations)), $perDestinationContent ?? $content, $dropChannel);
+        }
+    };
     $requestedLine = (string)normalize_originator($originator);
     $unsendable = number_unsendable_reason($requestedLine);
     if ($unsendable !== null && (($user['role'] ?? null) === 'admin' || $requestedLine === $grantedLine
             || in_array($requestedLine, array_merge(allowed_originators($user), array_column(user_shared_numbers($user), 'number')), true))) {
         Logger::warning('sms.send.rejected_unsendable_originator', ['user_id' => $user['id'] ?? null, 'originator' => $originator]);
+        $dropInvalidSender();
         return [false, "ارسال از خط {$originator} ممکن نیست: {$unsendable}.", 0, count($destinations), 0, false, []];
     }
     if (!$viaSharedOtp && user_has_no_send_line($user)) {
         Logger::warning('sms.send.rejected_no_assigned_line', ['user_id' => $user['id'] ?? null]);
+        $dropInvalidSender();
         return [false, NO_ASSIGNED_LINE_MESSAGE, 0, count($destinations), 0, false, []];
     }
 
     $originator = normalize_originator($originator);
-    if ($originator === null) return [false, 'خط ارسال‌کننده خالی یا غیرعددی است — آن را بالا یا در تنظیمات وارد کنید.', 0, count($destinations), 0, false, []];
+    if ($originator === null) {
+        $dropInvalidSender();
+        return [false, ORIGINATOR_EMPTY_ERROR, 0, count($destinations), 0, false, []];
+    }
 
     // Revalidated here, not just at the point a page/schedule/job was
     // created — this is the single choke point every send path (direct,
@@ -345,7 +363,8 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
             'user_id'    => $user['id'] ?? null,
             'originator' => $originator,
         ]);
-        return [false, 'استفاده از این خط ارسال برای شما مجاز نیست — از خطوط تخصیص‌یافته به خودتان استفاده کنید.', 0, count($destinations), 0, false, []];
+        $dropInvalidSender();
+        return [false, ORIGINATOR_NOT_ALLOWED_ERROR, 0, count($destinations), 0, false, []];
     }
 
     // #38 — recipients who texted "11" to this line are never sent to from it (and so never charged:
@@ -354,6 +373,11 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
         $optedOut = line_optout_filter($originator, $destinations);
         if ($optedOut !== []) {
             $requested = count($destinations);
+            if ($recordTransport) {
+                // Counted under «لیست سیاه» in the status report (app/SendContext.php).
+                send_drops_record((int)($user['id'] ?? 0), isset($user['organization_id']) ? (int)$user['organization_id'] : null, $originator, 'optout',
+                    array_values(array_filter(array_map('strval', $destinations), static fn(string $d): bool => isset($optedOut[$d]))), $perDestinationContent ?? $content, $dropChannel);
+            }
             $destinations = array_values(array_filter($destinations, static fn($d): bool => !isset($optedOut[(string)$d])));
             Logger::info('sms.send.optout_skipped', ['user_id' => $user['id'] ?? null, 'originator' => $originator, 'skipped' => $requested - count($destinations)]);
             Metrics::increment('sms.send.optout_skipped', $requested - count($destinations));
@@ -633,7 +657,9 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     // is the SMS_MESSAGE_TYPES pricing vocabulary, translated to a queue message class purely for
     // this measurement's tagging — dispatch_message() never queues.
     $dispatchStartedAt = microtime(true);
-    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId, true, null, null, $messageType), 8, null);
+    // The operation's ref lets a retried send record its dropped recipients once (app/SendContext.php).
+    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(send_context_with(['ref' => $refType . ':' . $refId],
+        static fn(): array => dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId, true, null, null, $messageType)), 8, null);
     sli_record_dispatch_latency(
         'dispatch.accept_to_provider_seconds',
         message_class_from_pricing_type($messageType),
@@ -785,7 +811,9 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
 
     sms_price_snapshot_record($priced, $organizationId ?: null, $userId, $refType, $refId);
 
-    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId, true, null, null, $messageType), 8, null);
+    // The operation's ref lets each retry record its dropped recipients only once (app/SendContext.php).
+    [$ok, $info, $sentCount, , $parts, $retryable, $sentDestinations, $gatewayMeta] = array_pad(send_context_with(['ref' => $refType . ':' . $refId],
+        static fn(): array => dispatch_message_raw($user, $originator, $destinations, $content, $scheduleId, true, null, null, $messageType)), 8, null);
 
     $isTerminal = $ok || !$retryable || $attemptCount >= job_max_attempts();
     // Issue #12 re-audit: only once terminal, matching the wallet/usage-commit gating just below --
@@ -1301,7 +1329,9 @@ function autoreply_process_one(PDO $db, array $msg, int &$sent): void {
     // fix, see that function's own docblock).
     // System-triggered reply -> 'transactional'. Determined SERVER-SIDE from the send context, never
     // from anything the incoming message could influence (STEP 16).
-    [$ok, $info, $retryable] = dispatch_message_retryable($user, $line, [$sender], $rendered, 'autoreply', (string)$logId, $attemptCount, null, 'transactional');
+    // «عامل ارسال پیام» = منشی پیامک for the status report (app/SendContext.php).
+    [$ok, $info, $retryable] = send_context_with(['channel' => 'autoreply'], static fn(): array =>
+        dispatch_message_retryable($user, $line, [$sender], $rendered, 'autoreply', (string)$logId, $attemptCount, null, 'transactional'));
 
     $db->prepare('UPDATE ellsms_autoreply_rules SET hit_count = hit_count + 1 WHERE id = ?')->execute([$rule['id']]);
 
@@ -1603,6 +1633,10 @@ function bulk_queue_job(
                           VALUES (?,?,?,?,?,?,?,?,?,'pending',?)")
                ->execute([$user['id'], $organizationId, $type, $messageClass, $title, $originator, $template, $throttleCount, $throttleMinutes, count($items)]);
             $jobId = (int)$db->lastInsertId();
+            // «عامل ارسال پیام»: a job created through the public API reports as an API send (app/SendContext.php).
+            if (send_channel() === 'api' && send_channel_column_available('ellsms_bulk_jobs')) {
+                $db->prepare("UPDATE ellsms_bulk_jobs SET send_channel = 'api' WHERE id = ?")->execute([$jobId]);
+            }
 
             // Phase 13 (STEP 20): a bulk job consumes quota at ACCEPTANCE — the moment it enters the
             // reliable send pipeline — not per transport attempt, so the worker's retries can never

@@ -341,12 +341,17 @@ function backend_record_gateway_rejection(
         if ($withParts) {
             $values[] = sms_parts((string)$transport['content']);
         }
+        // «عامل ارسال پیام» (app/SendContext.php), once 2026_11_11_status_report.sql has run.
+        $withChannel = isset($transport['send_channel']) && send_channel_column_available('ellsms_message_attempts');
+        if ($withChannel) {
+            $values[] = (string)$transport['send_channel'];
+        }
         db()->prepare(
             "INSERT INTO ellsms_message_attempts
                 (organization_id, user_id, reference_type, reference_id, backend_request_id, status,
                  error_code, error_message, gateway_id, gateway_config_version, route_id, operator_id, destination,
-                 attempted_at, completed_at" . ($withReportColumns ? ', originator, content' : '') . ($withAudit ? ', provider_audit_id' : '') . ($withParts ? ', parts' : '') . ")
-             VALUES (?,?,?,?,?, 'failed', ?,?,?,?,?,?,?, NOW(), NOW()" . ($withReportColumns ? ',?,?' : '') . ($withAudit ? ',?' : '') . ($withParts ? ',?' : '') . ")"
+                 attempted_at, completed_at" . ($withReportColumns ? ', originator, content' : '') . ($withAudit ? ', provider_audit_id' : '') . ($withParts ? ', parts' : '') . ($withChannel ? ', send_channel' : '') . ")
+             VALUES (?,?,?,?,?, 'failed', ?,?,?,?,?,?,?, NOW(), NOW()" . ($withReportColumns ? ',?,?' : '') . ($withAudit ? ',?' : '') . ($withParts ? ',?' : '') . ($withChannel ? ',?' : '') . ")"
         )->execute($values);
     } catch (Throwable $t) {
         // Reporting only: a failed insert must never turn into a send failure of its own.
@@ -422,14 +427,16 @@ function backend_record_gateway_send(
     $withReportColumns = backend_message_attempts_have_report_columns();
     // The SMS part count of this recipient's message (app/MessageParts.php), once the column exists.
     $withParts = message_parts_available('ellsms_message_attempts') && isset($transport['content']);
+    // «عامل ارسال پیام» (app/SendContext.php), once 2026_11_11_status_report.sql has run.
+    $withChannel = isset($transport['send_channel']) && send_channel_column_available('ellsms_message_attempts');
     $statement = db()->prepare(
         "INSERT INTO ellsms_message_attempts
             (organization_id, user_id, reference_type, reference_id, backend_request_id, status,
              error_code, gateway_id, gateway_config_version, route_id, operator_id, destination,
              provider_message_id, delivery_status, delivery_attempts, attempted_at, completed_at, provider_slot"
-            . ($withReportColumns ? ', originator, content' : '') . ($withParts ? ', parts' : '') . ")
+            . ($withReportColumns ? ', originator, content' : '') . ($withParts ? ', parts' : '') . ($withChannel ? ', send_channel' : '') . ")
          VALUES (?,?,?,?,?, 'accepted', '', ?,?,?,?,?,?, 'sent', 0, NOW(), NOW(), ?"
-            . ($withReportColumns ? ',?,?' : '') . ($withParts ? ',?' : '') . ")
+            . ($withReportColumns ? ',?,?' : '') . ($withParts ? ',?' : '') . ($withChannel ? ',?' : '') . ")
          ON DUPLICATE KEY UPDATE id = id"
     );
     $values = [
@@ -449,6 +456,9 @@ function backend_record_gateway_send(
     }
     if ($withParts) {
         $values[] = sms_parts((string)$transport['content']);
+    }
+    if ($withChannel) {
+        $values[] = (string)$transport['send_channel'];
     }
     $statement->execute($values);
     return $statement->rowCount() > 0;

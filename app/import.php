@@ -262,9 +262,15 @@ function import_claim_chunk(): ?array {
  * Insert-pass chunks do NOT roll into the top-level counters because those
  * counters already reflect the source-file analysis pass.
  */
-function import_chunk_completed(int $chunkId, array $counters, bool $updateJobCounters = true): void {
+function import_chunk_completed(int $chunkId, array $counters, bool $updateJobCounters = true, ?array $drops = null): void {
     $db = db();
-    db_transaction(function (PDO $db) use ($chunkId, $counters, $updateJobCounters): void {
+    db_transaction(function (PDO $db) use ($chunkId, $counters, $updateJobCounters, $drops): void {
+        // Blacklisted rows of this chunk (app/SendContext.php); a retried chunk replaces what it recorded.
+        if ($drops !== null) {
+            send_drops_record((int)$drops['user_id'], (int)$drops['organization_id'], (string)$drops['sender'], 'blacklist',
+                $drops['destinations'], $drops['contents'],
+                ['import_job_id' => (int)$drops['import_job_id'], 'chunk_no' => (int)$drops['chunk_no'], 'channel' => (string)$drops['channel']], $db);
+        }
         $db->prepare(
             "UPDATE ellsms_import_chunks
              SET status='completed',

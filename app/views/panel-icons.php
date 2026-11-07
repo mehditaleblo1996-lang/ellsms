@@ -45,6 +45,8 @@ function panel_icon(string $name): string {
         'more' => '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
         'eye' => '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
         'download' => '<path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/>',
+        'print' => '<path d="M7 9V3h10v6M7 17H4v-7a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v7h-3"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
+        'pie' => '<path d="M12 3a9 9 0 1 0 9 9h-9V3Z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15V3.5Z"/>',
         'upload' => '<path d="M12 20V9m-5 5 5-5 5 5M5 4h14"/>',
         'edit' => '<path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4"/>',
         'pause' => '<circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/>',
@@ -59,7 +61,7 @@ function panel_icon(string $name): string {
     $names = [
         'dashboard'=>'grid', 'notifications'=>'bell', 'guide'=>'book', 'onboarding'=>'check',
         'new_send'=>'spark', 'send'=>'send', 'p2p'=>'users', 'smart'=>'spark', 'schedules'=>'clock',
-        'autoreply'=>'message', 'ai_secretary'=>'spark', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'sent_count_report'=>'chart', 'received_count_report'=>'inbox', 'inbox'=>'inbox',
+        'autoreply'=>'message', 'ai_secretary'=>'spark', 'reports'=>'chart', 'reports_bulk'=>'chart', 'operator_reports'=>'chart', 'operator_reports_number'=>'chart', 'operator_reports_route'=>'chart', 'sent_count_report'=>'chart', 'status_report'=>'chart', 'received_count_report'=>'inbox', 'inbox'=>'inbox',
         'contacts'=>'users', 'blacklist'=>'ban', 'line_optouts'=>'ban', 'tickets'=>'help',
         'buy_credit'=>'wallet', 'invoices'=>'receipt', 'financial_log'=>'receipt', 'bale'=>'message', 'telegram'=>'send', 'telegram_send'=>'send', 'telegram_check'=>'users', 'telegram_admin'=>'settings', 'voice'=>'speaker', 'voice_files'=>'mic', 'voice_settings'=>'speaker', 'regional_bulk'=>'globe', 'lba'=>'globe', 'lba_gateways'=>'globe',
         'api_keys'=>'key', 'otp_templates'=>'key', 'shared_otp'=>'key', 'shared_service'=>'send', 'shared_service_admin'=>'send', 'integrations'=>'link', 'remote_db'=>'database', 'webhooks'=>'link',

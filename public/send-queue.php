@@ -69,8 +69,11 @@ if (!empty($_POST['category'])) {
 $dests = array_values(array_unique($dests));
 
 $blockedCount = 0;
+$blockedDests = [];
 if (!empty($_POST['use_blacklist'])) {
+    $beforeBlacklist = $dests;
     [$dests, $blockedCount] = filter_blacklist((int)$me['id'], $dests, $originator);
+    $blockedDests = $blockedCount > 0 ? array_values(array_diff($beforeBlacklist, $dests)) : [];
 }
 
 if ($dests === []) {
@@ -126,6 +129,11 @@ if (!$result['ok']) {
 }
 
 $queueId = (int)$result['id'];
+if ($blockedDests !== [] && empty($result['duplicate'])) {
+    // «لیست سیاه» in the status report (app/SendContext.php).
+    send_drops_record((int)$me['id'], isset($me['organization_id']) ? (int)$me['organization_id'] : null, (string)$originator,
+        'blacklist', $blockedDests, $content, ['channel' => 'panel', 'ref' => 'direct_send_queue:' . $queueId]);
+}
 $duplicateNote = !empty($result['duplicate']) ? ' (درخواست تکراری قبلی استفاده شد)' : '';
 $blockedNote = $blockedCount > 0 ? ' — ' . to_persian_digits((string)$blockedCount) . ' شماره‌ی لیست سیاه حذف شد.' : '';
 flash('success', 'درخواست ارسال با شماره #' . to_persian_digits((string)$queueId) . ' در صف قرار گرفت و در پس‌زمینه پردازش می‌شود.' . $duplicateNote . $blockedNote);

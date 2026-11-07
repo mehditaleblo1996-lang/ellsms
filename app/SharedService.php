@@ -546,12 +546,16 @@ function shared_service_submit(array $user, string $kind, string $destination, s
         return shared_service_fail('prohibited_content', CONTENT_POLICY_ERROR, ['fields' => ['text' => ['prohibited_content']]]);
     }
     if ($kind === 'promo') {
+        $orgId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
         [, $blocked] = filter_blacklist($userId, [$number]);
         if ($blocked > 0) {
+            // «لیست سیاه» in the status report (app/SendContext.php).
+            send_drops_record($userId, $orgId, '', 'blacklist', [$number], $content, ['channel' => $source === 'api' ? 'api' : 'panel']);
             return shared_service_fail('blacklisted', 'این شماره در لیست سیاه شماست؛ پیام تبلیغاتی به آن ارسال نمی‌شود.');
         }
         foreach (shared_service_pool_numbers_all('promo') as $line) {
             if (line_optout_filter($line, [$number]) !== []) {
+                send_drops_record($userId, $orgId, (string)$line, 'optout', [$number], $content, ['channel' => $source === 'api' ? 'api' : 'panel']);
                 return shared_service_fail('opted_out', 'گیرنده دریافت پیام تبلیغاتی را لغو کرده است (۱۱).');
             }
         }
@@ -650,11 +654,14 @@ function shared_service_send(array $row): void {
             $usedLine = $line;
             // Each line is its own wallet/quota operation: a failed attempt is released by
             // dispatch_message() before the next line is tried, so a fail-over never double-charges.
-            $result = gateway_price_with_row(SHARED_SERVICE_PRICE_ROWS[$kind], static fn(): array =>
-                shared_otp_with_line($line, static fn(): array => dispatch_message(
-                    $user, $line, [(string)$row['destination']], (string)$row['content'], null,
-                    SHARED_SERVICE_REF_TYPE, $id . ':' . $i, SHARED_SERVICE_MESSAGE_TYPES[$kind]
-                ))
+            // Sent later by the worker: «عامل ارسال پیام» is where the message was submitted (app/SendContext.php).
+            $result = send_context_with(['channel' => ($row['source'] ?? '') === 'api' ? 'api' : 'panel'], static fn(): array =>
+                gateway_price_with_row(SHARED_SERVICE_PRICE_ROWS[$kind], static fn(): array =>
+                    shared_otp_with_line($line, static fn(): array => dispatch_message(
+                        $user, $line, [(string)$row['destination']], (string)$row['content'], null,
+                        SHARED_SERVICE_REF_TYPE, $id . ':' . $i, SHARED_SERVICE_MESSAGE_TYPES[$kind]
+                    ))
+                )
             );
             [$ok, $info, $retryable, , , $parts] = array_pad($result, 6, null);
             if ($ok || !$retryable) break;

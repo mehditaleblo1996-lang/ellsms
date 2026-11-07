@@ -26,6 +26,7 @@
 .panel .report-stats .stat:hover { border-color: #c9cdf5; }
 .panel .report-stats .stat.is-on { border-color: var(--indigo); }
 .report-stats .stat-meta { margin-top: 2px; color: var(--muted); font-size: 12px; }
+.panel .report-stats .stat-accent .stat-meta { color: #dfe6ff; }
 
 /* The list */
 .report-table tbody tr.is-clickable { cursor: pointer; transition: background-color 120ms; }

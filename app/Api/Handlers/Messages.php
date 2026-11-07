@@ -139,6 +139,9 @@ function api_handle_messages_send(array $ctx): void {
     // No originator in the body → the key owner's own line, never the system (OTP) line.
     $originator = is_string($body['originator'] ?? null) ? $body['originator'] : user_default_send_originator($user);
     if (!can_use_originator($user, $originator)) {
+        // Counted under «شماره فرستنده نامعتبر» in the status report (app/SendContext.php).
+        send_drops_record((int)$user['id'], $principal['organization_id'] !== null ? (int)$principal['organization_id'] : null, (string)$originator,
+            'invalid_sender', array_values(array_map('strval', $destinationsRaw)), $content);
         api_messages_finish($lockId, 422, api_messages_error_body(ApiResponse::CODE_VALIDATION_FAILED, 'Request validation failed.', ['originator' => ['not_allowed']]));
         return;
     }

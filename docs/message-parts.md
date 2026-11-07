@@ -80,12 +80,14 @@ column, to admins and customers alike. A count and its parts always cover the sa
 
 | Report | Where the parts are |
 |---|---|
-| «لیست پیام‌های ارسالی» (`/messages/reports`) | column «تعداد پارت» per message; the detail drawer «N پارت» |
+| «لیست پیام‌های ارسالی» (`/messages/reports`) | column «تعداد پارت» per message; each summary card «N پارت» (`sent_report_summary(…, $parts)`); the detail drawer «N پارت» |
+| داشبورد (`/index.php`) | «N پارت» on ارسال امروز / تحویل‌شده امروز / ناموفق امروز (`dashboard_counts_between(…, true)`) |
+| «گزارش وضعیت‌ها» (`/messages/reports/status`) | a «بخش» column beside every «پیامک» column, per month/day and in the totals, the CSV and under the donut ([status-report](status-report.md)) |
 | «لیست پیام‌های دریافتی» (`/inbox.php`) | column «تعداد پارت» per message; the detail drawer |
 | «گزارش ارسال حجیم» (`/reports-bulk.php`) | each summary card «N پارت»; breakdown column «تعداد پارت»; list column «تعداد پارت» |
 | A bulk send's page (`/bulk-job.php`) | each card «N پارت»; list column «تعداد پارت» |
 | Delivery history (`/message-detail.php`) | a send: «تعداد پارت»; a bulk send: «تعداد پارت هر پیام» (or «(نمونه)» for a personalized one), «تعداد پیام‌ها» and «مجموع پارت‌ها», a «تعداد پارت» column per recipient |
-| «گزارش اپراتورها» — all, «بر اساس شماره», «بر اساس تأمین‌کننده» (`/operator-reports.php`) | share table and per-language table: a parts column after each count; admin status table: «پارت ارسال‌شده» after «مجموع ارسال‌شده» and «پارت تحویل گرفته‌شده» after «مجموع تحویل گرفته‌شده» (the other status columns stay counts only); customer table: «تعداد پارت» after each of its columns |
+| «گزارش اپراتورها» — all, «بر اساس شماره», «بر اساس تأمین‌کننده» (`/operator-reports.php`) | share table and per-language table: a parts column after each count; admin status table: «پارت ارسال‌شده» after «مجموع ارسال‌شده» and «پارت تحویل گرفته‌شده» after «مجموع تحویل گرفته‌شده» (the other status columns — now including «لیست سیاه» and «فرستنده نامعتبر» — stay counts only); customer table: «تعداد پارت» after each of its columns |
 | «گزارش تعداد پیام‌های ارسالی» (`/sent-count-report.php`) | «تعداد پارت تعاملی», «… بالک درخواستی», «… بالک ارسال‌شده» after each count; the cards; the CSV |
 | «گزارش تعداد پیام‌های دریافتی» (`/received-count-report.php`) | «تعداد پارت» after the received count; the card; the CSV |
 | `public/analytics.php` | «مجموع واحد پیامک» (unchanged, now from the stored counts) |
@@ -99,7 +101,9 @@ own parts.
 
 Two reports read tables built ahead of time, which now keep part totals too:
 
-- **`ellsms_operator_report_daily.part_count`** (operator reports, «گزارش تعداد پیام‌های ارسالی»).
+- **`ellsms_operator_report_daily.part_count`** (operator reports, «گزارش تعداد پیام‌های ارسالی»;
+  `2026_11_11_status_report.sql` then adds the per-message `parts` and `channel` dimensions the
+  status report filters by, and a `layout` version — [status-report](status-report.md)).
   `ellsms_operator_report_days.parts_built` marks a day built with part totals. A day without them
   (every day built before the migration) is counted live from the message tables, exactly like a day
   not built yet, so its numbers are never missing. `report-summary-worker` rebuilds those days,

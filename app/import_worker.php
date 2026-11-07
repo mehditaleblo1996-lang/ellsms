@@ -239,7 +239,19 @@ function import_job_analyze_pass(array $job): void {
             }
         }
 
-        import_chunk_completed((int)$chunk['id'], $chunkCounters);
+        // The blacklisted rows, for «لیست سیاه» in the status report (app/SendContext.php). Written in
+        // the chunk's own transaction; counted once the job is actually sent.
+        $blockedRows = array_values(array_filter($candidates, static fn(array $c): bool => isset($blockedMobiles[$c['mobile']])));
+        import_chunk_completed((int)$chunk['id'], $chunkCounters, true, $blockedRows === [] ? null : [
+            'user_id' => $userId,
+            'organization_id' => (int)($job['organization_id'] ?? 0),
+            'sender' => (string)($job['originator'] ?? ''),
+            'channel' => (string)($job['source_type'] ?? 'p2p'),
+            'import_job_id' => $jobId,
+            'chunk_no' => (int)$chunk['chunk_no'],
+            'destinations' => array_column($blockedRows, 'mobile'),
+            'contents' => array_column($blockedRows, 'content'),
+        ]);
         foreach ($chunkCounters as $k => $v) {
             $counters[$k] += $v;
         }

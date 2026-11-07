@@ -391,7 +391,8 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
             }
         }
 
-        $ok = db_transaction(function (PDO $db) use ($id, $token, $cursor, $lastId, $rows, $blocked, $unpriced): bool {
+        $blockedMobiles = $blocked > 0 ? array_values(array_diff($mobiles, $kept)) : [];
+        $ok = db_transaction(function (PDO $db) use ($id, $token, $cursor, $lastId, $rows, $blocked, $unpriced, $blockedMobiles, $req, $content): bool {
             // The cursor moves only from the position this batch read, and only while this worker
             // still holds the request in 'staging' (a cancel in between wins).
             $adv = $db->prepare("UPDATE ellsms_aimed_bulk_requests
@@ -402,6 +403,11 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
             if ($adv->rowCount() !== 1) return false;
             foreach (array_chunk($rows, 500) as $chunk) {
                 import_insert_bulk_items_batch($db, $chunk);
+            }
+            // «لیست سیاه» in the status report (app/SendContext.php), counted once the request is confirmed.
+            if ($blockedMobiles !== []) {
+                send_drops_record((int)$req['user_id'], isset($req['organization_id']) ? (int)$req['organization_id'] : null, (string)$req['originator'],
+                    'blacklist', $blockedMobiles, $content, ['aimed_request_id' => $id, 'channel' => 'bulk'], $db);
             }
             return true;
         });

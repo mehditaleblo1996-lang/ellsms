@@ -544,22 +544,35 @@ function sent_report_count(array $f, ?array $scope, bool $hide): int {
 }
 
 /**
- * Counts by report status under the filters (the status filter itself included).
+ * Counts by report status under the filters (the status filter itself included). $parts receives the
+ * same keys counting SMS parts (تعداد بخش) instead of messages — each row's stored count, else the
+ * count of its text (message_parts_sql()); the legacy backend's rows from their text.
  *
  * @return array<string,int> status => count, plus 'total'
  */
-function sent_report_summary(array $f, ?array $scope, bool $hide): array {
+function sent_report_summary(array $f, ?array $scope, bool $hide, ?array &$parts = null): array {
     $out = array_fill_keys(array_keys(sent_report_statuses()), 0);
+    $parts = $out;
+    $reportCols = backend_message_attempts_have_report_columns();
     foreach (array_keys(SENT_REPORT_SOURCES) as $source) {
         $q = sent_report_source_query($source, $f, $scope, $hide);
         if ($q === null) continue;
-        $st = db()->prepare('SELECT ' . sent_report_status_sql($source) . " AS s, COUNT(*) c FROM {$q['from']} WHERE {$q['where']} GROUP BY s");
+        $partsSql = match ($source) {
+            'bulk' => message_parts_sql('ellsms_bulk_items', 'i', 'i.content'),
+            'attempt' => message_parts_sql('ellsms_message_attempts', 'a', $reportCols ? 'a.content' : 'NULL'),
+            default => sms_parts_sql('m.content'),
+        };
+        $st = db()->prepare('SELECT ' . sent_report_status_sql($source) . ' AS s, COUNT(*) c, SUM(' . $partsSql . ") p
+                             FROM {$q['from']} WHERE {$q['where']} GROUP BY s");
         $st->execute($q['params']);
         foreach ($st->fetchAll() as $row) {
-            if (isset($out[$row['s']])) $out[$row['s']] += (int)$row['c'];
+            if (!isset($out[$row['s']])) continue;
+            $out[$row['s']] += (int)$row['c'];
+            $parts[$row['s']] += (int)$row['p'];
         }
     }
     $out['total'] = array_sum($out);
+    $parts['total'] = array_sum($parts);
     return $out;
 }
 

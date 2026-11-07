@@ -206,6 +206,26 @@ percentage that applies is the one in force when the message was sent. The sched
 `delivery-refunds` catches anything the status path missed. See
 [`docs/delivery-based-billing.md`](docs/delivery-based-billing.md).
 
+## Status report (گزارش وضعیت‌ها) and SMS parts
+
+**«گزارش و دریافت» → «گزارش وضعیت‌ها»** (`/messages/reports/status`, `public/status-report.php`) shows, per
+Jalali month of a year (or per day of a month / a range up to 62 days), how many messages **and how many
+SMS parts (بخش)** were رسیده به گوشی, رسیده به مخابرات, نرسیده به گوشی, لیست سیاه, نرسیده به مخابرات or
+شماره فرستنده نامعتبر (plus در صف ارسال when any wait), with the totals, a bar chart per period, a donut
+of the range, print and a CSV (Excel) download. Filters: organization (admins), sender lines, user,
+language (نوع پیام), operator, year, month, start/end date, part count and send channel (عامل ارسال پیام:
+panel, API, scheduled, auto-reply, AI secretary, p2p, smart, gradual, bulk). Admins see everyone; a customer sees their
+organization, without the delivery columns unless they are on delivery-based billing. It reads the
+operator report's daily summary (now with channel and part-count dimensions) and records the recipients
+the panel drops before sending — customer blacklist, opt-outs (11), a disallowed sender line — in
+`ellsms_send_drops`. A gateway's error mapping can name provider codes `BackendInvalidSender` /
+`BackendBlacklisted`, and its status mapping can map a token to `blacklisted` (stored as `rejected`).
+Every main report also shows the parts («پارت») next to its message counts — including the sent list's
+summary cards and the dashboard's today cards ([`docs/message-parts.md`](docs/message-parts.md)). No
+public API route. Migration:
+`db/migrations/2026_11_11_status_report.sql` (empties the operator summary; `report-summary-worker`
+rebuilds it). See [`docs/status-report.md`](docs/status-report.md).
+
 ## Login model
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.
@@ -601,6 +621,11 @@ updated in the same change** — see `CLAUDE.md`.
 [capacity-load-test-2026-08-31](docs/capacity-load-test-2026-08-31.md) ·
 [security-review](docs/security-review.md) ·
 [technical-debt](docs/technical-debt.md)
+
+**Panel reports**
+[status-report](docs/status-report.md) ·
+[reporting-scalability](docs/reporting-scalability.md) ·
+[daily-metadata-aggregation](docs/daily-metadata-aggregation.md)
 
 **User flows** — [docs/flows/](docs/flows/) (authentication, send, bulk, scheduled, auto-reply, credit, payment)
 

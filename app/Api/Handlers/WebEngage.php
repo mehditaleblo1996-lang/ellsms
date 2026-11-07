@@ -106,6 +106,9 @@ function webengage_send(int $rowId, array $principal, array $request): array {
     }
     [$kept] = filter_blacklist($user['id'], [$destination], $originator);
     if ($kept === [] || line_optout_filter($originator, [$destination]) !== []) {
+        // «لیست سیاه» in the status report (app/SendContext.php); a redelivered messageId records once.
+        send_drops_record((int)$user['id'], isset($user['organization_id']) ? (int)$user['organization_id'] : null, (string)$originator,
+            $kept === [] ? 'blacklist' : 'optout', [$destination], $content, ['ref' => 'webengage:' . $rowId]);
         return $reject(WEBENGAGE_CODE_BLACKLISTED, 'Recipient is blacklisted.');
     }
     $quotaRemaining = organization_remaining_quota($user['organization_id'], Limits::MONTHLY_MESSAGES);
