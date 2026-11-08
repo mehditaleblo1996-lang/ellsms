@@ -75,8 +75,8 @@ if (lazy_part_begin('summary')) {
   <?php foreach ($cards as $key => [$label, $class]): $value = $key === '' ? $s['total'] : $s[$key]; $partsValue = $key === '' ? $sParts['total'] : $sParts[$key]; $isOn = $f['status'] === $key; ?>
     <a class="stat <?= $class ?><?= $isOn ? ' is-on' : '' ?>" href="?<?= e(http_build_query(array_merge($filterQuery, ['status' => $key]))) ?>"<?= $isOn ? ' aria-current="true"' : '' ?>>
       <div class="stat-label"><?= e($label) ?></div>
-      <div class="stat-value"><?= to_persian_digits(number_format($value)) ?></div>
-      <div class="stat-meta"><span class="report-parts"><?= to_persian_digits(number_format($partsValue)) ?> پارت</span><?php if ($key !== '' && $s['total'] > 0): ?> · <?= to_persian_digits((string)round($value / $s['total'] * 100)) ?>٪<?php endif; ?></div>
+      <div class="stat-value"><span class="stat-unit">پارت</span> <?= to_persian_digits(number_format($partsValue)) ?></div>
+      <div class="stat-meta"><span class="report-parts"><?= to_persian_digits(number_format($value)) ?> پیام</span><?php if ($key !== '' && $s['total'] > 0): ?> · <?= to_persian_digits((string)round($value / $s['total'] * 100)) ?>٪<?php endif; ?></div>
     </a>
   <?php endforeach; ?>
 </div>

@@ -188,11 +188,12 @@ require __DIR__ . '/../app/views/header.php';
     </form>
   <?php endif; ?>
   <div class="grid grid-4">
-    <?php $partsMeta = static fn(string $k): string => '<div class="stat-meta">' . to_persian_digits(number_format((int)($summary[$k] ?? 0))) . ' پارت</div>'; ?>
-    <div class="stat"><div class="stat-label">کل</div><div class="stat-value"><?= to_persian_digits(number_format($total)) ?></div><?= $partsMeta('total_parts') ?></div>
-    <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال/تحویل' : 'ارسال‌شده' ?></div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['sent_count'] + (int)$summary['delivered_count'])) ?></div><?= $partsMeta('sent_parts') ?></div>
-    <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['failed_count'])) ?></div><?= $partsMeta('failed_parts') ?></div>
-    <div class="stat"><div class="stat-label">باقی‌مانده</div><div class="stat-value"><?= to_persian_digits(number_format((int)$summary['pending_count'])) ?></div><?= $partsMeta('pending_parts') ?></div>
+    <?php $partsValue = static fn(string $k): string => '<div class="stat-value"><span class="stat-unit">پارت</span> ' . to_persian_digits(number_format((int)($summary[$k] ?? 0))) . '</div>';
+          $msgMeta = static fn(int $n): string => '<div class="stat-meta">' . to_persian_digits(number_format($n)) . ' پیام</div>'; ?>
+    <div class="stat"><div class="stat-label">کل</div><?= $partsValue('total_parts') ?><?= $msgMeta((int)$total) ?></div>
+    <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال/تحویل' : 'ارسال‌شده' ?></div><?= $partsValue('sent_parts') ?><?= $msgMeta((int)$summary['sent_count'] + (int)$summary['delivered_count']) ?></div>
+    <div class="stat"><div class="stat-label">ناموفق</div><?= $partsValue('failed_parts') ?><?= $msgMeta((int)$summary['failed_count']) ?></div>
+    <div class="stat"><div class="stat-label">باقی‌مانده</div><?= $partsValue('pending_parts') ?><?= $msgMeta((int)$summary['pending_count']) ?></div>
   </div>
 
   <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">

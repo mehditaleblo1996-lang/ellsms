@@ -70,12 +70,12 @@ if (lazy_part_begin('report')) {
     <div class="stat-value cc-range"><?= $from === $to ? jdate($from, false) : jdate($from, false) . ' تا ' . jdate($to, false) ?></div>
     <div class="stat-meta">تا ساعت <span class="num"><?= to_persian_digits($asOf->format('H:i')) ?></span><?= $asOf->format('Y-m-d') !== $to && $report['as_of'] !== null ? ' — ' . jdate($asOf->format('Y-m-d'), false) : '' ?><?= $vip !== '' ? ' · ' . e(VIP_FILTERS[$vip]) : '' ?></div>
   </div>
-  <div class="stat"><div class="stat-label">مجموع پیام‌های تعاملی</div><div class="stat-value"><?= operator_report_num($t['interactive']) ?></div>
-    <div class="stat-meta"><?= operator_report_num($t['interactive_parts']) ?> پارت</div></div>
-  <div class="stat"><div class="stat-label">مجموع پیام‌های بالک درخواستی</div><div class="stat-value"><?= operator_report_num($t['bulk_requested']) ?></div>
-    <div class="stat-meta"><?= operator_report_num($t['bulk_requested_parts']) ?> پارت</div></div>
-  <div class="stat"><div class="stat-label">مجموع پیام‌های بالک ارسال‌شده</div><div class="stat-value"><?= operator_report_num($t['bulk_sent']) ?></div>
-    <div class="stat-meta"><?= operator_report_num($t['bulk_sent_parts']) ?> پارت<?php if ($t['bulk_requested'] > 0): ?> · <?= to_persian_digits((string)operator_report_percent($t['bulk_sent'], $t['bulk_requested'])) ?>٪ از درخواستی<?php endif; ?></div></div>
+  <div class="stat"><div class="stat-label">مجموع پیام‌های تعاملی</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= operator_report_num($t['interactive_parts']) ?></div>
+    <div class="stat-meta"><?= operator_report_num($t['interactive']) ?> پیام</div></div>
+  <div class="stat"><div class="stat-label">مجموع پیام‌های بالک درخواستی</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= operator_report_num($t['bulk_requested_parts']) ?></div>
+    <div class="stat-meta"><?= operator_report_num($t['bulk_requested']) ?> پیام</div></div>
+  <div class="stat"><div class="stat-label">مجموع پیام‌های بالک ارسال‌شده</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= operator_report_num($t['bulk_sent_parts']) ?></div>
+    <div class="stat-meta"><?= operator_report_num($t['bulk_sent']) ?> پیام<?php if ($t['bulk_requested'] > 0): ?> · <?= to_persian_digits((string)operator_report_percent($t['bulk_sent'], $t['bulk_requested'])) ?>٪ از درخواستی<?php endif; ?></div></div>
 </div>
 
 <div class="card cc-card">

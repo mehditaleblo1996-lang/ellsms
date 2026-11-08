@@ -92,8 +92,8 @@ if (lazy_part_begin('report')) {
     <div class="stat-value cc-range"><?= $from === $to ? jdate($from, false) : jdate($from, false) . ' تا ' . jdate($to, false) ?></div>
     <div class="stat-meta">تا ساعت <span class="num"><?= to_persian_digits($asOf) ?></span><?= $vip !== '' ? ' · ' . e(VIP_FILTERS[$vip]) : '' ?></div>
   </div>
-  <div class="stat"><div class="stat-label">مجموع پیام‌های دریافتی</div><div class="stat-value"><?= operator_report_num($report['total']) ?></div>
-    <div class="stat-meta"><?= operator_report_num($report['total_parts']) ?> پارت</div></div>
+  <div class="stat"><div class="stat-label">مجموع پیام‌های دریافتی</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= operator_report_num($report['total_parts']) ?></div>
+    <div class="stat-meta"><?= operator_report_num($report['total']) ?> پیام</div></div>
   <div class="stat"><div class="stat-label">مشتریان دارای پیام دریافتی</div><div class="stat-value"><?= operator_report_num(count($rows)) ?></div></div>
   <div class="stat"><div class="stat-label">خط‌های دریافت‌کننده</div><div class="stat-value"><?= operator_report_num($lineCount) ?></div>
     <?php if ($unowned['received'] > 0): ?><div class="stat-meta"><?= operator_report_num(count($unowned['lines'])) ?> خط بدون مشتری</div><?php endif; ?></div>

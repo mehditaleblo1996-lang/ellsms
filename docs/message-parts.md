@@ -93,6 +93,11 @@ column, to admins and customers alike. A count and its parts always cover the sa
 | `public/analytics.php` | «مجموع واحد پیامک» (unchanged, now from the stored counts) |
 | Report CSV export | column «تعداد پارت» (unchanged, now from the stored counts) |
 
+On every summary card that shows both (the dashboard's today cards, «لیست پیام‌های ارسالی»,
+«گزارش ارسال حجیم», a bulk send's page and the two count reports) the **parts** are the big bold
+headline number (with a small «پارت» unit, `.stat-unit`) and the message count is the small line
+under it («N پیام»), since parts are what the charge is based on.
+
 A bulk request (regional or aimed) sends one text to every number, so «پارت بالک درخواستی» is the
 number count times that text's parts; «پارت بالک ارسال‌شده» of an aimed request is its sent items'
 own parts.

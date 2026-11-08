@@ -291,6 +291,12 @@ input.mono, textarea.mono, input.provider-ref, textarea.api-key {
   font-family: var(--mono); font-variant-numeric: tabular-nums;
   margin-top: var(--sp-1); direction: ltr; unicode-bidi: isolate; display: block; text-align: right;
 }
+/* Unit beside a headline count («۱۲۳ پارت»): the number carries the weight, the unit stays quiet.
+   .stat-value is LTR, so the unit comes first in the source and is bidi-isolated: it then sits on
+   the number's left, which is where Persian reads it. */
+.stat .stat-value .stat-unit {
+  font-family: inherit; font-size: var(--fs-xs); font-weight: 500; opacity: .75; unicode-bidi: isolate;
+}
 .stat.stat-accent { background: var(--grad); border: 0; color: #fff; }
 .stat.stat-accent .stat-label { color: #dfe6ff; }
 

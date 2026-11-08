@@ -118,13 +118,13 @@ if (lazy_part_begin('summary')) {
 
     ?>
 <div class="grid grid-4">
-  <div class="stat"><div class="stat-label">تعداد پیام‌های حجیم</div><div class="stat-value"><?= to_persian_digits(number_format($cnt)) ?></div><div class="stat-meta"><?= $fa('total_parts') ?> پارت</div></div>
-  <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال‌شده / تحویل‌شده' : 'ارسال‌شده' ?></div><div class="stat-value"><?= $fa('ok_count') ?></div><div class="stat-meta"><?= $fa('ok_parts') ?> پارت</div></div>
-  <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><?= $fa('failed_count') ?></div><div class="stat-meta"><?= $fa('failed_parts') ?> پارت</div></div>
+  <div class="stat"><div class="stat-label">تعداد پیام‌های حجیم</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= $fa('total_parts') ?></div><div class="stat-meta"><?= to_persian_digits(number_format($cnt)) ?> پیام</div></div>
+  <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال‌شده / تحویل‌شده' : 'ارسال‌شده' ?></div><div class="stat-value"><span class="stat-unit">پارت</span> <?= $fa('ok_parts') ?></div><div class="stat-meta"><?= $fa('ok_count') ?> پیام</div></div>
+  <div class="stat"><div class="stat-label">ناموفق</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= $fa('failed_parts') ?></div><div class="stat-meta"><?= $fa('failed_count') ?> پیام</div></div>
   <?php if ($showDelivery): ?>
-  <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><?= $fa('delivered_count') ?></div><div class="stat-meta"><?= $fa('delivered_parts') ?> پارت</div></div>
+  <div class="stat"><div class="stat-label">تحویل تأییدشده</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= $fa('delivered_parts') ?></div><div class="stat-meta"><?= $fa('delivered_count') ?> پیام</div></div>
   <?php else: ?>
-  <div class="stat"><div class="stat-label">در انتظار ارسال</div><div class="stat-value"><?= $fa('pending_count') ?></div><div class="stat-meta"><?= $fa('pending_parts') ?> پارت</div></div>
+  <div class="stat"><div class="stat-label">در انتظار ارسال</div><div class="stat-value"><span class="stat-unit">پارت</span> <?= $fa('pending_parts') ?></div><div class="stat-meta"><?= $fa('pending_count') ?> پیام</div></div>
   <?php endif; ?>
 </div>
 
