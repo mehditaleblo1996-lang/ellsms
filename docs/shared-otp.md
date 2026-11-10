@@ -99,8 +99,9 @@ Templates are listed with a status filter (pending first); approve, reject (with
 | `POST /api/v1/otp` | send — see above. `422` validation (unknown/unapproved template → `template_id`, bad values → `parameters.<name>`), `429` too soon, `402` the send failed (credit, quota, gateway), `503` service off |
 | `GET /api/v1/otp/templates?status=` | the organization's templates with `variables`, `status` and `review_note` |
 | `GET /api/v1/otp/{id}` | one send |
+| `GET /api/v1/otp/{id}/state` | the code's delivery state — `delivered`, `undelivered`, `pending`, … and `delivered_at`; the polling alternative to the delivery webhooks (`docs/public-api.md` «Delivery state without webhooks», `app/Api/Handlers/DeliveryState.php`) |
 
-All three need the `otp:send` scope; `client_message_id` / `Idempotency-Key` work on `POST /otp` as on
+All four need the `otp:send` scope; `client_message_id` / `Idempotency-Key` work on `POST /otp` as on
 `POST /messages`. A key whose creator has the «کد تایید اشتراکی» menu closed is refused, like any other
 menu-mapped route.
 

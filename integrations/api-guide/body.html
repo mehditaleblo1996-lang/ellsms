@@ -174,7 +174,7 @@ curl -X POST https://datisrayan.com/api/v1/messages \
   <tr><td><span class="c">failed</span></td><td>اصلاً به اپراتور تحویل نشد.</td></tr>
   <tr><td><span class="c">not_available</span></td><td>برای این گیرنده گزارش تحویل وجود ندارد (مثلاً ارسال با بله).</td></tr>
 </table>
-<p class="note">هر چند دقیقه یک بار بپرسید تا <span class="c">final</span> برابر <span class="c">true</span> شود؛ بعد از آن وضعیت تغییر نمی‌کند.</p>
+<p class="note">هر چند دقیقه یک بار بپرسید تا <span class="c">final</span> برابر <span class="c">true</span> شود؛ بعد از آن وضعیت تغییر نمی‌کند. زمان‌ها (<span class="c">delivered_at</span>) به وقت UTC هستند. برای کد تایید اشتراکی همین کار را با <span class="c">GET /api/v1/otp/{id}/state</span> و برای ارسال انبوه با <span class="c">GET /api/v1/bulk-jobs/{id}/state</span> انجام دهید (بخش ۵ و ۸).</p>
 
 <!-- ۵ -->
 <h2 class="sec" id="s5"><span class="n">۵</span>ارسال انبوه و تدریجی</h2>
@@ -245,6 +245,35 @@ curl -X POST https://datisrayan.com/api/v1/bulk-jobs \
 </pre></div>
 <p>به‌جای پرسیدن مکرر، می‌توانید وبهوک <span class="c">bulk.completed</span> را فعال کنید تا پایان کار به شما اطلاع داده شود. دسترسی لازم: <span class="c">bulk:read</span></p>
 
+<h3>وضعیت تحویل هر گیرنده</h3>
+<div class="ep"><span class="m get">GET</span>/api/v1/bulk-jobs/{id}/state</div>
+<p>تعداد هر وضعیت برای کل ارسال، به‌همراه فهرست گیرنده‌ها صفحه به صفحه. بدون وب‌هوک و روی localhost هم کار می‌کند. فقط شماره و وضعیت برمی‌گردد، نه متن پیام. دسترسی لازم: <span class="c">bulk:read</span></p>
+<table class="t">
+  <tr><th style="width:24%">پارامتر</th><th style="width:16%">وضعیت</th><th>توضیح</th></tr>
+  <tr><td><span class="c">limit</span></td><td class="opt">اختیاری</td><td>تعداد گیرنده در هر صفحه، ۱ تا ۱۰۰۰. پیش‌فرض ۱۰۰.</td></tr>
+  <tr><td><span class="c">after</span></td><td class="opt">اختیاری</td><td>مقدار <span class="c">next_cursor</span> صفحه‌ی قبل. وقتی <span class="c">next_cursor</span> برابر <span class="c">null</span> شد، صفحه‌ی آخر است.</td></tr>
+  <tr><td><span class="c">state</span></td><td class="opt">اختیاری</td><td>فقط گیرنده‌های یک وضعیت، مثلاً <span class="c">undelivered</span>.</td></tr>
+</table>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undelivered" \
+  -H "Authorization: Bearer $DATIS_API_KEY"
+</pre></div>
+<div class="code"><div class="lbl">RESPONSE · 200</div><pre>
+{ "data": {
+  "id": "91",
+  "job_status": "done",
+  "state": "partially_delivered",
+  "final": true,
+  "summary": { "delivered": 950, "undelivered": 30,
+               "pending": 0, "failed": 20, "queued": 0 },
+  "total_rows": 1000,
+  "recipients": [
+    { "item_id": "120017", "destination": "989121234567",
+      "state": "undelivered", "delivered_at": null }
+  ],
+  "next_cursor": null, "limit": 100 } }</pre></div>
+<p>علاوه بر وضعیت‌های بخش ۴، در ارسال انبوه <span class="c">queued</span> (هنوز ارسال نشده) و <span class="c">cancelled</span> (لغو شده) هم دیده می‌شود. وضعیت کل تا وقتی ارسال ادامه دارد <span class="c">sending</span> است. <span class="c">summary</span> همیشه کل ارسال را می‌شمارد، حتی وقتی <span class="c">state</span> را فیلتر کرده‌اید.</p>
+
 <!-- ۶ -->
 <h2 class="sec" id="s6"><span class="n">۶</span>پیش‌نمایش هزینه</h2>
 <p>پیش از ارسال واقعی، می‌توانید <b>همان بدنه‌ی درخواست</b> را به مسیر پیش‌نمایش بفرستید تا هزینه را ببینید:</p>
@@ -281,6 +310,10 @@ curl -X POST https://datisrayan.com/api/v1/bulk-jobs \
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}</span></td><td><span class="c">messages:read</span></td><td>وضعیت یک ارسال تکی/گروهی.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}/state</span></td><td><span class="c">messages:read</span></td><td>وضعیت تحویل هر گیرنده، بدون وب‌هوک.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/bulk-jobs/{id}</span></td><td><span class="c">bulk:read</span></td><td>پیشرفت یک ارسال انبوه.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/bulk-jobs/{id}/state</span></td><td><span class="c">bulk:read</span></td><td>وضعیت تحویل هر گیرنده‌ی ارسال انبوه، صفحه به صفحه (بخش ۵).</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/otp</span></td><td><span class="c">otp:send</span></td><td>ارسال کد تایید با الگوی تأییدشده از خط اشتراکی.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/otp/{id}</span></td><td><span class="c">otp:send</span></td><td>نتیجه‌ی ارسال یک کد تایید.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/otp/{id}/state</span></td><td><span class="c">otp:send</span></td><td>وضعیت تحویل یک کد تایید (رسیده، نرسیده، در انتظار گزارش)، بدون وب‌هوک.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m post">POST</span> <span class="c">/contacts</span></td><td><span class="c">contacts:*</span></td><td>فهرست و ساخت مخاطب.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m patch">PATCH</span> <span class="m delete">DELETE</span> <span class="c">/contacts/{id}</span></td><td><span class="c">contacts:*</span></td><td>خواندن، ویرایش و حذف مخاطب.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m post">POST</span> <span class="c">/webhooks</span></td><td><span class="c">webhooks:*</span></td><td>فهرست و ساخت وبهوک.</td></tr>
@@ -350,6 +383,7 @@ curl -X POST https://datisrayan.com/api/v1/telegram/messages \
 <!-- ۹ -->
 <h2 class="sec" id="s9"><span class="n">۹</span>وبهوک‌ها</h2>
 <p>به‌جای اینکه مدام وضعیت را بپرسید، داتیس رایان گستر ایرانیان هر اتفاق مهم را با یک درخواست <span class="c">POST</span> به آدرس شما خبر می‌دهد. آدرس باید <span class="c">HTTPS</span> باشد.</p>
+<p class="note">آدرس HTTPS عمومی ندارید (مثلاً روی localhost کار می‌کنید)؟ وضعیت تحویل را با مسیرهای <span class="c">/state</span> بپرسید: <span class="c">/messages/{id}/state</span>، <span class="c">/otp/{id}/state</span> و <span class="c">/bulk-jobs/{id}/state</span>.</p>
 
 <h3>رویدادها</h3>
 <table class="t">

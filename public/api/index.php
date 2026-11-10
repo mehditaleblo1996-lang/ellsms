@@ -31,7 +31,7 @@ require_once __DIR__ . '/../../app/Api/RateLimit.php';
 require_once __DIR__ . '/../../app/Api/Router.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Meta.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Messages.php';
-require_once __DIR__ . '/../../app/Api/Handlers/MessageState.php';
+require_once __DIR__ . '/../../app/Api/Handlers/DeliveryState.php';
 require_once __DIR__ . '/../../app/Api/Handlers/BulkJobs.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Contacts.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Balance.php';
@@ -80,6 +80,7 @@ $router->map('GET',   '/api/v1/messages/{id}',                'api_handle_messag
 $router->map('GET',   '/api/v1/messages/{id}/state',          'api_handle_messages_state', ApiScopes::MESSAGES_READ);
 $router->map('POST',  '/api/v1/bulk-jobs',                   'api_handle_bulk_jobs_create', ApiScopes::BULK_WRITE);
 $router->map('GET',   '/api/v1/bulk-jobs/{id}',               'api_handle_bulk_jobs_get', ApiScopes::BULK_READ);
+$router->map('GET',   '/api/v1/bulk-jobs/{id}/state',         'api_handle_bulk_jobs_state', ApiScopes::BULK_READ);
 $router->map('GET',   '/api/v1/contacts',                    'api_handle_contacts_list', ApiScopes::CONTACTS_READ);
 $router->map('POST',  '/api/v1/contacts',                    'api_handle_contacts_create', ApiScopes::CONTACTS_WRITE);
 $router->map('GET',   '/api/v1/contacts/{id}',                'api_handle_contacts_get', ApiScopes::CONTACTS_READ);
@@ -105,6 +106,7 @@ $router->map('POST',  '/api/v1/voice/otp',                   'api_handle_voice_o
 $router->map('POST',  '/api/v1/otp',                         'api_handle_shared_otp_send', ApiScopes::OTP_SEND);
 $router->map('GET',   '/api/v1/otp/templates',               'api_handle_shared_otp_templates', ApiScopes::OTP_SEND);
 $router->map('GET',   '/api/v1/otp/{id}',                    'api_handle_shared_otp_get', ApiScopes::OTP_SEND);
+$router->map('GET',   '/api/v1/otp/{id}/state',              'api_handle_shared_otp_state', ApiScopes::OTP_SEND);
 // Shared sending service: recipient + text, the platform picks the line (app/Api/Handlers/SharedService.php).
 $router->map('POST',  '/api/v1/shared/messages',             'api_handle_shared_service_send', ApiScopes::SHARED_SEND);
 $router->map('GET',   '/api/v1/shared/messages/{id}',        'api_handle_shared_service_get', ApiScopes::SHARED_SEND);

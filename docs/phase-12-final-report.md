@@ -138,7 +138,8 @@ against backend-owned `outbound_message`). `GET /messages/{id}` reads that same 
 `POST /api/v1/bulk-jobs` — thin validation layer over the existing `bulk_queue_job()`, same queue,
 same worker (`run_bulk_send_pass()`), same reservation/lease/retry guarantees as a web-created job.
 `GET /bulk-jobs/{id}` returns a status summary only (STEP 2's allowed scope reduction) — no
-per-item listing endpoint in v1.
+per-item listing endpoint in v1. (Later: `GET /bulk-jobs/{id}/state` lists each recipient's delivery
+state, numbers and states only — `docs/public-api.md`.)
 
 ## 17. Contacts API
 

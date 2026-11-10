@@ -312,8 +312,9 @@ events fire only for API-initiated sends (`POST /api/v1/messages`), not for web-
 — wiring the same events into the panel's own send pages is a natural follow-up, deliberately kept
 out of scope to keep this phase's fan-out points minimal and reviewable. API key rotation has no
 overlap/grace window (the old secret stops working immediately) — acceptable for v1, documented as
-a possible future enhancement. `POST /api/v1/bulk-jobs` has no per-item read endpoint in this
-version (a status summary only), a deliberate STEP 2 scope reduction, not an oversight. TD-030
+a possible future enhancement. `POST /api/v1/bulk-jobs` had no per-item read endpoint in this
+version (a status summary only), a deliberate STEP 2 scope reduction; per-recipient delivery state
+(numbers and states only, paginated) was added later as `GET /api/v1/bulk-jobs/{id}/state`. TD-030
 (secrets stored in plaintext in `ellsms_settings`) is unchanged; unrelated to this phase's own new
 `WEBHOOK_MASTER_KEY`-encrypted secret storage, which is a new, separate, already-encrypted store.
 The backend HMAC verifier remains PARTIAL, exactly as every prior phase disclosed — this phase adds

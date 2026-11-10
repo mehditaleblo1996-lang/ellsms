@@ -27,8 +27,9 @@ API-initiated sends only (`POST /api/v1/messages`); `bulk.completed`/`bulk.faile
 `payment.credited` cover the corresponding action regardless of whether it originated from the API
 or the panel UI.
 
-**No public HTTPS address?** The same delivery status can be polled instead: `GET /api/v1/messages/{id}/state`
-(`docs/public-api.md`) returns each recipient's state for a message sent with `POST /api/v1/messages`.
+**No public HTTPS address?** The same delivery status can be polled instead (`docs/public-api.md`
+«Delivery state without webhooks»): `GET /api/v1/messages/{id}/state`, `GET /api/v1/otp/{id}/state` and
+`GET /api/v1/bulk-jobs/{id}/state`.
 
 **Per-message events (#39).** `message.delivered`, `message.undelivered` and `message.received` can
 be one event per message on a large job, so they are recorded **only for an organization with an

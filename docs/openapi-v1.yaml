@@ -175,6 +175,32 @@ components:
             destinations: { type: array, items: { type: string } }
             created_at: { type: string, format: date-time }
 
+    RecipientState:
+      type: string
+      enum: [delivered, undelivered, pending, failed, queued, cancelled, unknown, not_available]
+    OverallState:
+      type: string
+      enum: [delivered, partially_delivered, pending, undelivered, sending, cancelled, unknown, not_available]
+    StateSummary:
+      type: object
+      description: Count of recipients per RecipientState (every key always present)
+      properties:
+        delivered: { type: integer }
+        undelivered: { type: integer }
+        pending: { type: integer }
+        failed: { type: integer }
+        unknown: { type: integer }
+        not_available: { type: integer }
+        queued: { type: integer }
+        cancelled: { type: integer }
+    Recipient:
+      type: object
+      properties:
+        destination: { type: string }
+        state: { $ref: '#/components/schemas/RecipientState' }
+        delivered_at: { type: string, nullable: true, description: UTC }
+        checked_at: { type: string, nullable: true, description: UTC — the delivery poller's last check }
+
     MessageState:
       type: object
       properties:
@@ -183,26 +209,47 @@ components:
           properties:
             id: { type: string }
             send_status: { type: string, enum: [sent, partially_sent, failed] }
-            state: { type: string, enum: [delivered, partially_delivered, pending, undelivered, unknown, not_available] }
-            final: { type: boolean, description: true once no recipient is pending — stop polling }
-            summary:
-              type: object
-              properties:
-                delivered: { type: integer }
-                undelivered: { type: integer }
-                pending: { type: integer }
-                failed: { type: integer }
-                unknown: { type: integer }
-                not_available: { type: integer }
+            state: { $ref: '#/components/schemas/OverallState' }
+            final: { type: boolean, description: true once nothing is pending — stop polling }
+            summary: { $ref: '#/components/schemas/StateSummary' }
+            recipients: { type: array, items: { $ref: '#/components/schemas/Recipient' } }
+            created_at: { type: string, format: date-time }
+
+    OtpState:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            send_status: { type: string, enum: [sending, sent, failed] }
+            destination: { type: string }
+            state: { $ref: '#/components/schemas/RecipientState' }
+            final: { type: boolean }
+            delivered_at: { type: string, nullable: true, description: UTC }
+            checked_at: { type: string, nullable: true, description: UTC }
+            created_at: { type: string }
+
+    BulkJobState:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            job_status: { type: string, enum: [pending, processing, done, cancelled] }
+            state: { $ref: '#/components/schemas/OverallState' }
+            final: { type: boolean, description: true once the job is closed and nothing is queued or pending }
+            summary: { $ref: '#/components/schemas/StateSummary' }
+            total_rows: { type: integer }
             recipients:
               type: array
               items:
-                type: object
-                properties:
-                  destination: { type: string }
-                  state: { type: string, enum: [delivered, undelivered, pending, failed, unknown, not_available] }
-                  delivered_at: { type: string, nullable: true }
-                  checked_at: { type: string, nullable: true }
+                allOf:
+                  - { $ref: '#/components/schemas/Recipient' }
+                  - { type: object, properties: { item_id: { type: string } } }
+            next_cursor: { type: string, nullable: true, description: pass back as `after`; null on the last page }
+            limit: { type: integer }
             created_at: { type: string, format: date-time }
 
     BulkJobCreateRequest:
@@ -388,6 +435,19 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BulkJob' } } } }
         "404": { $ref: '#/components/responses/NotFound' }
+
+  /bulk-jobs/{id}/state:
+    get:
+      summary: Delivery state of a bulk job — counts plus recipients page by page; polling alternative to the delivery webhooks (scope bulk:read)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 100 } }
+        - { name: after, in: query, required: false, description: next_cursor of the previous page, schema: { type: string } }
+        - { name: state, in: query, required: false, description: only recipients in this state, schema: { $ref: '#/components/schemas/RecipientState' } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BulkJobState' } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
 
   /contacts:
     get:
@@ -656,6 +716,15 @@ paths:
         - { name: id, in: path, required: true, schema: { type: integer } }
       responses:
         "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/OtpMessage' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /otp/{id}/state:
+    get:
+      summary: Delivery state of a shared OTP code — polling alternative to the delivery webhooks (scope otp:send)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/OtpState' } } } }
         "404": { $ref: '#/components/responses/NotFound' }
 
   /shared/messages:

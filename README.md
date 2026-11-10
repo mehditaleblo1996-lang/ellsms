@@ -120,7 +120,8 @@ approves it there, and the customer then calls `POST /api/v1/otp` (scope `otp:se
 `template_id`, `destination` and the values. They never name a sender: the admin picks the shared lines
 (same page), and the send goes through `dispatch_message()` like any other, charged to the customer at
 the line's OTP tariff. Any edit sends the template back to review; values are short, single-line and
-link-free so the variables can't carry an ad. See [`docs/shared-otp.md`](docs/shared-otp.md).
+link-free so the variables can't carry an ad. A code's delivery state can be polled with
+`GET /api/v1/otp/{id}/state`. See [`docs/shared-otp.md`](docs/shared-otp.md).
 
 ## Shared sending service (سرویس ارسال اشتراکی)
 
@@ -387,9 +388,10 @@ the panel's web session and the internal backend-platform HMAC scheme above. **D
 (`API_ENABLED=0`) so every existing install is unaffected until an operator opts in. See
 `docs/public-api.md` and `docs/webhooks.md` for the full reference, and
 `docs/phase-12-final-report.md` for the acceptance-criteria record.
-Delivery status of an API message can be received by webhook (`message.delivered` /
-`message.undelivered`) or polled with `GET /api/v1/messages/{id}/state` (scope `messages:read`) — for an
-integration without a public HTTPS address.
+Delivery status can be received by webhook (`message.delivered` / `message.undelivered`) or, for an
+integration without a public HTTPS address, polled: `GET /api/v1/messages/{id}/state` (`messages:read`),
+`GET /api/v1/otp/{id}/state` (`otp:send`) and `GET /api/v1/bulk-jobs/{id}/state` (`bulk:read`, paginated
+per recipient) — see «Delivery state without webhooks» in `docs/public-api.md`.
 
 **Per-line MO / delivery-report forwarding.** Separately from webhooks, every line can call the
 customer's own `http(s)` URL template — Vesal-compatible `${originator}`/`${content}`/`${status}`/

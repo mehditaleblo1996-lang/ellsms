@@ -76,7 +76,7 @@ create a key at all** — these are two separate, deliberately independent layer
 | `messages:send` | `POST /messages` |
 | `messages:read` | `GET /messages/{id}`, `GET /messages/{id}/state` |
 | `bulk:write` | `POST /bulk-jobs` |
-| `bulk:read` | `GET /bulk-jobs/{id}` |
+| `bulk:read` | `GET /bulk-jobs/{id}`, `GET /bulk-jobs/{id}/state` |
 | `contacts:read` | `GET /contacts`, `GET /contacts/{id}` |
 | `contacts:write` | `POST /contacts`, `PATCH /contacts/{id}`, `DELETE /contacts/{id}` |
 | `balance:read` | `GET /balance` |
@@ -84,7 +84,7 @@ create a key at all** — these are two separate, deliberately independent layer
 | `webhooks:write` | `POST /webhooks`, `PATCH`, `DELETE`, rotate-secret, test |
 | `voice:send` | `POST /voice/messages`, `POST /voice/messages/{id}/cancel`, `POST /voice/otp`, `POST /voice/tts` |
 | `voice:read` | `GET /voice/files`, `GET /voice/messages/{id}` |
-| `otp:send` | `POST /otp`, `GET /otp/templates`, `GET /otp/{id}` |
+| `otp:send` | `POST /otp`, `GET /otp/templates`, `GET /otp/{id}`, `GET /otp/{id}/state` |
 
 An unrecognized scope string is rejected outright at key-creation time — never silently dropped, and
 never accepted as a partial match. A request against an endpoint the key wasn't granted returns
@@ -267,34 +267,84 @@ word (#40) is refused with `422` and `content: ["prohibited_content"]`.
 ### `GET /messages/{id}` — scope `messages:read`
 Returns the same resource shape as above by id, scoped to the caller's organization.
 
-### `GET /messages/{id}/state` — scope `messages:read`
-Delivery state of a message sent with `POST /messages`, per recipient — the **polling** alternative
-to the `message.delivered` / `message.undelivered` webhooks, for an integration that has no public
-HTTPS address (e.g. developing on localhost). `{id}` is the id `POST /messages` returned.
+### Delivery state without webhooks — `GET /messages/{id}/state`, `GET /otp/{id}/state`, `GET /bulk-jobs/{id}/state`
+The **polling** alternative to the `message.delivered` / `message.undelivered` webhooks, for an
+integration that has no public HTTPS address (e.g. developing on localhost). `{id}` is the id the
+send returned. Same data as the webhooks; free; poll every few minutes until `final` is `true`, not
+every second. Handler: `app/Api/Handlers/DeliveryState.php`.
+
+| Route | Scope | For |
+|---|---|---|
+| `GET /messages/{id}/state` | `messages:read` | a `POST /messages` send — every recipient |
+| `GET /otp/{id}/state` | `otp:send` | a `POST /otp` code — its one recipient |
+| `GET /bulk-jobs/{id}/state` | `bulk:read` | a `POST /bulk-jobs` job (or any bulk job of the organization) — counts, plus recipients page by page |
+
+Recipient `state`:
+
+| state | meaning |
+|---|---|
+| `delivered` | the operator reported it delivered |
+| `undelivered` | the operator reported failed / rejected / expired |
+| `pending` | handed to the operator, final report not in yet |
+| `failed` | never handed to the operator |
+| `queued` | not sent yet (a bulk item still in the queue, an OTP still sending) |
+| `cancelled` | a bulk item cancelled before sending |
+| `unknown` | the provider's own «unknown» |
+| `not_available` | no delivery report exists — sent over Bale, through a gateway without delivery reports, or no transport record found |
+
+The overall `state` rolls these up: `delivered`, `partially_delivered`, `pending`, `undelivered`,
+`unknown`, `not_available`, plus `sending` for a bulk job still being sent (and `cancelled` for one
+whose items were all cancelled). `final` is `true` once nothing is `queued` or `pending` (for a bulk
+job: also the job is no longer `pending`/`processing`). `delivered_at` and `checked_at` (the poller's
+last check) are UTC.
+
+`GET /messages/{id}/state`:
 ```json
 { "data": {
   "id": "482", "send_status": "sent", "state": "partially_delivered", "final": true,
-  "summary": { "delivered": 1, "undelivered": 1, "pending": 0, "failed": 0, "unknown": 0, "not_available": 0 },
+  "summary": { "delivered": 1, "undelivered": 1, "pending": 0, "failed": 0, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "recipients": [
-    { "destination": "989121234567", "state": "delivered",   "delivered_at": "2026-11-10 14:30:12", "checked_at": "2026-11-10 14:31:00" },
-    { "destination": "989351112233", "state": "undelivered", "delivered_at": null, "checked_at": "2026-11-10 14:31:00" }
+    { "destination": "989121234567", "state": "delivered",   "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" },
+    { "destination": "989351112233", "state": "undelivered", "delivered_at": null, "checked_at": "2026-11-10 11:01:00" }
   ],
-  "created_at": "2026-11-10 14:30:05" } }
+  "created_at": "2026-11-10 11:00:05" } }
 ```
-Recipient `state`: `delivered`; `undelivered` (the operator reported failed / rejected / expired);
-`pending` (sent, no final report yet); `failed` (never left for the operator); `unknown` (the
-provider's own unknown); `not_available` (no delivery report exists for it — sent over Bale, through
-a gateway without delivery reports, or no transport record found). The message-level `state` rolls
-these up (`delivered`, `partially_delivered`, `pending`, `undelivered`, `unknown`, `not_available`);
-`final` is `true` once no recipient is `pending` — poll every few minutes until then, not every second.
 
-Read-only: it reads the delivery status the gateway's delivery-status poller already writes onto
-`ellsms_message_attempts` (`delivery_status`, `delivered_at` — the same data behind the delivery
-webhooks); the send path is unchanged and no migration is needed. Because an API message is not
-linked to its transport rows by id, they are matched by the same user, recipient, sender line and
-text (each compared only when the column exists), `send_channel` `api`, attempted in the
-`API_MESSAGE_STATE_WINDOW_SECONDS` (600 s) before the API row was written; per recipient the latest
-match wins. Handler: `app/Api/Handlers/MessageState.php`.
+`GET /otp/{id}/state`:
+```json
+{ "data": { "id": "57", "send_status": "sent", "destination": "989121234567", "state": "delivered",
+  "final": true, "delivered_at": "2026-11-10 11:00:09", "checked_at": "2026-11-10 11:01:00", "created_at": "2026-11-10 14:30:05" } }
+```
+(`created_at` is the OTP row's own local time, as in `GET /otp/{id}`.)
+
+`GET /bulk-jobs/{id}/state?limit=100&after=<cursor>&state=<state>`:
+```json
+{ "data": {
+  "id": "91", "job_status": "done", "state": "partially_delivered", "final": true,
+  "summary": { "delivered": 950, "undelivered": 30, "pending": 0, "failed": 20, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
+  "total_rows": 1000,
+  "recipients": [
+    { "item_id": "120001", "destination": "989121234567", "state": "delivered", "delivered_at": "2026-11-10 11:02:00", "checked_at": "2026-11-10 11:03:00" }
+  ],
+  "next_cursor": "120100", "limit": 100, "created_at": "2026-11-10 11:00:00" } }
+```
+`summary` always covers the whole job. `recipients` is one page in item order: `limit` 1–1000
+(default 100); pass `next_cursor` back as `after` until it is `null`. `state` filters the page to one
+recipient state (any value of the table above; anything else → `422 validation_failed`, field
+`state`). Only numbers and states are returned — never message text. Items already moved to the
+six-month archive (`ellsms_bulk_items_archive`) are not listed.
+
+**How the rows are found.** Read-only — the send paths are unchanged and no migration is needed. A
+bulk item carries its own `delivery_status` / `delivered_at` (`ellsms_bulk_items`). A single send's
+transport rows (`ellsms_message_attempts`, written as `reference_type` `direct_send` under a
+time-bucketed hash) are not linked to the API row by id, so they are matched by what both share:
+- `/messages`: same user, recipient, sender line and text (each compared only when the column
+  exists), `send_channel` `api`, attempted in the `API_MESSAGE_STATE_WINDOW_SECONDS` (600 s) up to the
+  API row's `created_at`; per recipient the latest match wins.
+- `/otp`: same user and number, an `accepted` row on the shared line that carried the code, from the
+  code's time (converted from the app's local time to the database's UTC, 5 s of slack) to 600 s
+  (`API_OTP_STATE_WINDOW_SECONDS`) after; earlier codes to the same number take their rows first, so
+  two codes seconds apart each get their own.
 
 ### `POST /bulk-jobs` — scope `bulk:write`, idempotent
 ```json
@@ -312,9 +362,8 @@ Response: `{"data": {"id": "91", "status": "pending", "total_rows": 1, "message"
 
 ### `GET /bulk-jobs/{id}` — scope `bulk:read`
 Status summary: `{"id", "type", "title", "status", "sent_rows", "failed_rows", "total_rows", "created_at"}`.
-There is no per-item listing endpoint in this version (STEP 2 allows a reduced v1 surface) — a
-status summary is intentionally the entire read surface, so no destination/content data is exposed
-in bulk via the API without a deliberate future decision to add it.
+Per-recipient delivery state (numbers and states only, never message text, paginated) is
+`GET /bulk-jobs/{id}/state` — see «Delivery state without webhooks» above.
 
 ### `POST /messages/preview` — scope `messages:send`
 ### `POST /bulk-jobs/preview` — scope `bulk:write`
@@ -412,6 +461,7 @@ service_unavailable`). Full behaviour: `docs/shared-otp.md`.
   is never stored or returned.
 - `GET /otp/templates?status=` — the organization's templates: `[{"id", "title", "content", "variables", "status", "review_note", "created_at"}]`
 - `GET /otp/{id}` — one send, the same shape as `POST /otp` answers
+- `GET /otp/{id}/state` — the code's delivery state (`delivered` / `undelivered` / `pending` …) — see «Delivery state without webhooks»
 
 ### Shared sending service — scope `shared:send`
 Recipient and text only; the platform picks the line from its pool (`originator`/`sender`/`from` → `422`).
