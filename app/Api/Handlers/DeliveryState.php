@@ -31,7 +31,7 @@ const API_BULK_STATE_DEFAULT_LIMIT = 100;
 const API_BULK_STATE_MAX_LIMIT = 1000;
 
 /** Every recipient state, in summary order. `queued` and `cancelled` only occur for bulk items. */
-const API_RECIPIENT_STATES = ['delivered', 'undelivered', 'pending', 'failed', 'unknown', 'not_available', 'queued', 'cancelled'];
+const API_RECIPIENT_STATES = ['delivered', 'undelivered', 'sent', 'failed', 'unknown', 'not_available', 'queued', 'cancelled'];
 
 /* ---------- pure: state mapping and roll-up ---------- */
 
@@ -40,7 +40,7 @@ const API_RECIPIENT_STATES = ['delivered', 'undelivered', 'pending', 'failed', '
  *   status 'failed'                        → failed        (never left for the operator)
  *   delivery delivered                     → delivered
  *   delivery failed / rejected / expired   → undelivered
- *   delivery accepted / queued / sent      → pending       (final report not in yet)
+ *   delivery accepted / queued / sent      → sent          (handed to the operator, final report not in yet)
  *   delivery unknown                       → unknown
  *   delivery NULL (no delivery reports)    → not_available
  */
@@ -49,7 +49,7 @@ function api_message_recipient_state(?string $attemptStatus, ?string $deliverySt
     return match ($deliveryStatus) {
         'delivered'                        => 'delivered',
         'failed', 'rejected', 'expired'    => 'undelivered',
-        'accepted', 'queued', 'sent'       => 'pending',
+        'accepted', 'queued', 'sent'       => 'sent',
         'unknown'                          => 'unknown',
         default                            => 'not_available',
     };
@@ -76,7 +76,7 @@ function api_bulk_state_condition(string $state): ?string {
         'failed'        => "bi.status = 'failed'",
         'delivered'     => "bi.status = 'sent' AND bi.delivery_status = 'delivered'",
         'undelivered'   => "bi.status = 'sent' AND bi.delivery_status IN ('failed','rejected','expired')",
-        'pending'       => "bi.status = 'sent' AND bi.delivery_status IN ('accepted','queued','sent')",
+        'sent'          => "bi.status = 'sent' AND bi.delivery_status IN ('accepted','queued','sent')",
         'unknown'       => "bi.status = 'sent' AND bi.delivery_status = 'unknown'",
         'not_available' => "bi.status = 'sent' AND bi.delivery_status IS NULL",
         default         => null,
@@ -91,7 +91,7 @@ function api_state_summary_empty(): array {
 /**
  * Pure: the overall state from per-state counts.
  *   anything still queued                   → sending
- *   any pending                             → pending
+ *   any sent, no final report yet           → sent
  *   all (non-cancelled) delivered           → delivered
  *   some delivered                          → partially_delivered
  *   all failed / undelivered                → undelivered
@@ -103,7 +103,7 @@ function api_overall_state_from_counts(array $counts): string {
     $n = array_sum(array_map('intval', $counts)) - $c('cancelled');
     if ($n <= 0) return $c('cancelled') > 0 ? 'cancelled' : 'not_available';
     if ($c('queued') > 0) return 'sending';
-    if ($c('pending') > 0) return 'pending';
+    if ($c('sent') > 0) return 'sent';
     if ($c('delivered') === $n) return 'delivered';
     if ($c('delivered') > 0) return 'partially_delivered';
     if ($c('undelivered') + $c('failed') === $n) return 'undelivered';
@@ -117,9 +117,9 @@ function api_message_overall_state(array $states): string {
     return api_overall_state_from_counts(array_count_values($states));
 }
 
-/** Pure: true once nothing can still change (nothing queued or pending) — the caller may stop polling. */
+/** Pure: true once nothing can still change (nothing queued or awaiting its report) — the caller may stop polling. */
 function api_state_is_final_counts(array $counts): bool {
-    return (int)($counts['queued'] ?? 0) === 0 && (int)($counts['pending'] ?? 0) === 0;
+    return (int)($counts['queued'] ?? 0) === 0 && (int)($counts['sent'] ?? 0) === 0;
 }
 
 function api_message_state_is_final(array $states): bool {
@@ -255,7 +255,7 @@ function api_otp_state_body(array $otp, ?array $row): array {
         'send_status'  => (string)$otp['status'],
         'destination'  => $recipient['destination'],
         'state'        => $state,
-        'final'        => !in_array($state, ['queued', 'pending'], true),
+        'final'        => !in_array($state, ['queued', 'sent'], true),
         'delivered_at' => $recipient['delivered_at'],
         'checked_at'   => $recipient['checked_at'],
         'created_at'   => (string)$otp['created_at'],

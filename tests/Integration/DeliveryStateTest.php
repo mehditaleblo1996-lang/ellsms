@@ -167,10 +167,10 @@ final class DeliveryStateTest extends IntegrationTestCase
         [$status, $body] = $this->call('api_handle_messages_state', ['id' => $id]);
         $this->assertSame(200, $status, json_encode($body));
         $this->assertSame('sent', $body['data']['send_status']);
-        $this->assertSame('pending', $body['data']['state']);
+        $this->assertSame('sent', $body['data']['state']);
         $this->assertFalse($body['data']['final']);
         $this->assertSame(['989121110001', '989121110002'], array_column($body['data']['recipients'], 'destination'));
-        $this->assertSame(['pending', 'pending'], array_column($body['data']['recipients'], 'state'));
+        $this->assertSame(['sent', 'sent'], array_column($body['data']['recipients'], 'state'));
 
         // The poller's own write.
         $a1 = $this->attemptsFor('989121110001')[0];
@@ -198,7 +198,7 @@ final class DeliveryStateTest extends IntegrationTestCase
         $this->assertTrue(gateway_status_record('attempt', (int)$attempts[0]['id'], $attempts[0]['delivery_status'], 'delivered', null, 'DELIVRD'));
 
         $this->assertSame('delivered', $this->call('api_handle_messages_state', ['id' => $first['data']['id']])[1]['data']['state']);
-        $this->assertSame('pending', $this->call('api_handle_messages_state', ['id' => $second['data']['id']])[1]['data']['state']);
+        $this->assertSame('sent', $this->call('api_handle_messages_state', ['id' => $second['data']['id']])[1]['data']['state']);
     }
 
     public function testMessageStateIsTenantScoped(): void
@@ -225,7 +225,7 @@ final class DeliveryStateTest extends IntegrationTestCase
 
         [$status, $body] = $this->call('api_handle_shared_otp_state', ['id' => $id]);
         $this->assertSame(200, $status, json_encode($body));
-        $this->assertSame('pending', $body['data']['state']);
+        $this->assertSame('sent', $body['data']['state']);
         $this->assertFalse($body['data']['final']);
         $this->assertSame('989121110005', $body['data']['destination']);
 
@@ -238,7 +238,7 @@ final class DeliveryStateTest extends IntegrationTestCase
         $this->assertTrue($body['data']['final']);
         $this->assertSame('2026-11-10 10:00:40', $body['data']['delivered_at']);
         // The second code to the same number is still waiting for its own report.
-        $this->assertSame('pending', $this->call('api_handle_shared_otp_state', ['id' => (string)$second['data']['id']])[1]['data']['state']);
+        $this->assertSame('sent', $this->call('api_handle_shared_otp_state', ['id' => (string)$second['data']['id']])[1]['data']['state']);
 
         $other = $this->otherOrgPrincipal([\ApiScopes::OTP_SEND]);
         $this->assertSame(404, $this->call('api_handle_shared_otp_state', ['id' => $id], [], [], $other)[0]);
@@ -271,12 +271,12 @@ final class DeliveryStateTest extends IntegrationTestCase
         $this->assertSame(200, $status, json_encode($body));
         $d = $body['data'];
         $this->assertSame('done', $d['job_status']);
-        $this->assertSame('pending', $d['state']);
+        $this->assertSame('sent', $d['state']);
         $this->assertFalse($d['final']);
         $this->assertSame(5, $d['total_rows']);
         $this->assertSame(1, $d['summary']['delivered']);
         $this->assertSame(1, $d['summary']['undelivered']);
-        $this->assertSame(1, $d['summary']['pending']);
+        $this->assertSame(1, $d['summary']['sent']);
         $this->assertSame(1, $d['summary']['failed']);
         $this->assertSame(1, $d['summary']['cancelled']);
         $this->assertSame(['989121110011', '989121110012'], array_column($d['recipients'], 'destination'));

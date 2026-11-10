@@ -285,16 +285,16 @@ Recipient `state`:
 |---|---|
 | `delivered` | the operator reported it delivered |
 | `undelivered` | the operator reported failed / rejected / expired |
-| `pending` | handed to the operator, final report not in yet |
+| `sent` | handed to the operator, final report not in yet |
 | `failed` | never handed to the operator |
 | `queued` | not sent yet (a bulk item still in the queue, an OTP still sending) |
 | `cancelled` | a bulk item cancelled before sending |
 | `unknown` | the provider's own «unknown» |
 | `not_available` | no delivery report exists — sent over Bale, through a gateway without delivery reports, or no transport record found |
 
-The overall `state` rolls these up: `delivered`, `partially_delivered`, `pending`, `undelivered`,
+The overall `state` rolls these up: `delivered`, `partially_delivered`, `sent`, `undelivered`,
 `unknown`, `not_available`, plus `sending` for a bulk job still being sent (and `cancelled` for one
-whose items were all cancelled). `final` is `true` once nothing is `queued` or `pending` (for a bulk
+whose items were all cancelled). `final` is `true` once nothing is `queued` or `sent` (for a bulk
 job: also the job is no longer `pending`/`processing`). `delivered_at` and `checked_at` (the poller's
 last check) are UTC.
 
@@ -302,7 +302,7 @@ last check) are UTC.
 ```json
 { "data": {
   "id": "482", "send_status": "sent", "state": "partially_delivered", "final": true,
-  "summary": { "delivered": 1, "undelivered": 1, "pending": 0, "failed": 0, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
+  "summary": { "delivered": 1, "undelivered": 1, "sent": 0, "failed": 0, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "recipients": [
     { "destination": "989121234567", "state": "delivered",   "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" },
     { "destination": "989351112233", "state": "undelivered", "delivered_at": null, "checked_at": "2026-11-10 11:01:00" }
@@ -321,7 +321,7 @@ last check) are UTC.
 ```json
 { "data": {
   "id": "91", "job_status": "done", "state": "partially_delivered", "final": true,
-  "summary": { "delivered": 950, "undelivered": 30, "pending": 0, "failed": 20, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
+  "summary": { "delivered": 950, "undelivered": 30, "sent": 0, "failed": 20, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "total_rows": 1000,
   "recipients": [
     { "item_id": "120001", "destination": "989121234567", "state": "delivered", "delivered_at": "2026-11-10 11:02:00", "checked_at": "2026-11-10 11:03:00" }
@@ -461,7 +461,7 @@ service_unavailable`). Full behaviour: `docs/shared-otp.md`.
   is never stored or returned.
 - `GET /otp/templates?status=` — the organization's templates: `[{"id", "title", "content", "variables", "status", "review_note", "created_at"}]`
 - `GET /otp/{id}` — one send, the same shape as `POST /otp` answers
-- `GET /otp/{id}/state` — the code's delivery state (`delivered` / `undelivered` / `pending` …) — see «Delivery state without webhooks»
+- `GET /otp/{id}/state` — the code's delivery state (`delivered` / `undelivered` / `sent` …) — see «Delivery state without webhooks»
 
 ### Shared sending service — scope `shared:send`
 Recipient and text only; the platform picks the line from its pool (`originator`/`sender`/`from` → `422`).

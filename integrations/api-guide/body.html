@@ -159,7 +159,7 @@ curl -X POST https://datisrayan.com/api/v1/messages \
   "send_status": "sent",
   "state": "partially_delivered",
   "final": true,
-  "summary": { "delivered": 1, "undelivered": 1, "pending": 0 },
+  "summary": { "delivered": 1, "undelivered": 1, "sent": 0 },
   "recipients": [
     { "destination": "989121234567", "state": "delivered",
       "delivered_at": "2026-11-10 14:30:12" },
@@ -170,7 +170,7 @@ curl -X POST https://datisrayan.com/api/v1/messages \
   <tr><th style="width:24%">state</th><th>معنی</th></tr>
   <tr><td><span class="c">delivered</span></td><td>به گوشی گیرنده رسیده.</td></tr>
   <tr><td><span class="c">undelivered</span></td><td>نرسید (گوشی خاموش، شماره نامعتبر یا منقضی‌شده).</td></tr>
-  <tr><td><span class="c">pending</span></td><td>ارسال شده و گزارش نهایی اپراتور هنوز نیامده.</td></tr>
+  <tr><td><span class="c">sent</span></td><td>ارسال شده و گزارش نهایی اپراتور هنوز نیامده.</td></tr>
   <tr><td><span class="c">failed</span></td><td>اصلاً به اپراتور تحویل نشد.</td></tr>
   <tr><td><span class="c">not_available</span></td><td>برای این گیرنده گزارش تحویل وجود ندارد (مثلاً ارسال با بله).</td></tr>
 </table>
@@ -265,7 +265,7 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
   "state": "partially_delivered",
   "final": true,
   "summary": { "delivered": 950, "undelivered": 30,
-               "pending": 0, "failed": 20, "queued": 0 },
+               "sent": 0, "failed": 20, "queued": 0 },
   "total_rows": 1000,
   "recipients": [
     { "item_id": "120017", "destination": "989121234567",

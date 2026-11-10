@@ -177,17 +177,17 @@ components:
 
     RecipientState:
       type: string
-      enum: [delivered, undelivered, pending, failed, queued, cancelled, unknown, not_available]
+      enum: [delivered, undelivered, sent, failed, queued, cancelled, unknown, not_available]
     OverallState:
       type: string
-      enum: [delivered, partially_delivered, pending, undelivered, sending, cancelled, unknown, not_available]
+      enum: [delivered, partially_delivered, sent, undelivered, sending, cancelled, unknown, not_available]
     StateSummary:
       type: object
       description: Count of recipients per RecipientState (every key always present)
       properties:
         delivered: { type: integer }
         undelivered: { type: integer }
-        pending: { type: integer }
+        sent: { type: integer }
         failed: { type: integer }
         unknown: { type: integer }
         not_available: { type: integer }
@@ -210,7 +210,7 @@ components:
             id: { type: string }
             send_status: { type: string, enum: [sent, partially_sent, failed] }
             state: { $ref: '#/components/schemas/OverallState' }
-            final: { type: boolean, description: true once nothing is pending — stop polling }
+            final: { type: boolean, description: true once nothing is queued or sent-awaiting-report — stop polling }
             summary: { $ref: '#/components/schemas/StateSummary' }
             recipients: { type: array, items: { $ref: '#/components/schemas/Recipient' } }
             created_at: { type: string, format: date-time }
@@ -239,7 +239,7 @@ components:
             id: { type: string }
             job_status: { type: string, enum: [pending, processing, done, cancelled] }
             state: { $ref: '#/components/schemas/OverallState' }
-            final: { type: boolean, description: true once the job is closed and nothing is queued or pending }
+            final: { type: boolean, description: true once the job is closed and nothing is queued or sent-awaiting-report }
             summary: { $ref: '#/components/schemas/StateSummary' }
             total_rows: { type: integer }
             recipients:

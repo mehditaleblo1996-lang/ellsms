@@ -19,7 +19,7 @@ final class ApiDeliveryStateTest extends TestCase
             $this->assertSame('undelivered', \api_message_recipient_state('accepted', $s));
         }
         foreach (['accepted', 'queued', 'sent'] as $s) {
-            $this->assertSame('pending', \api_message_recipient_state('accepted', $s));
+            $this->assertSame('sent', \api_message_recipient_state('accepted', $s));
         }
         $this->assertSame('unknown', \api_message_recipient_state('accepted', 'unknown'));
         $this->assertSame('not_available', \api_message_recipient_state('accepted', null));
@@ -28,7 +28,7 @@ final class ApiDeliveryStateTest extends TestCase
     public function testOverallState(): void
     {
         $this->assertSame('delivered', \api_message_overall_state(['delivered', 'delivered']));
-        $this->assertSame('pending', \api_message_overall_state(['delivered', 'pending']));
+        $this->assertSame('sent', \api_message_overall_state(['delivered', 'sent']));
         $this->assertSame('partially_delivered', \api_message_overall_state(['delivered', 'undelivered']));
         $this->assertSame('undelivered', \api_message_overall_state(['undelivered', 'failed']));
         $this->assertSame('unknown', \api_message_overall_state(['unknown', 'not_available']));
@@ -39,7 +39,7 @@ final class ApiDeliveryStateTest extends TestCase
     public function testFinalOnlyWithoutPending(): void
     {
         $this->assertTrue(\api_message_state_is_final(['delivered', 'undelivered']));
-        $this->assertFalse(\api_message_state_is_final(['delivered', 'pending']));
+        $this->assertFalse(\api_message_state_is_final(['delivered', 'sent']));
     }
 
     public function testMatchingPicksLatestRowPerRecipientAndSkipsOtherTextOrLine(): void
@@ -90,7 +90,7 @@ final class ApiDeliveryStateTest extends TestCase
         $this->assertSame('failed', \api_bulk_item_state('failed', null));
         $this->assertSame('delivered', \api_bulk_item_state('sent', 'delivered'));
         $this->assertSame('undelivered', \api_bulk_item_state('sent', 'expired'));
-        $this->assertSame('pending', \api_bulk_item_state('sent', 'sent'));
+        $this->assertSame('sent', \api_bulk_item_state('sent', 'sent'));
         $this->assertSame('not_available', \api_bulk_item_state('sent', null));
     }
 
@@ -177,7 +177,7 @@ final class ApiDeliveryStateTest extends TestCase
         $this->assertSame('delivered', $b['state']);
         $this->assertTrue($b['final']);
         $this->assertSame('2026-11-10 06:30:10', $b['delivered_at']);
-        $this->assertSame('pending', \api_otp_state_body($otp, ['status' => 'accepted', 'delivery_status' => 'queued'])['state']);
+        $this->assertSame('sent', \api_otp_state_body($otp, ['status' => 'accepted', 'delivery_status' => 'queued'])['state']);
         $this->assertFalse(\api_otp_state_body($otp, ['status' => 'accepted', 'delivery_status' => 'queued'])['final']);
         $this->assertSame('not_available', \api_otp_state_body($otp, null)['state']);
         $this->assertSame('failed', \api_otp_state_body(['status' => 'failed'] + $otp, null)['state']);
