@@ -13,6 +13,33 @@ storage/logs/*
 storage/benchmarks/*
 storage/kyc/*
 !storage/kyc/.gitkeep
+# Runtime data under storage/ (uploads, exports, imports, backups, keys): it lives in the host
+# checkout and reaches the containers through the bind mount, never through the image. Left in the
+# build context it was sent to the Docker daemon on every build — backups and exports can be
+# gigabytes — and storage/*.key would have been baked into the image.
+storage/exports/*
+!storage/exports/.gitkeep
+storage/imports/*
+!storage/imports/.gitkeep
+storage/payment-receipts/*
+!storage/payment-receipts/.gitkeep
+storage/number-commitments/*
+!storage/number-commitments/.gitkeep
+storage/telegram-media/*
+!storage/telegram-media/.gitkeep
+storage/profile-documents/
+storage/aimed-import/
+storage/backups/
+storage/rclone/
+storage/*.key
+storage/maintenance.flag
+storage/dr-drill-status.json
+# Uploaded landing videos and their posters (public/landing-videos.php): host data, same reasoning.
+public/assets/video/landing/
+public/assets/img/landing-video-posters/
+# The other services' own build contexts; the PHP image never needs them.
+smpp-bridge/
+tg-worker/
 tests/
 docs/
 PATHFINDER-2026-07-26/

@@ -99,6 +99,12 @@ git checkout main && git merge staging && git push origin main
 # -> on the production server: cd /opt/ellsms && ./deploy.sh   (unchanged)
 ```
 
+`./deploy.sh` does only what the change needs (README «Every later update»): a documentation or
+`public/` change is live right after the pull, an `app/`/`cron/` change restarts the workers only,
+and the image is rebuilt only when `docker/` changed. `./deploy.sh --full` forces the old
+rebuild-everything behaviour; `./deploy.sh --plan` shows what would be done. The first run after
+this script arrived is a full one (it has no record of the previous deploy yet).
+
 Staging deploys itself; **production never does** — a push to `main` changes nothing on
 `datisrayan.com` until someone runs `./deploy.sh` there. That holds for documentation-only changes
 too: the in-app guide (`public/guide.php`), the `/integrations` guide (`integrations/GUIDE.fa.md`),

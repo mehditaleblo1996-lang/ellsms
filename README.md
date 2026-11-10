@@ -299,7 +299,18 @@ Every later update:
 ```bash
 cd /opt/ellsms && ./deploy.sh
 ```
-`deploy.sh` pulls, rebuilds, restarts the containers, and re-applies `db/ellsms_extra.sql` (harmless if nothing changed — every statement is `CREATE TABLE IF NOT EXISTS` / `ON DUPLICATE KEY UPDATE`). It runs the `mysql` CLI from inside the already-running `app` container and connects to `BACKEND_DB_HOST` over the network, so this works the same whether that's a local container on the same Docker network or a separate/managed/remote database host — no special-casing needed either way.
+`deploy.sh` pulls and then does only what the files changed since the last deploy need — it does not rebuild and restart the whole stack every time:
+
+| Changed since the last deploy | What `deploy.sh` does after the pull |
+|---|---|
+| docs, tests, guides, the PDF, SDK sources, `public/` pages and assets | nothing — the web container reads the checkout through its bind mount and serves the new files within seconds |
+| `app/` or `cron/` | restarts the PHP workers (they hold the old code in memory); the web container keeps running |
+| `db/migrations/` / `db/ellsms_extra.sql` | applies the migrations / the base schema, inside the running app container, before the workers restart |
+| `docker/` (Dockerfile, entrypoint, Apache config) | rebuilds the PHP image and recreates its containers |
+| `smpp-bridge/`, `tg-worker/`, `mock/` | rebuilds and recreates that one service |
+| a compose file or `.env` | `docker compose up -d` recreates the containers whose definition changed |
+
+"Since the last deploy" is the commit recorded in `.git/ellsms-deployed-rev`, so a `git pull` done by hand in between is still deployed. With no record (the first run), a rewritten history or a stack that is down, the deploy is a full one. `./deploy.sh --full` always rebuilds every image, applies the schema and recreates every container (what the script did on every run before); `./deploy.sh --plan` pulls and changes nothing and prints what a deploy of the checked-out code would do. Covered by `tests/Unit/DeployScriptTest.php`. The schema files are safe to re-apply (every statement of `db/ellsms_extra.sql` is `CREATE TABLE IF NOT EXISTS` / `ON DUPLICATE KEY UPDATE`). The schema step runs the `mysql` CLI from inside the already-running `app` container and connects to `BACKEND_DB_HOST` over the network, so this works the same whether that's a local container on the same Docker network or a separate/managed/remote database host — no special-casing needed either way.
 
 **Staging:** a full second copy on its own server — own MySQL with an `ellsms_stage` copy of production's data, own secrets, mock SMS gateway, auto-deployed from the `staging` branch — is set up with `ops/staging/stage.sh setup`. See [`docs/staging.md`](docs/staging.md).
 
@@ -531,7 +542,7 @@ public/             web root — pages, assets (logo/css), bootstrap-admin.php
 cron/worker.php     scheduler loop (runs in the worker container)
 db/ellsms_extra.sql supplementary ELLSMS tables — never touches the backend's own tables
 docker/             PHP-Apache image
-deploy.sh           git pull + rebuild + restart + re-apply supplementary schema
+deploy.sh           git pull + only what the changed files need (workers restart, migrations, image rebuild); --full, --plan
 ```
 
 ## Documentation index
