@@ -27,6 +27,8 @@ declare(strict_types=1);
 const API_MESSAGE_STATE_WINDOW_SECONDS = 600;
 /** How long after an OTP row's created_at its transport row may be (the dispatch follows the insert). */
 const API_OTP_STATE_WINDOW_SECONDS = 600;
+/** The state handlers: reads, answered for GET and POST alike (public/api/index.php). */
+const API_DELIVERY_STATE_HANDLERS = ['api_handle_messages_state', 'api_handle_shared_otp_state', 'api_handle_bulk_jobs_state'];
 const API_BULK_STATE_DEFAULT_LIMIT = 100;
 const API_BULK_STATE_MAX_LIMIT = 1000;
 
@@ -81,6 +83,19 @@ function api_bulk_state_condition(string $state): ?string {
         'not_available' => "bi.status = 'sent' AND bi.delivery_status IS NULL",
         default         => null,
     };
+}
+
+/**
+ * Pure: the options of a state request — the query string, and for a POST the same keys of its JSON
+ * body (scalars only; the query string wins).
+ */
+function api_state_options(array $ctx): array {
+    $options = [];
+    foreach (['limit', 'after', 'state'] as $key) {
+        $value = $ctx['query'][$key] ?? ($ctx['body'][$key] ?? null);
+        if (is_int($value) || is_string($value)) $options[$key] = (string)$value;
+    }
+    return $options;
 }
 
 /** Pure: a zeroed summary with every state. */
@@ -232,7 +247,7 @@ function api_message_state_body(array $message, array $matched): array {
         $recipients[] = api_recipient_body((string)$destination, $state, $row);
     }
     return [
-        'id'          => (string)$message['id'],
+        'id'          => api_message_public_id_of($message),
         'send_status' => (string)$message['status'],
         'state'       => api_overall_state_from_counts($summary),
         'final'       => api_state_is_final_counts($summary),
@@ -312,6 +327,17 @@ function api_message_state_candidates(array $message, array $destinations): arra
     return $st->fetchAll();
 }
 
+/** The transport rows linked to one API message (app/ApiMessageIds.php); empty when it has none. */
+function api_message_state_linked_rows(int $apiMessageId): array {
+    $ids = api_message_attempt_ids($apiMessageId);
+    if ($ids === []) return [];
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    $st = db()->prepare("SELECT id, destination, status, delivery_status, delivered_at, delivery_checked_at, attempted_at
+                           FROM ellsms_message_attempts WHERE id IN ({$in})");
+    $st->execute($ids);
+    return $st->fetchAll();
+}
+
 /**
  * Candidate transport rows for one number, from $fromUtc to $toUtc plus the OTP window. Read with
  * the user's id: the shared line's sends are recorded under the customer who sent them.
@@ -354,13 +380,8 @@ function api_otp_neighbours(array $otp): array {
 function api_handle_messages_state(array $ctx): void {
     $principal = $ctx['principal'];
     $id = $ctx['params']['id'] ?? '';
-    if (!ctype_digit($id)) {
-        ApiResponse::error(404, ApiResponse::CODE_NOT_FOUND, 'Message not found.');
-        return;
-    }
-    $st = db()->prepare('SELECT * FROM ellsms_api_messages WHERE id = ? AND organization_id = ?');
-    $st->execute([(int)$id, $principal['organization_id']]);
-    $message = $st->fetch();
+    // By the random public id, or — for a send from before public ids — by its row id (app/ApiMessageIds.php).
+    $message = api_message_find((string)$id, (int)$principal['organization_id']);
     if (!$message) {
         // Identical to "doesn't exist" for another organization's id, as GET /messages/{id}.
         ApiResponse::error(404, ApiResponse::CODE_NOT_FOUND, 'Message not found.');
@@ -370,12 +391,17 @@ function api_handle_messages_state(array $ctx): void {
         static fn($d): ?string => normalize_msisdn((string)$d),
         json_decode((string)$message['destinations_json'], true) ?: []
     )));
-    $matched = api_message_match_attempts(
-        $destinations,
-        normalize_originator((string)$message['originator']),
-        trim((string)$message['content']),
-        api_message_state_candidates($message, $destinations)
-    );
+    // A send made since ellsms_api_message_attempts exists is linked to its own transport rows: read
+    // exactly those. An earlier one (or one whose link could not be written) is matched as before.
+    $linked = api_message_state_linked_rows((int)$message['id']);
+    $matched = $linked !== []
+        ? api_message_match_attempts($destinations, null, null, $linked)
+        : api_message_match_attempts(
+            $destinations,
+            normalize_originator((string)$message['originator']),
+            trim((string)$message['content']),
+            api_message_state_candidates($message, $destinations)
+        );
     ApiResponse::success(200, api_message_state_body($message, $matched));
 }
 
@@ -414,7 +440,8 @@ function api_handle_bulk_jobs_state(array $ctx): void {
         return;
     }
 
-    $query = $ctx['query'] ?? [];
+    // limit / after / state from the query string; a POST may send them in its JSON body instead.
+    $query = api_state_options($ctx);
     $limit = isset($query['limit']) && ctype_digit((string)$query['limit']) ? (int)$query['limit'] : API_BULK_STATE_DEFAULT_LIMIT;
     $limit = max(1, min(API_BULK_STATE_MAX_LIMIT, $limit));
     $after = isset($query['after']) && ctype_digit((string)$query['after']) ? (int)$query['after'] : 0;

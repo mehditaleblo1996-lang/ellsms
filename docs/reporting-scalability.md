@@ -19,7 +19,9 @@ rows, and what is measured rather than assumed.
 
 ### Numbered pages over a keyset list
 
-«لیست پیام‌های ارسالی» (`/messages/reports`, `public/reports-v2.php`, data in
+«لیست پیام‌های ارسالی» (`/messages/reports`, `public/reports-v2.php`; a row sent through
+`POST /api/v1/messages` also shows «شناسه‌ی API» under its reference — one batched lookup per page
+in `ellsms_api_message_attempts`, `app/ApiMessageIds.php`; data in
 `app/Reports/SentMessages.php`) merges three sources — bulk items, gateway send attempts and the
 legacy `outbound_message` — newest first. It shows **100 rows a page** by default («تعداد در صفحه»:
 25 / 50 / 100) and a numbered pager under the table (`pager_links()`, `app/Pagination.php`):

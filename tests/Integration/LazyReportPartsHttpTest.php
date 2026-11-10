@@ -209,6 +209,42 @@ final class LazyReportPartsHttpTest extends TestCase
         $this->assertStringContainsString('aria-current="page">' . to_persian_digits('2') . '<', $r['body']);
     }
 
+    public function testARowSentThroughTheApiShowsItsApiId(): void
+    {
+        // One of the direct sends becomes a POST /api/v1/messages send: an API row and its link.
+        $db = db();
+        $orgId = (int)create_organization($this->adminId, 'Api id in the report')['organization_id'];
+        $keyId = (int)api_key_create($orgId, $this->adminId, 'report', [\ApiScopes::MESSAGES_SEND])['id'];
+        $publicId = api_message_new_public_id();
+        $db->prepare("INSERT INTO ellsms_api_messages (public_id, organization_id, api_key_id, user_id, originator, destinations_json, content, status, sent_count, total_count)
+                      VALUES (?,?,?,?, '5000', '[\"989122222222\"]', 'hello', 'sent', 1, 1)")->execute([$publicId, $orgId, $keyId, $this->adminId]);
+        $apiRowId = (int)$db->lastInsertId();
+        $attemptId = $this->attemptIds[0];
+        api_message_link_attempts($apiRowId, [$attemptId]);
+        try {
+            $session = $this->sessionFor($this->adminId);
+            $list = $this->request('/reports-v2.php?' . $this->dayQuery() . '&per_page=100&_part=list', $session);
+            $this->assertSame(200, $list['code'], substr($list['body'], 0, 300));
+            $this->assertSame(1, substr_count($list['body'], 'API ' . $publicId), 'only the linked row shows «شناسه‌ی API»');
+            $this->assertSame(1, substr_count($list['body'], 'report-api-id'));
+
+            $detail = $this->request('/reports-v2.php?_part=detail&m=D' . $attemptId, $session);
+            $this->assertSame(200, $detail['code']);
+            $this->assertStringContainsString('شناسه‌ی API', $detail['body']);
+            $this->assertStringContainsString($publicId, $detail['body']);
+            // A direct send that did not come through the API has no such field.
+            $other = $this->request('/reports-v2.php?_part=detail&m=D' . $this->attemptIds[1], $session);
+            $this->assertStringNotContainsString('شناسه‌ی API', $other['body']);
+
+            $page = $this->request('/message-detail.php?attempt=' . $attemptId, $session);
+            $this->assertSame(200, $page['code'], substr($page['body'], 0, 300));
+            $this->assertStringContainsString($publicId, $page['body']);
+        } finally {
+            $db->prepare('DELETE FROM ellsms_api_message_attempts WHERE api_message_id = ?')->execute([$apiRowId]);
+            $db->prepare('DELETE FROM ellsms_api_messages WHERE id = ?')->execute([$apiRowId]);
+        }
+    }
+
     public function testAPartWithoutASessionRedirectsToLoginInsteadOfAnsweringAsThePart(): void
     {
         $r = $this->request('/reports-v2.php?_part=summary', null);

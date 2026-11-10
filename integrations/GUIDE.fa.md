@@ -233,10 +233,17 @@ ok = verify_webhook(secret, headers["X-Datis-Timestamp"], raw_body, headers["X-D
 | `GET /api/v1/otp/{id}/state` | `otp:send` | کد تایید خط اشتراکی |
 | `GET /api/v1/bulk-jobs/{id}/state` | `bulk:read` | ارسال انبوه: تعداد هر وضعیت و گیرنده‌ها صفحه به صفحه |
 
-`{id}` همان شناسه‌ای است که هنگام ارسال برگشته است.
+`{id}` همان شناسه‌ای است که هنگام ارسال برگشته است. هر سه مسیر با `POST` هم دقیقاً همین پاسخ را می‌دهند (بدنه لازم نیست؛ در ارسال انبوه می‌توانید `limit`، `after` و `state` را در بدنه‌ی JSON بفرستید).
+
+**شناسه‌ی ارسال:** `id` پاسخ `POST /api/v1/messages` یک عدد تصادفی ۱۶ رقمی است (مثل `4821730095512264`) که به‌صورت رشته برمی‌گردد. آن را ذخیره کنید.
+
+- با «شناسه» گزارش پنل (مثل `D34`) و با «شناسه اپراتور» (عددی حدوداً ۱۹ رقمی) فرق دارد؛ آن دو در API پذیرفته نمی‌شوند و خطای `404` می‌گیرید.
+- در پنل با نام **«شناسه‌ی API»** دیده می‌شود: زیر شناسه‌ی هر ردیف در «لیست پیام‌های ارسالی»، در پنجره‌ی جزئیات پیام و در صفحه‌ی پیام. فقط پیام‌هایی که با API فرستاده شده‌اند آن را دارند.
+- شناسه‌های کوتاه ارسال‌های قبلی (مثل `482`) همچنان کار می‌کنند.
 
 ```
-curl https://datisrayan.com/api/v1/messages/482/state -H "Authorization: Bearer $DATIS_API_KEY"
+curl https://datisrayan.com/api/v1/messages/4821730095512264/state -H "Authorization: Bearer $DATIS_API_KEY"
+curl -X POST https://datisrayan.com/api/v1/messages/4821730095512264/state -H "Authorization: Bearer $DATIS_API_KEY"
 
 curl https://datisrayan.com/api/v1/otp/57/state -H "Authorization: Bearer $DATIS_API_KEY"
 
@@ -247,7 +254,7 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?state=delivered" -H "Auth
 
 ```
 { "data": {
-  "id": "482", "send_status": "sent", "state": "partially_delivered", "final": true,
+  "id": "4821730095512264", "send_status": "sent", "state": "partially_delivered", "final": true,
   "summary": { "delivered": 1, "undelivered": 1, "sent": 0, "failed": 0,
                "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "recipients": [

@@ -90,6 +90,10 @@ if (!$showDelivery) {
         <?= $field('درگاه', $text($m['gateway_name'])) ?>
         <?= $field('مسیر', $text($m['route_name'])) ?>
       <?php endif; ?>
+      <?php $apiMessageId = $m['source'] === 'attempt' ? (api_message_ids_for_attempts([(int)$m['id']])[(int)$m['id']] ?? null) : null; ?>
+      <?php if ($apiMessageId !== null): ?>
+      <?= $field('شناسه‌ی API (همان id پاسخ ارسال)', $text($apiMessageId, 'ltr')) ?>
+      <?php endif; ?>
       <?= $field('شناسه نزد سرویس‌دهنده', $text(isset($m['provider_message_id']) ? (string)$m['provider_message_id'] : null, 'ltr')) ?>
       <?php if ($showDelivery): ?>
       <?= $field('وضعیت اعلام‌شده‌ی سرویس‌دهنده', !empty($m['provider_status']) ? $text((string)$m['provider_status'], 'ltr')

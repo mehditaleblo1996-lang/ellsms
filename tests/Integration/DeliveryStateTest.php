@@ -211,6 +211,109 @@ final class DeliveryStateTest extends IntegrationTestCase
         $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'abc'])[0]);
     }
 
+    public function testASendGetsARandomPublicIdAndIsLinkedToItsTransportRows(): void
+    {
+        [$status, $sent] = $this->call('api_handle_messages_send', [], [
+            'originator' => $this->ownLine, 'destinations' => ['09121110011', '09121110012'], 'content' => 'public id',
+        ]);
+        $this->assertSame(201, $status, json_encode($sent, JSON_UNESCAPED_UNICODE));
+        $id = $sent['data']['id'];
+        $this->assertMatchesRegularExpression('/^[1-8]\d{15}$/', $id, 'the API returns the random public id, not the row id');
+
+        $row = db()->query("SELECT id, public_id FROM ellsms_api_messages WHERE content = 'public id'")->fetch();
+        $this->assertSame($id, (string)$row['public_id']);
+        $this->assertNotSame($id, (string)$row['id']);
+
+        // GET and the state route answer to the public id and show it.
+        [$status, $got] = $this->call('api_handle_messages_get', ['id' => $id]);
+        $this->assertSame(200, $status);
+        $this->assertSame($id, $got['data']['id']);
+        [$status, $state] = $this->call('api_handle_messages_state', ['id' => $id]);
+        $this->assertSame(200, $status);
+        $this->assertSame($id, $state['data']['id']);
+        // The row id of a send that HAS a public id is not an id of the API.
+        $this->assertSame(404, $this->call('api_handle_messages_get', ['id' => (string)$row['id']])[0]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => (string)$row['id']])[0]);
+        foreach (['4026740600623808506', '99999999999999999999999', '-1', ''] as $bad) {
+            $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => $bad])[0], $bad);
+        }
+
+        // Both transport rows are linked, and the panel finds «شناسه‌ی API» from either.
+        $a1 = (int)$this->attemptsFor('989121110011')[0]['id'];
+        $a2 = (int)$this->attemptsFor('989121110012')[0]['id'];
+        $linked = \api_message_attempt_ids((int)$row['id']);
+        sort($linked);
+        $this->assertSame([$a1, $a2], $linked);
+        $this->assertSame([$a1 => $id, $a2 => $id], \api_message_ids_for_attempts([$a1, $a2, 999999999]));
+    }
+
+    public function testASendFromBeforePublicIdsKeepsAnsweringToItsRowId(): void
+    {
+        [, $sent] = $this->call('api_handle_messages_send', [], ['originator' => $this->ownLine, 'destinations' => ['09121110013'], 'content' => 'old row']);
+        // As the row was before the migration: no public id, no link.
+        $rowId = (int)db()->query("SELECT id FROM ellsms_api_messages WHERE content = 'old row'")->fetchColumn();
+        db()->prepare('UPDATE ellsms_api_messages SET public_id = NULL WHERE id = ?')->execute([$rowId]);
+        db()->prepare('DELETE FROM ellsms_api_message_attempts WHERE api_message_id = ?')->execute([$rowId]);
+
+        [$status, $got] = $this->call('api_handle_messages_get', ['id' => (string)$rowId]);
+        $this->assertSame(200, $status);
+        $this->assertSame((string)$rowId, $got['data']['id']);
+        $this->assertSame(404, $this->call('api_handle_messages_get', ['id' => $sent['data']['id']])[0], 'its former public id is gone');
+
+        // Without a link the state is still found by number, line, text and time.
+        $attempt = $this->attemptsFor('989121110013')[0];
+        $this->assertTrue(gateway_status_record('attempt', (int)$attempt['id'], $attempt['delivery_status'], 'delivered', null, 'DELIVRD'));
+        [$status, $state] = $this->call('api_handle_messages_state', ['id' => (string)$rowId]);
+        $this->assertSame(200, $status);
+        $this->assertSame((string)$rowId, $state['data']['id']);
+        $this->assertSame('delivered', $state['data']['state']);
+    }
+
+    public function testTheStateOfALinkedSendIsReadFromItsOwnRows(): void
+    {
+        [, $sent] = $this->call('api_handle_messages_send', [], ['originator' => $this->ownLine, 'destinations' => ['09121110014'], 'content' => 'linked']);
+        $attempt = $this->attemptsFor('989121110014')[0];
+        // Nothing the old matching relied on is left: another text, another line, a day earlier.
+        db()->prepare("UPDATE ellsms_message_attempts SET content = 'other', originator = '5000999', attempted_at = attempted_at - INTERVAL 1 DAY WHERE id = ?")
+            ->execute([(int)$attempt['id']]);
+        $this->assertTrue(gateway_status_record('attempt', (int)$attempt['id'], $attempt['delivery_status'], 'delivered', null, 'DELIVRD'));
+
+        $this->assertSame('delivered', $this->call('api_handle_messages_state', ['id' => $sent['data']['id']])[1]['data']['state']);
+    }
+
+    public function testTheDeliveryWebhookCarriesTheApiMessageId(): void
+    {
+        putenv('WEBHOOK_MASTER_KEY=' . base64_encode(random_bytes(32)));
+        $created = webhook_endpoint_create($this->organizationId, $this->userId, 'https://example.org/hook', 'state test', [\WebhookEvents::MESSAGE_DELIVERED]);
+        $this->assertTrue($created['ok'], json_encode($created));
+        webhook_subscriptions_cache_reset();
+        [, $sent] = $this->call('api_handle_messages_send', [], ['originator' => $this->ownLine, 'destinations' => ['09121110015'], 'content' => 'hook']);
+        $attempt = $this->attemptsFor('989121110015')[0];
+        $this->assertTrue(gateway_status_record('attempt', (int)$attempt['id'], $attempt['delivery_status'], 'delivered', '2026-11-10 10:00:30', 'DELIVRD'));
+
+        $st = db()->prepare("SELECT payload_json FROM ellsms_webhook_events WHERE organization_id = ? AND event_type = 'message.delivered' ORDER BY id DESC LIMIT 1");
+        $st->execute([$this->organizationId]);
+        $payload = json_decode((string)$st->fetchColumn(), true);
+        $data = $payload['data'] ?? $payload;
+        $this->assertSame($sent['data']['id'], $data['api_message_id'] ?? null, json_encode($payload));
+        $this->assertSame('attempt:' . $attempt['id'], $data['message_id']);
+    }
+
+    public function testAStatePostWithBodyOptionsAnswersLikeTheGet(): void
+    {
+        $jobId = $this->makeBulkJob('done', [
+            ['989121110021', 'sent', 'delivered', '2026-11-10 10:00:00'],
+            ['989121110022', 'sent', 'failed', null],
+            ['989121110023', 'sent', 'delivered', '2026-11-10 10:00:05'],
+        ]);
+        [, $byQuery] = $this->call('api_handle_bulk_jobs_state', ['id' => (string)$jobId], [], ['limit' => '1', 'state' => 'delivered']);
+        [$status, $byBody] = $this->call('api_handle_bulk_jobs_state', ['id' => (string)$jobId], ['limit' => 1, 'state' => 'delivered']);
+        $this->assertSame(200, $status);
+        $this->assertSame($byQuery['data'], $byBody['data']);
+        $this->assertCount(1, $byBody['data']['recipients']);
+        $this->assertSame(422, $this->call('api_handle_bulk_jobs_state', ['id' => (string)$jobId], ['state' => 'nope'])[0]);
+    }
+
     public function testOtpStateFollowsTheDeliveryReport(): void
     {
         $created = shared_otp_template_create(['id' => $this->userId, 'role' => 'user', 'organization_id' => $this->organizationId], 'ورود', 'کد ورود: {code}');

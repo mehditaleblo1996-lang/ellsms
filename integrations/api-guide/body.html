@@ -118,7 +118,7 @@ curl -X POST https://datisrayan.com/api/v1/messages \
 <div class="code"><div class="lbl">RESPONSE · 201 CREATED</div><pre>
 {
   "data": {
-    "id": "482",
+    "id": "4821730095512264",
     "status": "sent",
     "sent_count": 2,
     "total_count": 2,
@@ -261,14 +261,16 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/api/v1/otp/{id}/state</span></td><td><span class="c">otp:send</span></td><td>کد تایید خط اشتراکی (<span class="c">POST /otp</span>) — یک گیرنده.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/api/v1/bulk-jobs/{id}/state</span></td><td><span class="c">bulk:read</span></td><td>ارسال انبوه (<span class="c">POST /bulk-jobs</span>) — تعداد هر وضعیت و گیرنده‌ها صفحه به صفحه (بخش ۵).</td></tr>
 </table>
-<p><span class="c">{id}</span> همان شناسه‌ای است که هنگام ارسال در پاسخ برگشته است.</p>
+<p><span class="c">{id}</span> همان شناسه‌ای است که هنگام ارسال در پاسخ برگشته است. هر سه مسیر با <span class="c">POST</span> هم دقیقاً همین پاسخ را می‌دهند؛ بدنه لازم نیست و در ارسال انبوه می‌توانید <span class="c">limit</span>، <span class="c">after</span> و <span class="c">state</span> را در بدنه‌ی JSON بفرستید.</p>
+<div class="call"><b class="h">کدام شناسه؟</b>
+<p><span class="c">id</span> پاسخ <span class="c">POST /messages</span> یک عدد تصادفی ۱۶ رقمی است (مثل <span class="c">4821730095512264</span>) که به‌صورت رشته برمی‌گردد؛ آن را ذخیره کنید. این شناسه با «شناسه» گزارش پنل (مثل <span class="c">D34</span>) و با «شناسه اپراتور» (حدود ۱۹ رقم) فرق دارد و آن دو در API خطای <span class="c">404</span> می‌دهند. در پنل، همین شناسه با نام «شناسه‌ی API» زیر شناسه‌ی هر ردیف در «لیست پیام‌های ارسالی» و در جزئیات پیام دیده می‌شود. شناسه‌های کوتاه ارسال‌های قبلی (مثل <span class="c">482</span>) همچنان کار می‌کنند.</p></div>
 <div class="code"><div class="lbl">REQUEST</div><pre>
-curl https://datisrayan.com/api/v1/messages/482/state \
+curl https://datisrayan.com/api/v1/messages/4821730095512264/state \
   -H "Authorization: Bearer $DATIS_API_KEY"
 </pre></div>
 <div class="code"><div class="lbl">RESPONSE · 200</div><pre>
 { "data": {
-  "id": "482",
+  "id": "4821730095512264",
   "send_status": "sent",
   "state": "partially_delivered",
   "final": true,
@@ -491,6 +493,7 @@ curl -X POST https://datisrayan.com/api/v1/telegram/messages \
   <tr><td><span class="c">telegram.message.sent</span> / <span class="c">.read</span> / <span class="c">.failed</span></td><td>پیام تلگرام ارسال شد / خوانده شد / ناموفق بود.</td></tr>
   <tr><td><span class="c">payment.credited</span></td><td>اعتبار حساب شارژ شد.</td></tr>
 </table>
+<p class="note">رویدادهای <span class="c">message.delivered</span> و <span class="c">message.undelivered</span> برای پیامی که با <span class="c">POST /messages</span> فرستاده‌اید، فیلد <span class="c">api_message_id</span> را هم دارند: همان <span class="c">id</span> پاسخ ارسال، تا بدانید گزارش مربوط به کدام ارسال شماست.</p>
 
 <h3>بررسی امضا — حتماً انجام دهید</h3>
 <p>هر درخواست وبهوک این هدرها را دارد. با بررسی امضا مطمئن می‌شوید درخواست واقعاً از داتیس رایان گستر ایرانیان آمده و دست‌کاری نشده است:</p>

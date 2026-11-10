@@ -62,7 +62,7 @@ const BACKUP_SCHEMA_ONLY_TABLES_DEFAULT = [
     // the backend platform's message tables
     'outbound_message', 'inbound_message',
     // every message ELLSMS sent or received, and its per-message trail
-    'ellsms_bulk_items', 'ellsms_bulk_items_archive', 'ellsms_message_attempts', 'ellsms_api_messages',
+    'ellsms_bulk_items', 'ellsms_bulk_items_archive', 'ellsms_message_attempts', 'ellsms_api_messages', 'ellsms_api_message_attempts',
     'ellsms_channel_messages', 'ellsms_inbound_messages', 'ellsms_direct_send_queue', 'ellsms_autoreply_log',
     'ellsms_provider_response_audit', 'ellsms_send_dimension_log', 'ellsms_smpp_events',
     'ellsms_remote_db_rows', 'ellsms_import_chunks', 'ellsms_import_dedupe',

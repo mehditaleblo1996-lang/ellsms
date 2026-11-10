@@ -36,6 +36,7 @@
 .report-table td { white-space: nowrap; }
 .report-table td.msg-preview { max-inline-size: 280px; overflow: hidden; text-overflow: ellipsis; }
 .report-ref { font-family: var(--font-mono); font-size: 13px; color: var(--muted); }
+.report-api-id { font-size: 11px; white-space: nowrap; user-select: all; }
 .panel .report-eye { color: var(--indigo); }
 .report-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 16px; }
 .report-pager .hint { margin: 0; }

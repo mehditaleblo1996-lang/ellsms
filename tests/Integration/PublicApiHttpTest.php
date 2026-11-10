@@ -409,6 +409,36 @@ final class PublicApiHttpTest extends TestCase
         $this->assertSame('2', (string)$count, 'two calls with no client_message_id at all must each create their own message row, never be deduplicated against each other');
     }
 
+    public function testStateRoutesAnswerPostLikeGetAndNeedNoBody(): void
+    {
+        // The send fails at the transport (unreachable backend) but still writes its row and names it.
+        $sent = $this->request('POST', '/api/v1/messages', self::$rawKeyFullScopes, json_encode(['destinations' => ['09120000000'], 'content' => 'state by post ' . bin2hex(random_bytes(4))]));
+        $id = (string)($sent['json']['data']['id'] ?? $sent['json']['error']['resource_id'] ?? '');
+        $this->assertMatchesRegularExpression('/^[1-8]\d{15}$/', $id, 'a random public id, also on a refused send: ' . json_encode($sent['json']));
+
+        $get = $this->request('GET', "/api/v1/messages/{$id}/state", self::$rawKeyFullScopes);
+        $this->assertSame(200, $get['code'], json_encode($get['json']));
+        $this->assertSame($id, $get['json']['data']['id']);
+
+        // A bare POST: no body, no Content-Type — a read, so not held to the write endpoints' 415.
+        $ch = curl_init('http://127.0.0.1:' . self::$port . "/api/v1/messages/{$id}/state");
+        curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . self::$rawKeyFullScopes, 'Content-Type:']]);
+        $raw = curl_exec($ch);
+        $this->assertSame(200, curl_getinfo($ch, CURLINFO_HTTP_CODE), (string)$raw);
+        $this->assertSame($get['json']['data'], json_decode((string)$raw, true)['data']);
+
+        // Scope and tenant rules are those of the GET.
+        $this->assertSame(403, $this->request('POST', "/api/v1/messages/{$id}/state", self::$rawKeyReadOnlyContacts, '{}')['code']);
+        $this->assertSame(404, $this->request('POST', '/api/v1/messages/4026740600623808506/state', self::$rawKeyFullScopes, '{}')['code']);
+        // Every other POST still requires JSON.
+        $ch = curl_init('http://127.0.0.1:' . self::$port . '/api/v1/messages');
+        curl_setopt_array($ch, [CURLOPT_CUSTOMREQUEST => 'POST', CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10,
+            CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . self::$rawKeyFullScopes, 'Content-Type:']]);
+        curl_exec($ch);
+        $this->assertSame(415, curl_getinfo($ch, CURLINFO_HTTP_CODE));
+    }
+
     public function testMessagesSendClientMessageIdBodyFieldDeduplicatesTheSameWayTheHeaderDoes(): void
     {
         $clientMessageId = 'cmid-' . bin2hex(random_bytes(6));

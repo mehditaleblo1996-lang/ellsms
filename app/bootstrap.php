@@ -41,6 +41,7 @@ require_once __DIR__ . '/MessageParts.php';
 require_once __DIR__ . '/LazyParts.php';
 require_once __DIR__ . '/LineOptouts.php';
 require_once __DIR__ . '/SendContext.php';
+require_once __DIR__ . '/ApiMessageIds.php';
 require_once __DIR__ . '/VipCustomers.php';
 require_once __DIR__ . '/ContentPolicy.php';
 require_once __DIR__ . '/BaleChannel.php';

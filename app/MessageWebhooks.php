@@ -75,6 +75,12 @@ function webhook_emit_delivery_state(string $source, int $rowId, string $state, 
             ];
         }
         if (!webhook_org_subscribes($organizationId, $eventType)) return;
+        if ($source === 'attempt') {
+            // The id POST /api/v1/messages returned for this message, when it was sent that way
+            // (app/ApiMessageIds.php) — lets the receiver tie the report to its own send.
+            $apiMessageId = api_message_ids_for_attempts([$rowId])[$rowId] ?? null;
+            if ($apiMessageId !== null) $data['api_message_id'] = $apiMessageId;
+        }
         $data += [
             'status' => $state,
             'delivered_at' => $deliveredAt,

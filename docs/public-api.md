@@ -254,7 +254,7 @@ identical. Returns a final status, not `202` (the destination count cap above is
 one-request-lifetime operation). `originator` may be omitted to use the organization's configured
 default. Response:
 ```json
-{ "data": { "id": "482", "status": "sent", "sent_count": 1, "total_count": 1, "message": "..." } }
+{ "data": { "id": "4821730095512264", "status": "sent", "sent_count": 1, "total_count": 1, "message": "..." } }
 ```
 `status` is one of `sent`, `partially_sent`, `failed`. This id is the API's OWN resource id
 (`ellsms_api_messages`), independent of the backend platform's own message records.
@@ -267,11 +267,44 @@ word (#40) is refused with `422` and `content: ["prohibited_content"]`.
 ### `GET /messages/{id}` — scope `messages:read`
 Returns the same resource shape as above by id, scoped to the caller's organization.
 
+### Message ids — the `id` of `POST /messages`
+`id` is a **random 16-digit number, returned as a string** (e.g. `"4821730095512264"`); store it and
+pass it back to `GET /messages/{id}` and `GET /messages/{id}/state`. It is random so that two ids say
+nothing about how many messages anyone sent in between. Module: `app/ApiMessageIds.php`.
+
+- **Older sends keep their id.** Until `db/migrations/2026_11_13_api_message_public_id.sql` the `id`
+  was the row number of `ellsms_api_messages` (a short number such as `"482"`). Those rows have no
+  public id and still answer to that number, so an id a customer stored earlier keeps working.
+  Nothing is backfilled. The row number of a *new* send is not an id of the API (`404`).
+- **It is not the panel's reference nor the operator's.** «شناسه» in the panel's send report is the
+  report's own reference (`D34`, `B12`), and «شناسه اپراتور» is the provider's id for one recipient
+  (often 19 digits). Neither is accepted here. The panel shows the API's id as «شناسه‌ی API»: under
+  the reference in «لیست پیام‌های ارسالی» (`public/reports-v2.php`), in that page's detail drawer,
+  and on `public/message-detail.php`.
+- **Link to the transport rows.** The send handler collects the `ellsms_message_attempts` rows its own
+  dispatch wrote and stores them in `ellsms_api_message_attempts` (attempt id → API message row).
+  That is what the panel reads for «شناسه‌ی API», what `GET /messages/{id}/state` reads for a send
+  made since the migration, and what puts `api_message_id` on the delivery webhooks
+  (`docs/webhooks.md`). A send from before the migration has no link and is matched as described
+  under «How the rows are found».
+- **Deploy order does not matter.** The code checks for the column and the table before using them:
+  before the migration is applied the API returns row numbers and links nothing, exactly as before.
+  `ellsms_message_attempts` itself is not altered. Writing the link is bookkeeping — if it fails it
+  is logged (`api_message.link_failed`) and the send is unaffected.
+- `POST /bulk-jobs` and `POST /otp` ids are unchanged (row numbers; a bulk job's number is the one
+  the panel shows as `B12`).
+
 ### Delivery state without webhooks — `GET /messages/{id}/state`, `GET /otp/{id}/state`, `GET /bulk-jobs/{id}/state`
 The **polling** alternative to the `message.delivered` / `message.undelivered` webhooks, for an
 integration that has no public HTTPS address (e.g. developing on localhost). `{id}` is the id the
 send returned. Same data as the webhooks; free; poll every few minutes until `final` is `true`, not
 every second. Handler: `app/Api/Handlers/DeliveryState.php`.
+
+**GET or POST.** Each of the three routes answers `POST` exactly as it answers `GET` (same scope,
+same body), for clients that can only POST. A POST needs no body and no `Content-Type`; the bulk
+route's `limit` / `after` / `state` may then be sent in a JSON body instead of the query string (the
+query string wins when both are present). It is still a read: nothing is created and no
+`Idempotency-Key` is involved.
 
 Customer-facing copies of this section (Persian, examples on `https://datisrayan.com`): §6 «وضعیت
 تحویل پیام (message state)» of the API guide PDF (`integrations/api-guide/body.html`), the section of
@@ -318,7 +351,7 @@ last check) are UTC.
 `GET /messages/{id}/state`:
 ```json
 { "data": {
-  "id": "482", "send_status": "sent", "state": "partially_delivered", "final": true,
+  "id": "4821730095512264", "send_status": "sent", "state": "partially_delivered", "final": true,
   "summary": { "delivered": 1, "undelivered": 1, "sent": 0, "failed": 0, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "recipients": [
     { "destination": "989121234567", "state": "delivered",   "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" },
@@ -351,7 +384,11 @@ recipient state (any value of the table above; anything else → `422 validation
 `state`). Only numbers and states are returned — never message text. Items already moved to the
 six-month archive (`ellsms_bulk_items_archive`) are not listed.
 
-**How the rows are found.** Read-only — the send paths are unchanged and no migration is needed. A
+**How the rows are found.** Read-only. A `/messages` send made since
+`2026_11_13_api_message_public_id.sql` is linked to its own transport rows
+(`ellsms_api_message_attempts`, see «Message ids») and its state is read from exactly those. For
+everything else — earlier sends, `/otp`, and before that migration is applied — no migration is
+needed: a
 bulk item carries its own `delivery_status` / `delivered_at` (`ellsms_bulk_items`). A single send's
 transport rows (`ellsms_message_attempts`, written as `reference_type` `direct_send` under a
 time-bucketed hash) are not linked to the API row by id, so they are matched by what both share:

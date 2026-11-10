@@ -39,7 +39,12 @@ the delivery events from the one status write that moves a message into a final 
 `ellsms_inbound_webhook_claims`. Delivery events come from the gateway's delivery-status polling, so
 they cover sends made in gateway mode. `data` carries `message_id` (`bulk_item:N`, `attempt:N` or
 `inbound:N`), `originator`/`destination` (or `line`/`from`), `status`, `delivered_at`,
-`provider_message_id`, and `bulk_job_id` or `reference_type`/`reference_id`.
+`provider_message_id`, and `bulk_job_id` or `reference_type`/`reference_id`. A delivery event for a
+message sent through `POST /api/v1/messages` also carries `api_message_id` — the `id` that call
+returned (`docs/public-api.md` «Message ids») — so the receiver can tie the report to its own send;
+it is absent for panel, schedule and bulk sends and for sends made before
+`db/migrations/2026_11_13_api_message_public_id.sql`. The `message.sent` / `message.failed` events of
+`POST /messages` carry that same id as `message_id`.
 
 ### Payload shape
 

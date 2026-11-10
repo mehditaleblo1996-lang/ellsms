@@ -55,6 +55,40 @@ function api_messages_error_body(string $code, string $message, array $fields = 
     return ['error' => $error];
 }
 
+/**
+ * Writes the ellsms_api_messages row of a send that has ALREADY gone out and returns
+ * [row id, the id the API shows]. Once the migration has run the shown id is a random public id
+ * (app/ApiMessageIds.php); before it, the row id as always. A public id that collides with an
+ * existing one (unique key) is drawn again, and as a last resort the row is written without one —
+ * the message was sent and charged, so this insert must not fail over an id.
+ *
+ * @param list<mixed> $values the twelve column values, in the order below
+ * @return array{0:int, 1:string}
+ */
+function api_messages_insert(array $values): array {
+    $db = db();
+    $columns = 'organization_id, api_key_id, user_id, originator, destinations_json, content, status, sent_count, total_count, parts_per_message, error_code, idempotency_key';
+    if (api_message_public_ids_available()) {
+        for ($try = 0; $try < 3; $try++) {
+            $publicId = api_message_new_public_id();
+            try {
+                $db->prepare("INSERT INTO ellsms_api_messages (public_id, {$columns}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+                   ->execute(array_merge([$publicId], $values));
+                return [(int)$db->lastInsertId(), $publicId];
+            } catch (PDOException $e) {
+                // 1062 = duplicate key: this public id is taken — draw another. Anything else falls through.
+                if ((int)($e->errorInfo[1] ?? 0) !== 1062) {
+                    Logger::error('api_message.public_id_insert_failed', ['exception' => $e->getMessage()]);
+                    break;
+                }
+            }
+        }
+    }
+    $db->prepare("INSERT INTO ellsms_api_messages ({$columns}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")->execute($values);
+    $rowId = (int)$db->lastInsertId();
+    return [$rowId, (string)$rowId];
+}
+
 function api_handle_messages_send(array $ctx): void {
     $principal = $ctx['principal'];
     $body = $ctx['body'];
@@ -168,19 +202,22 @@ function api_handle_messages_send(array $ctx): void {
     // execute at most once for that id). When $clientMessageId is null, dispatch_message() itself
     // falls back to its own dispatch_direct_send_dedup_key() — the same behavior public/send.php
     // gets for an ordinary, non-deduplicated send.
-    [$ok, $info, , $sentCount, $totalCount, $parts, $byChannel] = dispatch_with_channel($user, $originator, $destinations, trim($content), (string)$channel, 'api_message', $clientMessageId);
+    // The transport rows this dispatch writes are collected so the send can be linked to them
+    // («شناسه‌ی API» in the panel, exact delivery state) — app/ApiMessageIds.php.
+    api_message_attempts_capture_begin();
+    try {
+        [$ok, $info, , $sentCount, $totalCount, $parts, $byChannel] = dispatch_with_channel($user, $originator, $destinations, trim($content), (string)$channel, 'api_message', $clientMessageId);
+    } finally {
+        $attemptIds = api_message_attempts_capture_end();
+    }
 
     $status = $ok ? ($sentCount === $totalCount ? 'sent' : 'partially_sent') : 'failed';
-    db()->prepare(
-        'INSERT INTO ellsms_api_messages
-            (organization_id, api_key_id, user_id, originator, destinations_json, content, status, sent_count, total_count, parts_per_message, error_code, idempotency_key)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)'
-    )->execute([
+    [$rowId, $resourceId] = api_messages_insert([
         $principal['organization_id'], $principal['api_key_id'], $user['id'], $originator,
         json_encode($destinations), trim($content), $status, $sentCount, $totalCount, $parts,
         $ok ? null : 'send_failed', $clientMessageId,
     ]);
-    $resourceId = (string)db()->lastInsertId();
+    api_message_link_attempts($rowId, $attemptIds);
 
     try {
         webhook_event_emit(
@@ -217,13 +254,8 @@ function api_handle_messages_send(array $ctx): void {
 function api_handle_messages_get(array $ctx): void {
     $principal = $ctx['principal'];
     $id = $ctx['params']['id'] ?? '';
-    if (!ctype_digit($id)) {
-        ApiResponse::error(404, ApiResponse::CODE_NOT_FOUND, 'Message not found.');
-        return;
-    }
-    $st = db()->prepare('SELECT * FROM ellsms_api_messages WHERE id = ? AND organization_id = ?');
-    $st->execute([(int)$id, $principal['organization_id']]);
-    $row = $st->fetch();
+    // By the random public id, or — for a send from before public ids — by its row id (app/ApiMessageIds.php).
+    $row = api_message_find((string)$id, (int)$principal['organization_id']);
     if (!$row) {
         // Deliberately identical to "doesn't exist" for a cross-tenant id (Invariant B/STEP 20) — no
         // distinguishing 403-vs-404 signal that would confirm another organization's id is valid.
@@ -231,7 +263,7 @@ function api_handle_messages_get(array $ctx): void {
         return;
     }
     ApiResponse::success(200, [
-        'id'          => (string)$row['id'],
+        'id'          => api_message_public_id_of($row),
         'status'      => $row['status'],
         'originator'  => $row['originator'],
         'destinations' => json_decode($row['destinations_json'], true) ?: [],

@@ -167,7 +167,7 @@ components:
         data:
           type: object
           properties:
-            id: { type: string }
+            id: { type: string, description: "Random 16-digit number as a string, e.g. \"4821730095512264\". Sends made before public ids keep their short row number." }
             status: { type: string, enum: [sent, partially_sent, failed] }
             sent_count: { type: integer }
             total_count: { type: integer }
@@ -414,6 +414,12 @@ paths:
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MessageState' } } } }
         "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Same as GET — for clients that can only POST. No body and no Content-Type needed (scope messages:read)
+      parameters: [{ name: id, in: path, required: true, description: The id POST /messages returned, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MessageState' } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
 
   /bulk-jobs:
     post:
@@ -444,6 +450,24 @@ paths:
         - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 1000, default: 100 } }
         - { name: after, in: query, required: false, description: next_cursor of the previous page, schema: { type: string } }
         - { name: state, in: query, required: false, description: only recipients in this state, schema: { $ref: '#/components/schemas/RecipientState' } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BulkJobState' } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+    post:
+      summary: Same as GET — for clients that can only POST; limit / after / state may be sent in the JSON body instead of the query string (scope bulk:read)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+                after: { type: string, description: next_cursor of the previous page }
+                state: { $ref: '#/components/schemas/RecipientState' }
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BulkJobState' } } } }
         "404": { $ref: '#/components/responses/NotFound' }
@@ -723,6 +747,12 @@ paths:
       summary: Delivery state of a shared OTP code — polling alternative to the delivery webhooks (scope otp:send)
       parameters:
         - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/OtpState' } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+    post:
+      summary: Same as GET — for clients that can only POST. No body and no Content-Type needed (scope otp:send)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/OtpState' } } } }
         "404": { $ref: '#/components/responses/NotFound' }

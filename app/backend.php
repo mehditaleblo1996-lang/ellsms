@@ -192,6 +192,8 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
                 // Which attempt row each destination got, so settlement can write that one
                 // destination's charge onto it (delivery_billing_record_attempt_charges()).
                 $meta['attempt_ids'][$destination] = (int)db()->lastInsertId();
+                // «شناسه‌ی API»: the API send handler links this row to its own resource (app/ApiMessageIds.php).
+                api_message_attempt_captured($meta['attempt_ids'][$destination]);
             }
         }
         // The gateway was reached and turned these recipients down. Without a row of their own they

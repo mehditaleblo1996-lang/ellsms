@@ -78,9 +78,12 @@ $router->map('POST',  '/api/v1/bulk-jobs/preview',            'api_handle_bulk_j
 $router->map('POST',  '/api/v1/messages',                    'api_handle_messages_send', ApiScopes::MESSAGES_SEND);
 $router->map('GET',   '/api/v1/messages/{id}',                'api_handle_messages_get', ApiScopes::MESSAGES_READ);
 $router->map('GET',   '/api/v1/messages/{id}/state',          'api_handle_messages_state', ApiScopes::MESSAGES_READ);
+// The state routes also answer POST (same scope, same answer) for clients that can only POST.
+$router->map('POST',  '/api/v1/messages/{id}/state',          'api_handle_messages_state', ApiScopes::MESSAGES_READ);
 $router->map('POST',  '/api/v1/bulk-jobs',                   'api_handle_bulk_jobs_create', ApiScopes::BULK_WRITE);
 $router->map('GET',   '/api/v1/bulk-jobs/{id}',               'api_handle_bulk_jobs_get', ApiScopes::BULK_READ);
 $router->map('GET',   '/api/v1/bulk-jobs/{id}/state',         'api_handle_bulk_jobs_state', ApiScopes::BULK_READ);
+$router->map('POST',  '/api/v1/bulk-jobs/{id}/state',         'api_handle_bulk_jobs_state', ApiScopes::BULK_READ);
 $router->map('GET',   '/api/v1/contacts',                    'api_handle_contacts_list', ApiScopes::CONTACTS_READ);
 $router->map('POST',  '/api/v1/contacts',                    'api_handle_contacts_create', ApiScopes::CONTACTS_WRITE);
 $router->map('GET',   '/api/v1/contacts/{id}',                'api_handle_contacts_get', ApiScopes::CONTACTS_READ);
@@ -107,6 +110,7 @@ $router->map('POST',  '/api/v1/otp',                         'api_handle_shared_
 $router->map('GET',   '/api/v1/otp/templates',               'api_handle_shared_otp_templates', ApiScopes::OTP_SEND);
 $router->map('GET',   '/api/v1/otp/{id}',                    'api_handle_shared_otp_get', ApiScopes::OTP_SEND);
 $router->map('GET',   '/api/v1/otp/{id}/state',              'api_handle_shared_otp_state', ApiScopes::OTP_SEND);
+$router->map('POST',  '/api/v1/otp/{id}/state',              'api_handle_shared_otp_state', ApiScopes::OTP_SEND);
 // Shared sending service: recipient + text, the platform picks the line (app/Api/Handlers/SharedService.php).
 $router->map('POST',  '/api/v1/shared/messages',             'api_handle_shared_service_send', ApiScopes::SHARED_SEND);
 $router->map('GET',   '/api/v1/shared/messages/{id}',        'api_handle_shared_service_get', ApiScopes::SHARED_SEND);
@@ -220,7 +224,10 @@ if (str_starts_with($path, '/api/v1/webhooks') && !organization_has_entitlement(
     exit;
 }
 
-$requiresJsonBody = in_array($method, ['POST', 'PATCH', 'PUT'], true);
+// A POST to a delivery state route is a read: it may come without a body, so it is not held to the
+// Content-Type rule of the write endpoints (a JSON body, when sent, is still parsed).
+$requiresJsonBody = in_array($method, ['POST', 'PATCH', 'PUT'], true)
+    && !in_array($route['handler'], API_DELIVERY_STATE_HANDLERS, true);
 $bodyResult = ApiRequest::jsonBody($requiresJsonBody);
 if (!$bodyResult['ok']) {
     ApiResponse::error($bodyResult['status'], $bodyResult['code'], $bodyResult['message']);

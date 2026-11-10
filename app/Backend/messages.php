@@ -353,6 +353,8 @@ function backend_record_gateway_rejection(
                  attempted_at, completed_at" . ($withReportColumns ? ', originator, content' : '') . ($withAudit ? ', provider_audit_id' : '') . ($withParts ? ', parts' : '') . ($withChannel ? ', send_channel' : '') . ")
              VALUES (?,?,?,?,?, 'failed', ?,?,?,?,?,?,?, NOW(), NOW()" . ($withReportColumns ? ',?,?' : '') . ($withAudit ? ',?' : '') . ($withParts ? ',?' : '') . ($withChannel ? ',?' : '') . ")"
         )->execute($values);
+        // «شناسه‌ی API»: the API send handler links this row to its own resource (app/ApiMessageIds.php).
+        api_message_attempt_captured((int)db()->lastInsertId());
     } catch (Throwable $t) {
         // Reporting only: a failed insert must never turn into a send failure of its own.
         Logger::warning('gateway.rejection_record_failed', ['user_id' => $userId, 'exception' => $t->getMessage()]);

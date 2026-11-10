@@ -94,6 +94,8 @@ if (lazy_part_begin('list')) {
     $useCursor = $cursor !== '' && $page > 1 && $page === pager_page();
     $result = sent_report_page($f, $scope, $hideRemoved, $useCursor ? $cursor : null, $offset, $total);
     $rows = $result['rows'];
+    // «شناسه‌ی API»: the id POST /api/v1/messages returned, for rows sent that way (app/ApiMessageIds.php).
+    $apiIds = api_message_ids_for_attempts(array_map(static fn(array $r): int => (int)$r['id'], array_filter($rows, static fn(array $r): bool => $r['source'] === 'attempt')));
     $hidden = [];
     if ($canHide) {
         foreach (['bulk' => 'bulk_job', 'attempt' => 'attempt', 'legacy' => 'outbound'] as $source => $hiddenSource) {
@@ -113,7 +115,7 @@ if (lazy_part_begin('list')) {
         $isHidden = $canHide && isset($hidden[$r['source']][$r['source'] === 'bulk' ? (int)$r['job_id'] : (int)$r['id']]); ?>
       <tr data-detail="<?= e($r['ref']) ?>" tabindex="0" class="is-clickable<?= $isHidden ? ' is-hidden-row' : '' ?><?= $isAdmin && $r['vip'] ? ' row-vip' : '' ?>">
         <td class="num"><?= to_persian_digits((string)($offset + $n + 1)) ?></td>
-        <td class="ltr report-ref"><?= e($r['ref']) ?></td>
+        <td class="ltr report-ref"><?= e($r['ref']) ?><?php if ($r['source'] === 'attempt' && isset($apiIds[(int)$r['id']])): ?><br><span class="report-api-id" title="شناسه‌ی API — همان id پاسخ ارسال">API <?= e($apiIds[(int)$r['id']]) ?></span><?php endif; ?></td>
         <td class="msisdn"><?= e(shared_line_mask((string)$r['originator'], $isAdmin)) ?: '—' ?></td>
         <?php if ($showUser): ?><td><?= e($r['username']) ?><?= $isAdmin && $r['vip'] ? ' ' . vip_badge() : '' ?></td><?php endif; ?>
         <td><?= operator_label($r['operator_code'], $r['operator_name'], 18) ?></td>
