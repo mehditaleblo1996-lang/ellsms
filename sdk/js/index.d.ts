@@ -4,7 +4,7 @@ export declare const VERSION: string;
 
 export interface ClientOptions {
   apiKey: string;
-  /** e.g. https://panel.example.com (the /api/v1 suffix is added when missing) */
+  /** e.g. https://datisrayan.com (the /api/v1 suffix is added when missing) */
   baseUrl: string;
   timeoutMs?: number;
   maxRetries?: number;
@@ -62,6 +62,51 @@ export interface BulkJob {
   message?: string;
 }
 
+export type RecipientState = 'delivered' | 'undelivered' | 'sent' | 'failed' | 'queued' | 'cancelled' | 'unknown' | 'not_available';
+export type OverallState = 'delivered' | 'partially_delivered' | 'sent' | 'undelivered' | 'sending' | 'cancelled' | 'unknown' | 'not_available';
+
+export interface RecipientDelivery {
+  destination: string;
+  state: RecipientState;
+  /** UTC; null until delivered */
+  delivered_at: string | null;
+  /** UTC; when the operator was last asked */
+  checked_at: string | null;
+}
+
+export interface MessageState {
+  id: string;
+  send_status: string;
+  state: OverallState;
+  /** true once nothing can change any more — stop polling */
+  final: boolean;
+  summary: Record<RecipientState, number>;
+  recipients: RecipientDelivery[];
+  created_at: string;
+}
+
+export interface OtpState extends RecipientDelivery {
+  id: string;
+  send_status: string;
+  final: boolean;
+  created_at: string;
+}
+
+export interface BulkJobState {
+  id: string;
+  job_status: string;
+  state: OverallState;
+  final: boolean;
+  /** always the whole job, also when filtered by state */
+  summary: Record<RecipientState, number>;
+  total_rows: number;
+  recipients: (RecipientDelivery & { item_id: string })[];
+  /** pass back as `after`; null on the last page */
+  next_cursor: string | null;
+  limit: number;
+  created_at: string;
+}
+
 export interface Contact {
   id: string;
   mobile: string;
@@ -98,11 +143,15 @@ export declare class EllsmsClient {
 
   sendMessage(destinations: string[], content: string, options?: SendOptions): Promise<MessageResult>;
   getMessage(id: string): Promise<MessageResult>;
+  getMessageState(id: string): Promise<MessageState>;
+  getOtpState(id: string): Promise<OtpState>;
   previewMessage(destinations: string[], content: string, options?: SendOptions): Promise<Record<string, unknown>>;
 
   createBulkJob(job: BulkJobInput, idempotencyKey?: string): Promise<BulkJob>;
   getBulkJob(id: string): Promise<BulkJob>;
   previewBulkJob(job: BulkJobInput): Promise<Record<string, unknown>>;
+  getBulkJobState(id: string, options?: { limit?: number | null; after?: string | null; state?: RecipientState | null }): Promise<BulkJobState>;
+  eachBulkJobRecipient(id: string, options?: { state?: RecipientState | null; pageSize?: number }): AsyncGenerator<RecipientDelivery & { item_id: string }>;
 
   listContacts(options?: { limit?: number; after?: string | null }): Promise<{ data: Contact[]; nextCursor: string | null }>;
   eachContact(pageSize?: number): AsyncGenerator<Contact>;

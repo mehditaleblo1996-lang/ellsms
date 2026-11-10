@@ -14,6 +14,17 @@ keep up to date.
 | `app/Integrations.php` | Builds the zip packages from these folders. The WooCommerce zip gets the PHP SDK copied into `lib/ellsms-php`. Also renders the guide's Markdown. |
 | `public/integrations.php` | Download page, shown to admins and to users who can see API keys |
 
+## SDK versions
+
+| Version | Change |
+|---|---|
+| 1.1.0 | Delivery state without webhooks: `getMessageState`, `getOtpState`, `getBulkJobState`, `eachBulkJobRecipient` (Python: snake_case) — `docs/public-api.md` «Delivery state without webhooks». Example base URL in the READMEs and doc comments is `https://datisrayan.com`. |
+| 1.0.0 | First release. |
+
+The zips on `/integrations` are built from `sdk/` on download (`app/Integrations.php`), so a deploy is
+all it takes to publish a new SDK version; the WooCommerce zip carries the same PHP SDK in
+`lib/ellsms-php`. Nothing is published to npm, PyPI or Packagist.
+
 ## How the WooCommerce plugin sends
 
 | Step | Behaviour |
@@ -44,7 +55,8 @@ The attempt number decides what a retry does:
 
 ## Tests
 
-- `tests/Integration/SdkConformanceTest.php` runs one scenario for all three SDKs against the real API.
+- `tests/Integration/SdkConformanceTest.php` runs one scenario for all three SDKs against the real API
+  (since SDK 1.1.0 it also covers `getBulkJobState` / `eachBulkJobRecipient` and the `state` filter's 422).
 - Retry rules:
   - `sdk/js/test/retry.test.js`: run it with `npm test` in `sdk/js`.
   - `sdk/python/tests/test_retry.py`

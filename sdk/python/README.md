@@ -8,7 +8,7 @@ A step-by-step guide in Persian is in `integrations/GUIDE.fa.md`. It is also on 
 ```python
 from ellsms import Client, EllsmsError, verify_webhook
 
-sms = Client("datis_live_…", "https://panel.example.com")
+sms = Client("datis_live_…", "https://datisrayan.com")
 sms.send_message(["09121234567"], "Hello", client_message_id="order-1001-shipped")
 ```
 
@@ -19,6 +19,7 @@ sms.send_message(["09121234567"], "Hello", client_message_id="order-1001-shipped
 | Account | `me()`, `organization()`, `balance()` |
 | Messages | `send_message()`, `get_message()`, `preview_message()` |
 | Bulk jobs | `create_bulk_job(job, idempotency_key=None)`, `get_bulk_job()`, `preview_bulk_job()` |
+| Delivery state (no webhook needed) | `get_message_state(id)`, `get_otp_state(id)`, `get_bulk_job_state(id, limit=, after=, state=)`, `each_bulk_job_recipient(id, state=)` |
 | Contacts | `list_contacts()`, `each_contact()`, `create_contact()`, `get_contact()`, `update_contact()`, `delete_contact()` |
 | Webhooks | `list_webhooks()`, `create_webhook()`, `get_webhook()`, `update_webhook()`, `delete_webhook()`, `rotate_webhook_secret()`, `test_webhook()` |
 | Signatures | `verify_webhook(secret, timestamp, raw_body, signature)` |

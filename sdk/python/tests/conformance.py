@@ -54,6 +54,11 @@ def main():
     again = sms.create_bulk_job(job, key)
     check(first["id"] == again["id"], "same idempotency key replays the same job")
     check("status" in sms.get_bulk_job(first["id"]), "get_bulk_job")
+    job_state = sms.get_bulk_job_state(first["id"], limit=1)
+    check("summary" in job_state and isinstance(job_state["recipients"], list) and job_state["limit"] == 1, "get_bulk_job_state")
+    recipients = sum(1 for r in sms.each_bulk_job_recipient(first["id"], page_size=1) if r.get("state"))
+    check(recipients == job_state["total_rows"], "each_bulk_job_recipient pages through every recipient")
+    expect_error(lambda: sms.get_bulk_job_state(first["id"], state="nope"), 422, "validation_failed", "invalid state filter")
     expect_error(lambda: sms.create_bulk_job({"type": "nope", "items": []}), 422, "validation_failed", "invalid bulk job")
 
     bad = Client("ellsms_live_000000000000_" + "x" * 40, env["ELLSMS_BASE_URL"], max_retries=0)

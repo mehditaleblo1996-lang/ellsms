@@ -3,7 +3,7 @@
  * ELLSMS public API v1 client for Node.js 18+ (built-in fetch, no dependencies).
  *
  *   const { EllsmsClient } = require('ellsms');
- *   const sms = new EllsmsClient({ apiKey: 'datis_live_…', baseUrl: 'https://panel.example.com' });
+ *   const sms = new EllsmsClient({ apiKey: 'datis_live_…', baseUrl: 'https://datisrayan.com' });
  *   await sms.sendMessage(['09121234567'], 'سلام');
  *
  * Every method resolves to the "data" part of the answer and rejects with EllsmsError on any error.
@@ -13,7 +13,7 @@
  */
 const crypto = require('node:crypto');
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 class EllsmsError extends Error {
   constructor(status, code, message, { fields = {}, requestId = null, retryAfter = null } = {}) {
@@ -51,7 +51,7 @@ class EllsmsClient {
    */
   constructor({ apiKey, baseUrl, timeoutMs = 30000, maxRetries = 2, fetch: fetchImpl, sleep } = {}) {
     if (!apiKey || !String(apiKey).trim()) throw new TypeError('An API key is required.');
-    if (!baseUrl) throw new TypeError('baseUrl is required, e.g. https://panel.example.com');
+    if (!baseUrl) throw new TypeError('baseUrl is required, e.g. https://datisrayan.com');
     this.apiKey = String(apiKey).trim();
     let base = String(baseUrl).replace(/\/+$/, '');
     if (!base.endsWith('/api/v1')) base += '/api/v1';
@@ -78,6 +78,13 @@ class EllsmsClient {
     return this._request('POST', '/messages', { body, replaySafe: options.client_message_id != null });
   }
   getMessage(id) { return this._request('GET', `/messages/${encodeURIComponent(id)}`); }
+  /**
+   * Delivery state of a sendMessage() send, per recipient — the polling alternative to the delivery
+   * webhooks (scope messages:read). Poll every few minutes until `final` is true.
+   */
+  getMessageState(id) { return this._request('GET', `/messages/${encodeURIComponent(id)}/state`); }
+  /** Delivery state of a shared-line OTP code sent with POST /otp (scope otp:send). */
+  getOtpState(id) { return this._request('GET', `/otp/${encodeURIComponent(id)}/state`); }
   previewMessage(destinations, content, options = {}) {
     return this._request('POST', '/messages/preview', { body: { ...options, destinations: [...destinations], content }, replaySafe: true });
   }
@@ -89,6 +96,27 @@ class EllsmsClient {
   }
   getBulkJob(id) { return this._request('GET', `/bulk-jobs/${encodeURIComponent(id)}`); }
   previewBulkJob(job) { return this._request('POST', '/bulk-jobs/preview', { body: job, replaySafe: true }); }
+  /**
+   * Delivery state of a bulk job (scope bulk:read): summary counts for the whole job plus one page of
+   * recipients. options: { limit (1–1000, default 100), after (the previous next_cursor), state }
+   */
+  getBulkJobState(id, { limit = null, after = null, state = null } = {}) {
+    const query = new URLSearchParams();
+    if (limit != null) query.set('limit', String(limit));
+    if (after != null) query.set('after', String(after));
+    if (state != null) query.set('state', String(state));
+    const qs = query.toString();
+    return this._request('GET', `/bulk-jobs/${encodeURIComponent(id)}/state${qs ? `?${qs}` : ''}`);
+  }
+  /** Every recipient of a bulk job with its delivery state, page after page. */
+  async *eachBulkJobRecipient(id, { state = null, pageSize = 500 } = {}) {
+    let after = null;
+    do {
+      const page = await this.getBulkJobState(id, { limit: pageSize, after, state });
+      yield* (page.recipients ?? []);
+      after = page.next_cursor ?? null;
+    } while (after != null);
+  }
 
   // ---------------- contacts ----------------
   /** One page: { data, nextCursor } */

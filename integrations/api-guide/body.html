@@ -624,6 +624,14 @@ if (!res.ok) console.error(body.error.code, body.error.request_id);
   <tr><td class="ltr" style="text-align:right">JavaScript / TypeScript</td><td><span class="c">sdk/js</span></td></tr>
   <tr><td class="ltr" style="text-align:right">Python</td><td><span class="c">sdk/python</span></td></tr>
 </table>
+<p>وضعیت تحویل پیام (بخش ۶) از نسخه‌ی ۱٫۱٫۰ کتابخانه‌ها متد آماده دارد:</p>
+<table class="t">
+  <tr><th style="width:34%">مسیر</th><th style="width:33%">PHP و JavaScript</th><th>Python</th></tr>
+  <tr><td class="ltr"><span class="c">/messages/{id}/state</span></td><td><span class="c">getMessageState</span></td><td><span class="c">get_message_state</span></td></tr>
+  <tr><td class="ltr"><span class="c">/otp/{id}/state</span></td><td><span class="c">getOtpState</span></td><td><span class="c">get_otp_state</span></td></tr>
+  <tr><td class="ltr"><span class="c">/bulk-jobs/{id}/state</span></td><td><span class="c">getBulkJobState</span></td><td><span class="c">get_bulk_job_state</span></td></tr>
+  <tr><td>همه‌ی گیرنده‌های ارسال انبوه، صفحه به صفحه</td><td><span class="c">eachBulkJobRecipient</span></td><td><span class="c">each_bulk_job_recipient</span></td></tr>
+</table>
 
 <h3>مشخصات <span class="ltr">OpenAPI</span></h3>
 <p>توضیح ماشین‌خوان کل API در فایل <span class="c">openapi-v1.yaml</span> موجود است. می‌توانید آن را مستقیم در <span class="ltr">Postman</span> یا <span class="ltr">Insomnia</span> وارد کنید یا با ابزارهای تولید کد، کلاینت هر زبانی را بسازید.</p>

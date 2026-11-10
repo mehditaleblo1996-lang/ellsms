@@ -8,7 +8,7 @@ require 'src/EllsmsException.php';
 require 'src/Webhook.php';
 require 'src/Client.php';
 
-$sms = new Ellsms\Client(getenv('ELLSMS_API_KEY'), 'https://panel.example.com');
+$sms = new Ellsms\Client(getenv('ELLSMS_API_KEY'), 'https://datisrayan.com');
 $sms->sendMessage(['09121234567'], 'Hello', ['client_message_id' => 'order-1001-shipped']);
 ```
 
@@ -16,6 +16,7 @@ $sms->sendMessage(['09121234567'], 'Hello', ['client_message_id' => 'order-1001-
 |---|---|
 | `me()`, `organization()`, `balance()` | `GET /me`, `/organization`, `/balance` |
 | `sendMessage($to, $text, $options)`, `getMessage($id)`, `previewMessage(...)` | `/messages` |
+| `getMessageState($id)`, `getOtpState($id)`, `getBulkJobState($id, ['limit' =>, 'after' =>, 'state' =>])`, `eachBulkJobRecipient($id, $state = null)` | delivery state without webhooks: `/messages/{id}/state`, `/otp/{id}/state`, `/bulk-jobs/{id}/state` |
 | `createBulkJob($job, $idempotencyKey = null)`, `getBulkJob($id)`, `previewBulkJob($job)` | `/bulk-jobs` |
 | `listContacts($limit, $after)`, `eachContact()`, `createContact`, `getContact`, `updateContact`, `deleteContact` | `/contacts` |
 | `listWebhooks`, `createWebhook`, `getWebhook`, `updateWebhook`, `deleteWebhook`, `rotateWebhookSecret`, `testWebhook` | `/webhooks` |

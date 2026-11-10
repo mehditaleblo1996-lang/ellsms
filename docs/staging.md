@@ -99,6 +99,12 @@ git checkout main && git merge staging && git push origin main
 # -> on the production server: cd /opt/ellsms && ./deploy.sh   (unchanged)
 ```
 
+Staging deploys itself; **production never does** — a push to `main` changes nothing on
+`datisrayan.com` until someone runs `./deploy.sh` there. That holds for documentation-only changes
+too: the in-app guide (`public/guide.php`), the `/integrations` guide (`integrations/GUIDE.fa.md`),
+the API guide PDF (`integrations/DatisRayan-API-Guide.pdf`) and the SDK zips are all served from the
+checked-out tree, so customers see the old ones until the deploy.
+
 Refresh staging's data from production: repeat step 1, then on the staging server
 
 ```bash

@@ -66,6 +66,12 @@ try {
     $again = $sms->createBulkJob($job, $key);
     check($first['id'] === $again['id'], 'same idempotency key replays the same job');
     check(isset($sms->getBulkJob($first['id'])['status']), 'getBulkJob');
+    $jobState = $sms->getBulkJobState($first['id'], ['limit' => 1]);
+    check(isset($jobState['summary']) && is_array($jobState['recipients']) && $jobState['limit'] === 1, 'getBulkJobState');
+    $recipients = 0;
+    foreach ($sms->eachBulkJobRecipient($first['id'], null, 1) as $r) { if (!empty($r['state'])) $recipients++; }
+    check($recipients === $jobState['total_rows'], 'eachBulkJobRecipient pages through every recipient');
+    expectError(static fn() => $sms->getBulkJobState($first['id'], ['state' => 'nope']), 422, 'validation_failed', 'invalid state filter');
     expectError(static fn() => $sms->createBulkJob(['type' => 'nope', 'items' => []]), 422, 'validation_failed', 'invalid bulk job');
 
     $bad = new Client('ellsms_live_000000000000_' . str_repeat('x', 40), getenv('ELLSMS_BASE_URL'), 20, 0);

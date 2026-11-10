@@ -7,7 +7,7 @@ namespace Ellsms;
 /**
  * ELLSMS public API v1 client. PHP 7.4+, needs only ext-curl and ext-json.
  *
- *   $sms = new Ellsms\Client('datis_live_…', 'https://panel.example.com');
+ *   $sms = new Ellsms\Client('datis_live_…', 'https://datisrayan.com');
  *   $sms->sendMessage(['09121234567'], 'سلام');
  *
  * Every method returns the "data" part of the answer as an array and throws EllsmsException on any error.
@@ -16,7 +16,7 @@ namespace Ellsms;
  */
 final class Client
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.1.0';
 
     /** @var string */
     private $apiKey;
@@ -71,6 +71,16 @@ final class Client
 
     public function getMessage(string $id): array { return $this->request('GET', '/messages/' . rawurlencode($id)); }
 
+    /**
+     * Delivery state of a sendMessage() send, per recipient — the polling alternative to the delivery
+     * webhooks (scope messages:read). Returns state, final, summary and recipients[]; poll every few
+     * minutes until final is true.
+     */
+    public function getMessageState(string $id): array { return $this->request('GET', '/messages/' . rawurlencode($id) . '/state'); }
+
+    /** Delivery state of a shared-line OTP code sent with POST /otp (scope otp:send). */
+    public function getOtpState(string $id): array { return $this->request('GET', '/otp/' . rawurlencode($id) . '/state'); }
+
     /** Cost estimate for the same payload as sendMessage(); sends nothing. */
     public function previewMessage(array $destinations, string $content, array $options = []): array
     {
@@ -91,6 +101,37 @@ final class Client
 
     public function getBulkJob(string $id): array { return $this->request('GET', '/bulk-jobs/' . rawurlencode($id)); }
     public function previewBulkJob(array $job): array { return $this->request('POST', '/bulk-jobs/preview', $job, null, true); }
+
+    /**
+     * Delivery state of a bulk job (scope bulk:read): summary counts for the whole job plus one page of
+     * recipients. Pass the returned next_cursor back as 'after' until it is null.
+     *
+     * @param array{limit?:int, after?:string, state?:string} $options  limit 1–1000 (default 100);
+     *        state keeps only recipients in that state (delivered, undelivered, sent, failed, queued,
+     *        cancelled, unknown, not_available)
+     */
+    public function getBulkJobState(string $id, array $options = []): array
+    {
+        $query = array_filter(array_intersect_key($options, ['limit' => 1, 'after' => 1, 'state' => 1]), static fn($v) => $v !== null && $v !== '');
+        return $this->request('GET', '/bulk-jobs/' . rawurlencode($id) . '/state' . ($query !== [] ? '?' . http_build_query($query) : ''));
+    }
+
+    /**
+     * Every recipient of a bulk job with its delivery state, page after page.
+     *
+     * @return \Generator<int, array>
+     */
+    public function eachBulkJobRecipient(string $id, ?string $state = null, int $pageSize = 500): \Generator
+    {
+        $after = null;
+        do {
+            $page = $this->getBulkJobState($id, ['limit' => $pageSize, 'after' => $after, 'state' => $state]);
+            foreach ($page['recipients'] ?? [] as $recipient) {
+                yield $recipient;
+            }
+            $after = $page['next_cursor'] ?? null;
+        } while ($after !== null);
+    }
 
     /* ---------------- contacts ---------------- */
 

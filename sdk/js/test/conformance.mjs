@@ -42,6 +42,12 @@ try {
   const again = await sms.createBulkJob(job, key);
   check(first.id === again.id, 'same idempotency key replays the same job');
   check((await sms.getBulkJob(first.id)).status !== undefined, 'getBulkJob');
+  const jobState = await sms.getBulkJobState(first.id, { limit: 1 });
+  check(jobState.summary !== undefined && Array.isArray(jobState.recipients) && jobState.limit === 1, 'getBulkJobState');
+  let recipients = 0;
+  for await (const r of sms.eachBulkJobRecipient(first.id, { pageSize: 1 })) { if (r.state) recipients++; }
+  check(recipients === jobState.total_rows, 'eachBulkJobRecipient pages through every recipient');
+  await expectError(() => sms.getBulkJobState(first.id, { state: 'nope' }), 422, 'validation_failed', 'invalid state filter');
   await expectError(() => sms.createBulkJob({ type: 'nope', items: [] }), 422, 'validation_failed', 'invalid bulk job');
 
   const bad = new EllsmsClient({ apiKey: 'ellsms_live_000000000000_' + 'x'.repeat(40), baseUrl: env.ELLSMS_BASE_URL, maxRetries: 0 });

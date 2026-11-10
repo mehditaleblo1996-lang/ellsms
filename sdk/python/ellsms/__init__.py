@@ -1,7 +1,7 @@
 """ELLSMS public API v1 client for Python 3.8+ (standard library only).
 
     from ellsms import Client
-    sms = Client("datis_live_…", "https://panel.example.com")
+    sms = Client("datis_live_…", "https://datisrayan.com")
     sms.send_message(["09121234567"], "سلام")
 
 Every method returns the "data" part of the answer and raises EllsmsError on any error.
@@ -19,7 +19,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = ["Client", "EllsmsError", "verify_webhook", "new_idempotency_key"]
 
 
@@ -97,6 +97,15 @@ class Client:
     def get_message(self, message_id):
         return self._request("GET", "/messages/" + urllib.parse.quote(str(message_id), safe=""))
 
+    def get_message_state(self, message_id):
+        """Delivery state of a send_message() send, per recipient - the polling alternative to the
+        delivery webhooks (scope messages:read). Poll every few minutes until "final" is True."""
+        return self._request("GET", "/messages/" + urllib.parse.quote(str(message_id), safe="") + "/state")
+
+    def get_otp_state(self, otp_id):
+        """Delivery state of a shared-line OTP code sent with POST /otp (scope otp:send)."""
+        return self._request("GET", "/otp/" + urllib.parse.quote(str(otp_id), safe="") + "/state")
+
     def preview_message(self, destinations, content, originator=None, channel=None):
         body = {"destinations": list(destinations), "content": content}
         if originator is not None:
@@ -115,6 +124,25 @@ class Client:
 
     def preview_bulk_job(self, job):
         return self._request("POST", "/bulk-jobs/preview", job, replay_safe=True)
+
+    def get_bulk_job_state(self, job_id, limit=None, after=None, state=None):
+        """Delivery state of a bulk job (scope bulk:read): summary counts for the whole job plus one
+        page of recipients. limit 1-1000 (default 100); pass next_cursor back as after until it is None;
+        state keeps only recipients in that state."""
+        query = [(k, v) for k, v in (("limit", limit), ("after", after), ("state", state)) if v is not None]
+        path = "/bulk-jobs/" + urllib.parse.quote(str(job_id), safe="") + "/state"
+        return self._request("GET", path + ("?" + urllib.parse.urlencode(query) if query else ""))
+
+    def each_bulk_job_recipient(self, job_id, state=None, page_size=500):
+        """Every recipient of a bulk job with its delivery state, page after page."""
+        after = None
+        while True:
+            page = self.get_bulk_job_state(job_id, limit=page_size, after=after, state=state)
+            for recipient in page.get("recipients", []):
+                yield recipient
+            after = page.get("next_cursor")
+            if after is None:
+                return
 
     # ---------------- contacts ----------------
     def list_contacts(self, limit=50, after=None):

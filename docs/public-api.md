@@ -278,6 +278,18 @@ Customer-facing copies of this section (Persian, examples on `https://datisrayan
 the same name in `integrations/GUIDE.fa.md` (rendered on `/integrations`), and the «API و Webhook»
 section of `public/guide.php`. All three list every `state` value below — keep them in step.
 
+SDK methods (since SDK 1.1.0, `sdk/php`, `sdk/js`, `sdk/python`):
+
+| Route | PHP | JS | Python |
+|---|---|---|---|
+| `GET /messages/{id}/state` | `getMessageState($id)` | `getMessageState(id)` | `get_message_state(id)` |
+| `GET /otp/{id}/state` | `getOtpState($id)` | `getOtpState(id)` | `get_otp_state(id)` |
+| `GET /bulk-jobs/{id}/state` (one page) | `getBulkJobState($id, ['limit'=>, 'after'=>, 'state'=>])` | `getBulkJobState(id, {limit, after, state})` | `get_bulk_job_state(id, limit=, after=, state=)` |
+| `GET /bulk-jobs/{id}/state` (every page) | `eachBulkJobRecipient($id, $state)` | `eachBulkJobRecipient(id, {state})` | `each_bulk_job_recipient(id, state=)` |
+
+They are plain GETs, so the SDKs retry them on a network failure or 5xx. The SDKs have no method for
+*sending* an OTP (`POST /otp`); `getOtpState` takes the id that call returned.
+
 | Route | Scope | For |
 |---|---|---|
 | `GET /messages/{id}/state` | `messages:read` | a `POST /messages` send — every recipient |

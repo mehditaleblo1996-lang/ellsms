@@ -10,7 +10,7 @@ servers:
   - url: https://{domain}/api/v1
     variables:
       domain:
-        default: your-domain.example.com
+        default: datisrayan.com
 
 security:
   - bearerAuth: []

@@ -104,6 +104,7 @@
 هر سه SDK یک امکانات دارند:
 
 - ارسال پیامک، ارسال گروهی، پیش‌نمایش هزینه، مخاطبین، اعتبار، وب‌هوک‌ها
+- وضعیت تحویل پیام (message state) بدون وب‌هوک
 - بررسی امضای وب‌هوک
 - تلاش دوباره‌ی **امن** برای خطاهای موقت: درخواستی که ممکن است پیامک را دو بار بفرستد، هیچ‌وقت خودکار تکرار نمی‌شود.
 
@@ -287,7 +288,41 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?state=delivered" -H "Auth
 - هر چند دقیقه یک بار بپرسید، نه هر ثانیه. وقتی `final` برابر `true` شد، وضعیت دیگر تغییر نمی‌کند.
 - `delivered_at` و `checked_at` به وقت UTC هستند. فقط شماره و وضعیت برمی‌گردد، نه متن پیام.
 - در ارسال انبوه `limit` بین ۱ تا ۱۰۰۰ است (پیش‌فرض ۱۰۰)؛ مقدار `next_cursor` را در `after` بگذارید تا وقتی `null` شود. `summary` همیشه کل ارسال را می‌شمارد.
-- این مسیرها هنوز در SDKها متد جداگانه ندارند؛ آن‌ها را مستقیم با HTTP صدا بزنید.
+
+با SDK (نسخه‌ی ۱٫۱٫۰ به بالا) همین کار یک خط است:
+
+| کار | PHP | جاوااسکریپت | پایتون |
+|---|---|---|---|
+| وضعیت تحویل یک ارسال | `getMessageState($id)` | `getMessageState(id)` | `get_message_state(id)` |
+| وضعیت تحویل کد تایید | `getOtpState($id)` | `getOtpState(id)` | `get_otp_state(id)` |
+| یک صفحه از ارسال انبوه | `getBulkJobState($id, $options)` | `getBulkJobState(id, options)` | `get_bulk_job_state(id, limit, after, state)` |
+| همه‌ی گیرنده‌های ارسال انبوه | `eachBulkJobRecipient($id, $state)` | `eachBulkJobRecipient(id, { state })` | `each_bulk_job_recipient(id, state)` |
+
+```php
+$state = $sms->getMessageState($result['id']);
+if ($state['final']) {
+    foreach ($state['recipients'] as $r) echo $r['destination'], ' ', $r['state'], PHP_EOL;
+}
+// ارسال انبوه: فقط گیرنده‌هایی که پیام به آن‌ها نرسیده
+foreach ($sms->eachBulkJobRecipient($job['id'], 'undelivered') as $r) echo $r['destination'], PHP_EOL;
+```
+
+```js
+const state = await sms.getMessageState(result.id);
+if (state.final) for (const r of state.recipients) console.log(r.destination, r.state);
+for await (const r of sms.eachBulkJobRecipient(job.id, { state: 'undelivered' })) console.log(r.destination);
+```
+
+```python
+state = sms.get_message_state(result["id"])
+if state["final"]:
+    for r in state["recipients"]:
+        print(r["destination"], r["state"])
+for r in sms.each_bulk_job_recipient(job["id"], state="undelivered"):
+    print(r["destination"])
+```
+
+اگر SDK قدیمی‌تر (۱٫۰٫۰) دارید، فایل SDK را دوباره از بالای همین صفحه دانلود کنید.
 
 ### کدهای خطای رایج
 
