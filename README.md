@@ -391,7 +391,8 @@ the panel's web session and the internal backend-platform HMAC scheme above. **D
 Delivery status can be received by webhook (`message.delivered` / `message.undelivered`) or, for an
 integration without a public HTTPS address, polled: `GET /api/v1/messages/{id}/state` (`messages:read`),
 `GET /api/v1/otp/{id}/state` (`otp:send`) and `GET /api/v1/bulk-jobs/{id}/state` (`bulk:read`, paginated
-per recipient) — see «Delivery state without webhooks» in `docs/public-api.md`.
+per recipient) — see «Delivery state without webhooks» in `docs/public-api.md`; customers read it as
+«وضعیت تحویل پیام (message state)» in the API guide PDF (§6), on `/integrations` and in `/guide.php`.
 
 **Per-line MO / delivery-report forwarding.** Separately from webhooks, every line can call the
 customer's own `http(s)` URL template — Vesal-compatible `${originator}`/`${content}`/`${status}`/

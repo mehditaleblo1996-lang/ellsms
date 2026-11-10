@@ -23,14 +23,15 @@ SECTIONS = [
     ('s3', 'انواع ارسال', 'کدام روش برای کدام کار'),
     ('s4', 'ارسال تکی و گروهی', 'مرجع کامل <span class="ltr">POST /messages</span>'),
     ('s5', 'ارسال انبوه و تدریجی', 'مرجع کامل <span class="ltr">POST /bulk-jobs</span>'),
-    ('s6', 'پیش‌نمایش هزینه', 'هزینه را پیش از ارسال ببینید'),
-    ('s7', 'جلوگیری از ارسال تکراری', '<span class="ltr">client_message_id</span> و <span class="ltr">Idempotency-Key</span>'),
-    ('s8', 'سایر مسیرها', 'موجودی، مخاطبین، وبهوک‌ها، خط اشتراکی، تلگرام'),
-    ('s9', 'وبهوک‌ها', 'رویدادها و بررسی امضا'),
-    ('s10', 'محدودیت‌ها', 'نرخ درخواست و سقف‌ها'),
-    ('s11', 'خطاها', 'قالب خطا و همه‌ی کدها'),
-    ('s12', 'نمونه کد', '<span class="ltr">PHP</span>، <span class="ltr">Python</span> و <span class="ltr">Node.js</span>'),
-    ('s13', 'کتابخانه‌ها و منابع', '<span class="ltr">SDK</span>، <span class="ltr">OpenAPI</span> و چک‌لیست'),
+    ('s6', 'وضعیت تحویل پیام', '<span class="ltr">message state</span> و همه‌ی مقدارهای آن'),
+    ('s7', 'پیش‌نمایش هزینه', 'هزینه را پیش از ارسال ببینید'),
+    ('s8', 'جلوگیری از ارسال تکراری', '<span class="ltr">client_message_id</span> و <span class="ltr">Idempotency-Key</span>'),
+    ('s9', 'سایر مسیرها', 'موجودی، مخاطبین، وبهوک‌ها، خط اشتراکی، تلگرام'),
+    ('s10', 'وبهوک‌ها', 'رویدادها و بررسی امضا'),
+    ('s11', 'محدودیت‌ها', 'نرخ درخواست و سقف‌ها'),
+    ('s12', 'خطاها', 'قالب خطا و همه‌ی کدها'),
+    ('s13', 'نمونه کد', '<span class="ltr">PHP</span>، <span class="ltr">Python</span> و <span class="ltr">Node.js</span>'),
+    ('s14', 'کتابخانه‌ها و منابع', '<span class="ltr">SDK</span>، <span class="ltr">OpenAPI</span> و چک‌لیست'),
 ]
 FA_DIGITS = str.maketrans('0123456789', '۰۱۲۳۴۵۶۷۸۹')
 

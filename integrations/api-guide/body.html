@@ -59,8 +59,8 @@ Content-Type: application/json
   <tr><td><span class="c">contacts:read</span> / <span class="c">contacts:write</span></td><td>خواندن / ساخت، ویرایش و حذف مخاطبین</td></tr>
   <tr><td><span class="c">balance:read</span></td><td>مشاهده‌ی موجودی اعتبار</td></tr>
   <tr><td><span class="c">webhooks:read</span> / <span class="c">webhooks:write</span></td><td>مدیریت وبهوک‌ها</td></tr>
-  <tr><td><span class="c">shared:send</span></td><td>ارسال با خط اشتراکی و پیگیری آن (بخش ۸)</td></tr>
-  <tr><td><span class="c">telegram:send</span> / <span class="c">telegram:read</span></td><td>ارسال و بررسی شماره با اکانت تلگرام خودتان / خواندن وضعیت‌ها (بخش ۸)</td></tr>
+  <tr><td><span class="c">shared:send</span></td><td>ارسال با خط اشتراکی و پیگیری آن (بخش ۹)</td></tr>
+  <tr><td><span class="c">telegram:send</span> / <span class="c">telegram:read</span></td><td>ارسال و بررسی شماره با اکانت تلگرام خودتان / خواندن وضعیت‌ها (بخش ۹)</td></tr>
 </table>
 
 <h3>محدودیت آی‌پی (اختیاری)</h3>
@@ -100,7 +100,7 @@ Content-Type: application/json
   <tr><td><span class="c">content</span></td><td class="req">اجباری</td><td>متن پیام، حداکثر ۲۰۰۰ نویسه. پیام‌های طولانی خودکار چندبخشی ارسال و به همان اندازه محاسبه می‌شوند.</td></tr>
   <tr><td><span class="c">originator</span></td><td class="opt">اختیاری</td><td>خط ارسال‌کننده. باید یکی از خطوط مجاز صاحب کلید باشد (اختصاصی، سازمانی یا اشتراکی). اگر نفرستید، خط پیش‌فرض پنل استفاده می‌شود.</td></tr>
   <tr><td><span class="c">channel</span></td><td class="opt">اختیاری</td><td><span class="c">sms</span> (پیش‌فرض)، <span class="c">bale</span> یا <span class="c">bale_sms</span> — جدول پایین.</td></tr>
-  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>شناسه‌ی یکتای شما برای جلوگیری از ارسال تکراری (بخش ۷).</td></tr>
+  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>شناسه‌ی یکتای شما برای جلوگیری از ارسال تکراری (بخش ۸).</td></tr>
 </table>
 
 <h3>نمونه</h3>
@@ -135,7 +135,7 @@ curl -X POST https://datisrayan.com/api/v1/messages \
   <tr><td><span class="pill err">failed</span></td><td><span class="c">422</span></td><td>به هیچ گیرنده‌ای ارسال نشد و اعتباری کم نشد.</td></tr>
 </table>
 <div class="call"><b class="h">«ارسال شد» یعنی «تحویل شد» نیست</b>
-<p><span class="c">sent</span> یعنی پیامک به اپراتور سپرده شد. برای اطلاع از تحویل واقعی به گوشی گیرنده، وبهوک <span class="c">message.delivered</span> را فعال کنید (بخش ۹).</p></div>
+<p><span class="c">sent</span> یعنی پیامک به اپراتور سپرده شد. برای اطلاع از تحویل واقعی به گوشی گیرنده، وبهوک <span class="c">message.delivered</span> را فعال کنید (بخش ۱۰) یا وضعیت تحویل را با <span class="c">GET /messages/{id}/state</span> بپرسید (بخش ۶).</p></div>
 
 <h3>کانال ارسال</h3>
 <table class="t">
@@ -150,31 +150,9 @@ curl -X POST https://datisrayan.com/api/v1/messages \
 <div class="ep"><span class="m get">GET</span>/api/v1/messages/{id}</div>
 <p>همان ساختار پاسخ بالا را با شناسه برمی‌گرداند. دسترسی لازم: <span class="c">messages:read</span></p>
 
-<h3>وضعیت تحویل بدون وب‌هوک</h3>
+<h3>وضعیت تحویل (message state)</h3>
 <div class="ep"><span class="m get">GET</span>/api/v1/messages/{id}/state</div>
-<p>اگر آدرس HTTPS عمومی برای وب‌هوک ندارید (مثلاً روی localhost کار می‌کنید)، وضعیت تحویل هر گیرنده را با همین مسیر بپرسید. <span class="c">{id}</span> همان شناسه‌ای است که هنگام ارسال برگشته. دسترسی لازم: <span class="c">messages:read</span></p>
-<div class="code"><div class="lbl">RESPONSE · 200</div><pre>
-{ "data": {
-  "id": "482",
-  "send_status": "sent",
-  "state": "partially_delivered",
-  "final": true,
-  "summary": { "delivered": 1, "undelivered": 1, "sent": 0 },
-  "recipients": [
-    { "destination": "989121234567", "state": "delivered",
-      "delivered_at": "2026-11-10 14:30:12" },
-    { "destination": "989351112233", "state": "undelivered",
-      "delivered_at": null }
-  ] } }</pre></div>
-<table class="t">
-  <tr><th style="width:24%">state</th><th>معنی</th></tr>
-  <tr><td><span class="c">delivered</span></td><td>به گوشی گیرنده رسیده.</td></tr>
-  <tr><td><span class="c">undelivered</span></td><td>نرسید (گوشی خاموش، شماره نامعتبر یا منقضی‌شده).</td></tr>
-  <tr><td><span class="c">sent</span></td><td>ارسال شده و گزارش نهایی اپراتور هنوز نیامده.</td></tr>
-  <tr><td><span class="c">failed</span></td><td>اصلاً به اپراتور تحویل نشد.</td></tr>
-  <tr><td><span class="c">not_available</span></td><td>برای این گیرنده گزارش تحویل وجود ندارد (مثلاً ارسال با بله).</td></tr>
-</table>
-<p class="note">هر چند دقیقه یک بار بپرسید تا <span class="c">final</span> برابر <span class="c">true</span> شود؛ بعد از آن وضعیت تغییر نمی‌کند. زمان‌ها (<span class="c">delivered_at</span>) به وقت UTC هستند. برای کد تایید اشتراکی همین کار را با <span class="c">GET /api/v1/otp/{id}/state</span> و برای ارسال انبوه با <span class="c">GET /api/v1/bulk-jobs/{id}/state</span> انجام دهید (بخش ۵ و ۸).</p>
+<p>وضعیت تحویل هر گیرنده‌ی همین ارسال را برمی‌گرداند؛ بدون وب‌هوک و روی localhost هم کار می‌کند. پاسخ، فیلدها و همه‌ی مقدارهای <span class="c">state</span> در بخش ۶ آمده است. دسترسی لازم: <span class="c">messages:read</span></p>
 
 <!-- ۵ -->
 <h2 class="sec" id="s5"><span class="n">۵</span>ارسال انبوه و تدریجی</h2>
@@ -272,10 +250,126 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
       "state": "undelivered", "delivered_at": null }
   ],
   "next_cursor": null, "limit": 100 } }</pre></div>
-<p>علاوه بر وضعیت‌های بخش ۴، در ارسال انبوه <span class="c">queued</span> (هنوز ارسال نشده) و <span class="c">cancelled</span> (لغو شده) هم دیده می‌شود. وضعیت کل تا وقتی ارسال ادامه دارد <span class="c">sending</span> است. <span class="c">summary</span> همیشه کل ارسال را می‌شمارد، حتی وقتی <span class="c">state</span> را فیلتر کرده‌اید.</p>
+<p>معنی همه‌ی مقدارهای <span class="c">state</span> در بخش ۶ آمده است. <span class="c">summary</span> همیشه کل ارسال را می‌شمارد، حتی وقتی <span class="c">state</span> را فیلتر کرده‌اید.</p>
 
 <!-- ۶ -->
-<h2 class="sec" id="s6"><span class="n">۶</span>پیش‌نمایش هزینه</h2>
+<h2 class="sec" id="s6"><span class="n">۶</span>وضعیت تحویل پیام (message state)</h2>
+<p>پاسخ ارسال فقط می‌گوید پیامک به اپراتور سپرده شد. برای این‌که بدانید پیامک واقعاً به گوشی گیرنده رسیده یا نه، وضعیت تحویل را با شناسه‌ی همان ارسال بپرسید. این روش به وب‌هوک و آدرس HTTPS عمومی نیاز ندارد (روی localhost هم کار می‌کند)، فقط می‌خواند و هزینه‌ای ندارد.</p>
+<table class="t">
+  <tr><th style="width:44%">مسیر</th><th style="width:22%">دسترسی</th><th>برای</th></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/api/v1/messages/{id}/state</span></td><td><span class="c">messages:read</span></td><td>ارسال تکی و گروهی (<span class="c">POST /messages</span>) — همه‌ی گیرنده‌ها.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/api/v1/otp/{id}/state</span></td><td><span class="c">otp:send</span></td><td>کد تایید خط اشتراکی (<span class="c">POST /otp</span>) — یک گیرنده.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/api/v1/bulk-jobs/{id}/state</span></td><td><span class="c">bulk:read</span></td><td>ارسال انبوه (<span class="c">POST /bulk-jobs</span>) — تعداد هر وضعیت و گیرنده‌ها صفحه به صفحه (بخش ۵).</td></tr>
+</table>
+<p><span class="c">{id}</span> همان شناسه‌ای است که هنگام ارسال در پاسخ برگشته است.</p>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl https://datisrayan.com/api/v1/messages/482/state \
+  -H "Authorization: Bearer $DATIS_API_KEY"
+</pre></div>
+<div class="code"><div class="lbl">RESPONSE · 200</div><pre>
+{ "data": {
+  "id": "482",
+  "send_status": "sent",
+  "state": "partially_delivered",
+  "final": true,
+  "summary": { "delivered": 1, "undelivered": 1, "sent": 0,
+               "failed": 0, "unknown": 0, "not_available": 0,
+               "queued": 0, "cancelled": 0 },
+  "recipients": [
+    { "destination": "989121234567", "state": "delivered",
+      "delivered_at": "2026-11-10 11:00:12",
+      "checked_at": "2026-11-10 11:01:00" },
+    { "destination": "989351112233", "state": "undelivered",
+      "delivered_at": null,
+      "checked_at": "2026-11-10 11:01:00" }
+  ],
+  "created_at": "2026-11-10 11:00:05" } }</pre></div>
+
+<h3>فیلدهای پاسخ</h3>
+<table class="t">
+  <tr><th style="width:30%">فیلد</th><th>توضیح</th></tr>
+  <tr><td><span class="c">id</span></td><td>شناسه‌ی ارسال.</td></tr>
+  <tr><td><span class="c">send_status</span></td><td>نتیجه‌ی خود ارسال، همان <span class="c">status</span> پاسخ ارسال. در ارسال انبوه نامش <span class="c">job_status</span> است.</td></tr>
+  <tr><td><span class="c">state</span></td><td>وضعیت تحویل کل ارسال (جدول «مقدارهای state کل ارسال»).</td></tr>
+  <tr><td><span class="c">final</span></td><td><span class="c">true</span> یعنی وضعیت دیگر تغییر نمی‌کند و لازم نیست دوباره بپرسید.</td></tr>
+  <tr><td><span class="c">summary</span></td><td>تعداد گیرنده‌ها در هر وضعیت. همیشه کل ارسال را می‌شمارد.</td></tr>
+  <tr><td><span class="c">recipients[].destination</span></td><td>شماره‌ی گیرنده.</td></tr>
+  <tr><td><span class="c">recipients[].state</span></td><td>وضعیت تحویل همان گیرنده (جدول «مقدارهای state هر گیرنده»).</td></tr>
+  <tr><td><span class="c">recipients[].delivered_at</span></td><td>زمان رسیدن به گوشی؛ تا وقتی نرسیده <span class="c">null</span> است.</td></tr>
+  <tr><td><span class="c">recipients[].checked_at</span></td><td>آخرین باری که وضعیت از اپراتور پرسیده شد.</td></tr>
+  <tr><td><span class="c">created_at</span></td><td>زمان ثبت ارسال.</td></tr>
+</table>
+<p class="note">زمان‌های <span class="c">delivered_at</span> و <span class="c">checked_at</span> به وقت UTC هستند. فقط شماره و وضعیت برمی‌گردد، نه متن پیام.</p>
+
+<h3>مقدارهای state هر گیرنده</h3>
+<table class="t">
+  <tr><th style="width:24%">state</th><th style="width:22%">نهایی است؟</th><th>معنی</th></tr>
+  <tr><td><span class="pill ok">delivered</span></td><td>بله</td><td>اپراتور تحویل به گوشی گیرنده را تأیید کرد.</td></tr>
+  <tr><td><span class="pill err">undelivered</span></td><td>بله</td><td>به گوشی نرسید: اپراتور آن را رد کرد، تحویل ناموفق بود یا مهلتش تمام شد (مثلاً گوشی خاموش یا شماره نامعتبر).</td></tr>
+  <tr><td><span class="pill warn">sent</span></td><td>نه</td><td>به اپراتور سپرده شده و گزارش نهایی تحویل هنوز نیامده.</td></tr>
+  <tr><td><span class="pill err">failed</span></td><td>بله</td><td>اصلاً به اپراتور سپرده نشد.</td></tr>
+  <tr><td><span class="pill warn">queued</span></td><td>نه</td><td>هنوز ارسال نشده: ردیف ارسال انبوه در صف است یا کد تایید در حال ارسال.</td></tr>
+  <tr><td><span class="c">cancelled</span></td><td>بله</td><td>ردیف ارسال انبوه پیش از ارسال لغو شد.</td></tr>
+  <tr><td><span class="c">unknown</span></td><td>بله</td><td>اپراتور وضعیت را «نامشخص» اعلام کرد.</td></tr>
+  <tr><td><span class="c">not_available</span></td><td>بله</td><td>گزارش تحویلی وجود ندارد: ارسال با بله، خطی که گزارش تحویل نمی‌دهد، یا سابقه‌ی ارسال پیدا نشد.</td></tr>
+</table>
+<p class="note"><span class="c">queued</span> و <span class="c">cancelled</span> در <span class="c">/messages/{id}/state</span> دیده نمی‌شوند؛ <span class="c">cancelled</span> فقط در ارسال انبوه و <span class="c">queued</span> در ارسال انبوه و کد تایید می‌آید.</p>
+
+<h3>مقدارهای state کل ارسال</h3>
+<table class="t">
+  <tr><th style="width:30%">state</th><th>معنی</th></tr>
+  <tr><td><span class="pill ok">delivered</span></td><td>به همه‌ی گیرنده‌ها رسید.</td></tr>
+  <tr><td><span class="pill warn">partially_delivered</span></td><td>به بخشی از گیرنده‌ها رسید؛ <span class="c">summary</span> و <span class="c">recipients</span> را ببینید.</td></tr>
+  <tr><td><span class="pill warn">sent</span></td><td>دست‌کم یک گیرنده هنوز منتظر گزارش اپراتور است.</td></tr>
+  <tr><td><span class="pill err">undelivered</span></td><td>به هیچ گیرنده‌ای نرسید.</td></tr>
+  <tr><td><span class="pill warn">sending</span></td><td>فقط ارسال انبوه: ارسال هنوز ادامه دارد.</td></tr>
+  <tr><td><span class="c">cancelled</span></td><td>فقط ارسال انبوه: همه‌ی ردیف‌ها لغو شدند.</td></tr>
+  <tr><td><span class="c">unknown</span></td><td>اپراتور وضعیت را «نامشخص» اعلام کرد.</td></tr>
+  <tr><td><span class="c">not_available</span></td><td>برای این ارسال گزارش تحویلی وجود ندارد.</td></tr>
+</table>
+<p>ردیف‌های لغوشده در وضعیت کل حساب نمی‌شوند.</p>
+
+<h3>وضعیت تحویل کد تایید</h3>
+<div class="ep"><span class="m get">GET</span>/api/v1/otp/{id}/state</div>
+<p>کد تایید یک گیرنده دارد، پس <span class="c">summary</span> و <span class="c">recipients</span> ندارد و <span class="c">state</span> یکی از مقدارهای جدول «هر گیرنده» است.</p>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl https://datisrayan.com/api/v1/otp/57/state \
+  -H "Authorization: Bearer $DATIS_API_KEY"
+</pre></div>
+<div class="code"><div class="lbl">RESPONSE · 200</div><pre>
+{ "data": {
+  "id": "57",
+  "send_status": "sent",
+  "destination": "989121234567",
+  "state": "delivered",
+  "final": true,
+  "delivered_at": "2026-11-10 11:00:09",
+  "checked_at": "2026-11-10 11:01:00",
+  "created_at": "2026-11-10 14:30:05" } }</pre></div>
+
+<h3>وضعیت تحویل ارسال انبوه</h3>
+<div class="ep"><span class="m get">GET</span>/api/v1/bulk-jobs/{id}/state</div>
+<p>علاوه بر فیلدهای بالا، <span class="c">total_rows</span>، <span class="c">limit</span> و <span class="c">next_cursor</span> را دارد و هر گیرنده یک <span class="c">item_id</span>. گیرنده‌ها صفحه به صفحه می‌آیند؛ نمونه‌ی پاسخ در بخش ۵ است.</p>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+# صفحه‌ی اول، هر صفحه ۲ گیرنده
+curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=2" \
+  -H "Authorization: Bearer $DATIS_API_KEY"
+
+# صفحه‌ی بعد: مقدار next_cursor صفحه‌ی قبل را در after بگذارید
+curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=2&amp;after=120002" \
+  -H "Authorization: Bearer $DATIS_API_KEY"
+
+# فقط گیرنده‌های یک وضعیت
+curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?state=delivered" \
+  -H "Authorization: Bearer $DATIS_API_KEY"
+</pre></div>
+<p class="note"><span class="c">limit</span> بین ۱ تا ۱۰۰۰ است (پیش‌فرض ۱۰۰). <span class="c">state</span> هر یک از مقدارهای جدول «هر گیرنده» را می‌پذیرد؛ مقدار دیگر خطای <span class="c">422 validation_failed</span> می‌دهد.</p>
+
+<div class="call"><b class="h">چند وقت یک بار بپرسم؟</b>
+<p>هر چند دقیقه یک بار، نه هر ثانیه. وقتی <span class="c">final</span> برابر <span class="c">true</span> شد دیگر نپرسید. اگر آدرس HTTPS عمومی دارید، وب‌هوک‌های <span class="c">message.delivered</span> و <span class="c">message.undelivered</span> همین خبر را بدون پرسیدن به شما می‌دهند (بخش ۱۰).</p></div>
+
+<!-- ۷ -->
+<h2 class="sec" id="s7"><span class="n">۷</span>پیش‌نمایش هزینه</h2>
 <p>پیش از ارسال واقعی، می‌توانید <b>همان بدنه‌ی درخواست</b> را به مسیر پیش‌نمایش بفرستید تا هزینه را ببینید:</p>
 <div class="ep"><span class="m post">POST</span>/api/v1/messages/preview</div>
 <div class="ep"><span class="m post">POST</span>/api/v1/bulk-jobs/preview</div>
@@ -284,8 +378,8 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
 <p>نه پیامی ارسال می‌شود، نه اعتباری رزرو می‌شود و نه از سهمیه کم می‌شود. هرچند بار که بخواهید می‌توانید آن را صدا بزنید و به <span class="c">Idempotency-Key</span> هم نیازی ندارد.</p></div>
 <p class="note">پیش‌نمایش تخمینی است: هنگام ارسال واقعی، هزینه دوباره محاسبه و همان لحظه رزرو می‌شود. اگر در این فاصله موجودی کافی نباشد، ارسال با خطا متوقف می‌شود — هرگز بیش از موجودی برداشت نمی‌شود.</p>
 
-<!-- ۷ -->
-<h2 class="sec" id="s7"><span class="n">۷</span>جلوگیری از ارسال تکراری</h2>
+<!-- ۸ -->
+<h2 class="sec" id="s8"><span class="n">۸</span>جلوگیری از ارسال تکراری</h2>
 <p>شبکه همیشه قابل اعتماد نیست. اگر درخواست شما با خطای زمان‌انتظار (<span class="ltr">timeout</span>) قطع شد، نمی‌دانید پیامک رفته یا نه. ارسال دوباره‌ی بی‌گدار ممکن است به مشتری دو پیامک برساند و دو بار هزینه بگیرد.</p>
 <p>راه‌حل: به هر ارسال یک شناسه‌ی یکتا از طرف خودتان بدهید — مثلاً شماره‌ی سفارش:</p>
 <div class="code"><div class="lbl">BODY</div><pre>
@@ -300,20 +394,20 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
 </table>
 <p>این شناسه برای <span class="c">/messages</span> تا ۲۴ ساعت معتبر است.</p>
 
-<!-- ۸ -->
-<h2 class="sec" id="s8"><span class="n">۸</span>سایر مسیرها</h2>
+<!-- ۹ -->
+<h2 class="sec" id="s9"><span class="n">۹</span>سایر مسیرها</h2>
 <table class="t">
   <tr><th style="width:42%">مسیر</th><th style="width:22%">دسترسی</th><th>کاربرد</th></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/me</span></td><td>—</td><td>اطلاعات کلید فعلی و دسترسی‌هایش. برای تست اتصال عالی است.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/organization</span></td><td>—</td><td>اطلاعات سازمان صاحب کلید.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/balance</span></td><td><span class="c">balance:read</span></td><td>موجودی اعتبار.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}</span></td><td><span class="c">messages:read</span></td><td>وضعیت یک ارسال تکی/گروهی.</td></tr>
-  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}/state</span></td><td><span class="c">messages:read</span></td><td>وضعیت تحویل هر گیرنده، بدون وب‌هوک.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}/state</span></td><td><span class="c">messages:read</span></td><td>وضعیت تحویل هر گیرنده، بدون وب‌هوک (بخش ۶).</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/bulk-jobs/{id}</span></td><td><span class="c">bulk:read</span></td><td>پیشرفت یک ارسال انبوه.</td></tr>
-  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/bulk-jobs/{id}/state</span></td><td><span class="c">bulk:read</span></td><td>وضعیت تحویل هر گیرنده‌ی ارسال انبوه، صفحه به صفحه (بخش ۵).</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/bulk-jobs/{id}/state</span></td><td><span class="c">bulk:read</span></td><td>وضعیت تحویل هر گیرنده‌ی ارسال انبوه، صفحه به صفحه (بخش ۵ و ۶).</td></tr>
   <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/otp</span></td><td><span class="c">otp:send</span></td><td>ارسال کد تایید با الگوی تأییدشده از خط اشتراکی.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/otp/{id}</span></td><td><span class="c">otp:send</span></td><td>نتیجه‌ی ارسال یک کد تایید.</td></tr>
-  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/otp/{id}/state</span></td><td><span class="c">otp:send</span></td><td>وضعیت تحویل یک کد تایید (رسیده، نرسیده، در انتظار گزارش)، بدون وب‌هوک.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/otp/{id}/state</span></td><td><span class="c">otp:send</span></td><td>وضعیت تحویل یک کد تایید (رسیده، نرسیده، در انتظار گزارش)، بدون وب‌هوک (بخش ۶).</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m post">POST</span> <span class="c">/contacts</span></td><td><span class="c">contacts:*</span></td><td>فهرست و ساخت مخاطب.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m patch">PATCH</span> <span class="m delete">DELETE</span> <span class="c">/contacts/{id}</span></td><td><span class="c">contacts:*</span></td><td>خواندن، ویرایش و حذف مخاطب.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m post">POST</span> <span class="c">/webhooks</span></td><td><span class="c">webhooks:*</span></td><td>فهرست و ساخت وبهوک.</td></tr>
@@ -337,7 +431,7 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
   <tr><td><span class="c">text</span></td><td class="req">اجباری</td><td>متن پیام.</td></tr>
   <tr><td><span class="c">line_type</span></td><td class="opt">اختیاری</td><td><span class="c">service</span> (خدماتی، هر ساعت؛ پیش‌فرض) یا <span class="c">promo</span> (تبلیغاتی، فقط در ساعات مجاز؛ بیرون از آن در صف می‌ماند).</td></tr>
   <tr><td><span class="c">line</span></td><td class="opt">اختیاری</td><td>نام خط اختصاصی‌ای که مدیر به شما داده است؛ نفرستید تا از خط اشتراکی عمومی ارسال شود.</td></tr>
-  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>مثل بخش ۷.</td></tr>
+  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>مثل بخش ۸.</td></tr>
 </table>
 <div class="code"><div class="lbl">REQUEST</div><pre>
 curl -X POST https://datisrayan.com/api/v1/shared/messages \
@@ -363,7 +457,7 @@ curl -X POST https://datisrayan.com/api/v1/shared/messages \
   <tr><td><span class="c">text</span></td><td class="req">اجباری</td><td>متن پیام (تا ۴۰۹۶ نویسه).</td></tr>
   <tr><td><span class="c">kind</span></td><td class="opt">اختیاری</td><td><span class="c">otp</span> (پیش‌فرض، جلوی صف)، <span class="c">notify</span> یا <span class="c">promo</span> (همراه <span class="c">"acknowledge_block_risk": true</span>).</td></tr>
   <tr><td><span class="c">account_id</span></td><td class="opt">اختیاری</td><td>یکی از اکانت‌های شما؛ نفرستید تا هر اکانت فعالی استفاده شود.</td></tr>
-  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>مثل بخش ۷.</td></tr>
+  <tr><td><span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>مثل بخش ۸.</td></tr>
 </table>
 <div class="code"><div class="lbl">REQUEST</div><pre>
 curl -X POST https://datisrayan.com/api/v1/telegram/messages \
@@ -380,10 +474,10 @@ curl -X POST https://datisrayan.com/api/v1/telegram/messages \
 </pre></div>
 <p><span class="c">reserved</span> اعتباری است که برای ارسال‌های در جریان کنار گذاشته شده و پس از پایان آن‌ها یا کم می‌شود یا برمی‌گردد.</p>
 
-<!-- ۹ -->
-<h2 class="sec" id="s9"><span class="n">۹</span>وبهوک‌ها</h2>
+<!-- ۱۰ -->
+<h2 class="sec" id="s10"><span class="n">۱۰</span>وبهوک‌ها</h2>
 <p>به‌جای اینکه مدام وضعیت را بپرسید، داتیس رایان گستر ایرانیان هر اتفاق مهم را با یک درخواست <span class="c">POST</span> به آدرس شما خبر می‌دهد. آدرس باید <span class="c">HTTPS</span> باشد.</p>
-<p class="note">آدرس HTTPS عمومی ندارید (مثلاً روی localhost کار می‌کنید)؟ وضعیت تحویل را با مسیرهای <span class="c">/state</span> بپرسید: <span class="c">/messages/{id}/state</span>، <span class="c">/otp/{id}/state</span> و <span class="c">/bulk-jobs/{id}/state</span>.</p>
+<p class="note">آدرس HTTPS عمومی ندارید (مثلاً روی localhost کار می‌کنید)؟ وضعیت تحویل را با مسیرهای <span class="c">/state</span> بپرسید (بخش ۶): <span class="c">/messages/{id}/state</span>، <span class="c">/otp/{id}/state</span> و <span class="c">/bulk-jobs/{id}/state</span>.</p>
 
 <h3>رویدادها</h3>
 <table class="t">
@@ -421,8 +515,8 @@ function verify_webhook(string $secret, string $timestamp, string $rawBody, stri
 <p><span class="c">raw_body</span> باید همان بایت‌هایی باشد که دریافت کرده‌اید، پیش از هر <span class="c">json_decode</span>. سریع با کد <span class="c">2xx</span> پاسخ دهید و پردازش سنگین را بعداً انجام دهید. با <span class="c">X-Datis-Event-ID</span> رویدادهای تکراری را تشخیص دهید.</p>
 <p style="margin-top:5pt">هر درخواست همین سه مقدار را با نام‌های قبلی (<span class="c">X-ELLSMS-Event-ID</span>، <span class="c">X-ELLSMS-Timestamp</span> و <span class="c">X-ELLSMS-Signature</span>) هم دارد تا گیرنده‌هایی که پیش از تغییر نام نوشته شده‌اند بدون تغییر کار کنند.</p></div>
 
-<!-- ۱۰ -->
-<h2 class="sec" id="s10"><span class="n">۱۰</span>محدودیت‌ها</h2>
+<!-- ۱۱ -->
+<h2 class="sec" id="s11"><span class="n">۱۱</span>محدودیت‌ها</h2>
 <table class="t">
   <tr><th style="width:50%">مورد</th><th>مقدار</th></tr>
   <tr><td>نرخ درخواست برای هر کلید</td><td>۶۰ درخواست در دقیقه، با تحمل جهش تا ۱۵ درخواست</td></tr>
@@ -435,8 +529,8 @@ function verify_webhook(string $secret, string $timestamp, string $rawBody, stri
 <p class="note">پلن اشتراک سازمان ممکن است این سقف‌ها را پایین‌تر بیاورد، ولی هرگز بالاتر نمی‌برد.</p>
 <p>اگر از نرخ مجاز بیشتر بفرستید، پاسخ <span class="c">429</span> با هدر <span class="c">Retry-After</span> برمی‌گردد که می‌گوید چند ثانیه صبر کنید.</p>
 
-<!-- ۱۱ -->
-<h2 class="sec" id="s11"><span class="n">۱۱</span>خطاها</h2>
+<!-- ۱۲ -->
+<h2 class="sec" id="s12"><span class="n">۱۲</span>خطاها</h2>
 <p>همه‌ی خطاها یک قالب ثابت دارند. فیلد <span class="c">code</span> را در کد خود بررسی کنید؛ <span class="c">message</span> برای انسان است و ممکن است تغییر کند.</p>
 <div class="code"><div class="lbl">ERROR · 422</div><pre>
 {
@@ -467,8 +561,8 @@ function verify_webhook(string $secret, string $timestamp, string $rawBody, stri
 <div class="call"><b class="h">همیشه <span class="c">request_id</span> را لاگ کنید</b>
 <p>اگر به مشکلی برخوردید، همین شناسه را برای پشتیبانی بفرستید تا درخواست شما دقیقاً پیدا شود.</p></div>
 
-<!-- ۱۲ -->
-<h2 class="sec" id="s12"><span class="n">۱۲</span>نمونه کد</h2>
+<!-- ۱۳ -->
+<h2 class="sec" id="s13"><span class="n">۱۳</span>نمونه کد</h2>
 <h3>PHP</h3>
 <div class="code"><div class="lbl">PHP</div><pre>
 &lt;?php
@@ -521,8 +615,8 @@ const body = await res.json();
 if (!res.ok) console.error(body.error.code, body.error.request_id);
 </pre></div>
 
-<!-- ۱۳ -->
-<h2 class="sec" id="s13"><span class="n">۱۳</span>کتابخانه‌ها و منابع</h2>
+<!-- ۱۴ -->
+<h2 class="sec" id="s14"><span class="n">۱۴</span>کتابخانه‌ها و منابع</h2>
 <p>برای اینکه درخواست‌ها را دستی نسازید، کتابخانه‌ی رسمی برای سه زبان آماده است. همه‌ی موارد این راهنما — احراز هویت، ضدتکرار و قالب خطا — در آن‌ها پیاده شده‌اند:</p>
 <table class="t">
   <tr><th style="width:42%">زبان</th><th>محل</th></tr>

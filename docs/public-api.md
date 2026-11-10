@@ -273,6 +273,11 @@ integration that has no public HTTPS address (e.g. developing on localhost). `{i
 send returned. Same data as the webhooks; free; poll every few minutes until `final` is `true`, not
 every second. Handler: `app/Api/Handlers/DeliveryState.php`.
 
+Customer-facing copies of this section (Persian, examples on `https://datisrayan.com`): §6 «وضعیت
+تحویل پیام (message state)» of the API guide PDF (`integrations/api-guide/body.html`), the section of
+the same name in `integrations/GUIDE.fa.md` (rendered on `/integrations`), and the «API و Webhook»
+section of `public/guide.php`. All three list every `state` value below — keep them in step.
+
 | Route | Scope | For |
 |---|---|---|
 | `GET /messages/{id}/state` | `messages:read` | a `POST /messages` send — every recipient |

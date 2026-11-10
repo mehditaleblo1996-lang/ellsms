@@ -19,15 +19,16 @@
 | دسترسی | کاربرد |
 |---|---|
 | `messages:send` | ارسال پیامک و پیش‌نمایش هزینه |
-| `messages:read` | خواندن وضعیت پیامک ارسال‌شده |
-| `bulk:write` / `bulk:read` | ساخت و پیگیری ارسال گروهی |
+| `messages:read` | خواندن وضعیت ارسال و وضعیت تحویل پیامک (message state) |
+| `bulk:write` / `bulk:read` | ساخت و پیگیری ارسال گروهی و وضعیت تحویل آن |
+| `otp:send` | ارسال کد تایید با خط اشتراکی و وضعیت تحویل آن |
 | `contacts:read` / `contacts:write` | خواندن و مدیریت مخاطبین |
 | `balance:read` | دیدن اعتبار |
 | `webhooks:read` / `webhooks:write` | مدیریت وب‌هوک‌ها |
 
 > کلید API مثل رمز عبور است. آن را در کد منبعی که منتشر می‌کنید، یا در مرورگر (جاوااسکریپت سمت کاربر) قرار ندهید. اگر لو رفت، از همان صفحه **«باطل کردن»** یا **«چرخش»** را بزنید.
 
-**آدرس پنل** همان آدرسی است که با آن وارد پنل می‌شوید، مثلاً `https://panel.example.com`. بالای همین صفحه هم نمایش داده شده است.
+**آدرس پنل** همان آدرسی است که با آن وارد پنل می‌شوید، مثلاً `https://datisrayan.com`. بالای همین صفحه هم نمایش داده شده است.
 
 ## افزونه‌ی ووکامرس
 
@@ -123,7 +124,7 @@ require 'ellsms-php/src/EllsmsException.php';
 require 'ellsms-php/src/Webhook.php';
 require 'ellsms-php/src/Client.php';
 
-$sms = new Ellsms\Client(getenv('ELLSMS_API_KEY'), 'https://panel.example.com');
+$sms = new Ellsms\Client(getenv('ELLSMS_API_KEY'), 'https://datisrayan.com');
 
 try {
     // ارسال به حداکثر ۱۰۰ شماره در یک درخواست
@@ -161,7 +162,7 @@ npm install ./ellsms-js
 ```js
 const { EllsmsClient, EllsmsError } = require('ellsms'); // یا: import { EllsmsClient } from 'ellsms';
 
-const sms = new EllsmsClient({ apiKey: process.env.ELLSMS_API_KEY, baseUrl: 'https://panel.example.com' });
+const sms = new EllsmsClient({ apiKey: process.env.ELLSMS_API_KEY, baseUrl: 'https://datisrayan.com' });
 
 try {
   const result = await sms.sendMessage(['09121234567'], 'سفارش شما ارسال شد', { client_message_id: 'order-1001-shipped' });
@@ -187,7 +188,7 @@ pip install ./ellsms-python
 import os
 from ellsms import Client, EllsmsError
 
-sms = Client(os.environ["ELLSMS_API_KEY"], "https://panel.example.com")
+sms = Client(os.environ["ELLSMS_API_KEY"], "https://datisrayan.com")
 try:
     result = sms.send_message(["09121234567"], "نوبت شما فردا ساعت ۱۰ است", client_message_id="visit-77-reminder")
     print(result["status"])
@@ -220,6 +221,73 @@ const ok = verifyWebhook(secret, req.headers['x-datis-timestamp'], rawBody, req.
 ```python
 ok = verify_webhook(secret, headers["X-Datis-Timestamp"], raw_body, headers["X-Datis-Signature"])
 ```
+
+### وضعیت تحویل پیام (message state)
+
+پاسخ ارسال فقط می‌گوید پیامک به اپراتور سپرده شد. برای این‌که بدانید به گوشی گیرنده رسیده یا نه، وضعیت تحویل را با شناسه‌ی همان ارسال بپرسید. این روش به وب‌هوک و آدرس HTTPS عمومی نیاز ندارد (روی localhost هم کار می‌کند) و هزینه‌ای ندارد.
+
+| مسیر | دسترسی | برای |
+|---|---|---|
+| `GET /api/v1/messages/{id}/state` | `messages:read` | ارسال تکی و گروهی، همه‌ی گیرنده‌ها |
+| `GET /api/v1/otp/{id}/state` | `otp:send` | کد تایید خط اشتراکی |
+| `GET /api/v1/bulk-jobs/{id}/state` | `bulk:read` | ارسال انبوه: تعداد هر وضعیت و گیرنده‌ها صفحه به صفحه |
+
+`{id}` همان شناسه‌ای است که هنگام ارسال برگشته است.
+
+```
+curl https://datisrayan.com/api/v1/messages/482/state -H "Authorization: Bearer $DATIS_API_KEY"
+
+curl https://datisrayan.com/api/v1/otp/57/state -H "Authorization: Bearer $DATIS_API_KEY"
+
+curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=2" -H "Authorization: Bearer $DATIS_API_KEY"
+curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=2&after=NEXT_CURSOR" -H "Authorization: Bearer $DATIS_API_KEY"
+curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?state=delivered" -H "Authorization: Bearer $DATIS_API_KEY"
+```
+
+```
+{ "data": {
+  "id": "482", "send_status": "sent", "state": "partially_delivered", "final": true,
+  "summary": { "delivered": 1, "undelivered": 1, "sent": 0, "failed": 0,
+               "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
+  "recipients": [
+    { "destination": "989121234567", "state": "delivered",
+      "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" },
+    { "destination": "989351112233", "state": "undelivered",
+      "delivered_at": null, "checked_at": "2026-11-10 11:01:00" }
+  ],
+  "created_at": "2026-11-10 11:00:05" } }
+```
+
+مقدارهای `state` هر گیرنده:
+
+| state | معنی |
+|---|---|
+| `delivered` | اپراتور تحویل به گوشی گیرنده را تأیید کرد |
+| `undelivered` | به گوشی نرسید (رد شد، ناموفق بود یا مهلتش تمام شد) |
+| `sent` | به اپراتور سپرده شده و گزارش نهایی هنوز نیامده |
+| `failed` | اصلاً به اپراتور سپرده نشد |
+| `queued` | هنوز ارسال نشده (ردیف ارسال انبوه در صف، یا کد تایید در حال ارسال) |
+| `cancelled` | ردیف ارسال انبوه پیش از ارسال لغو شد |
+| `unknown` | اپراتور وضعیت را «نامشخص» اعلام کرد |
+| `not_available` | گزارش تحویلی وجود ندارد (ارسال با بله، خط بدون گزارش تحویل، یا سابقه‌ی ارسال پیدا نشد) |
+
+مقدارهای `state` کل ارسال:
+
+| state | معنی |
+|---|---|
+| `delivered` | به همه‌ی گیرنده‌ها رسید |
+| `partially_delivered` | به بخشی از گیرنده‌ها رسید |
+| `sent` | دست‌کم یک گیرنده هنوز منتظر گزارش اپراتور است |
+| `undelivered` | به هیچ گیرنده‌ای نرسید |
+| `sending` | فقط ارسال انبوه: ارسال هنوز ادامه دارد |
+| `cancelled` | فقط ارسال انبوه: همه‌ی ردیف‌ها لغو شدند |
+| `unknown` | اپراتور وضعیت را «نامشخص» اعلام کرد |
+| `not_available` | برای این ارسال گزارش تحویلی وجود ندارد |
+
+- هر چند دقیقه یک بار بپرسید، نه هر ثانیه. وقتی `final` برابر `true` شد، وضعیت دیگر تغییر نمی‌کند.
+- `delivered_at` و `checked_at` به وقت UTC هستند. فقط شماره و وضعیت برمی‌گردد، نه متن پیام.
+- در ارسال انبوه `limit` بین ۱ تا ۱۰۰۰ است (پیش‌فرض ۱۰۰)؛ مقدار `next_cursor` را در `after` بگذارید تا وقتی `null` شود. `summary` همیشه کل ارسال را می‌شمارد.
+- این مسیرها هنوز در SDKها متد جداگانه ندارند؛ آن‌ها را مستقیم با HTTP صدا بزنید.
 
 ### کدهای خطای رایج
 
