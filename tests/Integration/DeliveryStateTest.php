@@ -299,6 +299,77 @@ final class DeliveryStateTest extends IntegrationTestCase
         $this->assertSame('attempt:' . $attempt['id'], $data['message_id']);
     }
 
+    public function testThePanelReferenceOfAnyMessageAnswersTheStateRoute(): void
+    {
+        // A panel send, as dispatch records it for an account whose session carried no organization.
+        $db = db();
+        $db->prepare("INSERT INTO ellsms_message_attempts (organization_id, user_id, reference_type, reference_id, status, destination, delivery_status, delivered_at, attempted_at, originator, content)
+                      VALUES (NULL, ?, 'direct_send', ?, 'accepted', '09121110031', 'delivered', '2026-11-10 10:00:30', '2026-11-10 10:00:00', ?, 'from the panel')")
+           ->execute([$this->userId, 'panel-' . bin2hex(random_bytes(6)), $this->ownLine]);
+        $attemptId = (int)$db->lastInsertId();
+
+        [$status, $body] = $this->call('api_handle_messages_state', ['id' => 'D' . $attemptId]);
+        $this->assertSame(200, $status, json_encode($body));
+        $d = $body['data'];
+        $this->assertSame('D' . $attemptId, $d['id']);
+        $this->assertSame('sent', $d['send_status']);
+        $this->assertSame('delivered', $d['state']);
+        $this->assertTrue($d['final']);
+        $this->assertSame([['destination' => '989121110031', 'state' => 'delivered', 'delivered_at' => '2026-11-10 10:00:30', 'checked_at' => null]], $d['recipients']);
+        $this->assertSame(1, $d['summary']['delivered']);
+        $this->assertSame('2026-11-10 10:00:00', $d['created_at']);
+        // Case does not matter; the bare number is not this message (it would be an API id).
+        $this->assertSame(200, $this->call('api_handle_messages_state', ['id' => 'd' . $attemptId])[0]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => (string)$attemptId])[0]);
+
+        // An API send's own row answers to its panel reference too, with the same state.
+        [, $sent] = $this->call('api_handle_messages_send', [], ['originator' => $this->ownLine, 'destinations' => ['09121110032'], 'content' => 'by ref']);
+        $apiAttempt = (int)$this->attemptsFor('989121110032')[0]['id'];
+        $this->assertSame('sent', $this->call('api_handle_messages_state', ['id' => 'D' . $apiAttempt])[1]['data']['state']);
+
+        // Another organization, a reference that does not exist, and a message an admin removed
+        // from the customer's panel all look the same.
+        $other = $this->otherOrgPrincipal([\ApiScopes::MESSAGES_READ]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'D' . $attemptId], [], [], $other)[0]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'D' . $apiAttempt], [], [], $other)[0]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'D999999999'])[0]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'L' . $attemptId])[0]);
+        if (hidden_messages_available()) {
+            $db->prepare("INSERT INTO ellsms_hidden_messages (source, message_id, hidden_by, reason) VALUES ('attempt', ?, ?, 'test')")->execute([$attemptId, $this->userId]);
+            $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'D' . $attemptId])[0]);
+        }
+    }
+
+    public function testABulkItemsPanelReferenceAnswersTheStateRoute(): void
+    {
+        $jobId = $this->makeBulkJob('done', [
+            ['989121110041', 'sent', 'delivered', '2026-11-10 10:00:00'],
+            ['989121110042', 'pending', null, null],
+        ]);
+        $ids = db()->query("SELECT id FROM ellsms_bulk_items WHERE job_id = {$jobId} ORDER BY id")->fetchAll(\PDO::FETCH_COLUMN);
+
+        [$status, $body] = $this->call('api_handle_messages_state', ['id' => 'B' . $ids[0]]);
+        $this->assertSame(200, $status, json_encode($body));
+        $this->assertSame('B' . $ids[0], $body['data']['id']);
+        $this->assertSame('delivered', $body['data']['state']);
+        $this->assertSame('989121110041', $body['data']['recipients'][0]['destination']);
+
+        $queued = $this->call('api_handle_messages_state', ['id' => 'B' . $ids[1]])[1]['data'];
+        $this->assertSame('queued', $queued['recipients'][0]['state']);
+        $this->assertFalse($queued['final']);
+
+        $other = $this->otherOrgPrincipal([\ApiScopes::MESSAGES_READ]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'B' . $ids[0]], [], [], $other)[0]);
+
+        // An aimed-bulk job's numbers belong to the platform's bank: masked here and in the job's own state.
+        if (bulk_jobs_have_mask_column()) {
+            db()->prepare('UPDATE ellsms_bulk_jobs SET recipients_masked = 1 WHERE id = ?')->execute([$jobId]);
+            $this->assertSame('0912***0041', $this->call('api_handle_messages_state', ['id' => 'B' . $ids[0]])[1]['data']['recipients'][0]['destination']);
+            [, $job] = $this->call('api_handle_bulk_jobs_state', ['id' => (string)$jobId], [], [], $this->principal);
+            $this->assertSame(['0912***0041', '0912***0042'], array_column($job['data']['recipients'], 'destination'));
+        }
+    }
+
     public function testAStatePostWithBodyOptionsAnswersLikeTheGet(): void
     {
         $jobId = $this->makeBulkJob('done', [

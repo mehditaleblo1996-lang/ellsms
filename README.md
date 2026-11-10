@@ -393,7 +393,8 @@ integration without a public HTTPS address, polled: `GET /api/v1/messages/{id}/s
 `GET /api/v1/otp/{id}/state` (`otp:send`) and `GET /api/v1/bulk-jobs/{id}/state` (`bulk:read`, paginated
 per recipient) — see «Delivery state without webhooks» in `docs/public-api.md`; customers read it as
 «وضعیت تحویل پیام (message state)» in the API guide PDF (§6), on `/integrations` and in `/guide.php`.
-The three state routes answer `POST` as well as `GET`. The `id` of `POST /api/v1/messages` is a random
+The three state routes answer `POST` as well as `GET`, and `/messages/{id}/state` also takes the panel
+report's own reference (`D34`, `B12`) so any message of the organization can be polled. The `id` of `POST /api/v1/messages` is a random
 16-digit number (older sends keep their short id), shown in the panel as «شناسه‌ی API» in the send
 report and on the message page — `app/ApiMessageIds.php`, `db/migrations/2026_11_13_api_message_public_id.sql`,
 «Message ids» in `docs/public-api.md`.

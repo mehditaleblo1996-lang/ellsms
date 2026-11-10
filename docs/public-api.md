@@ -278,7 +278,8 @@ nothing about how many messages anyone sent in between. Module: `app/ApiMessageI
   Nothing is backfilled. The row number of a *new* send is not an id of the API (`404`).
 - **It is not the panel's reference nor the operator's.** «شناسه» in the panel's send report is the
   report's own reference (`D34`, `B12`), and «شناسه اپراتور» is the provider's id for one recipient
-  (often 19 digits). Neither is accepted here. The panel shows the API's id as «شناسه‌ی API»: under
+  (often 19 digits). The operator's id is never accepted; the panel reference is accepted by the
+  state route only (next section). The panel shows the API's id as «شناسه‌ی API»: under
   the reference in «لیست پیام‌های ارسالی» (`public/reports-v2.php`), in that page's detail drawer,
   and on `public/message-detail.php`.
 - **Link to the transport rows.** The send handler collects the `ellsms_message_attempts` rows its own
@@ -299,6 +300,26 @@ The **polling** alternative to the `message.delivered` / `message.undelivered` w
 integration that has no public HTTPS address (e.g. developing on localhost). `{id}` is the id the
 send returned. Same data as the webhooks; free; poll every few minutes until `final` is `true`, not
 every second. Handler: `app/Api/Handlers/DeliveryState.php`.
+
+**Any message, by its panel reference.** `GET /messages/{id}/state` also takes «شناسه» of the panel's
+send report as `{id}` — `D34` (one recipient of a direct send: panel, API, schedule, auto-reply, …)
+or `B12` (one recipient of a bulk job) — so a message that was not sent through `POST /messages`
+can be polled too. Case-insensitive; the legacy `L…` references have no delivery report and are
+`404`. The body is the same shape with exactly one recipient and `id` set to the reference:
+```json
+{ "data": { "id": "D10321", "send_status": "sent", "state": "delivered", "final": true,
+  "summary": { "delivered": 1, "undelivered": 0, "sent": 0, "failed": 0, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
+  "recipients": [ { "destination": "989121234567", "state": "delivered", "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" } ],
+  "created_at": "2026-11-10 11:00:05" } }
+```
+`send_status` is `sent`/`failed` for a `D` reference and the bulk item's own status for a `B`
+reference. Rules (`api_panel_ref_state()`): the row must belong to the key's organization — by its
+own `organization_id`, or, for a row recorded without one, by its sender being an active member —
+and must not have been removed from the customer's panel by an admin (`app/HiddenMessages.php`);
+otherwise `404`, indistinguishable from a reference that does not exist. It costs two primary-key
+reads, never a scan. These references are the panel's sequential row numbers, not random ids. An
+aimed-bulk job's numbers are returned masked (`0912***4567`), here and in `GET /bulk-jobs/{id}/state`,
+as in the panel and the webhooks.
 
 **GET or POST.** Each of the three routes answers `POST` exactly as it answers `GET` (same scope,
 same body), for clients that can only POST. A POST needs no body and no `Content-Type`; the bulk

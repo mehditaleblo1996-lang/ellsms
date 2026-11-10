@@ -410,7 +410,11 @@ paths:
   /messages/{id}/state:
     get:
       summary: Delivery state of a message, per recipient — polling alternative to the delivery webhooks (scope messages:read)
-      parameters: [{ name: id, in: path, required: true, description: The id POST /messages returned, schema: { type: string } }]
+      description: >
+        `{id}` is the id POST /messages returned, or the reference the panel's send report shows for
+        any message of the organization — `D34` (one recipient of a direct send) or `B12` (one
+        recipient of a bulk job). A reference answers with exactly one recipient.
+      parameters: [{ name: id, in: path, required: true, description: "The id POST /messages returned, or a panel reference (D34 / B12)", schema: { type: string } }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MessageState' } } } }
         "404": { $ref: '#/components/responses/NotFound' }

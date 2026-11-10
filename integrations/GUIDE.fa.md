@@ -237,13 +237,15 @@ ok = verify_webhook(secret, headers["X-Datis-Timestamp"], raw_body, headers["X-D
 
 **شناسه‌ی ارسال:** `id` پاسخ `POST /api/v1/messages` یک عدد تصادفی ۱۶ رقمی است (مثل `4821730095512264`) که به‌صورت رشته برمی‌گردد. آن را ذخیره کنید.
 
-- با «شناسه» گزارش پنل (مثل `D34`) و با «شناسه اپراتور» (عددی حدوداً ۱۹ رقمی) فرق دارد؛ آن دو در API پذیرفته نمی‌شوند و خطای `404` می‌گیرید.
+- با «شناسه» گزارش پنل (مثل `D34`) و با «شناسه اپراتور» (عددی حدوداً ۱۹ رقمی) فرق دارد. «شناسه اپراتور» در API پذیرفته نمی‌شود و خطای `404` می‌گیرید.
+- **هر پیامی، با شناسه‌ی پنل:** وضعیت تحویل پیامی که با API نفرستاده‌اید (از خود پنل، زمان‌بندی، منشی یا ارسال حجیم) را با همان «شناسه» ستون گزارش پنل بپرسید: `GET /api/v1/messages/D34/state`، و برای یک ردیف ارسال حجیم `B12`. پاسخ همان شکل را دارد، با یک گیرنده.
 - در پنل با نام **«شناسه‌ی API»** دیده می‌شود: زیر شناسه‌ی هر ردیف در «لیست پیام‌های ارسالی»، در پنجره‌ی جزئیات پیام و در صفحه‌ی پیام. فقط پیام‌هایی که با API فرستاده شده‌اند آن را دارند.
 - شناسه‌های کوتاه ارسال‌های قبلی (مثل `482`) همچنان کار می‌کنند.
 
 ```
 curl https://datisrayan.com/api/v1/messages/4821730095512264/state -H "Authorization: Bearer $DATIS_API_KEY"
 curl -X POST https://datisrayan.com/api/v1/messages/4821730095512264/state -H "Authorization: Bearer $DATIS_API_KEY"
+curl https://datisrayan.com/api/v1/messages/D10321/state -H "Authorization: Bearer $DATIS_API_KEY"
 
 curl https://datisrayan.com/api/v1/otp/57/state -H "Authorization: Bearer $DATIS_API_KEY"
 

@@ -263,11 +263,13 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
 </table>
 <p><span class="c">{id}</span> همان شناسه‌ای است که هنگام ارسال در پاسخ برگشته است. هر سه مسیر با <span class="c">POST</span> هم دقیقاً همین پاسخ را می‌دهند؛ بدنه لازم نیست و در ارسال انبوه می‌توانید <span class="c">limit</span>، <span class="c">after</span> و <span class="c">state</span> را در بدنه‌ی JSON بفرستید.</p>
 <div class="call"><b class="h">کدام شناسه؟</b>
-<p><span class="c">id</span> پاسخ <span class="c">POST /messages</span> یک عدد تصادفی ۱۶ رقمی است (مثل <span class="c">4821730095512264</span>) که به‌صورت رشته برمی‌گردد؛ آن را ذخیره کنید. این شناسه با «شناسه» گزارش پنل (مثل <span class="c">D34</span>) و با «شناسه اپراتور» (حدود ۱۹ رقم) فرق دارد و آن دو در API خطای <span class="c">404</span> می‌دهند. در پنل، همین شناسه با نام «شناسه‌ی API» زیر شناسه‌ی هر ردیف در «لیست پیام‌های ارسالی» و در جزئیات پیام دیده می‌شود. شناسه‌های کوتاه ارسال‌های قبلی (مثل <span class="c">482</span>) همچنان کار می‌کنند.</p></div>
+<p><span class="c">id</span> پاسخ <span class="c">POST /messages</span> یک عدد تصادفی ۱۶ رقمی است (مثل <span class="c">4821730095512264</span>) که به‌صورت رشته برمی‌گردد؛ آن را ذخیره کنید. این شناسه با «شناسه» گزارش پنل (مثل <span class="c">D34</span>) و با «شناسه اپراتور» (حدود ۱۹ رقم) فرق دارد؛ «شناسه اپراتور» در API خطای <span class="c">404</span> می‌دهد. در پنل، همین شناسه با نام «شناسه‌ی API» زیر شناسه‌ی هر ردیف در «لیست پیام‌های ارسالی» و در جزئیات پیام دیده می‌شود. شناسه‌های کوتاه ارسال‌های قبلی (مثل <span class="c">482</span>) همچنان کار می‌کنند.</p></div>
 <div class="code"><div class="lbl">REQUEST</div><pre>
 curl https://datisrayan.com/api/v1/messages/4821730095512264/state \
   -H "Authorization: Bearer $DATIS_API_KEY"
 </pre></div>
+<div class="call ok"><b class="h">هر پیامی، با شناسه‌ی پنل</b>
+<p>پیامی را که با API نفرستاده‌اید (از خود پنل، زمان‌بندی، منشی یا ارسال حجیم) هم می‌توانید بپرسید: به‌جای <span class="c">{id}</span> همان «شناسه» ستون گزارش پنل را بگذارید، مثلاً <span class="c">GET /api/v1/messages/D10321/state</span> و برای یک ردیف ارسال حجیم <span class="c">B12</span>. پاسخ همان شکل زیر را دارد، با یک گیرنده.</p></div>
 <div class="code"><div class="lbl">RESPONSE · 200</div><pre>
 { "data": {
   "id": "4821730095512264",

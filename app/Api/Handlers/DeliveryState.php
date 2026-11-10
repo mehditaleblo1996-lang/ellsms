@@ -98,6 +98,36 @@ function api_state_options(array $ctx): array {
     return $options;
 }
 
+/**
+ * Pure: a panel report reference in the {id} of /messages/{id}/state — «شناسه» of «لیست پیام‌های
+ * ارسالی»: D34 (one recipient of a direct send: an ellsms_message_attempts row) or B12 (one bulk
+ * item). Returns [source, row id] or null. The legacy L… references carry no delivery report.
+ *
+ * @return array{0:'attempt'|'bulk', 1:int}|null
+ */
+function api_state_parse_panel_ref(string $id): ?array {
+    if (!preg_match('/^([DdBb])([1-9]\d{0,17})$/D', $id, $m)) return null;
+    return [strtoupper($m[1]) === 'D' ? 'attempt' : 'bulk', (int)$m[2]];
+}
+
+/**
+ * Pure: the /messages/{id}/state body of ONE panel-referenced recipient — the same shape as an API
+ * message's, with a single recipient.
+ */
+function api_panel_ref_state_body(string $ref, string $sendStatus, string $destination, string $state, array $row, ?string $createdAt): array {
+    $summary = api_state_summary_empty();
+    $summary[$state]++;
+    return [
+        'id'          => $ref,
+        'send_status' => $sendStatus,
+        'state'       => api_overall_state_from_counts($summary),
+        'final'       => api_state_is_final_counts($summary),
+        'summary'     => $summary,
+        'recipients'  => [api_recipient_body($destination, $state, $row)],
+        'created_at'  => $createdAt,
+    ];
+}
+
 /** Pure: a zeroed summary with every state. */
 function api_state_summary_empty(): array {
     return array_fill_keys(API_RECIPIENT_STATES, 0);
@@ -298,7 +328,8 @@ function api_bulk_state_body(array $job, array $summary, array $items, int $limi
         'summary'    => $summary,
         'total_rows' => array_sum($summary),
         'recipients' => array_map(static fn(array $r): array => ['item_id' => (string)$r['id']]
-            + api_recipient_body((string)$r['mobile'], api_bulk_item_state((string)$r['status'], $r['delivery_status'] ?? null), $r), $items),
+            // An aimed-bulk number belongs to the platform's bank: masked for the customer, as in the panel.
+            + api_recipient_body(bulk_recipient_display((string)$r['mobile'], !empty($job['recipients_masked']), false), api_bulk_item_state((string)$r['status'], $r['delivery_status'] ?? null), $r), $items),
         'next_cursor' => $hasMore && $items !== [] ? (string)end($items)['id'] : null,
         'limit'      => $limit,
         'created_at' => $job['created_at'],
@@ -325,6 +356,56 @@ function api_message_state_candidates(array $message, array $destinations): arra
     $st = db()->prepare($sql);
     $st->execute(array_merge([(int)$message['user_id'], $message['created_at'], $message['created_at']], $spellings));
     return $st->fetchAll();
+}
+
+/**
+ * Whether a row belongs to $organizationId: by its own organization_id, or — for a row written
+ * without one (a panel send of an account that had no organization in its session) — by its
+ * sender being an active member of the organization.
+ */
+function api_state_row_in_organization(int $organizationId, mixed $rowOrganizationId, int $rowUserId): bool {
+    if ($rowOrganizationId !== null && (int)$rowOrganizationId > 0) {
+        return (int)$rowOrganizationId === $organizationId;
+    }
+    return organization_membership($rowUserId, $organizationId) !== null;
+}
+
+/**
+ * The state body of one panel-referenced message, or null when it does not exist, belongs to another
+ * organization, or was removed from the customer's panel by an admin (app/HiddenMessages.php) — the
+ * three are indistinguishable to the caller. Two primary-key reads; nothing is scanned.
+ */
+function api_panel_ref_state(int $organizationId, string $source, int $rowId): ?array {
+    $db = db();
+    if ($source === 'attempt') {
+        // The rows the panel's report lists (sent_report_find()): accepted or refused, with a recipient.
+        $st = $db->prepare("SELECT id, organization_id, user_id, destination, status, delivery_status, delivered_at, delivery_checked_at, attempted_at
+                              FROM ellsms_message_attempts WHERE id = ? AND status IN ('accepted','failed')");
+        $st->execute([$rowId]);
+        $row = $st->fetch();
+        if (!$row || (string)($row['destination'] ?? '') === ''
+                || !api_state_row_in_organization($organizationId, $row['organization_id'], (int)$row['user_id'])
+                || hidden_messages_is_hidden('attempt', $rowId)) {
+            return null;
+        }
+        $destination = normalize_msisdn((string)$row['destination']) ?? (string)$row['destination'];
+        $state = api_message_recipient_state($row['status'], $row['delivery_status'] ?? null);
+        return api_panel_ref_state_body('D' . $rowId, $row['status'] === 'failed' ? 'failed' : 'sent', $destination, $state, $row, $row['attempted_at']);
+    }
+
+    $st = $db->prepare('SELECT bi.id, bi.job_id, bi.mobile, bi.status, bi.delivery_status, bi.delivered_at, bi.delivery_checked_at, bi.created_at,
+                               j.organization_id, j.user_id, ' . bulk_job_masked_sql('j') . ' AS recipients_masked
+                          FROM ellsms_bulk_items bi JOIN ellsms_bulk_jobs j ON j.id = bi.job_id WHERE bi.id = ?');
+    $st->execute([$rowId]);
+    $row = $st->fetch();
+    if (!$row || !api_state_row_in_organization($organizationId, $row['organization_id'], (int)$row['user_id'])
+            || hidden_messages_is_hidden('bulk_job', (int)$row['job_id'])) {
+        return null;
+    }
+    // An aimed-bulk number belongs to the platform's bank: the customer gets the mask, as in the panel.
+    $destination = bulk_recipient_display((string)$row['mobile'], !empty($row['recipients_masked']), false);
+    $state = api_bulk_item_state((string)$row['status'], $row['delivery_status'] ?? null);
+    return api_panel_ref_state_body('B' . $rowId, (string)$row['status'], $destination, $state, $row, $row['created_at']);
 }
 
 /** The transport rows linked to one API message (app/ApiMessageIds.php); empty when it has none. */
@@ -380,6 +461,17 @@ function api_otp_neighbours(array $otp): array {
 function api_handle_messages_state(array $ctx): void {
     $principal = $ctx['principal'];
     $id = $ctx['params']['id'] ?? '';
+    // «شناسه» of the panel's send report (D34 / B12): any message of the organization, however it was sent.
+    $panelRef = api_state_parse_panel_ref((string)$id);
+    if ($panelRef !== null) {
+        $body = api_panel_ref_state((int)$principal['organization_id'], $panelRef[0], $panelRef[1]);
+        if ($body === null) {
+            ApiResponse::error(404, ApiResponse::CODE_NOT_FOUND, 'Message not found.');
+            return;
+        }
+        ApiResponse::success(200, $body);
+        return;
+    }
     // By the random public id, or — for a send from before public ids — by its row id (app/ApiMessageIds.php).
     $message = api_message_find((string)$id, (int)$principal['organization_id']);
     if (!$message) {
@@ -432,7 +524,7 @@ function api_handle_bulk_jobs_state(array $ctx): void {
         ApiResponse::error(404, ApiResponse::CODE_NOT_FOUND, 'Bulk job not found.');
         return;
     }
-    $st = db()->prepare('SELECT id, status, created_at FROM ellsms_bulk_jobs WHERE id = ? AND organization_id = ?');
+    $st = db()->prepare('SELECT id, status, created_at, ' . bulk_job_masked_sql('ellsms_bulk_jobs') . ' AS recipients_masked FROM ellsms_bulk_jobs WHERE id = ? AND organization_id = ?');
     $st->execute([(int)$id, $principal['organization_id']]);
     $job = $st->fetch();
     if (!$job) {

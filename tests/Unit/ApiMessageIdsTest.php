@@ -56,6 +56,30 @@ final class ApiMessageIdsTest extends TestCase
         $this->assertSame([], \api_message_attempts_capture_end());
     }
 
+    public function testAPanelReferenceIsRecognizedInTheStateId(): void
+    {
+        $this->assertSame(['attempt', 10321], \api_state_parse_panel_ref('D10321'));
+        $this->assertSame(['attempt', 10321], \api_state_parse_panel_ref('d10321'));
+        $this->assertSame(['bulk', 12], \api_state_parse_panel_ref('B12'));
+        // Not references: API ids, the legacy L…, zero, signs, spaces, anything trailing.
+        foreach (['10321', '4821730095512264', 'L5', 'D0', 'D', 'D-1', 'D 12', 'D12x', "D12\n", 'DB12', 'D1234567890123456789', ''] as $id) {
+            $this->assertNull(\api_state_parse_panel_ref($id), json_encode($id));
+        }
+    }
+
+    public function testAPanelReferenceBodyHasTheMessageStateShape(): void
+    {
+        $body = \api_panel_ref_state_body('D34', 'sent', '989121234567', 'delivered',
+            ['delivered_at' => '2026-11-10 11:00:12', 'delivery_checked_at' => '2026-11-10 11:01:00'], '2026-11-10 11:00:05');
+        $this->assertSame('D34', $body['id']);
+        $this->assertSame('delivered', $body['state']);
+        $this->assertTrue($body['final']);
+        $this->assertSame(1, $body['summary']['delivered']);
+        $this->assertSame(1, array_sum($body['summary']));
+        $this->assertSame([['destination' => '989121234567', 'state' => 'delivered', 'delivered_at' => '2026-11-10 11:00:12', 'checked_at' => '2026-11-10 11:01:00']], $body['recipients']);
+        $this->assertFalse(\api_panel_ref_state_body('B7', 'processing', '989121234567', 'queued', [], null)['final']);
+    }
+
     public function testStateOptionsComeFromTheQueryStringOrAPostBody(): void
     {
         $this->assertSame([], \api_state_options(['query' => [], 'body' => []]));
