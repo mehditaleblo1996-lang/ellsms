@@ -175,6 +175,36 @@ components:
             destinations: { type: array, items: { type: string } }
             created_at: { type: string, format: date-time }
 
+    MessageState:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            id: { type: string }
+            send_status: { type: string, enum: [sent, partially_sent, failed] }
+            state: { type: string, enum: [delivered, partially_delivered, pending, undelivered, unknown, not_available] }
+            final: { type: boolean, description: true once no recipient is pending — stop polling }
+            summary:
+              type: object
+              properties:
+                delivered: { type: integer }
+                undelivered: { type: integer }
+                pending: { type: integer }
+                failed: { type: integer }
+                unknown: { type: integer }
+                not_available: { type: integer }
+            recipients:
+              type: array
+              items:
+                type: object
+                properties:
+                  destination: { type: string }
+                  state: { type: string, enum: [delivered, undelivered, pending, failed, unknown, not_available] }
+                  delivered_at: { type: string, nullable: true }
+                  checked_at: { type: string, nullable: true }
+            created_at: { type: string, format: date-time }
+
     BulkJobCreateRequest:
       type: object
       required: [type, title, items]
@@ -328,6 +358,14 @@ paths:
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /messages/{id}/state:
+    get:
+      summary: Delivery state of a message, per recipient — polling alternative to the delivery webhooks (scope messages:read)
+      parameters: [{ name: id, in: path, required: true, description: The id POST /messages returned, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MessageState' } } } }
         "404": { $ref: '#/components/responses/NotFound' }
 
   /bulk-jobs:

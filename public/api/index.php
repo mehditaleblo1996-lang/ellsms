@@ -31,6 +31,7 @@ require_once __DIR__ . '/../../app/Api/RateLimit.php';
 require_once __DIR__ . '/../../app/Api/Router.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Meta.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Messages.php';
+require_once __DIR__ . '/../../app/Api/Handlers/MessageState.php';
 require_once __DIR__ . '/../../app/Api/Handlers/BulkJobs.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Contacts.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Balance.php';
@@ -76,6 +77,7 @@ $router->map('POST',  '/api/v1/messages/preview',             'api_handle_messag
 $router->map('POST',  '/api/v1/bulk-jobs/preview',            'api_handle_bulk_jobs_preview', ApiScopes::BULK_WRITE);
 $router->map('POST',  '/api/v1/messages',                    'api_handle_messages_send', ApiScopes::MESSAGES_SEND);
 $router->map('GET',   '/api/v1/messages/{id}',                'api_handle_messages_get', ApiScopes::MESSAGES_READ);
+$router->map('GET',   '/api/v1/messages/{id}/state',          'api_handle_messages_state', ApiScopes::MESSAGES_READ);
 $router->map('POST',  '/api/v1/bulk-jobs',                   'api_handle_bulk_jobs_create', ApiScopes::BULK_WRITE);
 $router->map('GET',   '/api/v1/bulk-jobs/{id}',               'api_handle_bulk_jobs_get', ApiScopes::BULK_READ);
 $router->map('GET',   '/api/v1/contacts',                    'api_handle_contacts_list', ApiScopes::CONTACTS_READ);

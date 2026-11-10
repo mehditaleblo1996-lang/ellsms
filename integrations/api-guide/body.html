@@ -150,6 +150,32 @@ curl -X POST https://datisrayan.com/api/v1/messages \
 <div class="ep"><span class="m get">GET</span>/api/v1/messages/{id}</div>
 <p>همان ساختار پاسخ بالا را با شناسه برمی‌گرداند. دسترسی لازم: <span class="c">messages:read</span></p>
 
+<h3>وضعیت تحویل بدون وب‌هوک</h3>
+<div class="ep"><span class="m get">GET</span>/api/v1/messages/{id}/state</div>
+<p>اگر آدرس HTTPS عمومی برای وب‌هوک ندارید (مثلاً روی localhost کار می‌کنید)، وضعیت تحویل هر گیرنده را با همین مسیر بپرسید. <span class="c">{id}</span> همان شناسه‌ای است که هنگام ارسال برگشته. دسترسی لازم: <span class="c">messages:read</span></p>
+<div class="code"><div class="lbl">RESPONSE · 200</div><pre>
+{ "data": {
+  "id": "482",
+  "send_status": "sent",
+  "state": "partially_delivered",
+  "final": true,
+  "summary": { "delivered": 1, "undelivered": 1, "pending": 0 },
+  "recipients": [
+    { "destination": "989121234567", "state": "delivered",
+      "delivered_at": "2026-11-10 14:30:12" },
+    { "destination": "989351112233", "state": "undelivered",
+      "delivered_at": null }
+  ] } }</pre></div>
+<table class="t">
+  <tr><th style="width:24%">state</th><th>معنی</th></tr>
+  <tr><td><span class="c">delivered</span></td><td>به گوشی گیرنده رسیده.</td></tr>
+  <tr><td><span class="c">undelivered</span></td><td>نرسید (گوشی خاموش، شماره نامعتبر یا منقضی‌شده).</td></tr>
+  <tr><td><span class="c">pending</span></td><td>ارسال شده و گزارش نهایی اپراتور هنوز نیامده.</td></tr>
+  <tr><td><span class="c">failed</span></td><td>اصلاً به اپراتور تحویل نشد.</td></tr>
+  <tr><td><span class="c">not_available</span></td><td>برای این گیرنده گزارش تحویل وجود ندارد (مثلاً ارسال با بله).</td></tr>
+</table>
+<p class="note">هر چند دقیقه یک بار بپرسید تا <span class="c">final</span> برابر <span class="c">true</span> شود؛ بعد از آن وضعیت تغییر نمی‌کند.</p>
+
 <!-- ۵ -->
 <h2 class="sec" id="s5"><span class="n">۵</span>ارسال انبوه و تدریجی</h2>
 <div class="ep"><span class="m post">POST</span>/api/v1/bulk-jobs</div>
@@ -253,6 +279,7 @@ curl -X POST https://datisrayan.com/api/v1/bulk-jobs \
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/organization</span></td><td>—</td><td>اطلاعات سازمان صاحب کلید.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/balance</span></td><td><span class="c">balance:read</span></td><td>موجودی اعتبار.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}</span></td><td><span class="c">messages:read</span></td><td>وضعیت یک ارسال تکی/گروهی.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/messages/{id}/state</span></td><td><span class="c">messages:read</span></td><td>وضعیت تحویل هر گیرنده، بدون وب‌هوک.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/bulk-jobs/{id}</span></td><td><span class="c">bulk:read</span></td><td>پیشرفت یک ارسال انبوه.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m post">POST</span> <span class="c">/contacts</span></td><td><span class="c">contacts:*</span></td><td>فهرست و ساخت مخاطب.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="m patch">PATCH</span> <span class="m delete">DELETE</span> <span class="c">/contacts/{id}</span></td><td><span class="c">contacts:*</span></td><td>خواندن، ویرایش و حذف مخاطب.</td></tr>

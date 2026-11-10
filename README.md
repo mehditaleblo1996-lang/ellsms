@@ -387,6 +387,9 @@ the panel's web session and the internal backend-platform HMAC scheme above. **D
 (`API_ENABLED=0`) so every existing install is unaffected until an operator opts in. See
 `docs/public-api.md` and `docs/webhooks.md` for the full reference, and
 `docs/phase-12-final-report.md` for the acceptance-criteria record.
+Delivery status of an API message can be received by webhook (`message.delivered` /
+`message.undelivered`) or polled with `GET /api/v1/messages/{id}/state` (scope `messages:read`) — for an
+integration without a public HTTPS address.
 
 **Per-line MO / delivery-report forwarding.** Separately from webhooks, every line can call the
 customer's own `http(s)` URL template — Vesal-compatible `${originator}`/`${content}`/`${status}`/

@@ -74,7 +74,7 @@ create a key at all** — these are two separate, deliberately independent layer
 | Scope | Grants |
 |---|---|
 | `messages:send` | `POST /messages` |
-| `messages:read` | `GET /messages/{id}` |
+| `messages:read` | `GET /messages/{id}`, `GET /messages/{id}/state` |
 | `bulk:write` | `POST /bulk-jobs` |
 | `bulk:read` | `GET /bulk-jobs/{id}` |
 | `contacts:read` | `GET /contacts`, `GET /contacts/{id}` |
@@ -266,6 +266,35 @@ word (#40) is refused with `422` and `content: ["prohibited_content"]`.
 
 ### `GET /messages/{id}` — scope `messages:read`
 Returns the same resource shape as above by id, scoped to the caller's organization.
+
+### `GET /messages/{id}/state` — scope `messages:read`
+Delivery state of a message sent with `POST /messages`, per recipient — the **polling** alternative
+to the `message.delivered` / `message.undelivered` webhooks, for an integration that has no public
+HTTPS address (e.g. developing on localhost). `{id}` is the id `POST /messages` returned.
+```json
+{ "data": {
+  "id": "482", "send_status": "sent", "state": "partially_delivered", "final": true,
+  "summary": { "delivered": 1, "undelivered": 1, "pending": 0, "failed": 0, "unknown": 0, "not_available": 0 },
+  "recipients": [
+    { "destination": "989121234567", "state": "delivered",   "delivered_at": "2026-11-10 14:30:12", "checked_at": "2026-11-10 14:31:00" },
+    { "destination": "989351112233", "state": "undelivered", "delivered_at": null, "checked_at": "2026-11-10 14:31:00" }
+  ],
+  "created_at": "2026-11-10 14:30:05" } }
+```
+Recipient `state`: `delivered`; `undelivered` (the operator reported failed / rejected / expired);
+`pending` (sent, no final report yet); `failed` (never left for the operator); `unknown` (the
+provider's own unknown); `not_available` (no delivery report exists for it — sent over Bale, through
+a gateway without delivery reports, or no transport record found). The message-level `state` rolls
+these up (`delivered`, `partially_delivered`, `pending`, `undelivered`, `unknown`, `not_available`);
+`final` is `true` once no recipient is `pending` — poll every few minutes until then, not every second.
+
+Read-only: it reads the delivery status the gateway's delivery-status poller already writes onto
+`ellsms_message_attempts` (`delivery_status`, `delivered_at` — the same data behind the delivery
+webhooks); the send path is unchanged and no migration is needed. Because an API message is not
+linked to its transport rows by id, they are matched by the same user, recipient, sender line and
+text (each compared only when the column exists), `send_channel` `api`, attempted in the
+`API_MESSAGE_STATE_WINDOW_SECONDS` (600 s) before the API row was written; per recipient the latest
+match wins. Handler: `app/Api/Handlers/MessageState.php`.
 
 ### `POST /bulk-jobs` — scope `bulk:write`, idempotent
 ```json
