@@ -73,6 +73,7 @@ final class FailedResendHttpTest extends TestCase
         $jobs->execute([$this->customerId]);
         foreach ($jobs->fetchAll(\PDO::FETCH_COLUMN) as $jobId) {
             $db->prepare('DELETE FROM ellsms_failed_resends WHERE source_job_id = ? OR new_job_id = ?')->execute([(int)$jobId, (int)$jobId]);
+            $db->prepare('DELETE FROM ellsms_bulk_billing_issues WHERE job_id = ?')->execute([(int)$jobId]);
             $db->prepare('DELETE FROM ellsms_bulk_items WHERE job_id = ?')->execute([(int)$jobId]);
             $db->prepare('DELETE FROM ellsms_bulk_jobs WHERE id = ?')->execute([(int)$jobId]);
             $db->prepare("DELETE FROM ellsms_wallet_reservations WHERE reference_type = 'bulk_job' AND reference_id = ?")->execute([(string)$jobId]);
@@ -83,6 +84,7 @@ final class FailedResendHttpTest extends TestCase
         $db->prepare('DELETE FROM ellsms_wallet_accounts WHERE organization_id = ?')->execute([$this->orgId]);
         $db->prepare('DELETE FROM ellsms_organizations WHERE id = ?')->execute([$this->orgId]);
         foreach ([$this->customerId, $this->adminId] as $id) {
+            $db->prepare('DELETE FROM ellsms_notifications WHERE user_id = ?')->execute([$id]);
             $db->prepare('DELETE FROM ellsms_audit_log WHERE user_id = ?')->execute([$id]);
             $db->prepare('DELETE FROM ellsms_wallet_transactions WHERE user_id = ?')->execute([$id]);
             $db->prepare('DELETE FROM ellsms_wallet_accounts WHERE user_id = ?')->execute([$id]);
@@ -204,5 +206,29 @@ final class FailedResendHttpTest extends TestCase
         $this->assertStringNotContainsString('نرسیده به گوشی', $customer['body']);
         $this->assertStringNotContainsString('کد سرویس‌دهنده', $customer['body']);
         $this->assertStringContainsString('text 0', $customer['body'], 'a customer cannot filter by code');
+    }
+    public function testTheFinancialLogShowsABulkSendAsOneRowAndFlagsAMismatchToTheAdminOnly(): void
+    {
+        $jobId = $this->seedJob(); // one row 'sent' without a charge: a mismatch
+        wallet_release_reservation('bulk_job', (string)$jobId);
+        $this->assertNotNull(bulk_billing_check_job($jobId));
+
+        $admin = $this->request('GET', '/financial-log.php?user_id=' . $this->customerId, $this->sessionFor($this->adminId));
+        $this->assertSame(200, $admin['code'], $admin['body']);
+        $this->assertStringContainsString('هزینه‌ی ارسال گروهی', $admin['body']);
+        $this->assertStringContainsString('⚠ مغایرت', $admin['body']);
+        $this->assertStringContainsString('/messages/bulk-jobs?id=' . $jobId, $admin['body']);
+        $csv = $this->request('GET', '/financial-log.php?user_id=' . $this->customerId . '&export=csv', $this->sessionFor($this->adminId));
+        $this->assertSame(200, $csv['code']);
+        $this->assertStringContainsString('هزینه‌ی ارسال گروهی', $csv['body']);
+        $this->assertStringContainsString('مغایرت', $csv['body']);
+
+        $customer = $this->request('GET', '/financial-log.php', $this->sessionFor($this->customerId, $this->orgId));
+        $this->assertSame(200, $customer['code']);
+        $this->assertStringContainsString('هزینه‌ی ارسال گروهی', $customer['body']);
+        $this->assertStringNotContainsString('مغایرت', $customer['body'], 'the flag is for admins only');
+
+        $jobPage = $this->request('GET', '/bulk-job.php?id=' . $jobId, $this->sessionFor($this->adminId));
+        $this->assertStringContainsString('مغایرت مالی این ارسال', $jobPage['body']);
     }
 }

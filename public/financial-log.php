@@ -14,9 +14,18 @@ $active = 'financial_log';
 $filters = financial_log_filters($_GET, $isAdmin ? null : (int)$me['id'],
     jalali_request_to_gregorian('from'), jalali_request_to_gregorian('to'));
 [$whereSql, $params] = financial_log_where($filters, $isAdmin ? financial_log_username_id($filters) : null);
+// A bulk send is one row: the sum of its per-message charges (app/FinancialLog.php, docs/financial-log.md).
+$grouped = financial_log_grouped($filters);
+// Admins: a bulk send whose figures did not add up is flagged on its row (app/BulkBilling.php).
+$billingIssues = static fn(array $rows): array => $isAdmin
+    ? bulk_billing_issues_for_jobs(array_map(static fn(array $r): int => (int)$r['reference_id'],
+        array_filter($rows, static fn(array $r): bool => ($r['reference_type'] ?? '') === 'bulk_job')))
+    : [];
+$issueOf = static fn(array $r, array $issues): ?string => ($r['reference_type'] ?? '') === 'bulk_job' ? ($issues[(int)$r['reference_id']] ?? null) : null;
 
 if (($_GET['export'] ?? '') === 'csv') {
-    $rows = financial_log_rows($whereSql, $params, 50000, 0);
+    $rows = financial_log_rows($whereSql, $params, 50000, 0, $grouped);
+    $issues = $billingIssues($rows);
     $names = backend_usernames_by_ids(financial_log_user_ids($rows));
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="financial-log-' . date('Ymd-His') . '.csv"');
@@ -29,8 +38,9 @@ if (($_GET['export'] ?? '') === 'csv') {
         fputcsv($out, array_merge(
             [(int)$r['id'], jdate_from_utc((string)$r['created_at'])],
             $isAdmin ? [$names[(int)$r['user_id']] ?? ('#' . (int)$r['user_id'])] : [],
-            [financial_log_type_label((string)$r['type']), $amount > 0 ? $amount : '', $amount < 0 ? -$amount : '',
-             (int)$r['balance_before'], (int)$r['balance_after'], financial_log_description($r, $names)],
+            [financial_log_row_label($r), $amount > 0 ? $amount : '', $amount < 0 ? -$amount : '',
+             (int)$r['balance_before'], (int)$r['balance_after'],
+             financial_log_description($r, $names) . (($issue = $issueOf($r, $issues)) !== null ? ' — ⚠ مغایرت: ' . $issue : '')],
             $isAdmin ? [$actor > 0 ? ($names[$actor] ?? ('#' . $actor)) : ''] : []
         ), ',', '"', '\\');
     }
@@ -39,9 +49,10 @@ if (($_GET['export'] ?? '') === 'csv') {
 }
 
 $perPage = 50;
-$totals = financial_log_totals($whereSql, $params);
+$totals = financial_log_totals($whereSql, $params, $grouped);
 [$page, $offset] = pager_offset($totals['count'], $perPage);
-$rows = financial_log_rows($whereSql, $params, $perPage, $offset);
+$rows = financial_log_rows($whereSql, $params, $perPage, $offset, $grouped);
+$issues = $billingIssues($rows);
 $names = backend_usernames_by_ids(financial_log_user_ids($rows));
 
 $query = array_filter([
@@ -60,7 +71,8 @@ require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card">
   <h2>تاریخچه مالی</h2>
-  <p class="hint">هر افزایش و کاهش اعتبار<?= $isAdmin ? ' حساب‌ها' : ' حساب شما' ?> با مانده‌ی قبل و بعد از آن اینجا ثبت می‌شود: خرید اعتبار، هزینه‌ی ارسال، بازگشت رزرو ارسال‌نشده، انتقال اعتبار، سود نمایندگی و تغییرات دستی مدیر. مبالغ به ریال است.</p>
+  <p class="hint">هر افزایش و کاهش اعتبار<?= $isAdmin ? ' حساب‌ها' : ' حساب شما' ?> با مانده‌ی قبل و بعد از آن اینجا ثبت می‌شود: خرید اعتبار، هزینه‌ی ارسال، بازگشت رزرو ارسال‌نشده، انتقال اعتبار، سود نمایندگی و تغییرات دستی مدیر. مبالغ به ریال است.
+    هر ارسال گروهی (نظیر به نظیر، هوشمند، تدریجی، …) یک ردیف «هزینه‌ی ارسال گروهی» است: جمع هزینه‌ی پیامک‌های ارسال‌شده‌ی آن، و مانده‌ی قبل و بعد از آن ارسال.</p>
   <form method="get" class="toolbar">
     <?php if ($isAdmin): ?>
       <label>نام کاربری<input type="text" name="username" value="<?= e($filters['username']) ?>" class="ltr" style="width:140px"></label>
@@ -104,12 +116,14 @@ require __DIR__ . '/../app/views/header.php';
           <td class="num"><?= to_persian_digits((string)(int)$r['id']) ?></td>
           <td class="num"><?= e(jdate_from_utc((string)$r['created_at'])) ?></td>
           <?php if ($isAdmin): ?><td><a href="/financial-log.php?user_id=<?= $uid ?>"><?= e($names[$uid] ?? ('#' . $uid)) ?></a></td><?php endif; ?>
-          <td><span class="badge <?= $amount > 0 ? 'badge-ok' : ($amount < 0 ? 'badge-off' : '') ?>"><?= e(financial_log_type_label((string)$r['type'])) ?></span></td>
+          <td><span class="badge <?= $amount > 0 ? 'badge-ok' : ($amount < 0 ? 'badge-off' : '') ?>"><?= e(financial_log_row_label($r)) ?></span></td>
           <td class="num"<?= $amount > 0 ? ' style="color:var(--ok)"' : '' ?>><?= $amount > 0 ? '+' . $money($amount) : '—' ?></td>
           <td class="num"<?= $amount < 0 ? ' style="color:var(--err)"' : '' ?>><?= $amount < 0 ? '−' . $money(-$amount) : '—' ?></td>
           <td class="num"><?= $money((int)$r['balance_before']) ?></td>
           <td class="num"><strong><?= $money((int)$r['balance_after']) ?></strong></td>
-          <td><?= e(financial_log_description($r, $names)) ?: '—' ?></td>
+          <td><?php $desc = financial_log_description($r, $names); ?>
+            <?php if (($r['reference_type'] ?? '') === 'bulk_job' && $desc !== ''): ?><a href="/messages/bulk-jobs?id=<?= (int)$r['reference_id'] ?>"><?= e($desc) ?></a><?php else: ?><?= e($desc) ?: '—' ?><?php endif; ?>
+            <?php if (($issue = $issueOf($r, $issues)) !== null): ?><div class="flash flash-error" style="margin:4px 0 0;padding:4px 8px">⚠ مغایرت: <?= e($issue) ?></div><?php endif; ?></td>
           <?php if ($isAdmin): ?><td><?= $actor > 0 ? e($names[$actor] ?? ('#' . $actor)) : '<span class="hint">سیستم</span>' ?></td><?php endif; ?>
         </tr>
       <?php endforeach; ?>

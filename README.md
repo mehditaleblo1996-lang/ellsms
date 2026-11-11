@@ -329,6 +329,10 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 - **KYC profile layer** (Users page for admins, Profile page for self-service) — father's name, address, and two document photo uploads (ID card + a second document such as a passport) live entirely in ELLSMS's own tables, layered on top of a granted-access account. ELLSMS does not create or edit the backend's own `user_` row for this — see "Login model" above for why. Photos are stored outside the web root (`storage/kyc/`, gitignored) and served only through `public/kyc-photo.php`, which checks the viewer is either that user or an admin before streaming anything.
 - **SMS-based 2FA** — admin can enable it per user (Users → edit) or for everyone at once (Users → "فعال‌سازی ورود دومرحله‌ای برای همه"). When enabled, a correct password redirects to a 6-digit code sent to the account's `user_.mobile` (5-minute expiry, 5 wrong attempts before being sent back to login, 60-second resend cooldown) before a session is actually created.
 
+## Financial log (تاریخچه مالی)
+
+**«مالی» → «تاریخچه مالی»** (`/financial-log.php`) lists every increase and decrease of the balance with the balance before and after, from the wallet ledger; admins see every account. A **bulk send is one row** («هزینه‌ی ارسال گروهی» — the sum of its per-message charges, with the balance before and after the send); the per-message charges stay in the ledger. Every charged bulk send is checked when it finishes or is cancelled (sent = charged = frozen prices, reservation released); a mismatch is flagged on its row and job page (admins), sent to the admins as a panel notification and to the support Telegram group. No API route. Migration `db/migrations/2026_11_17_bulk_billing_issues.sql`. See [`docs/financial-log.md`](docs/financial-log.md).
+
 ## Buying credit — ZarinPal
 
 Any logged-in user can buy credit from `/buy-credit.php` — pick a preset package or a custom amount, pay through ZarinPal, and credit lands on `user_.currentcredit` automatically once the payment is confirmed. Built against ZarinPal's real v4 REST API (endpoints and request/response shapes verified against their own sample code and official docs, not reconstructed from memory) — `app/zarinpal.php` handles the request/verify calls, `public/zarinpal-callback.php` is where ZarinPal redirects the user back to.
@@ -620,6 +624,7 @@ updated in the same change** — see `CLAUDE.md`.
 [cost-preview](docs/cost-preview.md) ·
 [rial-currency](docs/rial-currency.md) ·
 [wallet-architecture](docs/wallet-architecture.md) ·
+[financial-log](docs/financial-log.md) ·
 [delivery-based-billing](docs/delivery-based-billing.md) ·
 [ai-billing](docs/ai-billing.md) ·
 [manual-payments](docs/manual-payments.md) ·

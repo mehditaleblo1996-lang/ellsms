@@ -9,7 +9,9 @@
  *
  * Note on sends: a send first reserves its cost (available balance drops, no ledger row), then the
  * 'sms_debit' row records what was actually spent and 'reservation_release' gives back the part that
- * was never sent. That is why an sms_debit row's balance_before equals its balance_after.
+ * was never sent. That is why an sms_debit row's balance_before equals its balance_after. *
+ * A bulk send is shown as ONE row (financial_log_grouped(), financial_log_fold_bulk_rows(),
+ * docs/financial-log.md); app/BulkBilling.php flags a send whose charges do not add up.
  */
 
 declare(strict_types=1);
@@ -93,10 +95,28 @@ function financial_log_username_id(array $filters): ?int {
     return $id !== false ? (int)$id : 0;
 }
 
+/**
+ * Whether a bulk send is shown as ONE row (docs/financial-log.md). A bulk job charges each message on
+ * its own ledger row (sms_debit, reference bulk_job:{id}) and gives back what it did not spend in one
+ * reservation_release row; the log sums those into a single «هزینه‌ی ارسال گروهی» row. Only when the
+ * filter could show both kinds or just the charges — a filter for releases or increases alone lists
+ * the raw rows. Other sends (direct, scheduled, …) were always one row each and stay so.
+ */
+function financial_log_grouped(array $filters): bool {
+    return in_array($filters['type'], ['', 'sms_debit'], true) && in_array($filters['direction'], ['', 'out'], true);
+}
+
+/** SQL: the row's group — 'j<job id>' for a bulk job's charges and release, 't<ledger id>' otherwise. */
+const FINANCIAL_LOG_GROUP_SQL = "CASE WHEN t.reference_type = 'bulk_job' AND t.type IN ('sms_debit','reservation_release')
+                                      THEN CONCAT('j', t.reference_id) ELSE CONCAT('t', t.id) END";
+
 /** @return array{count:int, increase:int, decrease:int} decrease is a positive total */
-function financial_log_totals(string $whereSql, array $params): array {
-    $st = db()->prepare('SELECT COUNT(*) n,
-                                COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) inc,
+function financial_log_totals(string $whereSql, array $params, bool $grouped = false): array {
+    // Grouped, a bulk job's release is folded into its row (it only returns unspent reservation), so
+    // it is not an increase of its own; the job's charges stay in the decrease total.
+    $folded = $grouped ? " AND NOT (t.reference_type = 'bulk_job' AND t.type = 'reservation_release')" : '';
+    $st = db()->prepare('SELECT ' . ($grouped ? 'COUNT(DISTINCT ' . FINANCIAL_LOG_GROUP_SQL . ')' : 'COUNT(*)') . ' n,
+                                COALESCE(SUM(CASE WHEN t.amount > 0' . $folded . ' THEN t.amount ELSE 0 END), 0) inc,
                                 COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) dec_
                          FROM ellsms_wallet_transactions t' . $whereSql);
     $st->execute($params);
@@ -104,13 +124,117 @@ function financial_log_totals(string $whereSql, array $params): array {
     return ['count' => (int)($row['n'] ?? 0), 'increase' => (int)($row['inc'] ?? 0), 'decrease' => (int)($row['dec_'] ?? 0)];
 }
 
-function financial_log_rows(string $whereSql, array $params, int $limit, int $offset): array {
-    $st = db()->prepare('SELECT t.id, t.user_id, t.type, t.amount, t.balance_before, t.balance_after, t.reference_type,
-                                t.reference_id, t.metadata, t.actor_user_id, t.created_at
+function financial_log_rows(string $whereSql, array $params, int $limit, int $offset, bool $grouped = false): array {
+    if (!$grouped) {
+        $st = db()->prepare('SELECT t.id, t.user_id, t.type, t.amount, t.balance_before, t.balance_after, t.reference_type,
+                                    t.reference_id, t.metadata, t.actor_user_id, t.created_at
+                             FROM ellsms_wallet_transactions t' . $whereSql . '
+                             ORDER BY t.id DESC LIMIT ' . max(1, $limit) . ' OFFSET ' . max(0, $offset));
+        $st->execute($params);
+        return $st->fetchAll();
+    }
+    // One row per group; for a single ledger row every MAX() is just that row's value.
+    $st = db()->prepare('SELECT ' . FINANCIAL_LOG_GROUP_SQL . ' gk, MAX(t.id) id, MAX(t.user_id) user_id, MAX(t.type) type,
+                                SUM(CASE WHEN t.reference_type = \'bulk_job\' AND t.type = \'reservation_release\' THEN 0 ELSE t.amount END) amount,
+                                SUM(t.type = \'sms_debit\') debit_count,
+                                MAX(t.balance_before) balance_before, MAX(t.balance_after) balance_after,
+                                MAX(t.reference_type) reference_type, MAX(t.reference_id) reference_id, MAX(t.metadata) metadata,
+                                MAX(t.actor_user_id) actor_user_id, MAX(t.created_at) created_at
                          FROM ellsms_wallet_transactions t' . $whereSql . '
-                         ORDER BY t.id DESC LIMIT ' . max(1, $limit) . ' OFFSET ' . max(0, $offset));
+                         GROUP BY gk ORDER BY id DESC LIMIT ' . max(1, $limit) . ' OFFSET ' . max(0, $offset));
     $st->execute($params);
-    return $st->fetchAll();
+    $rows = $st->fetchAll();
+    $jobIds = [];
+    foreach ($rows as $r) {
+        if (str_starts_with((string)$r['gk'], 'j')) $jobIds[] = (string)$r['reference_id'];
+    }
+    return financial_log_fold_bulk_rows($rows, financial_log_bulk_job_facts($jobIds));
+}
+
+/**
+ * Per bulk job, over ALL its ledger rows (not only the filtered ones): its reservation, the balance
+ * right after its release and after its last charge, and its total charge.
+ *
+ * @return array<string, array{reserved:int, active:bool, release_after:?int, last_debit_after:?int, cost:int}>
+ */
+function financial_log_bulk_job_facts(array $jobIds): array {
+    $jobIds = array_values(array_unique(array_map('strval', $jobIds)));
+    if ($jobIds === []) return [];
+    $in = implode(',', array_fill(0, count($jobIds), '?'));
+    $facts = [];
+    foreach ($jobIds as $id) {
+        $facts[$id] = ['reserved' => 0, 'active' => false, 'release_after' => null, 'last_debit_after' => null, 'cost' => 0];
+    }
+    $db = db();
+    $st = $db->prepare("SELECT reference_id, amount, status FROM ellsms_wallet_reservations WHERE reference_type = 'bulk_job' AND reference_id IN ({$in})");
+    $st->execute($jobIds);
+    foreach ($st->fetchAll() as $r) {
+        $facts[(string)$r['reference_id']]['reserved'] = (int)$r['amount'];
+        $facts[(string)$r['reference_id']]['active'] = (string)$r['status'] === 'active';
+    }
+    $st = $db->prepare("SELECT t.reference_id, t.type, t.balance_after, x.total
+                        FROM (SELECT reference_id, type, MAX(id) mid, SUM(amount) total FROM ellsms_wallet_transactions
+                              WHERE reference_type = 'bulk_job' AND type IN ('sms_debit','reservation_release') AND reference_id IN ({$in})
+                              GROUP BY reference_id, type) x
+                        JOIN ellsms_wallet_transactions t ON t.id = x.mid");
+    $st->execute($jobIds);
+    foreach ($st->fetchAll() as $r) {
+        $id = (string)$r['reference_id'];
+        if ($r['type'] === 'reservation_release') {
+            $facts[$id]['release_after'] = (int)$r['balance_after'];
+        } else {
+            $facts[$id]['last_debit_after'] = (int)$r['balance_after'];
+            $facts[$id]['cost'] = -(int)$r['total'];
+        }
+    }
+    return $facts;
+}
+
+/**
+ * Pure: turns each bulk job's group row into one «هزینه‌ی ارسال گروهی» row.
+ *
+ * The money left the available balance when the job RESERVED its cost (no ledger row of its own), and
+ * the per-message charges then took it from the reservation, so their own before/after are equal. The
+ * row therefore shows: after = the balance once the job settled (after its release; while it is still
+ * sending, after its last charge), before = after + what the job cost (finished) or + its reservation
+ * (still sending). Exact when nothing else touched the account while the job ran.
+ */
+function financial_log_fold_bulk_rows(array $rows, array $facts): array {
+    foreach ($rows as &$r) {
+        $isJob = str_starts_with((string)($r['gk'] ?? ''), 'j');
+        unset($r['gk']);
+        if (!$isJob) {
+            unset($r['debit_count']);
+            continue;
+        }
+        $f = $facts[(string)$r['reference_id']] ?? null;
+        $count = (int)($r['debit_count'] ?? 0);
+        unset($r['debit_count']);
+        $r['type'] = 'sms_debit';
+        $meta = ['bulk_group' => true, 'sent' => $count];
+        if ($f !== null) {
+            if ($f['active']) {
+                $after = $f['last_debit_after'] ?? (int)$r['balance_after'];
+                $before = $after + $f['reserved'];
+                $meta['in_progress'] = true;
+            } else {
+                $after = $f['release_after'] ?? $f['last_debit_after'] ?? (int)$r['balance_after'];
+                $before = $after + $f['cost'];
+            }
+            $r['balance_before'] = $before;
+            $r['balance_after'] = $after;
+        }
+        $r['metadata'] = json_encode($meta);
+    }
+    unset($r);
+    return $rows;
+}
+
+/** The type column of a row: a bulk send's single row reads «هزینه‌ی ارسال گروهی». */
+function financial_log_row_label(array $row): string {
+    $meta = json_decode((string)($row['metadata'] ?? ''), true);
+    if (is_array($meta) && !empty($meta['bulk_group'])) return 'هزینه‌ی ارسال گروهی';
+    return financial_log_type_label((string)$row['type']);
 }
 
 /** Pure: every user id $rows name — the account, the admin who acted, the other side of a transfer. */
@@ -167,6 +291,7 @@ function financial_log_description(array $row, array $usernames = []): string {
     if (isset($meta['to_user_id']))   $parts[] = 'به ' . $name((int)$meta['to_user_id']);
     if (isset($meta['from_user_id'])) $parts[] = 'از ' . $name((int)$meta['from_user_id']);
     if (isset($meta['sent']))         $parts[] = to_persian_digits((string)(int)$meta['sent']) . ' پیامک';
+    if (!empty($meta['in_progress'])) $parts[] = 'در حال ارسال';
     if (!empty($meta['clamped']) && ($row['type'] ?? '') === 'manual_debit') {
         $parts[] = 'به‌اندازه‌ی موجودی کسر شد';
     }
