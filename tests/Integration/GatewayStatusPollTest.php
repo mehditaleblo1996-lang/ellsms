@@ -191,6 +191,80 @@ final class GatewayStatusPollTest extends IntegrationTestCase
 
     /* ================= fixtures ================= */
 
+    /* ================= backoff, reopen, PishgamRayan (2026_11_16_pishgamrayan_status_sent.sql) ================= */
+
+    public function testTheWaitBetweenChecksDoublesUpToTheBackoffCap(): void {
+        $noBackoff = ['poll_initial_delay_seconds' => 120, 'poll_backoff_max_seconds' => 0];
+        $this->assertSame(120, gateway_status_poll_gap($noBackoff, 7), 'without a cap every wait is the delay, as before');
+        $status = ['poll_initial_delay_seconds' => 120, 'poll_backoff_max_seconds' => 3600];
+        $this->assertSame([120, 120, 240, 480, 960, 1920, 3600, 3600], array_map(static fn(int $a) => gateway_status_poll_gap($status, $a), [0, 1, 2, 3, 4, 5, 6, 60]));
+    }
+
+    public function testABackedOffRowWaitsItsLongerGapBeforeTheNextCheck(): void {
+        $gatewayId = $this->makeStatusGateway('/status/sent');
+        db()->prepare('UPDATE ellsms_sms_gateway_status_connectors SET poll_initial_delay_seconds = 120, poll_max_attempts = 0, poll_backoff_max_seconds = 3600 WHERE gateway_id = ?')
+            ->execute([$gatewayId]);
+        gateway_cache_reset();
+        $itemId = $this->makeSentItem($gatewayId, 'pmid-backoff');
+        // Checked 3 times, last 5 minutes ago: the next check is due 8 minutes (120·2²) after the last.
+        db()->prepare('UPDATE ellsms_bulk_items SET delivery_attempts = 3, delivery_checked_at = DATE_SUB(NOW(), INTERVAL 300 SECOND) WHERE id = ?')->execute([$itemId]);
+        gateway_status_poll_pass();
+        $this->assertSame(3, (int)$this->item($itemId)['delivery_attempts'], 'not due yet: 300 s < 480 s');
+
+        db()->prepare('UPDATE ellsms_bulk_items SET delivery_checked_at = DATE_SUB(NOW(), INTERVAL 500 SECOND) WHERE id = ?')->execute([$itemId]);
+        gateway_status_poll_pass();
+        $this->assertSame(4, (int)$this->item($itemId)['delivery_attempts'], 'due after 480 s');
+    }
+
+    public function testReopenSetsRowsTheOldMappingClosedBackToTheNewStateAndAPollThenDeliversThem(): void {
+        $gatewayId = $this->makeStatusGateway('/status/delivered');
+        $closed = $this->makeSentItem($gatewayId, 'pmid-reopen', 'failed');
+        $delivered = $this->makeSentItem($gatewayId, 'pmid-kept', 'delivered');
+        $otherCode = $this->makeSentItem($gatewayId, 'pmid-other', 'failed');
+        db()->prepare("UPDATE ellsms_bulk_items SET provider_status = 'UNDELIV' WHERE id IN (?, ?)")->execute([$closed, $delivered]);
+        db()->prepare("UPDATE ellsms_bulk_items SET provider_status = 'REJECTD' WHERE id = ?")->execute([$otherCode]);
+
+        // The mapping now says UNDELIV is not final.
+        db()->prepare('UPDATE ellsms_sms_gateway_status_connectors SET status_mapping_json = ? WHERE gateway_id = ?')
+            ->execute([json_encode(['DELIVRD' => 'delivered', 'UNDELIV' => 'sent', 'REJECTD' => 'failed']), $gatewayId]);
+        db()->prepare('UPDATE ellsms_sms_gateways SET config_version = config_version + 1 WHERE id = ?')->execute([$gatewayId]);
+        gateway_cache_reset();
+
+        $dry = gateway_status_reopen($gatewayId, false, 100);
+        $this->assertSame(1, $dry['bulk_item']);
+        $this->assertSame('failed', $this->item($closed)['delivery_status'], 'a dry run changes nothing');
+
+        $applied = gateway_status_reopen($gatewayId, true, 100);
+        $this->assertSame(1, $applied['bulk_item']);
+        $this->assertSame('sent', $this->item($closed)['delivery_status']);
+        $this->assertSame('delivered', $this->item($delivered)['delivery_status']);
+        $this->assertSame('failed', $this->item($otherCode)['delivery_status'], 'a code that is still final stays failed');
+        $this->assertSame(0, gateway_status_reopen($gatewayId, true, 100)['bulk_item'], 'a rerun finds nothing');
+
+        gateway_status_poll_pass();
+        $this->assertSame('delivered', $this->item($closed)['delivery_status'], 'a reopened row can now be delivered');
+        $this->assertSame('DELIVRD', $this->item($closed)['provider_status']);
+    }
+
+    public function testPishgamRayanTreatsEveryCodeButTenAsSentAndBacksOff(): void {
+        $row = db()->query("SELECT sc.status_mapping_json, sc.poll_max_attempts, sc.poll_max_age_seconds, sc.poll_backoff_max_seconds, g.id
+                            FROM ellsms_sms_gateway_status_connectors sc JOIN ellsms_sms_gateways g ON g.id = sc.gateway_id
+                            WHERE g.code = 'pishgamrayan'")->fetch();
+        $this->assertNotFalse($row, 'seeded by 2026_10_04_pishgamrayan_gateway.sql');
+        $map = gateway_status_mapping_compile(json_decode((string)$row['status_mapping_json'], true));
+        foreach (['-1', '0', '1', '2', '3', '4', '5', '13'] as $code) {
+            $this->assertSame('sent', gateway_status_map($map, $code), "code {$code}");
+        }
+        $this->assertSame('delivered', gateway_status_map($map, '10'));
+        $this->assertSame(0, (int)$row['poll_max_attempts']);
+        $this->assertSame(172800, (int)$row['poll_max_age_seconds']);
+        $this->assertSame(3600, (int)$row['poll_backoff_max_seconds']);
+
+        $this->assertSame('4 — نرسیده به گوشی', gateway_provider_status_label((int)$row['id'], '4'));
+        $this->assertSame('77', gateway_provider_status_label((int)$row['id'], '77'), 'an unknown code shows as is');
+        $this->assertSame('', gateway_provider_status_label((int)$row['id'], null));
+    }
+
     private function makeStatusGateway(string $path): int {
         $db = db();
         $code = 'st_' . bin2hex(random_bytes(4));

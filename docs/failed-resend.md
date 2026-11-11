@@ -20,6 +20,10 @@ user stopped those on purpose):
 
 A row whose delivery is `delivered` is never resent.
 
+PishgamRayan's status codes other than `10` are «ارسال‌شده» (`sent`), not failures
+(`docs/sms-gateway-connectors.md` §PishgamRayan), so its undelivered messages are not resent; only its
+send errors are.
+
 ## When it is offered
 
 - The job type is `p2p`, `gradual` or `smart` (plain number + text rows). Aimed sends with masked

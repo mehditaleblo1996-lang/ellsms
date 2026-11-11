@@ -298,6 +298,9 @@ function gateway_compile(int $gatewayId): ?array {
                 'poll_initial_delay_seconds' => (int)$status['poll_initial_delay_seconds'],
                 'poll_max_attempts' => (int)$status['poll_max_attempts'],
                 'poll_max_age_seconds' => (int)$status['poll_max_age_seconds'],
+                // 0 (or before 2026_11_16_pishgamrayan_status_sent.sql): no backoff, every check
+                // waits poll_initial_delay_seconds — gateway_status_poll_gap().
+                'poll_backoff_max_seconds' => (int)($status['poll_backoff_max_seconds'] ?? 0),
                 'parameters'    => $parameters['status'],
                 // Whether this connector can ask about many messages at once, decided from the
                 // COMPILED parameters rather than from a flag an admin could set inconsistently with

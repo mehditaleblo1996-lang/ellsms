@@ -25,6 +25,54 @@ declare(strict_types=1);
 /** How long after a send the first status poll is worthwhile, when the connector states no preference. */
 const GATEWAY_STATUS_DEFAULT_DELAY = 30;
 
+/** Exponent cap for the poll backoff, so delay * 2^n can never overflow. */
+const GATEWAY_STATUS_BACKOFF_MAX_DOUBLINGS = 20;
+
+/**
+ * Seconds to wait before the next status check of a row that has been checked $attempts times.
+ *
+ * Without a backoff (poll_backoff_max_seconds = 0, the default) every check waits
+ * poll_initial_delay_seconds, as it always has. With one, the wait doubles after each check —
+ * delay, 2·delay, 4·delay, … — up to poll_backoff_max_seconds. That lets a gateway whose
+ * "not delivered yet" codes are not final (PishgamRayan, docs/sms-gateway-connectors.md) keep asking
+ * for days without asking about every undelivered message every couple of minutes.
+ * gateway_status_poll_gap_sql() is the same formula in SQL; the two must agree.
+ */
+function gateway_status_poll_gap(array $status, int $attempts): int {
+    $delay = (int)($status['poll_initial_delay_seconds'] ?? GATEWAY_STATUS_DEFAULT_DELAY);
+    $max = (int)($status['poll_backoff_max_seconds'] ?? 0);
+    if ($max <= 0 || $attempts <= 0) {
+        return $delay;
+    }
+    return (int)min($max, $delay * (2 ** min($attempts - 1, GATEWAY_STATUS_BACKOFF_MAX_DOUBLINGS)));
+}
+
+/** gateway_status_poll_gap() over a status connector `sc` and a row's attempt column. */
+function gateway_status_poll_gap_sql(string $attemptsColumn, bool $withBackoff): string {
+    if (!$withBackoff) {
+        return 'sc.poll_initial_delay_seconds';
+    }
+    return "IF(sc.poll_backoff_max_seconds > 0 AND {$attemptsColumn} > 0,
+                LEAST(sc.poll_backoff_max_seconds,
+                      sc.poll_initial_delay_seconds * POW(2, LEAST(CAST({$attemptsColumn} AS SIGNED) - 1, " . GATEWAY_STATUS_BACKOFF_MAX_DOUBLINGS . "))),
+                sc.poll_initial_delay_seconds)";
+}
+
+/** Whether 2026_11_16_pishgamrayan_status_sent.sql has added poll_backoff_max_seconds. */
+function gateway_status_backoff_available(): bool {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $st = db()->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE()
+                               AND table_name = 'ellsms_sms_gateway_status_connectors' AND column_name = 'poll_backoff_max_seconds'");
+            $has = (int)$st->fetchColumn() === 1;
+        } catch (Throwable) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
 /** Maximum rows one polling pass will claim. Bounded so one pass cannot monopolise a worker tick. */
 function gateway_status_batch_size(): int {
     return max(1, (int)(env('SMS_GATEWAY_STATUS_BATCH', '100') ?? '100'));
@@ -55,6 +103,9 @@ function gateway_status_poll_pass(): array {
     // filtered with its own gateway's delay/age/attempt policy before it is allowed to consume a slot.
     // gateway_status_row_is_due() remains below as a defensive second check for races/config reloads.
     $limit = gateway_status_batch_size();
+    $withBackoff = gateway_status_backoff_available();
+    $bulkGap = gateway_status_poll_gap_sql('bi.delivery_attempts', $withBackoff);
+    $attemptGap = gateway_status_poll_gap_sql('ma.delivery_attempts', $withBackoff);
 
     $due = $db->prepare(
         "SELECT source, id, gateway_id, provider_message_id, destination, delivery_status,
@@ -76,7 +127,7 @@ function gateway_status_poll_pass(): array {
                AND (sc.poll_max_age_seconds = 0
                     OR TIMESTAMPDIFF(SECOND, bi.created_at, NOW()) <= sc.poll_max_age_seconds)
                AND TIMESTAMPDIFF(SECOND, COALESCE(bi.delivery_checked_at, bi.created_at), NOW())
-                    >= sc.poll_initial_delay_seconds
+                    >= {$bulkGap}
 
              UNION ALL
 
@@ -95,7 +146,7 @@ function gateway_status_poll_pass(): array {
                AND (sc.poll_max_age_seconds = 0
                     OR TIMESTAMPDIFF(SECOND, ma.attempted_at, NOW()) <= sc.poll_max_age_seconds)
                AND TIMESTAMPDIFF(SECOND, COALESCE(ma.delivery_checked_at, ma.attempted_at), NOW())
-                    >= sc.poll_initial_delay_seconds
+                    >= {$attemptGap}
          ) AS eligible
          ORDER BY due_reference ASC, source ASC, id ASC
          LIMIT " . $limit
@@ -148,7 +199,7 @@ function gateway_status_poll_pass(): array {
         foreach (gateway_status_group_rows($connector, $due) as $group) {
             $claimed = [];
             foreach ($group['rows'] as $row) {
-                if (gateway_status_claim((string)$row['source'], (int)$row['id'], $status)) {
+                if (gateway_status_claim((string)$row['source'], (int)$row['id'], $status, (int)$row['delivery_attempts'])) {
                     $claimed[] = $row;
                     $stats['claimed']++;
                 }
@@ -442,7 +493,7 @@ function gateway_status_row_is_due(array $row, array $status): bool {
     // A configured 0 means "no delay" and is honoured as such — it is a deliberate choice an admin
     // made, and quietly substituting 30 would make the field lie. The default only applies when the
     // connector has no value at all.
-    $delay = (int)($status['poll_initial_delay_seconds'] ?? GATEWAY_STATUS_DEFAULT_DELAY);
+    $delay = gateway_status_poll_gap($status, $attempts);
     $lastCheck = $row['delivery_checked_at'] === null ? null : (strtotime((string)$row['delivery_checked_at']) ?: null);
     $reference = $lastCheck ?? $createdAt;
     return $reference === 0 || (time() - $reference) >= $delay;
@@ -454,8 +505,8 @@ function gateway_status_row_is_due(array $row, array $status): bool {
  * The WHERE clause restates the same "not checked recently" condition the selection used, so this is
  * a genuine compare-and-swap: if another worker claimed the row in between, rowCount() is 0.
  */
-function gateway_status_claim(string $source, int $rowId, array $status): bool {
-    $delay = (int)($status['poll_initial_delay_seconds'] ?? GATEWAY_STATUS_DEFAULT_DELAY);
+function gateway_status_claim(string $source, int $rowId, array $status, int $attempts = 0): bool {
+    $delay = gateway_status_poll_gap($status, $attempts);
     $table = gateway_status_table($source);
     $claim = db()->prepare(
         "UPDATE {$table}
@@ -568,4 +619,90 @@ function gateway_status_provider_token(?string $providerStatus): ?string {
     // Bounded to the column width (VARCHAR(60)) rather than trusted: the value is provider-supplied,
     // and a pathological response must not turn into a truncation error that fails the whole pass.
     return $token === '' ? null : mb_strimwidth($token, 0, 60, '');
+}
+/**
+ * Reopens rows a gateway's OLD status mapping closed: a row whose delivery_status is final
+ * (failed/rejected/expired) while its stored provider token now maps to a non-final state goes back
+ * to that state, so the poller checks it again (within poll_max_age_seconds) and a later "delivered"
+ * can be recorded. Used once after a mapping change — 2026_11_16_pishgamrayan_status_sent.sql,
+ * cron/gateway-status-reopen.php. Walks each table by primary key in $chunk-sized ranges, so no
+ * statement locks more than one chunk. Delivery refunds already made are not reversed.
+ *
+ * @return array{tokens: array<string,string>, bulk_item: int, attempt: int}
+ */
+function gateway_status_reopen(int $gatewayId, bool $apply, int $chunk = 5000): array {
+    $connector = gateway_compiled($gatewayId);
+    $out = ['tokens' => [], 'bulk_item' => 0, 'attempt' => 0];
+    if ($connector === null || $connector['status'] === null) {
+        return $out;
+    }
+    $byState = [];
+    foreach ($connector['status']['statuses'] as $token => $state) {
+        if (!gateway_state_is_terminal((string)$state)) {
+            $byState[(string)$state][] = (string)$token;
+            $out['tokens'][(string)$token] = (string)$state;
+        }
+    }
+    if ($byState === []) {
+        return $out;
+    }
+    $db = db();
+    foreach (['bulk_item' => ['ellsms_bulk_items', "status = 'sent'"], 'attempt' => ['ellsms_message_attempts', "status = 'accepted'"]] as $source => [$table, $sentSql]) {
+        $range = $db->prepare("SELECT MIN(id), MAX(id) FROM {$table} WHERE gateway_id = ?");
+        $range->execute([$gatewayId]);
+        [$min, $max] = $range->fetch(PDO::FETCH_NUM) ?: [null, null];
+        if ($min === null) {
+            continue;
+        }
+        for ($from = (int)$min; $from <= (int)$max; $from += $chunk) {
+            foreach ($byState as $state => $tokens) {
+                $in = implode(',', array_fill(0, count($tokens), '?'));
+                $where = "id BETWEEN ? AND ? AND gateway_id = ? AND {$sentSql}
+                          AND delivery_status IN ('failed','rejected','expired') AND LOWER(provider_status) IN ({$in})";
+                $params = array_merge([$from, $from + $chunk - 1, $gatewayId], $tokens);
+                if ($apply) {
+                    $st = $db->prepare("UPDATE {$table} SET delivery_status = ? WHERE {$where}");
+                    $st->execute(array_merge([$state], $params));
+                    $out[$source] += $st->rowCount();
+                } else {
+                    $st = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE {$where}");
+                    $st->execute($params);
+                    $out[$source] += (int)$st->fetchColumn();
+                }
+            }
+        }
+    }
+    if ($apply && ($out['bulk_item'] + $out['attempt']) > 0) {
+        Logger::info('gateway.status.reopened', ['gateway_id' => $gatewayId, 'bulk_item' => $out['bulk_item'], 'attempt' => $out['attempt']]);
+    }
+    return $out;
+}
+
+/** Meanings of providers' own status codes, shown next to the raw code to admins (by gateway code). */
+const GATEWAY_PROVIDER_STATUS_LABELS = [
+    'pishgamrayan' => [
+        '-1' => 'وجود ندارد', '0' => 'در انتظار ارسال', '1' => 'ارسال به مخابرات', '2' => 'نرسیده به مخابرات',
+        '3' => 'لیست سیاه', '4' => 'نرسیده به گوشی', '5' => 'رسیده به گوشی جزئی', '10' => 'رسیده به گوشی',
+        '13' => 'خطا در ارسال',
+    ],
+];
+
+/** "4 — نرسیده به گوشی" for a known code of the gateway, else the raw code; '' when there is none. */
+function gateway_provider_status_label(?int $gatewayId, ?string $token): string {
+    $token = trim((string)$token);
+    if ($token === '') {
+        return '';
+    }
+    static $codes = null;
+    if ($codes === null) {
+        $codes = [];
+        try {
+            foreach (db()->query('SELECT id, code FROM ellsms_sms_gateways') as $g) {
+                $codes[(int)$g['id']] = (string)$g['code'];
+            }
+        } catch (Throwable) {
+        }
+    }
+    $meaning = GATEWAY_PROVIDER_STATUS_LABELS[$codes[(int)$gatewayId] ?? ''][$token] ?? null;
+    return $meaning !== null ? $token . ' — ' . $meaning : $token;
 }

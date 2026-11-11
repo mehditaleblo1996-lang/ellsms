@@ -150,6 +150,10 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
                     if (!$showDelivery) {
                         $csvRow[6] = export_send_status($kind, $r);
                     }
+                    // The provider's own status code (column 9) is for admins only, as in the panel.
+                    if (empty($filters['is_admin'])) {
+                        $csvRow[9] = '';
+                    }
                     fputcsv($out, array_merge([$source['label']], export_csv_columns($csvRow, 0, $showDelivery)));
                     $cursor = (int)$r['id'];
                     $written++;

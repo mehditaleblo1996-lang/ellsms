@@ -183,4 +183,26 @@ final class FailedResendHttpTest extends TestCase
         $this->assertSame($this->adminId, (int)$log['actor_user_id']);
         $this->assertSame($this->customerId, (int)$log['user_id']);
     }
+    public function testTheProviderCodeIsShownToTheAdminOnly(): void
+    {
+        $jobId = $this->seedJob();
+        $pishgam = (int)db()->query("SELECT id FROM ellsms_sms_gateways WHERE code = 'pishgamrayan'")->fetchColumn();
+        $this->assertGreaterThan(0, $pishgam);
+        db()->prepare("UPDATE ellsms_bulk_items SET gateway_id = ?, provider_status = '4', delivery_status = 'sent' WHERE job_id = ? AND status = 'sent'")
+            ->execute([$pishgam, $jobId]);
+
+        $admin = $this->request('GET', '/bulk-job.php?id=' . $jobId, $this->sessionFor($this->adminId));
+        $this->assertSame(200, $admin['code'], $admin['body']);
+        $this->assertStringContainsString('4 — نرسیده به گوشی', $admin['body']);
+        $filtered = $this->request('GET', '/bulk-job.php?id=' . $jobId . '&pcode=4', $this->sessionFor($this->adminId));
+        $this->assertSame(200, $filtered['code']);
+        $this->assertStringContainsString('text 2', $filtered['body']);
+        $this->assertStringNotContainsString('text 0', $filtered['body'], 'the code filter keeps only code-4 rows');
+
+        $customer = $this->request('GET', '/bulk-job.php?id=' . $jobId . '&pcode=4', $this->sessionFor($this->customerId, $this->orgId));
+        $this->assertSame(200, $customer['code']);
+        $this->assertStringNotContainsString('نرسیده به گوشی', $customer['body']);
+        $this->assertStringNotContainsString('کد سرویس‌دهنده', $customer['body']);
+        $this->assertStringContainsString('text 0', $customer['body'], 'a customer cannot filter by code');
+    }
 }

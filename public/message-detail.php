@@ -173,10 +173,10 @@ require __DIR__ . '/../app/views/header.php';
         <?php /* B9/B32: rendered as a STRING, never a number. A 19-digit reference exceeds exact
                  integer range in both PHP and JavaScript; any numeric handling would round it. */ ?>
         <td class="provider-ref"><?= e((string)($attempt['provider_message_id'] ?? $dash)) ?></td></tr>
-    <tr><th>وضعیت خام درگاه</th>
-        <td class="ltr"><?= $attempt['provider_status'] !== null && $attempt['provider_status'] !== ''
-              ? e((string)$attempt['provider_status'])
-              : '<small style="opacity:.7">ثبت نشده</small>' ?></td>
+    <tr><th><?= is_admin() ? 'کد سرویس‌دهنده' : '' ?></th>
+        <td><?php if (is_admin()): /* the provider's own code: admins only */ ?><?= $attempt['provider_status'] !== null && $attempt['provider_status'] !== ''
+              ? e(gateway_provider_status_label(isset($attempt['gateway_id']) ? (int)$attempt['gateway_id'] : null, (string)$attempt['provider_status']))
+              : '<small style="opacity:.7">ثبت نشده</small>' ?><?php endif; ?></td>
         <th>زمان تلاش ارسال</th><td class="num"><?= $time($attempt['attempted_at'] ?? null) ?></td></tr>
     <tr><th>آخرین استعلام وضعیت</th><td class="num"><?= $time($attempt['delivery_checked_at'] ?? null) ?></td>
         <?php /* B25/B26: delivery_checked_at is when we last ASKED. It is never shown as, or
@@ -261,7 +261,7 @@ require __DIR__ . '/../app/views/header.php';
   <table>
     <tr>
       <th>ردیف</th><th>شماره</th><th>اپراتور</th><th>تعداد پارت</th><th>شناسه اپراتور</th>
-      <th>وضعیت</th><th>تعداد تلاش استعلام</th><th>آخرین استعلام</th><th>زمان تحویل</th>
+      <th>وضعیت</th><?php if (is_admin()): ?><th>کد سرویس‌دهنده</th><?php endif; ?><th>تعداد تلاش استعلام</th><th>آخرین استعلام</th><th>زمان تحویل</th>
     </tr>
     <?php foreach ($items as $i => $item): ?>
       <tr>
@@ -273,12 +273,13 @@ require __DIR__ . '/../app/views/header.php';
         <?php $itemStatus = report_canonical_status($item['delivery_status']); ?>
         <td><span class="badge badge-<?= e($itemStatus['class']) ?>">
               <?= e($itemStatus['label']) ?></span></td>
+        <?php if (is_admin()): ?><td><?= !empty($item['provider_status']) ? e(gateway_provider_status_label(isset($item['gateway_id']) ? (int)$item['gateway_id'] : null, (string)$item['provider_status'])) : e($dash) ?></td><?php endif; ?>
         <td class="num"><?= to_persian_digits((string)(int)($item['delivery_attempts'] ?? 0)) ?></td>
         <td class="num"><?= $time($item['delivery_checked_at'] ?? null) ?></td>
         <td class="num"><?= !empty($item['delivered_at']) ? $time($item['delivered_at']) : $dash ?></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$items): ?><tr><td colspan="9" class="empty">گیرنده‌ای ثبت نشده است.</td></tr><?php endif; ?>
+    <?php if (!$items): ?><tr><td colspan="<?= is_admin() ? 10 : 9 ?>" class="empty">گیرنده‌ای ثبت نشده است.</td></tr><?php endif; ?>
   </table>
   </div>
 </div>
