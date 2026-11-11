@@ -29,7 +29,7 @@ mode and validates it with the same `profile_identity_validate($identity, true)`
 - **Company** (legal only) — legal name, registration no., company national id, economic code
   (required), company type, landline, start / expiry dates.
 - **Address** — country, province, city, street, alley, building no., unit, postal code, full address.
-- **Login** — username, password + repeat (min. 8 characters), and the terms / privacy consent.
+- **Login** — username, password + repeat (8–128 characters with a letter and a digit, not the username; checked while typing — `docs/password-security.md`), and the terms / privacy consent.
 
 The whole «مشخصات مشتری» part is stored on the request as JSON (`profile_json`, the
 `profile_identity_from_request()` shape; read back with `registration_request_identity()`). On

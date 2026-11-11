@@ -24,8 +24,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($do === 'totp_begin') {
-        $hash = backend_user_password_hash($userId);
-        if (!backend_verify_password((string)($_POST['current_password'] ?? ''), (string)$hash)) {
+        if (!current_password_attempt_allowed($userId)) {
+            flash('error', current_password_rate_limit_message());
+        } elseif (!account_password_verify($userId, (string)($_POST['current_password'] ?? ''))) {
             flash('error', 'رمز عبور فعلی درست نیست.');
         } elseif (totp_mfa_key() === null) {
             flash('error', 'کلید رمزگذاری MFA روی سرور تنظیم نشده است. ابتدا MFA_MASTER_KEY یا SMS_GATEWAY_MASTER_KEY را تنظیم کنید.');
@@ -54,8 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Google Authenticator فعال شد. اگر OTP پیامکی هم فعال باشد، در ورود می‌توانید روش موردنظر را انتخاب کنید.');
         }
     } elseif ($do === 'totp_disable') {
-        $hash = backend_user_password_hash($userId);
-        if (!backend_verify_password((string)($_POST['current_password'] ?? ''), (string)$hash)) {
+        if (!current_password_attempt_allowed($userId)) {
+            flash('error', current_password_rate_limit_message());
+        } elseif (!account_password_verify($userId, (string)($_POST['current_password'] ?? ''))) {
             flash('error', 'رمز عبور فعلی درست نیست.');
         } elseif (!totp_verify_user($userId, (string)($_POST['code'] ?? ''))) {
             flash('error', 'کد Authenticator درست نیست.');
@@ -66,8 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'Google Authenticator غیرفعال شد.');
         }
     } elseif ($do === 'sms_enable' || $do === 'sms_disable') {
-        $hash = backend_user_password_hash($userId);
-        if (!backend_verify_password((string)($_POST['current_password'] ?? ''), (string)$hash)) {
+        if (!current_password_attempt_allowed($userId)) {
+            flash('error', current_password_rate_limit_message());
+        } elseif (!account_password_verify($userId, (string)($_POST['current_password'] ?? ''))) {
             flash('error', 'رمز عبور فعلی درست نیست.');
         } elseif ($do === 'sms_enable' && trim((string)($me['mobile'] ?? '')) === '') {
             flash('error', 'برای فعال‌سازی OTP پیامکی ابتدا شماره موبایل حساب باید ثبت شده باشد.');

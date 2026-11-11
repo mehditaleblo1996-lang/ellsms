@@ -108,11 +108,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Logger::info('user.credit_adjusted', ['actor_id' => $me['id'], 'target_id' => $id, 'amount' => $amount, 'reason' => $reason]);
             flash('success', 'اعتبار به میزان ' . to_persian_digits(number_format($amount)) . ' ریال تغییر کرد.');
         } elseif ($do === 'password') {
-            $p = $_POST['password'] ?? '';
-            if (strlen($p) < 6) {
-                flash('error', 'رمز عبور باید حداقل ۶ نویسه باشد.');
+            $p = (string)($_POST['password'] ?? '');
+            $targetUsername = (string)(backend_find_user_login_state_by_id($id)['username'] ?? '');
+            if (($policyError = password_policy_error($p, $targetUsername)) !== null) {
+                flash('error', $policyError);
             } else {
-                backend_update_user_password($id, backend_hash_password($p));
+                // Also signs that account out everywhere (app/PasswordSecurity.php).
+                account_password_set($id, $p);
                 audit((int)$me['id'], 'user.password_reset', "#{$id}");
                 Logger::info('user.password_reset', ['actor_id' => $me['id'], 'target_id' => $id]);
                 flash('success', 'رمز عبور تغییر کرد. توجه: این رمز همه‌جا برای این حساب استفاده می‌شود، نه فقط در داتیس رایان گستر ایرانیان.');
@@ -203,9 +205,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $gender     = $identity['user']['gender'] === 'female' ? 'FEMALE' : 'MALE';
         $identityError = profile_identity_validate($identity, true);
 
-        if ($username === '' || strlen($password) < 6 || $firstName === '' || $lastName === ''
+        if ($username === '' || $firstName === '' || $lastName === ''
             || $email === '' || !$mobile || !$domainId) {
             flash('error', 'همه‌ی فیلدهای ستاره‌دار را به‌درستی پر کنید.');
+        } elseif (($policyError = password_policy_error((string)$password, $username)) !== null) {
+            flash('error', $policyError);
         } elseif ($identityError !== null) {
             flash('error', profile_error_message($identityError));
         } else {
@@ -637,7 +641,8 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="do" value="password">
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
       <input type="hidden" name="back" value="1">
-      <label>رمز عبور جدید <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      <label>رمز عبور جدید <input type="password" name="password" autocomplete="new-password" required<?= password_policy_input_attrs() ?>></label>
+      <?= password_policy_hint_html(false) ?>
       <div class="form-actions"><button class="btn btn-primary btn-sm">تغییر رمز عبور</button></div>
     </form>
   </div>
@@ -1089,7 +1094,8 @@ if ($editOrganizationId > 0) {
       <h3 class="subsection-title">اطلاعات ورود</h3>
       <div class="form-grid cols-4">
         <label>نام کاربری <span class="req">*</span> <input type="text" name="username" class="ltr" autocomplete="off" required></label>
-        <label>رمز عبور <span class="req">*</span> <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+        <label>رمز عبور <span class="req">*</span> <input type="password" name="password" autocomplete="new-password" required<?= password_policy_input_attrs('', 'username') ?>>
+          <?= password_policy_hint_html() ?></label>
       </div>
     </div>
     <div class="form-section">

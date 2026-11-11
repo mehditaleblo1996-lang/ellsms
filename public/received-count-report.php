@@ -52,7 +52,7 @@ if (isset($_GET['export'])) {
     fputs($out, "\xEF\xBB\xBF");
     fputcsv($out, ['ردیف', 'شناسه کاربر', 'نام کاربری', 'نام و نام خانوادگی', 'نام شرکت', 'خط‌های دریافت', 'تعداد پیام‌های دریافتی', 'تعداد پارت', 'مشتری ویژه']);
     foreach ($report['rows'] as $i => $r) {
-        fputcsv($out, [$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], implode(' ', array_keys($r['lines'])), $r['received'], $r['parts'], $r['vip'] ? 'بله' : '']);
+        fputcsv($out, csv_safe_row([$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], implode(' ', array_keys($r['lines'])), $r['received'], $r['parts'], $r['vip'] ? 'بله' : '']));
     }
     if ($report['vip_total'] !== null) {
         fputcsv($out, ['', '', '', 'جمع مشتریان ویژه', '', '', $report['vip_total']['received'], $report['vip_total']['parts'], 'بله']);

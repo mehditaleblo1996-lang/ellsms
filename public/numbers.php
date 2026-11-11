@@ -125,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 fwrite($out, "\xEF\xBB\xBF");
                 fputcsv($out, ['شماره', 'نتیجه']);
                 // A cell starting with = + - @ would run as a formula in a spreadsheet.
-                foreach ($r['rows'] as [$n, $code]) fputcsv($out, [preg_match('/^[=+\-@]/', $n) ? "'" . $n : $n, NUMBER_BULK_RESULTS[$code]]);
+                foreach ($r['rows'] as [$n, $code]) fputcsv($out, csv_safe_row([$n, NUMBER_BULK_RESULTS[$code]]));
                 fclose($out);
                 $_SESSION['number_bulk_report'] = ['file' => $file, 'counts' => $r['counts']];
                 flash($r['counts']['added'] > 0 ? 'success' : 'info', 'بررسی شماره‌ها انجام شد؛ نتیجه در کادر «نتیجه‌ی آخرین افزودن گروهی» آمده است.');
@@ -1008,7 +1008,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     if ($extrasReady) array_push($head, 'عبور از لیست سیاه داخلی', 'علت وضعیت', 'تاریخ تغییر وضعیت');
     fputcsv($out, $head);
     // A cell starting with = + - @ would run as a formula in a spreadsheet.
-    $cell = static fn($v): string => preg_match('/^[=+\-@]/', (string)$v) ? "'" . $v : (string)$v;
+    $cell = 'csv_safe_cell';
     $yn = static fn($v): string => (int)$v ? 'بلی' : 'خیر';
     foreach ($all as $n) {
         $gw = $n['gateway_id'] !== null ? ($gatewaysById[(int)$n['gateway_id']]['name'] ?? '#' . (int)$n['gateway_id']) : 'طبق مسیر';

@@ -76,30 +76,6 @@ function webhook_ip_is_blocked(string $ip): bool {
 }
 
 /**
- * Resolves $host to every A/AAAA record it currently has and reports whether ANY of them lands in a
- * blocked range — a hostname with even one blocked answer is rejected outright rather than "hope the
- * app happens to connect to a safe one," since we don't control which answer curl's own resolver
- * picks. Returns null (treated as a validation failure by the caller) if resolution itself fails —
- * an unresolvable host is not "safe by default," it's unusable.
- */
-function webhook_resolve_and_check(string $host): ?bool {
-    if (filter_var($host, FILTER_VALIDATE_IP)) {
-        return !webhook_ip_is_blocked($host);
-    }
-    $records = @dns_get_record($host, DNS_A + DNS_AAAA);
-    if ($records === false || $records === []) {
-        return null;
-    }
-    foreach ($records as $r) {
-        $ip = $r['ip'] ?? $r['ipv6'] ?? null;
-        if ($ip !== null && webhook_ip_is_blocked((string)$ip)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-/**
  * Test-only escape hatch for the private/loopback IP block below — mirrors the EXACT same pattern
  * cron/load-test.php (ELLSMS_ALLOW_LOAD_TEST) and cron/dr-drill.php already established: an
  * explicit opt-in env var, honored ONLY when this also isn't a production environment. Without
@@ -136,22 +112,143 @@ function webhook_url_validate(string $url): array {
         return ['ok' => false, 'reason' => 'credentials_in_url'];
     }
     if (webhook_local_targets_allowed()) {
-        return ['ok' => true];
+        return ['ok' => true, 'resolve' => [], 'ips' => []];
     }
 
-    $host = strtolower($parts['host']);
+    $host = strtolower(trim((string)$parts['host'], '[]'));
+    $port = (int)($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
     if ($host === 'localhost' || str_ends_with($host, '.localhost') || str_ends_with($host, '.local')) {
-        return ['ok' => false, 'reason' => 'blocked_host'];
+        return ['ok' => false, 'reason' => 'blocked_host', 'host' => $host, 'ips' => []];
+    }
+    // An address written straight into the URL: nothing to resolve, so nothing to pin.
+    if (filter_var($host, FILTER_VALIDATE_IP)) {
+        return webhook_ip_is_blocked($host)
+            ? ['ok' => false, 'reason' => 'blocked_ip_range', 'host' => $host, 'ips' => [$host]]
+            : ['ok' => true, 'resolve' => [], 'ips' => [$host]];
     }
 
-    $resolved = webhook_resolve_and_check($host);
-    if ($resolved === null) {
-        return ['ok' => false, 'reason' => 'dns_resolution_failed'];
+    // Resolved ONCE, here. The caller hands 'resolve' to curl (CURLOPT_RESOLVE), so the address that
+    // was checked is the address that is connected to. Letting curl look the name up again would
+    // leave a window in which a hostile DNS server answers this check with a public address and
+    // curl's own lookup with 127.0.0.1 or an internal host (DNS rebinding).
+    $ips = webhook_resolve_ips($host);
+    if ($ips === []) {
+        return ['ok' => false, 'reason' => 'dns_resolution_failed', 'host' => $host, 'ips' => []];
     }
-    if ($resolved === false) {
-        return ['ok' => false, 'reason' => 'blocked_ip_range'];
+    foreach ($ips as $ip) {
+        if (webhook_ip_is_blocked($ip)) {
+            return ['ok' => false, 'reason' => 'blocked_ip_range', 'host' => $host, 'ips' => $ips];
+        }
     }
-    return ['ok' => true];
+    $pin = str_contains($ips[0], ':') ? '[' . $ips[0] . ']' : $ips[0];
+    return ['ok' => true, 'resolve' => [$host . ':' . $port . ':' . $pin], 'ips' => $ips];
+}
+
+/** Every A / AAAA address $host has right now; [] when it does not resolve. */
+function webhook_resolve_ips(string $host): array {
+    $fake = $GLOBALS['__webhook_resolver_for_testing'] ?? null;
+    if (is_callable($fake)) {
+        return array_values(array_map('strval', (array)$fake($host)));
+    }
+    $records = @dns_get_record($host, DNS_A + DNS_AAAA);
+    $ips = [];
+    foreach ($records ?: [] as $r) {
+        $ip = $r['ip'] ?? $r['ipv6'] ?? null;
+        if ($ip !== null) $ips[] = (string)$ip;
+    }
+    return $ips;
+}
+
+/** Tests only: replaces DNS for webhook_resolve_ips() (null restores the real lookup), so the pinning can be tested without a network. */
+function webhook_set_resolver_for_testing(?callable $resolver): void {
+    $GLOBALS['__webhook_resolver_for_testing'] = $resolver;
+}
+
+/**
+ * A customer tried to SAVE a webhook URL that points into the internal network. Nothing was saved and
+ * nothing was called, so this is a warning in the application log and one audit row — not an alert
+ * (a typo such as http://localhost/ lands here too). See webhook_report_ssrf_block() for the
+ * delivery-time case, which is the serious one.
+ */
+function webhook_log_refused_internal_url(array $check, int $organizationId, int $actorUserId): void {
+    if (($check['ok'] ?? false) || !webhook_refusal_is_internal_target((string)($check['reason'] ?? ''))) {
+        return;
+    }
+    $host = (string)($check['host'] ?? '');
+    $ips = implode(',', array_slice((array)($check['ips'] ?? []), 0, 8));
+    Logger::warning('security.webhook.internal_url_refused', [
+        'organization_id' => $organizationId, 'actor_user_id' => $actorUserId,
+        'host' => $host, 'resolved_ips' => $ips, 'reason' => $check['reason'],
+    ]);
+    try {
+        audit($actorUserId, 'security.webhook.internal_url_refused', mb_substr("host={$host} ips={$ips} reason={$check['reason']}", 0, 500, 'UTF-8'));
+    } catch (Throwable $e) {
+        Logger::error('security.webhook.internal_url_refused.audit_failed', ['exception' => $e]);
+    }
+}
+
+/** True for the refusals that mean "this URL points into our own network", as opposed to a typo. */
+function webhook_refusal_is_internal_target(string $reason): bool {
+    return in_array($reason, ['blocked_host', 'blocked_ip_range'], true);
+}
+
+/**
+ * Records that an outbound call to a customer's URL was stopped because the URL points into the
+ * internal network. At DELIVERY time this is never an honest mistake: the URL was accepted when it
+ * was saved, so its DNS answer has since been changed to an internal address — the DNS-rebinding
+ * attack this check exists for. It is therefore written everywhere an operator looks:
+ *
+ *   - the application log (Logger::critical, event `security.webhook.ssrf_blocked`);
+ *   - the audit log table `ellsms_audit_log` (action `security.webhook.ssrf_blocked`);
+ *   - the activity log «لاگ فعالیت‌ها» (Mongo), where it is configured for this process;
+ *   - an alert «هشدارها» (and the admin Telegram chat), once per endpoint while it keeps happening.
+ *
+ * None of the four may break the delivery worker, so each is best-effort on its own.
+ *
+ * @param string $channel 'webhook' or 'webengage'
+ * @param array{reason?:string, host?:string, ips?:list<string>} $check webhook_url_validate()'s refusal
+ */
+function webhook_report_ssrf_block(string $channel, string $url, array $check, array $context = []): void {
+    $reason = (string)($check['reason'] ?? 'blocked');
+    $host = (string)($check['host'] ?? (parse_url($url, PHP_URL_HOST) ?: ''));
+    $ips = array_slice(array_map('strval', (array)($check['ips'] ?? [])), 0, 8);
+    $fields = array_merge(['channel' => $channel, 'reason' => $reason, 'host' => $host, 'resolved_ips' => $ips], $context);
+
+    Logger::critical('security.webhook.ssrf_blocked', $fields);
+    Metrics::increment('webhook.ssrf_blocked', 1, ['channel' => $channel, 'reason' => $reason]);
+
+    $details = sprintf('channel=%s host=%s ips=%s reason=%s', $channel, $host, implode(',', $ips), $reason);
+    foreach ($context as $key => $value) {
+        if (is_scalar($value)) $details .= ' ' . $key . '=' . $value;
+    }
+    try {
+        audit((int)($context['user_id'] ?? 0), 'security.webhook.ssrf_blocked', mb_substr($details, 0, 500, 'UTF-8'));
+    } catch (Throwable $e) {
+        Logger::error('security.webhook.ssrf_blocked.audit_failed', ['exception' => $e]);
+    }
+    try {
+        if (function_exists('audit_mongo_event')) audit_mongo_event('security.webhook.ssrf_blocked', $fields, true);
+    } catch (Throwable $e) {
+        Logger::error('security.webhook.ssrf_blocked.audit_mongo_failed', ['exception' => $e]);
+    }
+    try {
+        if (class_exists('AlertManager')) {
+            $subject = $channel . ':' . ($context['endpoint_id'] ?? $context['organization_id'] ?? $host);
+            AlertManager::fire(
+                'security.webhook.ssrf_blocked.' . $subject,
+                AlertManager::SEVERITY_CRITICAL,
+                'تلاش برای دسترسی به شبکه‌ی داخلی از راه وب‌هوک',
+                "آدرس وب‌هوک یک مشتری اکنون به شبکه‌ی داخلی اشاره می‌کند و ارسال به آن متوقف شد (احتمال حمله‌ی DNS rebinding).
+"
+                    . "نام سرور: {$host}
+آدرس‌های IP: " . implode(', ', $ips) . "
+علت: {$reason}",
+                $fields
+            );
+        }
+    } catch (Throwable $e) {
+        Logger::error('security.webhook.ssrf_blocked.alert_failed', ['exception' => $e]);
+    }
 }
 
 /* ==========================================================================
@@ -209,6 +306,7 @@ function webhook_endpoint_generate_secret(): string {
 
 function webhook_endpoint_create(int $organizationId, int $actorUserId, string $url, string $description, array $eventTypes): array {
     $urlCheck = webhook_url_validate($url);
+    webhook_log_refused_internal_url($urlCheck, $organizationId, $actorUserId);
     if (!$urlCheck['ok']) {
         return ['ok' => false, 'reason' => $urlCheck['reason']];
     }
@@ -265,6 +363,7 @@ function webhook_endpoint_update(int $organizationId, int $endpointId, int $acto
 
     if (array_key_exists('url', $changes)) {
         $urlCheck = webhook_url_validate($changes['url']);
+        webhook_log_refused_internal_url($urlCheck, $organizationId, $actorUserId);
         if (!$urlCheck['ok']) {
             return ['ok' => false, 'reason' => $urlCheck['reason']];
         }
@@ -506,7 +605,8 @@ function webhook_claim_deliveries(PDO $db, int $limit): array {
     });
 
     $sel = $db->prepare(
-        "SELECT d.*, e.event_uuid, e.event_type, e.payload_json, ep.url, ep.secret_ciphertext, ep.secret_nonce, ep.secret_tag, ep.enabled AS endpoint_enabled
+        "SELECT d.*, e.event_uuid, e.event_type, e.payload_json, ep.url, ep.secret_ciphertext, ep.secret_nonce, ep.secret_tag, ep.enabled AS endpoint_enabled,
+                ep.organization_id, ep.created_by_user_id AS endpoint_created_by_user_id
          FROM ellsms_webhook_deliveries d
          JOIN ellsms_webhook_events e ON e.id = d.event_id
          JOIN ellsms_webhook_endpoints ep ON ep.id = d.endpoint_id
@@ -557,6 +657,14 @@ function webhook_http_status_is_retryable(int $status): bool {
 function webhook_attempt_delivery(array $delivery): array {
     $revalidation = webhook_url_validate($delivery['url']);
     if (!$revalidation['ok']) {
+        if (webhook_refusal_is_internal_target((string)$revalidation['reason'])) {
+            webhook_report_ssrf_block('webhook', (string)$delivery['url'], $revalidation, [
+                'endpoint_id'     => (int)($delivery['endpoint_id'] ?? 0),
+                'delivery_id'     => (int)($delivery['id'] ?? 0),
+                'organization_id' => (int)($delivery['organization_id'] ?? 0),
+                'user_id'         => (int)($delivery['endpoint_created_by_user_id'] ?? 0),
+            ]);
+        }
         return ['outcome' => 'permanent_failure', 'http_status' => null, 'error_code' => 'ssrf_blocked_' . $revalidation['reason'], 'response_excerpt' => null, 'duration_ms' => 0];
     }
 
@@ -576,7 +684,12 @@ function webhook_attempt_delivery(array $delivery): array {
     $maxResponseBytes = webhook_config_max_response_bytes();
     $captured = '';
     $ch = curl_init($delivery['url']);
+    // Pin the connection to the address webhook_url_validate() just checked (see there).
+    if (($revalidation['resolve'] ?? []) !== []) {
+        curl_setopt($ch, CURLOPT_RESOLVE, $revalidation['resolve']);
+    }
     curl_setopt_array($ch, [
+        CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $rawBody,
         CURLOPT_HTTPHEADER     => [

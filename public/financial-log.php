@@ -26,13 +26,13 @@ if (($_GET['export'] ?? '') === 'csv') {
     foreach ($rows as $r) {
         $amount = (int)$r['amount'];
         $actor = (int)($r['actor_user_id'] ?? 0);
-        fputcsv($out, array_merge(
+        fputcsv($out, csv_safe_row(array_merge(
             [(int)$r['id'], jdate_from_utc((string)$r['created_at'])],
             $isAdmin ? [$names[(int)$r['user_id']] ?? ('#' . (int)$r['user_id'])] : [],
             [financial_log_type_label((string)$r['type']), $amount > 0 ? $amount : '', $amount < 0 ? -$amount : '',
              (int)$r['balance_before'], (int)$r['balance_after'], financial_log_description($r, $names)],
             $isAdmin ? [$actor > 0 ? ($names[$actor] ?? ('#' . $actor)) : ''] : []
-        ), ',', '"', '\\');
+        )), ',', '"', '\\');
     }
     fclose($out);
     exit;

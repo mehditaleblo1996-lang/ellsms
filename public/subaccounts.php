@@ -119,10 +119,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($result['ok'] ? 'info' : 'error', $result['ok'] ? ($do === 'suspend' ? 'حساب زیرمجموعه غیرفعال شد.' : 'حساب زیرمجموعه فعال شد.') : customer_error_message((string)$result['reason']));
     } elseif ($do === 'password') {
         $password = (string)($_POST['password'] ?? '');
-        if (strlen($password) < 6) {
-            flash('error', 'رمز عبور باید حداقل ۶ نویسه باشد.');
+        if (($policyError = password_policy_error($password, (string)(backend_find_user_login_state_by_id($childId)['username'] ?? ''))) !== null) {
+            flash('error', $policyError);
         } else {
-            backend_update_user_password($childId, backend_hash_password($password));
+            account_password_set($childId, $password);
             audit($meId, 'customer.child_password_reset', "#{$childId}");
             flash('success', 'رمز عبور زیرمجموعه تغییر کرد.');
         }
@@ -265,7 +265,8 @@ require __DIR__ . '/../app/views/header.php';
         </label>
       <?php endif; ?>
       <label>نام کاربری * <input type="text" name="username" class="ltr" required minlength="5"></label>
-      <label>رمز عبور * <input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
+      <label>رمز عبور * <input type="password" name="password" required autocomplete="new-password"<?= password_policy_input_attrs('', 'username') ?>>
+        <?= password_policy_hint_html() ?></label>
       <label>نام * <input type="text" name="first_name" required></label>
       <label>نام خانوادگی * <input type="text" name="last_name" required></label>
       <label>ایمیل * <input type="email" name="email" class="ltr" required></label>
@@ -523,7 +524,8 @@ require __DIR__ . '/../app/views/header.php';
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="password">
       <input type="hidden" name="child_id" value="<?= $viewId ?>">
-      <label>رمز عبور جدید <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      <label>رمز عبور جدید <input type="password" name="password" autocomplete="new-password" required<?= password_policy_input_attrs() ?>></label>
+      <?= password_policy_hint_html(false) ?>
       <div class="form-actions"><button class="btn btn-primary btn-sm">تغییر رمز عبور</button></div>
     </form>
   </div>

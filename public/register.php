@@ -228,10 +228,11 @@ function reg_error_attrs(string $field, ?string $errorField): string {
               <input type="text" name="username" class="ltr" maxlength="120" autocomplete="username" value="<?= e($_POST['username'] ?? '') ?>" required<?= reg_error_attrs('username', $errorField) ?>>
             </label>
             <label>رمز عبور <span class="req">*</span>
-              <input type="password" name="password" minlength="8" autocomplete="new-password" required<?= reg_error_attrs('password', $errorField) ?>>
+              <input type="password" name="password" autocomplete="new-password" required<?= password_policy_input_attrs('', 'username') ?><?= reg_error_attrs('password', $errorField) ?>>
+              <?= password_policy_hint_html() ?>
             </label>
             <label>تکرار رمز عبور <span class="req">*</span>
-              <input type="password" name="password_repeat" minlength="8" autocomplete="new-password" required<?= reg_error_attrs('password_repeat', $errorField) ?>>
+              <input type="password" name="password_repeat" autocomplete="new-password" required data-pw-repeat="password"<?= reg_error_attrs('password_repeat', $errorField) ?>>
             </label>
           </div>
         </div>
@@ -259,5 +260,6 @@ function reg_error_attrs(string $field, ?string $errorField): string {
     <?php endif; ?>
   </main>
 <script src="<?= e(asset_url('/assets/js/forms.js')) ?>"></script>
+<script src="<?= e(asset_url('/assets/js/password-policy.js')) ?>"></script>
 </body>
 </html>

@@ -243,6 +243,18 @@ rehash cutover, most active accounts already have a modern verifier ready instea
 zero. Marked PARTIALLY FIXED, not FIXED, per this phase's own explicit instruction for this exact
 scenario.
 
+**Update (2026-11-15) — FIX AVAILABLE, operator-switched.** `PASSWORD_HASH_MODE=argon2id`
+(`app/PasswordSecurity.php`, `docs/password-security.md`) stores and checks passwords as
+Argon2id( hex( SHA-256(password) ) ) in `ellsms_password_verifiers` and replaces `user_.password` with
+random bytes. Because the verifier is computed over the digest that is already stored, every existing
+account is converted without a password change (`make password-migrate`, or at sign-in). The default
+stays `legacy` for the reason above: after conversion the backend platform can no longer check that
+account's password itself, so the operator switches only once nothing but ELLSMS signs users in. The
+shadow rows described above (`algo = argon2id` / `bcrypt`) are not trusted by the new mode — they can
+be older than the current password — and are overwritten on conversion. Shipped with it: one password
+rule set for every form (8–128 characters, a letter and a digit, not the username), a limit on
+attempts at the current password, and signing the account's other sessions out on a password change.
+
 ## 5. Backend API authentication — no credential on outbound calls
 
 **Severity: HIGH**

@@ -29,6 +29,9 @@ require_once __DIR__ . '/Backend/messages.php';
 require_once __DIR__ . '/Backend/ApiClient.php';
 require_once __DIR__ . '/authorization.php';
 require_once __DIR__ . '/rate_limit.php';
+// Password rules, storage (legacy SHA-256 or Argon2id) and session sign-out on change
+// (docs/password-security.md). After identity.php and rate_limit.php, which it builds on.
+require_once __DIR__ . '/PasswordSecurity.php';
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/jobqueue.php';
 require_once __DIR__ . '/MessageClass.php';
@@ -483,6 +486,11 @@ function backend_verify_password(string $plain, string $stored): bool {
  * real latency for no benefit login itself doesn't already get.
  */
 function backend_verify_password_and_upgrade(int $userId, string $plain, string $storedLegacyHash): bool {
+    // PASSWORD_HASH_MODE=argon2id: the Argon2id verifier IS the check, and an account that has none
+    // yet is converted as it signs in (app/PasswordSecurity.php). Nothing below applies.
+    if (password_hash_mode() === 'argon2id') {
+        return account_password_verify($userId, $plain, $storedLegacyHash);
+    }
     if (!backend_verify_password($plain, $storedLegacyHash)) {
         return false;
     }
@@ -604,6 +612,11 @@ function session_absolute_timeout_seconds(): int {
  */
 function session_mark_authenticated(): void {
     $_SESSION['_created_at'] = time();
+    // The password version this session signed in under: when the password changes later, every
+    // session still holding the older number is signed out (app/PasswordSecurity.php).
+    if (!empty($_SESSION['uid'])) {
+        session_bind_password_version((int)$_SESSION['uid']);
+    }
 }
 
 if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
@@ -669,6 +682,17 @@ function current_user(): ?array {
         // A suspended or expired reseller sub-account (app/CustomerHierarchy.php) is logged out —
         // except inside a support session, which exists precisely to look at such an account.
         $blocked = $row && !isset($_SESSION['impersonation']) && customer_account_block_reason($uid) !== null;
+        // The password changed after this session signed in (the owner changed it, or an admin reset
+        // it): this session is over. The session that made the change re-binds itself, so it stays.
+        // Not checked inside a support session, whose uid is the customer's, not the signed-in admin's.
+        $stale = $row && PHP_SAPI !== 'cli' && !isset($_SESSION['impersonation']) && !session_password_version_current($uid);
+        if ($stale) {
+            Logger::info('auth.session_ended_password_changed', ['user_id' => $uid]);
+            $_SESSION = [];
+            if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
+            flash('info', 'رمز عبور این حساب تغییر کرده است؛ برای ادامه دوباره وارد شوید.');
+            $row = null;
+        }
         if ($row && $row['active'] && !$row['deleted'] && $row['panel_access'] && !$blocked) {
             $row['role']      = $row['is_admin'] ? 'admin' : 'user';
             $row['full_name'] = trim($row['first_name'] . ' ' . $row['last_name']);
@@ -782,6 +806,26 @@ function flashes(): array {
 /* ---------- Output helpers ---------- */
 function e(?string $s): string {
     return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * One CSV cell made safe for a spreadsheet. Excel, LibreOffice and Google Sheets run a cell that
+ * starts with = + - @ (or a tab / carriage return) as a FORMULA, so text that someone else wrote — an
+ * inbound SMS, a contact's name, a ticket subject — could otherwise run in the customer's spreadsheet
+ * (CSV / formula injection). Such a cell gets a leading apostrophe, which a spreadsheet shows as
+ * plain text. A plain number ("-500", "+989121234567") is left as it is: it is data, not a formula.
+ * Every CSV the panel produces goes through csv_safe_row() (docs/csv-exports.md).
+ */
+function csv_safe_cell(mixed $value): string|int|float {
+    if (is_int($value) || is_float($value)) return $value;
+    $text = (string)($value ?? '');
+    if ($text === '' || is_numeric($text)) return $text;
+    return preg_match('/^[=+\-@\t\r]/', $text) === 1 ? "'" . $text : $text;
+}
+
+/** csv_safe_cell() over a whole row, ready for fputcsv(). */
+function csv_safe_row(array $row): array {
+    return array_map('csv_safe_cell', array_values($row));
 }
 
 function redirect(string $to): never {

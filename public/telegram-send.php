@@ -94,8 +94,8 @@ if (isset($_GET['id'])) {
         fwrite($out, "\xEF\xBB\xBF");
         fputcsv($out, ['phone', 'status', 'status_fa', 'error', 'sent_at', 'read_at', 'cost', 'sender_account'], ',', '"', '');
         foreach ($st as $row) {
-            fputcsv($out, [$row['phone'], $row['status'], tg_status_label((string)$row['status']), $row['error_code'] ? tg_error_label((string)$row['error_code']) : '',
-                $row['sent_at'], $row['read_at'], $row['cost'], $row['account_phone']], ',', '"', '');
+            fputcsv($out, csv_safe_row([$row['phone'], $row['status'], tg_status_label((string)$row['status']), $row['error_code'] ? tg_error_label((string)$row['error_code']) : '',
+                $row['sent_at'], $row['read_at'], $row['cost'], $row['account_phone']]), ',', '"', '');
         }
         exit;
     }

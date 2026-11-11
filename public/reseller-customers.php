@@ -42,7 +42,7 @@ if (($_GET['export'] ?? '') === 'csv') {
     fwrite($out, "\xEF\xBB\xBF");
     fputcsv($out, ['شناسه', 'نام کاربری', 'نام', 'موبایل', 'ایمیل', 'نوع', 'اعتبار (ریال)', 'تعرفه', 'انقضا', 'وضعیت', 'تاریخ ساخت']);
     // A cell starting with = + - @ would run as a formula in a spreadsheet.
-    $cell = static fn($v): string => preg_match('/^[=+\-@]/', (string)$v) ? "'" . $v : (string)$v;
+    $cell = 'csv_safe_cell';
     foreach ($all['rows'] as $r) {
         $ident = $r['identity'];
         fputcsv($out, array_map($cell, [

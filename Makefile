@@ -20,6 +20,7 @@
         db-migrations-show db-migrations-status db-migrations-apply \
         db-integrity-check db-cleanup db-cleanup-apply \
         wallet-backfill wallet-backfill-dry-run wallet-audit \
+        password-migrate password-migrate-dry-run \
         payments-reconcile payments-reconcile-dry-run low-credit-alerts low-credit-alerts-dry-run delivery-refunds delivery-refunds-dry-run message-parts-backfill message-parts-status subscription-reminders subscription-reminders-dry-run \
         reseller-profit reseller-profit-dry-run rial-conversion rial-conversion-dry-run \
         jobs-status jobs-recover jobs-recover-force jobs-recover-force-dry-run \
@@ -88,6 +89,8 @@ help:
 	@echo ""
 	@echo "  make wallet-backfill           MUTATION (additive/idempotent): seed wallet accounts from currentcredit"
 	@echo "  make wallet-backfill-dry-run   same, but only reports what it would do"
+	@echo "  make password-migrate          MUTATION (one way): convert stored passwords to Argon2id (PASSWORD_HASH_MODE=argon2id)"
+	@echo "  make password-migrate-dry-run  same, but only counts"
 	@echo "  make wallet-audit              read-only: report any drift between the wallet and currentcredit"
 	@echo "  make payments-reconcile        recover payments ZarinPal completed but ELLSMS never finished crediting"
 	@echo "  make payments-reconcile-dry-run  same, but only reports what it would do"
@@ -485,6 +488,16 @@ wallet-backfill:
 # Same as above but prints what it WOULD do without writing anything.
 wallet-backfill-dry-run:
 	docker compose run --rm worker php cron/wallet-backfill.php --dry-run
+
+# MUTATION, one-time, ONE WAY. With PASSWORD_HASH_MODE=argon2id: converts every panel account's stored
+# password from the backend's unsalted SHA-256 to Argon2id without knowing the password, and blanks
+# user_.password for it. Read docs/password-security.md first. Idempotent; run the dry run before it.
+password-migrate:
+	docker compose run --rm worker php cron/password-migrate.php --apply
+
+# Read-only: how many accounts password-migrate would convert.
+password-migrate-dry-run:
+	docker compose run --rm worker php cron/password-migrate.php
 
 # MUTATION, one-time. Multiplies every amount stored in the old wallet unit by FACTOR (the Rial value
 # of one old credit) so the wallet, prices and user_.currentcredit are all Rial — see

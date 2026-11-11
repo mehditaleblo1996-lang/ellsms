@@ -239,7 +239,9 @@ never see it; every change is audited. No public API route. Migration
 
 ## Login model
 
-ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.
+ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. `PASSWORD_HASH_MODE=argon2id` replaces it with Argon2id without anyone changing their password, once nothing but ELLSMS signs users in with that column (one way — see below).
+
+**Passwords** (`app/PasswordSecurity.php`, [`docs/password-security.md`](docs/password-security.md)): a new password needs 8–128 characters, a letter and a digit, and must differ from the username; the rules are listed under the field and ticked off while the user types (`public/assets/js/password-policy.js`), on «تغییر رمز عبور» (`/account/profile`), `/register`, and every create/reset form of admins, resellers and parent accounts. Existing passwords keep working. Changing a password signs the account's other sessions out (`ellsms_meta.password_version`, `db/migrations/2026_11_15_password_version.sql`), and proving the current password is limited to `RATE_LIMIT_PASSWORD_CHECK_MAX` attempts per window. `make password-migrate` converts stored passwords to Argon2id in `argon2id` mode.
 
 An account only gets into the ELLSMS panel once an admin **grants access** or **creates it** (Users page). Creating a new account calls the backend's own `POST /api/users/` endpoint (the same one that already existed for this purpose) rather than ELLSMS writing directly into `user_` — that endpoint already knows the exact required columns and applies the backend's own password hashing and uniqueness rules, so ELLSMS doesn't have to guess at any of it. A domain (multi-tenant scope) must already exist on the backend side; ELLSMS lets you pick one but doesn't create domains.
 
@@ -268,7 +270,7 @@ Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: 
 
 | Where | What |
 |---|---|
-| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)) |
+| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)), `PASSWORD_HASH_MODE` (`legacy` = the backend's SHA-256 in `user_.password`, the default; `argon2id` = Argon2id verifiers, one way) and `RATE_LIMIT_PASSWORD_CHECK_MAX` / `RATE_LIMIT_PASSWORD_CHECK_WINDOW_SECONDS` (attempts at the current password; see [`docs/password-security.md`](docs/password-security.md)) |
 | Panel → Settings (admin) | API base URL (overrides `.env`, stored in `ellsms_settings`), default sender line |
 | Panel → Users | Grant/revoke panel access, admin flag, per-user sender line, credit (writes to the shared `user_.currentcredit`) |
 
@@ -390,6 +392,14 @@ The response is JSON: `{"status":"ok","reference_id":123456789,"error_code":null
 `reference_id` is a random 9-digit token, deliberately **not** the real `outbound_message.id` — handing back a raw sequential id would let a caller estimate the total number of messages the whole system has ever sent. The actual row id is still recorded in `ellsms_audit_log` alongside the token (action `api.url_send`), so support can trace a reported reference back to the real message if needed.
 
 The `.html` extension is intentional, matching that same convention, not a typo — `public/sms/url_send.html` is real PHP, executed via an `AddHandler application/x-httpd-php .html` override that `docker/Dockerfile` scopes to just the `public/sms/` directory. **Because credentials travel as request parameters, always call this over HTTPS** (put the panel behind a TLS-terminating reverse proxy, per Production notes below) — anything else exposes the account password in transit and in plain server access logs.
+
+## CSV exports
+
+Every CSV the panel writes («صندوق دریافت», «لیست پیام‌های ارسالی», «گزارش مالی», count reports,
+Telegram results, «شماره‌ها», reseller «مشتریان») passes each row through `csv_safe_row()`
+(`app/bootstrap.php`): a cell starting with `=`, `+`, `-` or `@` gets a leading apostrophe so a
+spreadsheet shows it as text instead of running it as a formula — an inbound SMS such as
+`=HYPERLINK(…)` cannot run in the customer's Excel. See [`docs/csv-exports.md`](docs/csv-exports.md).
 
 ## Public API & webhooks
 
@@ -656,6 +666,8 @@ updated in the same change** — see `CLAUDE.md`.
 [sms-load-testing](docs/sms-load-testing.md) ·
 [capacity-load-test-2026-08-31](docs/capacity-load-test-2026-08-31.md) ·
 [security-review](docs/security-review.md) ·
+[password-security](docs/password-security.md) ·
+[csv-exports](docs/csv-exports.md) ·
 [technical-debt](docs/technical-debt.md)
 
 **Panel reports**

@@ -63,7 +63,9 @@ function registration_activate_account(int $registrationId, int $adminUserId, ar
                ->execute([$adminUserId, $note, $userId, $nationalId, $gender, $domainId, $registrationId]);
         }
 
-        backend_update_user_password($userId, $backendHash);
+        // The applicant's own password (its SHA-256, kept on the request until now), stored the way
+        // PASSWORD_HASH_MODE says (app/PasswordSecurity.php).
+        account_password_store_legacy_hash($userId, (string)$backendHash);
 
         // The «مشخصات مشتری» the applicant filled on /register (same form as the admin's «ساخت حساب تازه»).
         // The national code / gender the admin confirms on the review page win over what was typed.

@@ -71,7 +71,7 @@ $st = db()->prepare('SELECT u.id, u.password, ' . BACKEND_CREDIT_COLUMNS . ', u.
 $st->execute([$username]);
 $u = $st->fetch();
 
-if (!$u || !$u['active'] || $u['deleted'] || !backend_verify_password($password, $u['password'])) {
+if (!$u || !$u['active'] || $u['deleted'] || !account_password_verify((int)($u['id'] ?? 0), $password, isset($u['password']) ? (string)$u['password'] : null)) {
     usleep(400000); // same timing-attack mitigation as login.php
     url_send_respond(false, null, -2);
 }

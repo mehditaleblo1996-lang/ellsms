@@ -102,7 +102,7 @@ function registration_request_create(array $input, ?int $resellerId = null, ?arr
     if ($mobile === null) return ['ok' => false, 'error' => 'شماره موبایل معتبر وارد کنید.', 'field' => 'mobile'];
     if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) return ['ok' => false, 'error' => 'ایمیل معتبر وارد کنید.', 'field' => 'email'];
     if (preg_match('/^[a-zA-Z0-9_.-]{3,120}$/', $username) !== 1) return ['ok' => false, 'error' => 'نام کاربری باید حداقل ۳ نویسه و شامل حروف لاتین، عدد، نقطه، خط تیره یا زیرخط باشد.', 'field' => 'username'];
-    if (strlen($password) < 8) return ['ok' => false, 'error' => 'رمز عبور باید حداقل ۸ نویسه باشد.', 'field' => 'password'];
+    if (($policyError = password_policy_error($password, $username)) !== null) return ['ok' => false, 'error' => $policyError, 'field' => 'password'];
     if ($password !== $passwordRepeat) return ['ok' => false, 'error' => 'تکرار رمز عبور با رمز عبور یکسان نیست.', 'field' => 'password_repeat'];
     if ($accountType === 'legal' && $companyName === '') return ['ok' => false, 'error' => 'برای حساب حقوقی نام شرکت را وارد کنید.', 'field' => $identity !== null ? 'legal_name' : 'company_name'];
     if (($input['accept_terms'] ?? '') !== '1') return ['ok' => false, 'error' => 'برای ثبت‌نام باید قوانین و مقررات و سیاست حریم خصوصی را بپذیرید.', 'field' => 'accept_terms'];

@@ -46,7 +46,7 @@ if (isset($_GET['export'])) {
         'تعداد پیام‌های بالک ارسال‌شده', 'تعداد پارت بالک ارسال‌شده', 'مشتری ویژه']);
     $values = static fn(array $r): array => array_map(static fn(string $k): int => (int)$r[$k], CUSTOMER_COUNTS_SENT_COLUMNS);
     foreach ($report['rows'] as $i => $r) {
-        fputcsv($out, [$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], ...$values($r), $r['vip'] ? 'بله' : '']);
+        fputcsv($out, csv_safe_row([$i + 1, $r['user_id'], $r['username'], $r['name'], $r['company'], ...$values($r), $r['vip'] ? 'بله' : '']));
     }
     if ($report['vip_totals'] !== null) {
         fputcsv($out, ['', '', '', 'جمع مشتریان ویژه', '', ...$values($report['vip_totals']), 'بله']);
