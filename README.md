@@ -367,6 +367,8 @@ Both accept `.xlsx` or `.csv`. XLSX reading is a small hand-written parser in `a
 
 Uploads don't send synchronously — a large file sending row-by-row inside one HTTP request risks a PHP timeout. Instead the upload is parsed, costed against your credit up front, and queued; the worker (plus any `bulk-worker` replicas) claims rows in leased batches and sends them through the configured gateway, and the job page (`/messages/bulk-jobs?id=…`) shows live sent/failed/total counts. Cancelling a job — from that page, the p2p/smart list, or, for gradual sends, the Schedules page — stops any rows still pending and releases the unspent credit reservation.
 
+A P2P file larger than `SMS_SYNC_MAX_RECIPIENTS` rows waits at «منتظر تأیید» after loading until the user presses «ادامه و تأیید ارسال». When it does, the **support group** (the «تماس با ما» Telegram chat) gets an alert with the user, title, line, row count, cost and a link. A platform admin can tick **«ارسال خودکار نظیر به نظیر»** on a user (**Users → user**): that user's large P2P files then start sending as soon as they are loaded, without the confirmation (if the wallet or quota is short, the file stays «منتظر تأیید» and the support group is alerted with the reason). No public API route. Migration `db/migrations/2026_11_15_p2p_auto_send.sql`. See [`docs/p2p-auto-send.md`](docs/p2p-auto-send.md).
+
 **ارسال مجدد ناموفق‌ها** — once a p2p/smart/gradual job has finished, its page offers a button that queues the failed rows (not cancelled or delivered ones) again as a new p2p job with the same line and texts, on the original owner's account and credit (also when an admin clicks it), logged in `ellsms_failed_resends` and the audit log. No API scope. Needs `db/migrations/2026_11_15_failed_resends.sql`; cap `FAILED_RESEND_MAX_ITEMS`. See [`docs/failed-resend.md`](docs/failed-resend.md).
 
 ## Mobile & general UX polish
@@ -625,6 +627,7 @@ updated in the same change** — see `CLAUDE.md`.
 
 **Customers, resellers & access**
 [vip-customers](docs/vip-customers.md) ·
+[p2p-auto-send](docs/p2p-auto-send.md) ·
 [resellers-and-menu-access](docs/resellers-and-menu-access.md) ·
 [reseller-panel](docs/reseller-panel.md) ·
 [customer-profile](docs/customer-profile.md) ·
