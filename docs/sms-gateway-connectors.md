@@ -302,6 +302,22 @@ Bounded by construction:
   and the status report reads it back through the same mapping (`docs/status-report.md`).
 - Three limits stop a provider that never returns a terminal state from being polled forever:
   `poll_initial_delay_seconds`, `poll_max_attempts`, `poll_max_age_seconds`.
+- **Backoff — `poll_backoff_max_seconds`** (`db/migrations/2026_11_16_pishgamrayan_status_sent.sql`,
+  admin field «سقف فاصله‌ی استعلام‌ها»). `0` (the default, every existing connector) keeps the old
+  behaviour: every check waits `poll_initial_delay_seconds`. When set, the wait doubles after each
+  check — delay, 2·delay, 4·delay, … — up to this many seconds (`gateway_status_poll_gap()`, and the
+  same formula in the poller's SQL). It is what lets a gateway whose "not delivered yet" codes are not
+  final keep asking for two days without asking about every undelivered message every two minutes.
+- **The provider's own code is admin-only.** `provider_status` is shown, with its meaning where known
+  (`GATEWAY_PROVIDER_STATUS_LABELS`, `gateway_provider_status_label()`, e.g. «4 — نرسیده به گوشی»),
+  only to platform admins: the bulk job page (column «کد سرویس‌دهنده», a per-code count that filters
+  the list, `?pcode=`), the message detail pages and the sent-list detail drawer. Customers see the
+  delivery state alone, and the column is empty in a customer's report export.
+- **Reopening rows after a mapping change.** A row already stored as final keeps that state when its
+  code's mapping later becomes non-final. `php cron/gateway-status-reopen.php --gateway=<code>`
+  (dry run; add `--apply`) sets such rows back to the new state by their stored `provider_status`, in
+  id-range chunks; rows still within `poll_max_age_seconds` are then polled again. Delivery refunds,
+  webhooks and DLR forwards that already fired for the old state are not reversed.
 
 Polling was chosen over a provider webhook because a callback would need a public authenticated
 endpoint per gateway plus a story for replay, ordering and spoofing. A webhook receiver can be added
@@ -368,6 +384,18 @@ to the gateway at once.
 ids, a negative entry fails only its own recipient) and `StatusWithTime` (correlated by id, polled for
 48 h). The migration is inert until a route or number points at the gateway, and its `Authorization`
 header ships as a test placeholder to be replaced in the admin panel.
+
+**PishgamRayan status codes (`2026_11_16_pishgamrayan_status_sent.sql`).** Only `10` («رسیده به گوشی»)
+is final: it is `delivered`. Every other code — `-1` وجود ندارد, `0` در انتظار ارسال, `1` ارسال به
+مخابرات, `2` نرسیده به مخابرات, `3` لیست سیاه, `4` نرسیده به گوشی, `5` رسیده به گوشی جزئی, `13` خطا در
+ارسال — is `sent` («ارسال‌شده»). The provider answers `4` minutes after a send while the operator is
+still retrying the handset and later turns many of those into `10`; the old mapping called it `failed`,
+which stopped polling. Checks are now unlimited within 48 h with a 120 s → 1 h backoff. A **send** error
+(a negative id in the `Send` answer) still fails that recipient — that is the send connector. Because
+these codes are no longer final, a PishgamRayan message that never reaches `10` is not refunded under
+delivery-based billing, is not offered by «ارسال مجدد ناموفق‌ها», and is counted as «رسیده به مخابرات»
+(not «لیست سیاه») in the status report. After applying the migration, reopen the rows the old mapping
+closed: `php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply`.
 
 ## Secrets
 
@@ -563,6 +591,7 @@ instant.
 | `make sms-gateway-status [GATEWAY=]` | the configuration in effect; never prints a secret value |
 | `make sms-gateway-simulate TO=… [COMPARE=1]` | the exact request, not transmitted |
 | `make sms-status-poll` | one delivery-status polling pass |
+| `php cron/gateway-status-reopen.php --gateway=<code> [--apply]` | after a status-mapping change: reopen rows the old mapping closed (dry run without `--apply`) |
 
 ---
 

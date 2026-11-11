@@ -223,6 +223,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         max(0, (int)($_POST['poll_max_attempts'] ?? 6)),
                         max(0, (int)($_POST['poll_max_age_seconds'] ?? 86400)),
                     ]);
+                    // Separate UPDATE so the form keeps saving before 2026_11_16_pishgamrayan_status_sent.sql.
+                    if (gateway_status_backoff_available() && isset($_POST['poll_backoff_max_seconds'])) {
+                        $db->prepare('UPDATE ellsms_sms_gateway_status_connectors SET poll_backoff_max_seconds = ? WHERE gateway_id = ?')
+                           ->execute([max(0, (int)$_POST['poll_backoff_max_seconds']), $id]);
+                    }
                 }
                 gateway_admin_audit($me, $id, 'connector.save', ['connector' => $kind, 'host' => parse_url($endpoint, PHP_URL_HOST), 'auth_type' => $authType]);
                 flash('success', 'کانکتور ذخیره شد.');
@@ -714,6 +719,9 @@ require __DIR__ . '/../app/views/header.php';
         <label>تأخیر اولین استعلام (ثانیه) <input type="number" name="poll_initial_delay_seconds" class="ltr" value="<?= (int)($connectorRow['poll_initial_delay_seconds'] ?? 30) ?>"></label>
         <label>حداکثر تعداد استعلام <input type="number" name="poll_max_attempts" class="ltr" value="<?= (int)($connectorRow['poll_max_attempts'] ?? 6) ?>"></label>
         <label>حداکثر عمر پیام (ثانیه) <input type="number" name="poll_max_age_seconds" class="ltr" value="<?= (int)($connectorRow['poll_max_age_seconds'] ?? 86400) ?>"></label>
+        <?php if (gateway_status_backoff_available()): ?>
+        <label>سقف فاصله‌ی استعلام‌ها (ثانیه، ۰ = بدون افزایش) <input type="number" name="poll_backoff_max_seconds" class="ltr" min="0" value="<?= (int)($connectorRow['poll_backoff_max_seconds'] ?? 0) ?>"></label>
+        <?php endif; ?>
       </div>
       <p class="muted">وضعیت نگاشت‌نشده همیشه «نامشخص» می‌شود و هرگز «تحویل‌شده» در نظر گرفته نمی‌شود.
         وضعیت‌های مجاز: <span class="ltr"><?= e(implode('، ', GATEWAY_DELIVERY_STATES)) ?></span>؛ <span class="ltr">blacklisted</span> (لیست سیاه مخابرات) مثل «رد شده» ثبت می‌شود

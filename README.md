@@ -54,6 +54,8 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 **Switching on safely:** configure the gateway and assign it to the routes your sender lines use, run `make sms-gateway-simulate TO=... COMPARE=1` until it reports `IDENTICAL`, then set `SMS_GATEWAY_TRANSPORT=1` (plus `SMS_GATEWAY_MASTER_KEY`) and restart the containers. **Rollback** is setting it back to `0` and restarting — no configuration has to be undone. Full design: [`docs/sms-gateway-connectors.md`](docs/sms-gateway-connectors.md); status polling: `docs/sms-gateway-status-batch-closure-report.md`; useful commands: `make sms-gateway-status`, `make sms-gateway-integrity-check`, `make sms-status-worker-status`.
 
+**PishgamRayan delivery codes:** only `10` («رسیده به گوشی») is final/delivered; every other status code (`4` «نرسیده به گوشی», …) is «ارسال‌شده» and keeps being checked for 48 h with a growing interval (status connector field `poll_backoff_max_seconds`); a send error is still «ناموفق». The provider's raw code, with its meaning, is shown to platform admins only (bulk job page column/filter «کد سرویس‌دهنده», message details). Migration `db/migrations/2026_11_16_pishgamrayan_status_sent.sql`, then once `php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply` to reopen rows the old mapping marked failed. See [`docs/sms-gateway-connectors.md`](docs/sms-gateway-connectors.md).
+
 ## Receiving MO and delivery reports from the provider
 
 ELLSMS has its own push receivers, with the same URLs the backend platform used: `https://<host>/mo?from=…&to=…&content=…` for inbound SMS (Persian and emoji supported) and `https://<host>/delivery?id=…&status=…` for delivery reports. Guard them with `SMS_CALLBACK_TOKEN` and/or `SMS_CALLBACK_ALLOWED_IPS`. See [`docs/sms-callbacks.md`](docs/sms-callbacks.md).
@@ -270,7 +272,7 @@ Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: 
 
 | Where | What |
 |---|---|
-| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)), `PASSWORD_HASH_MODE` (`legacy` = the backend's SHA-256 in `user_.password`, the default; `argon2id` = Argon2id verifiers, one way) and `RATE_LIMIT_PASSWORD_CHECK_MAX` / `RATE_LIMIT_PASSWORD_CHECK_WINDOW_SECONDS` (attempts at the current password; see [`docs/password-security.md`](docs/password-security.md)) |
+| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)), `PASSWORD_HASH_MODE` (`legacy` = the backend's SHA-256 in `user_.password`, the default; `argon2id` = Argon2id verifiers, one way) and `RATE_LIMIT_PASSWORD_CHECK_MAX` / `RATE_LIMIT_PASSWORD_CHECK_WINDOW_SECONDS` (attempts at the current password; see [`docs/password-security.md`](docs/password-security.md)), `FAILED_RESEND_MAX_ITEMS` (most failed rows one «ارسال مجدد ناموفق‌ها» click may queue, default 10000, see [`docs/failed-resend.md`](docs/failed-resend.md)) |
 | Panel → Settings (admin) | API base URL (overrides `.env`, stored in `ellsms_settings`), default sender line |
 | Panel → Users | Grant/revoke panel access, admin flag, per-user sender line, credit (writes to the shared `user_.currentcredit`) |
 
@@ -368,6 +370,10 @@ Two upload-a-spreadsheet features that share one engine (`ellsms_bulk_jobs` / `e
 Both accept `.xlsx` or `.csv`. XLSX reading is a small hand-written parser in `app/xlsx_reader.php` (ZipArchive + SimpleXML, both PHP built-ins) rather than a Composer package — this project has no `vendor/` directory anywhere else, and the actual need is narrow (plain cell values, no formulas/styles). Requires the PHP `zip` extension, which `docker/Dockerfile` installs.
 
 Uploads don't send synchronously — a large file sending row-by-row inside one HTTP request risks a PHP timeout. Instead the upload is parsed, costed against your credit up front, and queued; the worker (plus any `bulk-worker` replicas) claims rows in leased batches and sends them through the configured gateway, and the job page (`/messages/bulk-jobs?id=…`) shows live sent/failed/total counts. Cancelling a job — from that page, the p2p/smart list, or, for gradual sends, the Schedules page — stops any rows still pending and releases the unspent credit reservation.
+
+A P2P file larger than `SMS_SYNC_MAX_RECIPIENTS` rows waits at «منتظر تأیید» after loading until the user presses «ادامه و تأیید ارسال». When it does, the **support group** (the «تماس با ما» Telegram chat) gets an alert with the user, title, line, row count, cost and a link. A platform admin can tick **«ارسال خودکار نظیر به نظیر»** on a user (**Users → user**): that user's large P2P files then start sending as soon as they are loaded, without the confirmation (if the wallet or quota is short, the file stays «منتظر تأیید» and the support group is alerted with the reason). No public API route. Migration `db/migrations/2026_11_15_p2p_auto_send.sql`. See [`docs/p2p-auto-send.md`](docs/p2p-auto-send.md).
+
+**ارسال مجدد ناموفق‌ها** — once a p2p/smart/gradual job has finished, its page offers a button that queues the failed rows (not cancelled or delivered ones) again as a new p2p job with the same line and texts, on the original owner's account and credit (also when an admin clicks it), logged in `ellsms_failed_resends` and the audit log. No API scope. Needs `db/migrations/2026_11_15_failed_resends.sql`; cap `FAILED_RESEND_MAX_ITEMS`. See [`docs/failed-resend.md`](docs/failed-resend.md).
 
 ## Mobile & general UX polish
 
@@ -593,6 +599,7 @@ updated in the same change** — see `CLAUDE.md`.
 [aimed-bulk](docs/aimed-bulk.md) ·
 [regional-bulk](docs/regional-bulk.md) ·
 [queue-cancellation](docs/queue-cancellation.md) ·
+[failed-resend](docs/failed-resend.md) ·
 [queue-monitor](docs/queue-monitor.md) ·
 [bulk-archive-workflow](docs/bulk-archive-workflow.md) ·
 [prohibited-words](docs/prohibited-words.md) ·
@@ -632,6 +639,7 @@ updated in the same change** — see `CLAUDE.md`.
 
 **Customers, resellers & access**
 [vip-customers](docs/vip-customers.md) ·
+[p2p-auto-send](docs/p2p-auto-send.md) ·
 [resellers-and-menu-access](docs/resellers-and-menu-access.md) ·
 [reseller-panel](docs/reseller-panel.md) ·
 [customer-profile](docs/customer-profile.md) ·

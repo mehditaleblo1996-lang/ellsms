@@ -43,6 +43,12 @@ page `message-detail.php` redirects such a customer to the report.
 | no final report (`sent`, `queued`, `unknown`, or polling gave up) | no: without a report there is no proof the message wasn't delivered |
 | refused at send time (the item is `failed` and never sent) | already free: a message is only charged once the gateway accepts it |
 
+**PishgamRayan.** Its status codes other than `10` are mapped to `sent`, not to a final failure
+(`db/migrations/2026_11_16_pishgamrayan_status_sent.sql`, `docs/sms-gateway-connectors.md`
+§PishgamRayan), so a PishgamRayan message that never reaches `10` has no final report and is **not
+refunded**. Refunds already made for messages that the old mapping called `failed` are not reversed
+when `cron/gateway-status-reopen.php` reopens them, even if they are delivered later.
+
 **Which percentage applies.** The period in force when the message was **sent** decides. That covers
 the bulk item's `created_at` (when the job accepted it) or the attempt's `attempted_at`. Delivery
 reports can arrive minutes or hours later, so:

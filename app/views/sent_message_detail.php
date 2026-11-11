@@ -95,9 +95,13 @@ if (!$showDelivery) {
       <?= $field('شناسه‌ی API (همان id پاسخ ارسال)', $text($apiMessageId, 'ltr')) ?>
       <?php endif; ?>
       <?= $field('شناسه نزد سرویس‌دهنده', $text(isset($m['provider_message_id']) ? (string)$m['provider_message_id'] : null, 'ltr')) ?>
-      <?php if ($showDelivery): ?>
-      <?= $field('وضعیت اعلام‌شده‌ی سرویس‌دهنده', !empty($m['provider_status']) ? $text((string)$m['provider_status'], 'ltr')
-          : (!empty($m['delivery_status']) ? e(report_delivery_status_label((string)$m['delivery_status'])) : '<span class="muted">—</span>')) ?>
+      <?php if ($isAdmin): ?>
+      <?php /* The provider's own code is for admins only; a customer sees the delivery state alone. */ ?>
+      <?= $field('کد سرویس‌دهنده', !empty($m['provider_status']) ? $text(gateway_provider_status_label(isset($m['gateway_id']) ? (int)$m['gateway_id'] : null, (string)$m['provider_status']))
+          : '<span class="muted">—</span>') ?>
+      <?php endif; ?>
+      <?php if ($showDelivery && !empty($m['delivery_status'])): ?>
+      <?= $field('وضعیت تحویل', e(report_delivery_status_label((string)$m['delivery_status']))) ?>
       <?php endif; ?>
     </dl>
   </section>

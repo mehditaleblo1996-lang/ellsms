@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save', 'vip_save'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save', 'vip_save', 'p2p_auto_send_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -179,6 +179,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash('success', $vip ? 'این کاربر به‌عنوان «مشتری ویژه» علامت خورد.' : 'این کاربر از مشتریان ویژه خارج شد.');
             } else {
                 flash('info', 'تغییری در «مشتری ویژه» نبود.');
+            }
+        } elseif ($do === 'p2p_auto_send_save') {
+            // «ارسال خودکار نظیر به نظیر» (app/P2pAutoSend.php): large P2P files start without confirmation.
+            $on = !empty($_POST['p2p_auto_send']);
+            if (!p2p_auto_send_available()) {
+                flash('error', 'برای ارسال خودکار نظیر به نظیر ابتدا مهاجرت 2026_11_15_p2p_auto_send.sql را اجرا کنید.');
+            } elseif (p2p_auto_send_set($id, $on, (int)$me['id'])) {
+                flash('success', $on ? 'ارسال‌های نظیر به نظیر این کاربر از این پس پس از بارگذاری بدون تأیید شروع می‌شوند.'
+                                     : 'ارسال‌های نظیر به نظیر این کاربر دوباره منتظر تأیید می‌مانند.');
+            } else {
+                flash('info', 'تغییری در «ارسال خودکار نظیر به نظیر» نبود.');
             }
         } elseif ($do === 'menu_save') {
             $roleId = (int)($_POST['menu_role_id'] ?? 0) ?: null;
@@ -511,6 +522,20 @@ require __DIR__ . '/../app/views/header.php';
       <?php if ($editVip && $editVip['marked_at'] !== null): ?>
         <div class="hint">از <?= jdate_from_utc($editVip['marked_at']) ?><?php if ($editVip['marked_by'] !== null): ?> — <?= e(backend_usernames_by_ids([$editVip['marked_by']])[$editVip['marked_by']] ?? '#' . $editVip['marked_by']) ?><?php endif; ?></div>
       <?php endif; ?>
+    </div>
+    <?php endif; ?>
+    <?php if (p2p_auto_send_available()): $editAuto = p2p_auto_send_details((int)$editUser['id']); ?>
+    <div class="summary-item">
+      <div class="summary-label">ارسال خودکار نظیر به نظیر</div>
+      <form method="post" class="summary-value vip-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="do" value="p2p_auto_send_save">
+        <input type="hidden" name="id" value="<?= (int)$editUser['id'] ?>">
+        <input type="hidden" name="back" value="1">
+        <label class="check"><input type="checkbox" name="p2p_auto_send" value="1"<?= $editAuto ? ' checked' : '' ?>> بدون تأیید</label>
+        <button class="btn btn-sm">ثبت</button>
+      </form>
+      <div class="hint">فایل‌های حجیم نظیر به نظیر پس از بارگذاری، بدون «ادامه و تأیید ارسال» شروع به ارسال می‌کنند.<?php if ($editAuto && $editAuto['set_at'] !== null): ?> از <?= jdate_from_utc($editAuto['set_at']) ?><?php if ($editAuto['set_by'] !== null): ?> — <?= e(backend_usernames_by_ids([$editAuto['set_by']])[$editAuto['set_by']] ?? '#' . $editAuto['set_by']) ?><?php endif; ?><?php endif; ?></div>
     </div>
     <?php endif; ?>
   </div>

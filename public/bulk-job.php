@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/backend.php';
+require_once __DIR__ . '/../app/FailedResend.php';
 $me = require_login();
 $pageTitle = 'جزئیات ارسال حجیم';
 $active = 'p2p';
@@ -59,18 +60,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'cancel') 
     redirect('/messages/bulk-jobs?id=' . $jobId);
 }
 $canCancelJob = in_array((string)$job['status'], ['pending', 'processing'], true);
+
+// «ارسال مجدد ناموفق‌ها» (app/FailedResend.php, docs/failed-resend.md): the failed rows become a new p2p
+// job — on the job owner's account, priced and reserved like any upload. Only for a finished job.
+$showDelivery = delivery_status_visible($me);
+$canSendBulk = static function () use ($me): bool {
+    if (is_admin()) return true;
+    $orgId = (int)($me['organization_id'] ?? 0);
+    return has_permission((int)$me['id'], $orgId, Permissions::MESSAGES_SEND)
+        && organization_has_entitlement($orgId, Entitlements::BULK_SEND);
+};
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'resend_failed') {
+    csrf_check();
+    if (!$canSendBulk()) {
+        flash('error', 'شما اجازه‌ی ارسال انبوه ندارید.');
+        redirect('/messages/bulk-jobs?id=' . $jobId);
+    }
+    $result = failed_resend_queue($jobId, $me, $showDelivery);
+    flash($result['ok'] ? 'success' : 'error', $result['message']);
+    redirect('/messages/bulk-jobs?id=' . ($result['ok'] ? (int)$result['new_job_id'] : $jobId));
+}
+$resendCount = failed_resend_job_eligible($job) && $canSendBulk() ? failed_resend_count($jobId, $showDelivery) : 0;
+$resendHistory = failed_resend_history($jobId);
+$resendSource = failed_resend_source_job($jobId);
 // Aimed bulk (app/AimedBulk.php): numbers from the platform's own bank are shown masked to the
 // customer, and cannot be searched for either — a search would tell whether a number is in the bank.
 $recipientsMasked = !empty($job['recipients_masked']) && !is_admin();
 
 $status = trim((string)($_GET['status'] ?? ''));
+// Admins only: filter by the provider's own status code (provider_status), e.g. ?pcode=4.
+$pcode = is_admin() ? mb_substr(trim((string)($_GET['pcode'] ?? '')), 0, 60) : '';
 $dest = trim((string)($_GET['dest'] ?? ''));
 $per = (int)($_GET['per_page'] ?? 100);
 if (!in_array($per, [50,100,200], true)) $per = 100;
 
-// Delivery states only for admins and customers on delivery-based billing (delivery_status_visible());
-// for anyone else a sent message stays «ارسال‌شده» and only a failed send is «ناموفق».
-$showDelivery = delivery_status_visible($me);
+// Delivery states only for admins and customers on delivery-based billing (delivery_status_visible(),
+// set above); for anyone else a sent message stays «ارسال‌شده» and only a failed send is «ناموفق».
 $reportStatuses = $showDelivery ? ['pending', 'sent', 'delivered', 'failed'] : ['pending', 'sent', 'failed'];
 $canonicalStatusSql = $showDelivery ? "CASE
     WHEN bi.delivery_status = 'delivered' THEN 'delivered'
@@ -116,11 +141,16 @@ if ($dest !== '') {
     }
 }
 
+if ($pcode !== '') {
+    $where[] = 'bi.provider_status = ?';
+    $params[] = $pcode;
+}
+
 // The rows matching the filter: the summary already counts them unless a number is searched.
 $statusFilter = in_array($status, $reportStatuses, true) ? $status : '';
 if (count($where) === 1) {
     $listTotal = (int)$summary['total'];
-} elseif ($dest === '' || preg_replace('/\D/', '', $dest) === '') {
+} elseif ($pcode === '' && ($dest === '' || preg_replace('/\D/', '', $dest) === '')) {
     $listTotal = (int)$summary[$statusFilter . '_count'];
 } else {
     $countSt = db()->prepare('SELECT COUNT(*) FROM ellsms_bulk_items bi WHERE ' . implode(' AND ', $where));
@@ -129,7 +159,7 @@ if (count($where) === 1) {
 }
 [$page, $offset] = pager_offset($listTotal, $per);
 
-$sql = "SELECT bi.id,bi.mobile,bi.content,bi.status queue_status,bi.provider_message_id,
+$sql = "SELECT bi.id,bi.mobile,bi.content,bi.status queue_status,bi.provider_message_id,bi.provider_status,bi.gateway_id,
                bi.delivery_status,bi.delivery_attempts,bi.delivery_checked_at,bi.created_at,
                {$canonicalStatusSql} canonical_status, {$partsSql} parts
         FROM ellsms_bulk_items bi
@@ -139,6 +169,17 @@ $sql = "SELECT bi.id,bi.mobile,bi.content,bi.status queue_status,bi.provider_mes
 $st = db()->prepare($sql);
 $st->execute($params);
 $rows = $st->fetchAll();
+
+// Admins: how many of this job's messages got each provider status code (app/Sms/GatewayStatus.php
+// gateway_provider_status_label()), e.g. «۱۰ — رسیده به گوشی: ۷۱۱ · ۴ — نرسیده به گوشی: ۲۱۵».
+$providerCodes = [];
+if (is_admin()) {
+    $codeSt = db()->prepare('SELECT bi.gateway_id, bi.provider_status, COUNT(*) n FROM ellsms_bulk_items bi
+                             WHERE bi.job_id = ? AND bi.provider_status IS NOT NULL AND bi.provider_status <> \'\'
+                             GROUP BY bi.gateway_id, bi.provider_status ORDER BY n DESC LIMIT 30');
+    $codeSt->execute([$jobId]);
+    $providerCodes = $codeSt->fetchAll();
+}
 
 $statusFa = ['pending'=>'در انتظار','sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','failed'=>'ناموفق'];
 $statusClass = ['pending'=>'pending','sent'=>'success','delivered'=>'success','failed'=>'error'];
@@ -187,6 +228,22 @@ require __DIR__ . '/../app/views/header.php';
       <button class="btn btn-sm btn-danger" type="submit">لغو این ارسال</button>
     </form>
   <?php endif; ?>
+  <?php if ($resendSource !== null): ?>
+    <p class="hint">این ارسال، ارسال مجدد ناموفق‌های <a href="/messages/bulk-jobs?id=<?= (int)$resendSource ?>">Job #<?= to_persian_digits((string)$resendSource) ?></a> است.</p>
+  <?php endif; ?>
+  <?php if ($resendCount > 0): ?>
+    <form method="post" style="margin:0 0 14px" onsubmit="this.querySelector('button').disabled=true;return true;">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="resend_failed">
+      <button class="btn btn-sm btn-primary" type="submit"
+        onclick="return confirm('<?= e(to_persian_digits(number_format($resendCount))) ?> پیامک ناموفق این ارسال، با همان خط و همان متن، به‌عنوان یک ارسال نظیر به نظیر جدید دوباره ارسال شود؟ هزینه‌ی آن مانند یک ارسال جدید از اعتبار کسر می‌شود.<?= $resendHistory ? ' توجه: ناموفق‌های این ارسال قبلاً هم دوباره ارسال شده‌اند.' : '' ?>');">ارسال مجدد ناموفق‌ها (<?= to_persian_digits(number_format($resendCount)) ?> پیامک)</button>
+    </form>
+  <?php endif; ?>
+  <?php if ($resendHistory): ?>
+    <p class="hint">ارسال‌های مجدد ناموفق‌ها:
+      <?php foreach ($resendHistory as $i => $h): ?><?= $i ? ' · ' : '' ?><a href="/messages/bulk-jobs?id=<?= (int)$h['new_job_id'] ?>">Job #<?= to_persian_digits((string)(int)$h['new_job_id']) ?></a> (<?= to_persian_digits(number_format((int)$h['item_count'])) ?> پیامک، <?= jdate((string)$h['created_at']) ?>)<?php endforeach; ?>
+    </p>
+  <?php endif; ?>
   <div class="grid grid-4">
     <?php $partsValue = static fn(string $k): string => '<div class="stat-value"><span class="stat-unit">پارت</span> ' . to_persian_digits(number_format((int)($summary[$k] ?? 0))) . '</div>';
           $msgMeta = static fn(int $n): string => '<div class="stat-meta">' . to_persian_digits(number_format($n)) . ' پیام</div>'; ?>
@@ -216,6 +273,7 @@ require __DIR__ . '/../app/views/header.php';
         <?php endforeach; ?>
       </select>
     </label>
+    <?php if (is_admin()): ?><label>کد سرویس‌دهنده <input class="ltr" type="text" name="pcode" value="<?= e($pcode) ?>" size="6"></label><?php endif; ?>
     <?php if (!$recipientsMasked): ?><label>شماره گیرنده <input class="ltr" type="text" name="dest" value="<?= e($dest) ?>"></label><?php endif; ?>
     <label>تعداد در صفحه
       <select name="per_page"><?php foreach ([50,100,200] as $n): ?><option value="<?= $n ?>" <?= $per === $n ? 'selected' : '' ?>><?= to_persian_digits((string)$n) ?></option><?php endforeach; ?></select>
@@ -223,8 +281,13 @@ require __DIR__ . '/../app/views/header.php';
     <button class="btn btn-primary">اعمال فیلتر</button>
   </form>
 
+  <?php if ($providerCodes): ?>
+    <p class="hint">کد سرویس‌دهنده <span class="badge">فقط مدیر</span>:
+      <?php foreach ($providerCodes as $i => $pc): ?><?= $i ? ' · ' : '' ?><a href="?<?= e($qs(['pcode' => (string)$pc['provider_status'], 'page' => null])) ?>"><?= e(gateway_provider_status_label($pc['gateway_id'] !== null ? (int)$pc['gateway_id'] : null, (string)$pc['provider_status'])) ?></a>: <?= to_persian_digits(number_format((int)$pc['n'])) ?><?php endforeach; ?>
+    </p>
+  <?php endif; ?>
   <div class="table-wrap"><table>
-    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>تعداد پارت</th><th>وضعیت</th><th>Provider ID</th><?php if ($showDelivery): ?><th>دفعات استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
+    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>تعداد پارت</th><th>وضعیت</th><?php if (is_admin()): ?><th>کد سرویس‌دهنده</th><?php endif; ?><th>Provider ID</th><?php if ($showDelivery): ?><th>دفعات استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
     <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
       <tr>
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
@@ -232,13 +295,14 @@ require __DIR__ . '/../app/views/header.php';
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,80,'…')) ?></td>
         <td class="num"><?= to_persian_digits((string)(int)$r['parts']) ?></td>
         <td><span class="badge badge-<?= e($statusClass[$cs] ?? 'pending') ?>"><?= e($statusFa[$cs] ?? $cs) ?></span></td>
+        <?php if (is_admin()): ?><td><?= !empty($r['provider_status']) ? e(gateway_provider_status_label($r['gateway_id'] !== null ? (int)$r['gateway_id'] : null, (string)$r['provider_status'])) : '—' ?></td><?php endif; ?>
         <td class="ltr num"><?= !empty($r['provider_message_id']) ? e((string)$r['provider_message_id']) : '—' ?></td>
         <?php if ($showDelivery): ?><td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td><?php endif; ?>
         <td class="num"><?= jdate((string)$r['created_at']) ?></td>
         <?php if ($showDelivery): ?><td class="num"><?= !empty($r['delivery_checked_at']) ? jdate((string)$r['delivery_checked_at']) : '—' ?></td><?php endif; ?>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= $showDelivery ? 9 : 7 ?>" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= ($showDelivery ? 9 : 7) + (is_admin() ? 1 : 0) ?>" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
   </table></div>
 
   <?= pager_links($page, pager_pages($listTotal, $per), array_filter(array_diff_key($_GET, ['before_id' => 1, 'after_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $listTotal) ?>
