@@ -144,6 +144,9 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
     فرمت‌های پشتیبانی‌شده: <code class="kbd">xlsx</code> و <code class="kbd">csv</code>.
     اگر ردیف اول عنوان ستون باشد (نه شماره موبایل واقعی)، به‌طور خودکار نادیده گرفته می‌شود.
   </p>
+  <?php if (p2p_auto_send_is((int)$me['id'])): ?>
+    <p class="hint">«ارسال خودکار» برای حساب شما فعال است: فایل‌های حجیم پس از بارگذاری و بررسی، بدون نیاز به «ادامه و تأیید ارسال» شروع به ارسال می‌کنند.</p>
+  <?php endif; ?>
   <form method="post" enctype="multipart/form-data">
     <?= csrf_field() ?>
     <input type="hidden" name="do" value="upload">

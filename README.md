@@ -367,6 +367,8 @@ Both accept `.xlsx` or `.csv`. XLSX reading is a small hand-written parser in `a
 
 Uploads don't send synchronously — a large file sending row-by-row inside one HTTP request risks a PHP timeout. Instead the upload is parsed, costed against your credit up front, and queued; the worker (plus any `bulk-worker` replicas) claims rows in leased batches and sends them through the configured gateway, and the job page (`/messages/bulk-jobs?id=…`) shows live sent/failed/total counts. Cancelling a job — from that page, the p2p/smart list, or, for gradual sends, the Schedules page — stops any rows still pending and releases the unspent credit reservation.
 
+A P2P file larger than `SMS_SYNC_MAX_RECIPIENTS` rows waits at «منتظر تأیید» after loading until the user presses «ادامه و تأیید ارسال». When it does, the **support group** (the «تماس با ما» Telegram chat) gets an alert with the user, title, line, row count, cost and a link. A platform admin can tick **«ارسال خودکار نظیر به نظیر»** on a user (**Users → user**): that user's large P2P files then start sending as soon as they are loaded, without the confirmation (if the wallet or quota is short, the file stays «منتظر تأیید» and the support group is alerted with the reason). No public API route. Migration `db/migrations/2026_11_15_p2p_auto_send.sql`. See [`docs/p2p-auto-send.md`](docs/p2p-auto-send.md).
+
 ## Mobile & general UX polish
 
 The panel now has a real mobile navigation drawer instead of stacking the entire sidebar above page content — as the nav grew past a dozen links, that stacking became genuinely unusable on a phone. Below 900px a hamburger button in the topbar slides the sidebar in from the right with a dismissible backdrop (tap outside, press Escape, or tap any link to close); above that it's the normal fixed sidebar. Other changes: form inputs are 16px to stop iOS Safari's auto-zoom-on-focus, buttons and nav items get larger touch targets on small screens, tables and cards tighten their padding progressively at 900px and 480px breakpoints, and every page (not just login) now has the same subtle brand-color background wash instead of a flat canvas. All of this lives in `public/assets/css/style.css` plus a small vanilla-JS toggle in `app/views/footer.php` — no framework, no build step.
@@ -622,6 +624,7 @@ updated in the same change** — see `CLAUDE.md`.
 
 **Customers, resellers & access**
 [vip-customers](docs/vip-customers.md) ·
+[p2p-auto-send](docs/p2p-auto-send.md) ·
 [resellers-and-menu-access](docs/resellers-and-menu-access.md) ·
 [reseller-panel](docs/reseller-panel.md) ·
 [customer-profile](docs/customer-profile.md) ·

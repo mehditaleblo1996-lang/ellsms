@@ -606,11 +606,19 @@ function import_job_check_insert_completion(int $jobId): void {
     );
     $queuedRowsSt->execute([$jobId]);
     $queuedRows = (int)$queuedRowsSt->fetchColumn();
-    $db->prepare(
+    // Guarded on 'analyzing': two insert chunks finishing together both reach this point, and a job
+    // cancelled while its last chunk was running must stay cancelled. Only the one UPDATE that
+    // actually moves the job runs the P2P follow-up (auto-send or the support-group alert).
+    $readySt = $db->prepare(
         "UPDATE ellsms_import_jobs
          SET status='ready_for_confirmation', queued_rows = ?, analysis_completed_at = NOW()
-         WHERE id = ?"
-    )->execute([$queuedRows, $jobId]);
+         WHERE id = ? AND status = 'analyzing'"
+    );
+    $readySt->execute([$queuedRows, $jobId]);
+    if ($readySt->rowCount() === 0) {
+        return;
+    }
 
     Logger::info('import.ready_for_confirmation', ['import_job_id' => $jobId, 'queued_rows' => $queuedRows]);
+    p2p_import_ready($jobId); // app/P2pAutoSend.php — docs/p2p-auto-send.md
 }

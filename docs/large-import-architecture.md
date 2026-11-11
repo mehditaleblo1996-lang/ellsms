@@ -104,7 +104,9 @@ public/smart-send.php ─────────┘         │ counts rows (st
                                           │                    'ready_for_confirmation'; any failed? ->
                                           │                    fail the job, release wallet + quota
                                           ▼
-                                  user confirms in the UI
+                                  user confirms in the UI      (P2P: or automatically, for a user with
+                                          │                    «ارسال خودکار نظیر به نظیر»; otherwise the
+                                          │                    support group is alerted — docs/p2p-auto-send.md)
                                           │
                                           ▼
                               run_bulk_send_pass()             the SAME batched send path Phase 9A/9C
@@ -164,6 +166,12 @@ during pass 1 and the exact total during reserve/stage come from `sms_pricing_pr
 resolved server-side at one fixed instant (`analysis_started_at`), and pass 2 prices each row again
 at that SAME instant — so the amount reserved, the amount shown to the user, and the amount actually
 charged per row can never drift apart.
+
+**Exception — P2P auto-send.** For a P2P import whose owner a platform admin gave «ارسال خودکار نظیر
+به نظیر», the worker calls the same `import_confirm_job()` on the owner's behalf the moment the import
+becomes `ready_for_confirmation`. Every other P2P import that reaches that state is announced to the
+support group. Both happen once, from `import_job_check_insert_completion()`, whose promotion UPDATE
+is guarded on `status = 'analyzing'`. See `docs/p2p-auto-send.md`.
 
 ## Known follow-up (not a Phase 10 blocker)
 
