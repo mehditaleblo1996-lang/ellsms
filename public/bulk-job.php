@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/backend.php';
+require_once __DIR__ . '/../app/FailedResend.php';
 $me = require_login();
 $pageTitle = 'جزئیات ارسال حجیم';
 $active = 'p2p';
@@ -59,6 +60,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'cancel') 
     redirect('/messages/bulk-jobs?id=' . $jobId);
 }
 $canCancelJob = in_array((string)$job['status'], ['pending', 'processing'], true);
+
+// «ارسال مجدد ناموفق‌ها» (app/FailedResend.php, docs/failed-resend.md): the failed rows become a new p2p
+// job — on the job owner's account, priced and reserved like any upload. Only for a finished job.
+$showDelivery = delivery_status_visible($me);
+$canSendBulk = static function () use ($me): bool {
+    if (is_admin()) return true;
+    $orgId = (int)($me['organization_id'] ?? 0);
+    return has_permission((int)$me['id'], $orgId, Permissions::MESSAGES_SEND)
+        && organization_has_entitlement($orgId, Entitlements::BULK_SEND);
+};
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'resend_failed') {
+    csrf_check();
+    if (!$canSendBulk()) {
+        flash('error', 'شما اجازه‌ی ارسال انبوه ندارید.');
+        redirect('/messages/bulk-jobs?id=' . $jobId);
+    }
+    $result = failed_resend_queue($jobId, $me, $showDelivery);
+    flash($result['ok'] ? 'success' : 'error', $result['message']);
+    redirect('/messages/bulk-jobs?id=' . ($result['ok'] ? (int)$result['new_job_id'] : $jobId));
+}
+$resendCount = failed_resend_job_eligible($job) && $canSendBulk() ? failed_resend_count($jobId, $showDelivery) : 0;
+$resendHistory = failed_resend_history($jobId);
+$resendSource = failed_resend_source_job($jobId);
 // Aimed bulk (app/AimedBulk.php): numbers from the platform's own bank are shown masked to the
 // customer, and cannot be searched for either — a search would tell whether a number is in the bank.
 $recipientsMasked = !empty($job['recipients_masked']) && !is_admin();
@@ -68,9 +92,8 @@ $dest = trim((string)($_GET['dest'] ?? ''));
 $per = (int)($_GET['per_page'] ?? 100);
 if (!in_array($per, [50,100,200], true)) $per = 100;
 
-// Delivery states only for admins and customers on delivery-based billing (delivery_status_visible());
-// for anyone else a sent message stays «ارسال‌شده» and only a failed send is «ناموفق».
-$showDelivery = delivery_status_visible($me);
+// Delivery states only for admins and customers on delivery-based billing (delivery_status_visible(),
+// set above); for anyone else a sent message stays «ارسال‌شده» and only a failed send is «ناموفق».
 $reportStatuses = $showDelivery ? ['pending', 'sent', 'delivered', 'failed'] : ['pending', 'sent', 'failed'];
 $canonicalStatusSql = $showDelivery ? "CASE
     WHEN bi.delivery_status = 'delivered' THEN 'delivered'
@@ -186,6 +209,22 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="do" value="cancel">
       <button class="btn btn-sm btn-danger" type="submit">لغو این ارسال</button>
     </form>
+  <?php endif; ?>
+  <?php if ($resendSource !== null): ?>
+    <p class="hint">این ارسال، ارسال مجدد ناموفق‌های <a href="/messages/bulk-jobs?id=<?= (int)$resendSource ?>">Job #<?= to_persian_digits((string)$resendSource) ?></a> است.</p>
+  <?php endif; ?>
+  <?php if ($resendCount > 0): ?>
+    <form method="post" style="margin:0 0 14px" onsubmit="this.querySelector('button').disabled=true;return true;">
+      <?= csrf_field() ?>
+      <input type="hidden" name="do" value="resend_failed">
+      <button class="btn btn-sm btn-primary" type="submit"
+        onclick="return confirm('<?= e(to_persian_digits(number_format($resendCount))) ?> پیامک ناموفق این ارسال، با همان خط و همان متن، به‌عنوان یک ارسال نظیر به نظیر جدید دوباره ارسال شود؟ هزینه‌ی آن مانند یک ارسال جدید از اعتبار کسر می‌شود.<?= $resendHistory ? ' توجه: ناموفق‌های این ارسال قبلاً هم دوباره ارسال شده‌اند.' : '' ?>');">ارسال مجدد ناموفق‌ها (<?= to_persian_digits(number_format($resendCount)) ?> پیامک)</button>
+    </form>
+  <?php endif; ?>
+  <?php if ($resendHistory): ?>
+    <p class="hint">ارسال‌های مجدد ناموفق‌ها:
+      <?php foreach ($resendHistory as $i => $h): ?><?= $i ? ' · ' : '' ?><a href="/messages/bulk-jobs?id=<?= (int)$h['new_job_id'] ?>">Job #<?= to_persian_digits((string)(int)$h['new_job_id']) ?></a> (<?= to_persian_digits(number_format((int)$h['item_count'])) ?> پیامک، <?= jdate((string)$h['created_at']) ?>)<?php endforeach; ?>
+    </p>
   <?php endif; ?>
   <div class="grid grid-4">
     <?php $partsValue = static fn(string $k): string => '<div class="stat-value"><span class="stat-unit">پارت</span> ' . to_persian_digits(number_format((int)($summary[$k] ?? 0))) . '</div>';
