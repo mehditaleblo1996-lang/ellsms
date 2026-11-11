@@ -14,9 +14,10 @@
 -- 2. PishgamRayan's status connector: the new mapping, unlimited checks within 48 hours, backoff
 --    120 s → 1 hour (about 50 checks per undelivered message instead of one every 2 minutes).
 --
--- Rows already stored as failed with a code other than 10 are reopened separately, in small chunks:
---   php cron/gateway-status-reopen.php --gateway=pishgamrayan            (dry run: counts)
---   php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply
+-- Rows already stored as failed with a code other than 10 are reopened separately, in small chunks,
+-- by deploy.sh right after the migrations (once; see docs/sms-gateway-connectors.md). By hand:
+--   docker compose exec app php cron/gateway-status-reopen.php --gateway=pishgamrayan            (dry run)
+--   docker compose exec app php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once
 --
 -- Additive, guarded and rerun-safe. Applying it again re-applies the mapping above, overwriting an
 -- admin's later edit of PishgamRayan's status mapping.
