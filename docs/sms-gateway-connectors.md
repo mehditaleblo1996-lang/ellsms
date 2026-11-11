@@ -395,7 +395,7 @@ which stopped polling. Checks are now unlimited within 48 h with a 120 s → 1 h
 these codes are no longer final, a PishgamRayan message that never reaches `10` is not refunded under
 delivery-based billing, is not offered by «ارسال مجدد ناموفق‌ها», and is counted as «رسیده به مخابرات»
 (not «لیست سیاه») in the status report. After applying the migration, reopen the rows the old mapping
-closed: `./deploy.sh` does it once by itself (`cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once`,
+closed: `./deploy.sh` does it once by itself, on a deploy that applies migrations (`cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once`,
 recorded in setting `gateway_status_reopen_done.pishgamrayan`, then skipped on later deploys); by hand:
 `docker compose exec app php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once`.
 
