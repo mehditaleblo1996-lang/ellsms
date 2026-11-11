@@ -93,6 +93,9 @@ function bulk_cancel_campaign(int $jobId, array $actor, string $reason = '', ?st
     } while ($affected > 0);
 
     bulk_cancellation_audit($actor, 'campaign', 'job:' . $jobId, $totalCancelledItems, $reason, $wasActive ? 'cancelled' : 'already_terminal');
+    if ($wasActive) {
+        bulk_billing_check_job($jobId); // what was sent before the cancel was charged (app/BulkBilling.php)
+    }
     return ['ok' => true, 'cancelled_items' => $totalCancelledItems, 'job_cancelled' => $wasActive];
 }
 

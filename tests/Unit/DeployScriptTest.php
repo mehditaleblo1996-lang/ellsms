@@ -135,6 +135,9 @@ final class DeployScriptTest extends TestCase
         $this->assertNotFalse($migrate, implode("\n", $calls));
         $this->assertNotFalse($restart);
         $this->assertLessThan($restart, $migrate);
+        $reopen = array_search('compose exec -T app php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once', $calls, true);
+        $this->assertNotFalse($reopen, 'the one-off data step runs with the migrations');
+        $this->assertGreaterThan($migrate, $reopen);
         $this->assertSame([], preg_grep('/build|mysql/', $calls), 'the base schema file did not change');
     }
 

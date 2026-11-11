@@ -199,6 +199,15 @@ fi
 if needs migrations; then
   echo "==> Applying versioned DB migrations..."
   in_app php cron/db-migrate.php --apply
+
+  # One-off data steps that belong to a migration but must run in PHP, in small chunks. Each records
+  # that it ran and does nothing on later deploys. A failure is reported and does not stop the
+  # deploy (the step can be run again by hand, see its script).
+  #   - PishgamRayan: rows the old status mapping marked failed go back to «ارسال‌شده»
+  #     (db/migrations/2026_11_16_pishgamrayan_status_sent.sql, docs/sms-gateway-connectors.md).
+  echo "==> One-off data steps..."
+  in_app php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once \
+    || echo "!! gateway-status-reopen failed — run it again: docker compose exec app php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once"
 fi
 
 # ---------- containers ----------

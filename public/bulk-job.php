@@ -228,6 +228,9 @@ require __DIR__ . '/../app/views/header.php';
       <button class="btn btn-sm btn-danger" type="submit">لغو این ارسال</button>
     </form>
   <?php endif; ?>
+  <?php if (is_admin() && ($billingIssue = bulk_billing_issues_for_jobs([$jobId])[$jobId] ?? null) !== null): ?>
+    <div class="flash flash-error">⚠ مغایرت مالی این ارسال: <?= e($billingIssue) ?></div>
+  <?php endif; ?>
   <?php if ($resendSource !== null): ?>
     <p class="hint">این ارسال، ارسال مجدد ناموفق‌های <a href="/messages/bulk-jobs?id=<?= (int)$resendSource ?>">Job #<?= to_persian_digits((string)$resendSource) ?></a> است.</p>
   <?php endif; ?>

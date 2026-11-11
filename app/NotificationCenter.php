@@ -31,6 +31,7 @@ const NOTIFICATION_EVENTS = [
     'shared_otp.template_reviewed'  => 'بررسی قالب کد تایید',
     'shared_service.rejected'       => 'رد پیام سرویس اشتراکی',
     'ai.handoff'                    => 'ارجاع گفتگوی منشی هوشمند به اپراتور',
+    'billing.bulk_mismatch'         => 'مغایرت مالی ارسال گروهی',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];

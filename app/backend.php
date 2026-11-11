@@ -2684,6 +2684,8 @@ function run_bulk_send_pass(): int {
             // instead of leaving it stranded in "reserved" forever
             // (Phase 3, STEP 9 — "do not silently strand reserved funds").
             wallet_release_reservation('bulk_job', (string)$jobId);
+            // Sent vs. charged vs. reserved — a fault is flagged and announced (app/BulkBilling.php).
+            bulk_billing_check_job((int)$jobId);
         }
         // Phase 12 (STEP 27/28): fired AFTER the status='done' UPDATE and the reservation releases
         // above have both happened — never from inside a still-open transaction — for every finished

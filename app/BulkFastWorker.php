@@ -148,6 +148,7 @@ function run_bulk_send_pass_fast(): int {
 
         foreach ($doneIds as $jobId) {
             wallet_release_reservation('bulk_job', (string)$jobId);
+            bulk_billing_check_job((int)$jobId); // sent vs. charged vs. reserved (app/BulkBilling.php)
         }
 
         foreach ($doneJobs as $job) {

@@ -395,7 +395,9 @@ which stopped polling. Checks are now unlimited within 48 h with a 120 s → 1 h
 these codes are no longer final, a PishgamRayan message that never reaches `10` is not refunded under
 delivery-based billing, is not offered by «ارسال مجدد ناموفق‌ها», and is counted as «رسیده به مخابرات»
 (not «لیست سیاه») in the status report. After applying the migration, reopen the rows the old mapping
-closed: `php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply`.
+closed: `./deploy.sh` does it once by itself, on a deploy that applies migrations (`cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once`,
+recorded in setting `gateway_status_reopen_done.pishgamrayan`, then skipped on later deploys); by hand:
+`docker compose exec app php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once`.
 
 ## Secrets
 
@@ -591,7 +593,7 @@ instant.
 | `make sms-gateway-status [GATEWAY=]` | the configuration in effect; never prints a secret value |
 | `make sms-gateway-simulate TO=… [COMPARE=1]` | the exact request, not transmitted |
 | `make sms-status-poll` | one delivery-status polling pass |
-| `php cron/gateway-status-reopen.php --gateway=<code> [--apply]` | after a status-mapping change: reopen rows the old mapping closed (dry run without `--apply`) |
+| `php cron/gateway-status-reopen.php --gateway=<code> [--apply] [--once]` | after a status-mapping change: reopen rows the old mapping closed (dry run without `--apply`; `--once` runs it only the first time — how `deploy.sh` runs it for PishgamRayan). Inside the containers: `docker compose exec app php cron/…` |
 
 ---
 

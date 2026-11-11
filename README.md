@@ -54,7 +54,7 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 **Switching on safely:** configure the gateway and assign it to the routes your sender lines use, run `make sms-gateway-simulate TO=... COMPARE=1` until it reports `IDENTICAL`, then set `SMS_GATEWAY_TRANSPORT=1` (plus `SMS_GATEWAY_MASTER_KEY`) and restart the containers. **Rollback** is setting it back to `0` and restarting — no configuration has to be undone. Full design: [`docs/sms-gateway-connectors.md`](docs/sms-gateway-connectors.md); status polling: `docs/sms-gateway-status-batch-closure-report.md`; useful commands: `make sms-gateway-status`, `make sms-gateway-integrity-check`, `make sms-status-worker-status`.
 
-**PishgamRayan delivery codes:** only `10` («رسیده به گوشی») is final/delivered; every other status code (`4` «نرسیده به گوشی», …) is «ارسال‌شده» and keeps being checked for 48 h with a growing interval (status connector field `poll_backoff_max_seconds`); a send error is still «ناموفق». The provider's raw code, with its meaning, is shown to platform admins only (bulk job page column/filter «کد سرویس‌دهنده», message details). Migration `db/migrations/2026_11_16_pishgamrayan_status_sent.sql`, then once `php cron/gateway-status-reopen.php --gateway=pishgamrayan --apply` to reopen rows the old mapping marked failed. See [`docs/sms-gateway-connectors.md`](docs/sms-gateway-connectors.md).
+**PishgamRayan delivery codes:** only `10` («رسیده به گوشی») is final/delivered; every other status code (`4` «نرسیده به گوشی», …) is «ارسال‌شده» and keeps being checked for 48 h with a growing interval (status connector field `poll_backoff_max_seconds`); a send error is still «ناموفق». The provider's raw code, with its meaning, is shown to platform admins only (bulk job page column/filter «کد سرویس‌دهنده», message details). Migration `db/migrations/2026_11_16_pishgamrayan_status_sent.sql`, and once `cron/gateway-status-reopen.php --gateway=pishgamrayan --apply --once` to reopen rows the old mapping marked failed — `./deploy.sh` runs both. See [`docs/sms-gateway-connectors.md`](docs/sms-gateway-connectors.md).
 
 ## Receiving MO and delivery reports from the provider
 
@@ -330,6 +330,10 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 - **Bulk number categories** (admin, Number Categories page) — upload a newline-separated `.txt` file of numbers under a name. Every panel user (not just admins) sees these as a selectable option on Send, alongside their own private Contacts groups.
 - **KYC profile layer** (Users page for admins, Profile page for self-service) — father's name, address, and two document photo uploads (ID card + a second document such as a passport) live entirely in ELLSMS's own tables, layered on top of a granted-access account. ELLSMS does not create or edit the backend's own `user_` row for this — see "Login model" above for why. Photos are stored outside the web root (`storage/kyc/`, gitignored) and served only through `public/kyc-photo.php`, which checks the viewer is either that user or an admin before streaming anything.
 - **SMS-based 2FA** — admin can enable it per user (Users → edit) or for everyone at once (Users → "فعال‌سازی ورود دومرحله‌ای برای همه"). When enabled, a correct password redirects to a 6-digit code sent to the account's `user_.mobile` (5-minute expiry, 5 wrong attempts before being sent back to login, 60-second resend cooldown) before a session is actually created.
+
+## Financial log (تاریخچه مالی)
+
+**«مالی» → «تاریخچه مالی»** (`/financial-log.php`) lists every increase and decrease of the balance with the balance before and after, from the wallet ledger; admins see every account. A **bulk send is one row** («هزینه‌ی ارسال گروهی» — the sum of its per-message charges, with the balance before and after the send); the per-message charges stay in the ledger. Every charged bulk send is checked when it finishes or is cancelled (sent = charged = frozen prices, reservation released); a mismatch is flagged on its row and job page (admins), sent to the admins as a panel notification and to the support Telegram group. No API route. Migration `db/migrations/2026_11_17_bulk_billing_issues.sql`. See [`docs/financial-log.md`](docs/financial-log.md).
 
 ## Buying credit — ZarinPal
 
@@ -630,6 +634,7 @@ updated in the same change** — see `CLAUDE.md`.
 [cost-preview](docs/cost-preview.md) ·
 [rial-currency](docs/rial-currency.md) ·
 [wallet-architecture](docs/wallet-architecture.md) ·
+[financial-log](docs/financial-log.md) ·
 [delivery-based-billing](docs/delivery-based-billing.md) ·
 [ai-billing](docs/ai-billing.md) ·
 [manual-payments](docs/manual-payments.md) ·

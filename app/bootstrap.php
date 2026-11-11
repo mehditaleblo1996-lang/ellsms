@@ -104,6 +104,7 @@ require_once __DIR__ . '/Sms/OperatorResolution.php';
 require_once __DIR__ . '/Sms/Pricing.php';
 require_once __DIR__ . '/Sms/ProviderHealth.php';
 require_once __DIR__ . '/BulkCancellation.php';
+require_once __DIR__ . '/BulkBilling.php';
 require_once __DIR__ . '/BulkArchive.php';
 require_once __DIR__ . '/Reports/SendDimensionLog.php';
 require_once __DIR__ . '/Observability/QueueSnapshot.php';
