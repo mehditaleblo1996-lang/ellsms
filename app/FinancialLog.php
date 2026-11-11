@@ -106,124 +106,205 @@ function financial_log_grouped(array $filters): bool {
     return in_array($filters['type'], ['', 'sms_debit'], true) && in_array($filters['direction'], ['', 'out'], true);
 }
 
-/** SQL: the row's group — 'j<job id>' for a bulk job's charges and release, 't<ledger id>' otherwise. */
-const FINANCIAL_LOG_GROUP_SQL = "CASE WHEN t.reference_type = 'bulk_job' AND t.type IN ('sms_debit','reservation_release')
-                                      THEN CONCAT('j', t.reference_id) ELSE CONCAT('t', t.id) END";
+/**
+ * A bulk job's ledger rows: its per-message charges (sms_debit) and its one reservation_release. Those
+ * are the only ledger rows written with reference_type 'bulk_job' (app/wallet.php), so the reference
+ * alone identifies them — which the (reference_type, reference_id) index can answer.
+ */
+const FINANCIAL_LOG_BULK_SQL = "t.reference_type = 'bulk_job'";
 
 /** @return array{count:int, increase:int, decrease:int} decrease is a positive total */
 function financial_log_totals(string $whereSql, array $params, bool $grouped = false): array {
     // Grouped, a bulk job's release is folded into its row (it only returns unspent reservation), so
-    // it is not an increase of its own; the job's charges stay in the decrease total.
-    $folded = $grouped ? " AND NOT (t.reference_type = 'bulk_job' AND t.type = 'reservation_release')" : '';
-    $st = db()->prepare('SELECT ' . ($grouped ? 'COUNT(DISTINCT ' . FINANCIAL_LOG_GROUP_SQL . ')' : 'COUNT(*)') . ' n,
-                                COALESCE(SUM(CASE WHEN t.amount > 0' . $folded . ' THEN t.amount ELSE 0 END), 0) inc,
+    // it is not an increase of its own; the job's charges stay in the decrease total. The row count is
+    // the other rows plus one per bulk job — counted in a second, index-friendly query rather than a
+    // COUNT(DISTINCT CASE …) over every row.
+    $bulk = FINANCIAL_LOG_BULK_SQL;
+    $st = db()->prepare('SELECT COUNT(*) n, ' . ($grouped ? "COALESCE(SUM({$bulk}), 0)" : '0') . ' n_bulk,
+                                COALESCE(SUM(CASE WHEN t.amount > 0' . ($grouped ? " AND NOT {$bulk}" : '') . ' THEN t.amount ELSE 0 END), 0) inc,
                                 COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) dec_
                          FROM ellsms_wallet_transactions t' . $whereSql);
     $st->execute($params);
     $row = $st->fetch() ?: [];
-    return ['count' => (int)($row['n'] ?? 0), 'increase' => (int)($row['inc'] ?? 0), 'decrease' => (int)($row['dec_'] ?? 0)];
+    $count = (int)($row['n'] ?? 0);
+    if ($grouped && (int)($row['n_bulk'] ?? 0) > 0) {
+        $jobs = db()->prepare('SELECT COUNT(DISTINCT t.reference_id) FROM ellsms_wallet_transactions t'
+            . ($whereSql === '' ? ' WHERE ' : $whereSql . ' AND ') . $bulk);
+        $jobs->execute($params);
+        $count = $count - (int)$row['n_bulk'] + (int)$jobs->fetchColumn();
+    }
+    return ['count' => $count, 'increase' => (int)($row['inc'] ?? 0), 'decrease' => (int)($row['dec_'] ?? 0)];
 }
+
+const FINANCIAL_LOG_COLUMNS = 't.id, t.user_id, t.type, t.amount, t.balance_before, t.balance_after, t.reference_type,
+                               t.reference_id, t.metadata, t.actor_user_id, t.created_at';
 
 function financial_log_rows(string $whereSql, array $params, int $limit, int $offset, bool $grouped = false): array {
     if (!$grouped) {
-        $st = db()->prepare('SELECT t.id, t.user_id, t.type, t.amount, t.balance_before, t.balance_after, t.reference_type,
-                                    t.reference_id, t.metadata, t.actor_user_id, t.created_at
-                             FROM ellsms_wallet_transactions t' . $whereSql . '
+        $st = db()->prepare('SELECT ' . FINANCIAL_LOG_COLUMNS . ' FROM ellsms_wallet_transactions t' . $whereSql . '
                              ORDER BY t.id DESC LIMIT ' . max(1, $limit) . ' OFFSET ' . max(0, $offset));
         $st->execute($params);
         return $st->fetchAll();
     }
-    // One row per group; for a single ledger row every MAX() is just that row's value.
-    $st = db()->prepare('SELECT ' . FINANCIAL_LOG_GROUP_SQL . ' gk, MAX(t.id) id, MAX(t.user_id) user_id, MAX(t.type) type,
-                                SUM(CASE WHEN t.reference_type = \'bulk_job\' AND t.type = \'reservation_release\' THEN 0 ELSE t.amount END) amount,
-                                SUM(t.type = \'sms_debit\') debit_count,
-                                MAX(t.balance_before) balance_before, MAX(t.balance_after) balance_after,
-                                MAX(t.reference_type) reference_type, MAX(t.reference_id) reference_id, MAX(t.metadata) metadata,
-                                MAX(t.actor_user_id) actor_user_id, MAX(t.created_at) created_at
-                         FROM ellsms_wallet_transactions t' . $whereSql . '
-                         GROUP BY gk ORDER BY id DESC LIMIT ' . max(1, $limit) . ' OFFSET ' . max(0, $offset));
-    $st->execute($params);
+    $ids = financial_log_page_ids($whereSql, $params, max(1, $limit), max(0, $offset));
+    if ($ids === []) return [];
+    $st = db()->prepare('SELECT ' . FINANCIAL_LOG_COLUMNS . ' FROM ellsms_wallet_transactions t WHERE t.id IN ('
+        . implode(',', array_fill(0, count($ids), '?')) . ') ORDER BY t.id DESC');
+    $st->execute($ids);
     $rows = $st->fetchAll();
     $jobIds = [];
     foreach ($rows as $r) {
-        if (str_starts_with((string)$r['gk'], 'j')) $jobIds[] = (string)$r['reference_id'];
+        if ($r['reference_type'] === 'bulk_job') $jobIds[] = (string)$r['reference_id'];
     }
     return financial_log_fold_bulk_rows($rows, financial_log_bulk_job_facts($jobIds));
 }
 
 /**
- * Per bulk job, over ALL its ledger rows (not only the filtered ones): its reservation, the balance
- * right after its release and after its last charge, and its total charge.
+ * The ledger ids of one page of the grouped list, newest first: every row that is not a bulk job's,
+ * and for a bulk job only its newest row. Walks the ledger backwards by primary key in chunks of small
+ * rows (id and reference only), leaving out the jobs already met, and stops as soon as the page is
+ * full — so a page costs the rows of the jobs on it and before it, never a GROUP BY over the ledger
+ * (which took seconds on a large one).
  *
- * @return array<string, array{reserved:int, active:bool, release_after:?int, last_debit_after:?int, cost:int}>
+ * @return list<int>
+ */
+function financial_log_page_ids(string $whereSql, array $params, int $limit, int $offset): array {
+    $db = db();
+    $filter = $whereSql === '' ? '' : ' AND ' . substr($whereSql, strlen(' WHERE '));
+    $want = $offset + $limit;
+    $ids = [];
+    $seen = [];
+    $cursor = PHP_INT_MAX;
+    while (count($ids) < $want) {
+        $exclude = '';
+        $excludeParams = [];
+        if ($seen !== []) {
+            $exclude = ' AND NOT (' . FINANCIAL_LOG_BULK_SQL . ' AND t.reference_id IN (' . implode(',', array_fill(0, count($seen), '?')) . '))';
+            $excludeParams = array_map('strval', array_keys($seen));
+        }
+        $st = $db->prepare('SELECT t.id, t.reference_type, t.reference_id FROM ellsms_wallet_transactions t
+                            WHERE t.id < ?' . $filter . $exclude . ' ORDER BY t.id DESC LIMIT ' . FINANCIAL_LOG_SCAN_CHUNK);
+        $st->execute(array_merge([$cursor], $params, $excludeParams));
+        $chunk = $st->fetchAll(PDO::FETCH_NUM);
+        if ($chunk === []) break;
+        foreach ($chunk as [$id, $refType, $refId]) {
+            $cursor = (int)$id;
+            if ($refType === 'bulk_job') {
+                if (isset($seen[(string)$refId])) continue;
+                $seen[(string)$refId] = true;
+            }
+            $ids[] = (int)$id;
+            if (count($ids) >= $want) break;
+        }
+        if (count($chunk) < FINANCIAL_LOG_SCAN_CHUNK) break;
+    }
+    return array_slice($ids, $offset, $limit);
+}
+
+/** Ledger rows read per step of financial_log_page_ids(). */
+const FINANCIAL_LOG_SCAN_CHUNK = 5000;
+
+/**
+ * Per bulk job, from its reservation and a few indexed lookups (never by reading all its rows):
+ *   cost       what it charged: reservation − what is still reserved (sending) or − what was released;
+ *   count      its charge rows (its ledger rows, by index, less its release);
+ *   after      the balance after its release, else after its newest row;
+ *   reserved / active   its reservation and whether it is still sending.
+ *
+ * @return array<string, array{reserved:int, active:bool, cost:int, count:int, after:?int}>
  */
 function financial_log_bulk_job_facts(array $jobIds): array {
     $jobIds = array_values(array_unique(array_map('strval', $jobIds)));
     if ($jobIds === []) return [];
     $in = implode(',', array_fill(0, count($jobIds), '?'));
+    $db = db();
     $facts = [];
     foreach ($jobIds as $id) {
-        $facts[$id] = ['reserved' => 0, 'active' => false, 'release_after' => null, 'last_debit_after' => null, 'cost' => 0];
+        $facts[$id] = ['reserved' => 0, 'active' => false, 'cost' => 0, 'count' => 0, 'after' => null, 'has_reservation' => false];
     }
-    $db = db();
-    $st = $db->prepare("SELECT reference_id, amount, status FROM ellsms_wallet_reservations WHERE reference_type = 'bulk_job' AND reference_id IN ({$in})");
-    $st->execute($jobIds);
-    foreach ($st->fetchAll() as $r) {
-        $facts[(string)$r['reference_id']]['reserved'] = (int)$r['amount'];
-        $facts[(string)$r['reference_id']]['active'] = (string)$r['status'] === 'active';
-    }
-    $st = $db->prepare("SELECT t.reference_id, t.type, t.balance_after, x.total
-                        FROM (SELECT reference_id, type, MAX(id) mid, SUM(amount) total FROM ellsms_wallet_transactions
-                              WHERE reference_type = 'bulk_job' AND type IN ('sms_debit','reservation_release') AND reference_id IN ({$in})
-                              GROUP BY reference_id, type) x
-                        JOIN ellsms_wallet_transactions t ON t.id = x.mid");
+    $remaining = [];
+    $st = $db->prepare("SELECT reference_id, amount, remaining_amount, status FROM ellsms_wallet_reservations WHERE reference_type = 'bulk_job' AND reference_id IN ({$in})");
     $st->execute($jobIds);
     foreach ($st->fetchAll() as $r) {
         $id = (string)$r['reference_id'];
-        if ($r['type'] === 'reservation_release') {
-            $facts[$id]['release_after'] = (int)$r['balance_after'];
-        } else {
-            $facts[$id]['last_debit_after'] = (int)$r['balance_after'];
-            $facts[$id]['cost'] = -(int)$r['total'];
+        $facts[$id]['reserved'] = (int)$r['amount'];
+        $facts[$id]['active'] = (string)$r['status'] === 'active';
+        $facts[$id]['has_reservation'] = true;
+        $remaining[$id] = (int)$r['remaining_amount'];
+    }
+    // Index-only: how many ledger rows each job has and its newest one.
+    $st = $db->prepare("SELECT reference_id, COUNT(*) n, MAX(id) mid FROM ellsms_wallet_transactions
+                        WHERE reference_type = 'bulk_job' AND reference_id IN ({$in}) GROUP BY reference_id");
+    $st->execute($jobIds);
+    $newest = [];
+    foreach ($st->fetchAll() as $r) {
+        $facts[(string)$r['reference_id']]['count'] = (int)$r['n'];
+        $newest[(int)$r['mid']] = (string)$r['reference_id'];
+    }
+    // The release row, by its unique idempotency key (app/wallet.php wallet_release_reservation()).
+    $keys = array_map(static fn(string $id): string => 'release:bulk_job:' . $id, $jobIds);
+    $st = $db->prepare('SELECT reference_id, amount, balance_after FROM ellsms_wallet_transactions WHERE idempotency_key IN ('
+        . implode(',', array_fill(0, count($keys), '?')) . ')');
+    $st->execute($keys);
+    $released = [];
+    foreach ($st->fetchAll() as $r) {
+        $id = (string)$r['reference_id'];
+        $released[$id] = (int)$r['amount'];
+        $facts[$id]['after'] = (int)$r['balance_after'];
+        $facts[$id]['count']--;
+    }
+    if ($newest !== []) {
+        $st = $db->prepare('SELECT id, balance_after FROM ellsms_wallet_transactions WHERE id IN (' . implode(',', array_fill(0, count($newest), '?')) . ')');
+        $st->execute(array_keys($newest));
+        foreach ($st->fetchAll() as $r) {
+            $id = $newest[(int)$r['id']];
+            if (!isset($released[$id])) $facts[$id]['after'] = (int)$r['balance_after'];
         }
     }
+    $noReservation = [];
+    foreach ($facts as $id => &$f) {
+        if ($f['has_reservation']) {
+            $f['cost'] = $f['reserved'] - ($f['active'] ? ($remaining[$id] ?? 0) : ($released[$id] ?? 0));
+        } else {
+            $noReservation[] = $id;
+        }
+    }
+    unset($f);
+    if ($noReservation !== []) {
+        // No reservation row (should not happen for a charged job): sum its charges directly.
+        $st = $db->prepare("SELECT reference_id, COALESCE(SUM(-amount), 0) c FROM ellsms_wallet_transactions
+                            WHERE reference_type = 'bulk_job' AND type = 'sms_debit' AND reference_id IN ("
+            . implode(',', array_fill(0, count($noReservation), '?')) . ') GROUP BY reference_id');
+        $st->execute($noReservation);
+        foreach ($st->fetchAll() as $r) $facts[(string)$r['reference_id']]['cost'] = (int)$r['c'];
+    }
+    foreach ($facts as &$f) unset($f['has_reservation']);
+    unset($f);
     return $facts;
 }
 
 /**
- * Pure: turns each bulk job's group row into one «هزینه‌ی ارسال گروهی» row.
+ * Pure: turns each bulk job's row into one «هزینه‌ی ارسال گروهی» row, from its facts
+ * (financial_log_bulk_job_facts()).
  *
  * The money left the available balance when the job RESERVED its cost (no ledger row of its own), and
  * the per-message charges then took it from the reservation, so their own before/after are equal. The
  * row therefore shows: after = the balance once the job settled (after its release; while it is still
- * sending, after its last charge), before = after + what the job cost (finished) or + its reservation
+ * sending, after its newest charge), before = after + what the job cost (finished) or + its reservation
  * (still sending). Exact when nothing else touched the account while the job ran.
  */
 function financial_log_fold_bulk_rows(array $rows, array $facts): array {
     foreach ($rows as &$r) {
-        $isJob = str_starts_with((string)($r['gk'] ?? ''), 'j');
-        unset($r['gk']);
-        if (!$isJob) {
-            unset($r['debit_count']);
-            continue;
-        }
+        if (($r['reference_type'] ?? '') !== 'bulk_job') continue;
         $f = $facts[(string)$r['reference_id']] ?? null;
-        $count = (int)($r['debit_count'] ?? 0);
-        unset($r['debit_count']);
+        if ($f === null) continue;
+        $after = $f['after'] ?? (int)$r['balance_after'];
         $r['type'] = 'sms_debit';
-        $meta = ['bulk_group' => true, 'sent' => $count];
-        if ($f !== null) {
-            if ($f['active']) {
-                $after = $f['last_debit_after'] ?? (int)$r['balance_after'];
-                $before = $after + $f['reserved'];
-                $meta['in_progress'] = true;
-            } else {
-                $after = $f['release_after'] ?? $f['last_debit_after'] ?? (int)$r['balance_after'];
-                $before = $after + $f['cost'];
-            }
-            $r['balance_before'] = $before;
-            $r['balance_after'] = $after;
-        }
+        $r['amount'] = -$f['cost'];
+        $r['balance_after'] = $after;
+        $r['balance_before'] = $after + ($f['active'] ? $f['reserved'] : $f['cost']);
+        $meta = ['bulk_group' => true, 'sent' => max(0, $f['count'])];
+        if ($f['active']) $meta['in_progress'] = true;
         $r['metadata'] = json_encode($meta);
     }
     unset($r);

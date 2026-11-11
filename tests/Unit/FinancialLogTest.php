@@ -91,14 +91,14 @@ final class FinancialLogTest extends TestCase
     public function testAFinishedBulkJobRowShowsTheBalanceBeforeAndAfterItsCost(): void
     {
         $rows = [
-            ['gk' => 'j914', 'id' => 30, 'user_id' => 5, 'type' => 'sms_debit', 'amount' => -1078440, 'debit_count' => 926,
+            ['id' => 30, 'user_id' => 5, 'type' => 'sms_debit', 'amount' => -1164,
              'balance_before' => 994002136, 'balance_after' => 994002136, 'reference_type' => 'bulk_job', 'reference_id' => '914',
              'metadata' => null, 'actor_user_id' => null, 'created_at' => '2026-11-11 12:22:00'],
-            ['gk' => 't7', 'id' => 7, 'user_id' => 5, 'type' => 'manual_credit', 'amount' => 1000, 'debit_count' => 0,
+            ['id' => 7, 'user_id' => 5, 'type' => 'manual_credit', 'amount' => 1000,
              'balance_before' => 0, 'balance_after' => 1000, 'reference_type' => '', 'reference_id' => '',
              'metadata' => '{"reason":"x"}', 'actor_user_id' => 1, 'created_at' => '2026-11-10 10:00:00'],
         ];
-        $facts = ['914' => ['reserved' => 1078440, 'active' => false, 'release_after' => null, 'last_debit_after' => 994002136, 'cost' => 1078440]];
+        $facts = ['914' => ['reserved' => 1078440, 'active' => false, 'cost' => 1078440, 'count' => 926, 'after' => 994002136]];
         [$job, $other] = financial_log_fold_bulk_rows($rows, $facts);
 
         self::assertSame('هزینه‌ی ارسال گروهی', financial_log_row_label($job));
@@ -106,30 +106,19 @@ final class FinancialLogTest extends TestCase
         self::assertSame(995080576, $job['balance_before']);
         self::assertSame(994002136, $job['balance_after']);
         self::assertSame('ارسال گروهی #914 — ۹۲۶ پیامک', financial_log_description($job));
-        self::assertArrayNotHasKey('gk', $job);
 
         self::assertSame('افزایش توسط مدیر', financial_log_row_label($other));
         self::assertSame(0, $other['balance_before'], 'a non-bulk row is untouched');
         self::assertSame('{"reason":"x"}', $other['metadata']);
     }
 
-    public function testAFinishedJobWithAReleaseEndsAtTheReleaseBalance(): void
-    {
-        $rows = [['gk' => 'j913', 'id' => 9, 'user_id' => 5, 'type' => 'sms_debit', 'amount' => -4723296, 'debit_count' => 4048,
-                  'balance_before' => 994244824, 'balance_after' => 994244824, 'reference_type' => 'bulk_job', 'reference_id' => '913',
-                  'metadata' => null, 'actor_user_id' => null, 'created_at' => '2026-11-11 11:45:00']];
-        $facts = ['913' => ['reserved' => 5559048, 'active' => false, 'release_after' => 995080576, 'last_debit_after' => 994244824, 'cost' => 4723296]];
-        [$job] = financial_log_fold_bulk_rows($rows, $facts);
-        self::assertSame(995080576, $job['balance_after']);
-        self::assertSame(995080576 + 4723296, $job['balance_before']);
-    }
-
     public function testABulkJobStillSendingShowsItsReservation(): void
     {
-        $rows = [['gk' => 'j1', 'id' => 3, 'user_id' => 5, 'type' => 'sms_debit', 'amount' => -200, 'debit_count' => 2,
+        $rows = [['id' => 3, 'user_id' => 5, 'type' => 'sms_debit', 'amount' => -100,
                   'balance_before' => 700, 'balance_after' => 700, 'reference_type' => 'bulk_job', 'reference_id' => '1',
                   'metadata' => null, 'actor_user_id' => null, 'created_at' => '2026-11-11 12:00:00']];
-        [$job] = financial_log_fold_bulk_rows($rows, ['1' => ['reserved' => 300, 'active' => true, 'release_after' => null, 'last_debit_after' => 700, 'cost' => 200]]);
+        [$job] = financial_log_fold_bulk_rows($rows, ['1' => ['reserved' => 300, 'active' => true, 'cost' => 200, 'count' => 2, 'after' => 700]]);
+        self::assertSame(-200, $job['amount']);
         self::assertSame(1000, $job['balance_before']);
         self::assertSame(700, $job['balance_after']);
         self::assertStringContainsString('در حال ارسال', financial_log_description($job));

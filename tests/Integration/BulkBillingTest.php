@@ -96,4 +96,23 @@ final class BulkBillingTest extends IntegrationTestCase
         $this->assertSame(100000, $totals['increase'], 'the release is folded into the job row, not an increase');
         $this->assertSame($cost, $totals['decrease']);
     }
+    public function testPagesOfTheGroupedLogNeitherRepeatNorSkipABulkSend(): void
+    {
+        [$a] = $this->finishedJob(3, 3);
+        \wallet_credit($this->userId, 500, 'manual_credit', 'admin_adjustment', (string)$this->userId, 'test:mid:' . $this->userId);
+        [$b] = $this->finishedJob(2, 2);
+        [$c] = $this->finishedJob(1, 1);
+        $filters = \financial_log_filters([], $this->userId);
+        [$where, $params] = \financial_log_where($filters);
+
+        $totals = \financial_log_totals($where, $params, true);
+        $this->assertSame(5, $totals['count'], 'purchase + credit + three sends');
+        $seen = [];
+        for ($offset = 0; $offset < 6; $offset += 2) {
+            foreach (\financial_log_rows($where, $params, 2, $offset, true) as $r) {
+                $seen[] = $r['reference_type'] === 'bulk_job' ? 'job' . $r['reference_id'] : (string)$r['type'];
+            }
+        }
+        $this->assertSame(['job' . $c, 'job' . $b, 'manual_credit', 'job' . $a, 'purchase'], $seen);
+    }
 }

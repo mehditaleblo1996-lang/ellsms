@@ -33,6 +33,18 @@ The log therefore shows a bulk send as **one row**, «هزینه‌ی ارسال
 These balances are exact when nothing else touched the account while the send ran; with overlapping
 activity the row still shows the send's real cost and the real balance at its settlement.
 
+**How a page is built (speed).** Not with a `GROUP BY` over the ledger: that took ~5 s for the
+admins' unfiltered view on 740k ledger rows. `financial_log_page_ids()` walks the ledger backwards by
+primary key in chunks of small rows (id, reference), keeps every non-bulk row and only the newest row
+of each bulk job, leaves out jobs already met, and stops once the page is full (~50 ms for that same
+view). Each job's figures come from its reservation and a few indexed lookups
+(`financial_log_bulk_job_facts()`: cost = reserved − still reserved or − released; the release row by
+its idempotency key; the row count by the `(reference_type, reference_id)` index), never by reading
+all its charge rows. The total row count is the other rows plus `COUNT(DISTINCT reference_id)` of the
+bulk rows. No extra index is needed; the existing primary key, `(reference_type, reference_id)` and
+`uniq_idempotency` are used. A group is identified by `reference_type = 'bulk_job'` alone: charges and
+releases are the only ledger rows written with it.
+
 The release is folded into the row, so it is not counted in «جمع افزایش»; «جمع کاهش» is unchanged.
 A filter for «برگشت رزرو ارسال‌نشده» or «فقط افزایش» lists the raw ledger rows instead
 (`financial_log_grouped()`). Direct, scheduled, API and other sends were always one row each and stay so.
