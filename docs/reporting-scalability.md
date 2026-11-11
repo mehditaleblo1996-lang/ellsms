@@ -19,7 +19,9 @@ rows, and what is measured rather than assumed.
 
 ### Numbered pages over a keyset list
 
-«لیست پیام‌های ارسالی» (`/messages/reports`, `public/reports-v2.php`; a row sent through
+«لیست پیام‌های ارسالی» (`/messages/reports`, `public/reports-v2.php`; «شناسه» is the message's
+random id, computed per row with no query — `message_public_id()`, `docs/public-api.md` «One id per
+message»; a row sent through
 `POST /api/v1/messages` also shows «شناسه‌ی API» under its reference — one batched lookup per page
 in `ellsms_api_message_attempts`, `app/ApiMessageIds.php`; data in
 `app/Reports/SentMessages.php`) merges three sources — bulk items, gateway send attempts and the

@@ -235,17 +235,22 @@ ok = verify_webhook(secret, headers["X-Datis-Timestamp"], raw_body, headers["X-D
 
 `{id}` همان شناسه‌ای است که هنگام ارسال برگشته است. هر سه مسیر با `POST` هم دقیقاً همین پاسخ را می‌دهند (بدنه لازم نیست؛ در ارسال انبوه می‌توانید `limit`، `after` و `state` را در بدنه‌ی JSON بفرستید).
 
-**شناسه‌ی ارسال:** `id` پاسخ `POST /api/v1/messages` یک عدد تصادفی ۱۶ رقمی است (مثل `4821730095512264`) که به‌صورت رشته برمی‌گردد. آن را ذخیره کنید.
+**شناسه‌ها — پنل و API یک شناسه دارند:**
 
-- با «شناسه» گزارش پنل (مثل `D34`) و با «شناسه اپراتور» (عددی حدوداً ۱۹ رقمی) فرق دارد. «شناسه اپراتور» در API پذیرفته نمی‌شود و خطای `404` می‌گیرید.
-- **هر پیامی، با شناسه‌ی پنل:** وضعیت تحویل پیامی که با API نفرستاده‌اید (از خود پنل، زمان‌بندی، منشی یا ارسال حجیم) را با همان «شناسه» ستون گزارش پنل بپرسید: `GET /api/v1/messages/D34/state`، و برای یک ردیف ارسال حجیم `B12`. پاسخ همان شکل را دارد، با یک گیرنده.
-- در پنل با نام **«شناسه‌ی API»** دیده می‌شود: زیر شناسه‌ی هر ردیف در «لیست پیام‌های ارسالی»، در پنجره‌ی جزئیات پیام و در صفحه‌ی پیام. فقط پیام‌هایی که با API فرستاده شده‌اند آن را دارند.
-- شناسه‌های کوتاه ارسال‌های قبلی (مثل `482`) همچنان کار می‌کنند.
+| شناسه | شکل | یعنی | کجا دیده می‌شود |
+|---|---|---|---|
+| شناسه‌ی پیام | ۱۵ رقم، مثل `222092113875936` | یک پیام به یک گیرنده | ستون «شناسه» گزارش پنل، `recipients[].id` در API، `public_id` در وب‌هوک تحویل |
+| شناسه‌ی ارسال | ۱۶ رقم، مثل `4821730095512264` | کل یک ارسال API با همه‌ی گیرنده‌هایش | `id` پاسخ `POST /api/v1/messages`؛ در پنل با نام «شناسه‌ی API» زیر شناسه‌ی ردیف |
+
+- هر دو تصادفی‌اند و به‌صورت رشته برمی‌گردند. هر دو را می‌توانید به‌جای `{id}` در `/api/v1/messages/{id}/state` بگذارید.
+- **هر پیامی:** با شناسه‌ی پیام، وضعیت تحویل پیامی را هم که با API نفرستاده‌اید (از خود پنل، زمان‌بندی، منشی یا ارسال حجیم) می‌توانید بپرسید. پاسخ همان شکل را دارد، با یک گیرنده.
+- شناسه‌های قبلی همچنان کار می‌کنند: `D34` و `B12` گزارش پنل، و شماره‌های کوتاه ارسال‌های قدیمی (مثل `482`).
+- «شناسه اپراتور» (عددی حدوداً ۱۹ رقمی) در API پذیرفته نمی‌شود و خطای `404` می‌گیرید.
 
 ```
 curl https://datisrayan.com/api/v1/messages/4821730095512264/state -H "Authorization: Bearer $DATIS_API_KEY"
 curl -X POST https://datisrayan.com/api/v1/messages/4821730095512264/state -H "Authorization: Bearer $DATIS_API_KEY"
-curl https://datisrayan.com/api/v1/messages/D10321/state -H "Authorization: Bearer $DATIS_API_KEY"
+curl https://datisrayan.com/api/v1/messages/222092113875936/state -H "Authorization: Bearer $DATIS_API_KEY"
 
 curl https://datisrayan.com/api/v1/otp/57/state -H "Authorization: Bearer $DATIS_API_KEY"
 
@@ -260,9 +265,9 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?state=delivered" -H "Auth
   "summary": { "delivered": 1, "undelivered": 1, "sent": 0, "failed": 0,
                "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "recipients": [
-    { "destination": "989121234567", "state": "delivered",
+    { "id": "222092113875936", "destination": "989121234567", "state": "delivered",
       "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" },
-    { "destination": "989351112233", "state": "undelivered",
+    { "id": "150114141852808", "destination": "989351112233", "state": "undelivered",
       "delivered_at": null, "checked_at": "2026-11-10 11:01:00" }
   ],
   "created_at": "2026-11-10 11:00:05" } }

@@ -192,3 +192,127 @@ function api_message_ids_for_attempts(array $attemptIds): array {
         return [];
     }
 }
+
+/* ---------- one random id per message, shared by the panel and the API ---------- */
+
+/**
+ * «شناسه» of ONE message to ONE recipient — the number the panel's send report shows for a row and
+ * the API returns as recipients[].id. It replaces the report's sequential references (D34, B12, L56),
+ * which told a customer how many messages the whole platform sent between two of theirs.
+ *
+ * Nothing is stored: the id is the row's (source, row id) put through a keyed permutation, and is
+ * turned back into the row by the same key. So every message — also one sent years ago — has an id,
+ * no table gains a column, and the send path writes nothing extra.
+ *
+ *   value  = row id * 4 + source code            (46 bits of row id, 2 bits of source: < 2^48)
+ *   id     = 10^14 + permute(value)              always 15 digits, 100000000000000 … 381474976710655
+ *
+ * 15 digits keeps it apart from an API send id (16 digits, app: api_message_new_public_id()) and
+ * from the old short row numbers, and below 2^53 so a client may hold it in a double.
+ *
+ * The key is 32 random bytes kept in ellsms_settings (`message_id_key`), created by
+ * db/migrations/2026_11_14_message_id_key.sql (or on first use, see message_id_key()). It
+ * must never change: with another key every id names another row. A database copy (staging) carries
+ * it along. Without a readable key, or for a row id beyond 46 bits, there is no id and callers fall
+ * back to the old reference.
+ */
+const MESSAGE_ID_SOURCES = ['attempt' => 0, 'bulk' => 1, 'legacy' => 2];
+const MESSAGE_ID_BASE = 100000000000000;          // 10^14
+const MESSAGE_ID_DOMAIN = 281474976710656;        // 2^48
+const MESSAGE_ID_MAX_ROW = 70368744177663;        // 2^46 - 1
+const MESSAGE_ID_KEY_SETTING = 'message_id_key';
+
+/**
+ * The permutation key (raw bytes), or null when there is none to use. A key that was read is kept
+ * for the life of the process; "none" is not, so a worker started before the key existed finds it
+ * on a later call.
+ *
+ * The key is created by db/migrations/2026_11_14_message_id_key.sql. Where that has not run yet it
+ * is created here on first use — but never inside a database transaction: a key written in a
+ * transaction that later rolls back would be gone while this process had already made ids with it.
+ * In that case there is simply no id yet (callers fall back to the old reference).
+ */
+function message_id_key(): ?string {
+    static $key = null;
+    if ($key !== null) return $key;
+    try {
+        $hex = setting_fresh(MESSAGE_ID_KEY_SETTING);
+        if ($hex === null) {
+            $db = db();
+            if ($db->inTransaction()) return null;
+            // INSERT IGNORE lets exactly one of several concurrent processes create it; everyone
+            // then reads the row that won.
+            $db->prepare('INSERT IGNORE INTO ellsms_settings (skey, svalue) VALUES (?, ?)')
+               ->execute([MESSAGE_ID_KEY_SETTING, bin2hex(random_bytes(32))]);
+            $hex = setting_fresh(MESSAGE_ID_KEY_SETTING);
+        }
+        if (is_string($hex) && strlen($hex) === 64 && ctype_xdigit($hex)) {
+            $key = hex2bin($hex);
+            return $key;
+        }
+        Logger::error('message_id.key_invalid', []);
+    } catch (Throwable $t) {
+        Logger::warning('message_id.key_unavailable', ['exception' => $t->getMessage()]);
+    }
+    return null;
+}
+
+/**
+ * Pure: a keyed permutation of 0 … 2^48-1 (an 8-round Feistel network over two 24-bit halves, round
+ * function HMAC-SHA256). $decrypt runs the rounds backwards: the inverse permutation.
+ */
+function message_id_permute(int $value, string $key, bool $decrypt = false): int {
+    $left = ($value >> 24) & 0xFFFFFF;
+    $right = $value & 0xFFFFFF;
+    $round = static function (int $n, int $half) use ($key): int {
+        $mac = hash_hmac('sha256', chr($n) . pack('N', $half), $key, true);
+        return ((ord($mac[0]) << 16) | (ord($mac[1]) << 8) | ord($mac[2]));
+    };
+    if (!$decrypt) {
+        for ($n = 0; $n < 8; $n++) {
+            [$left, $right] = [$right, $left ^ $round($n, $right)];
+        }
+    } else {
+        for ($n = 7; $n >= 0; $n--) {
+            [$left, $right] = [$right ^ $round($n, $left), $left];
+        }
+    }
+    return ($left << 24) | $right;
+}
+
+/** Pure: the id of ($source, $rowId) under $key, or null when it cannot have one. */
+function message_public_id_encode(string $source, int $rowId, string $key): ?string {
+    if (!isset(MESSAGE_ID_SOURCES[$source]) || $rowId <= 0 || $rowId > MESSAGE_ID_MAX_ROW) return null;
+    return (string)(MESSAGE_ID_BASE + message_id_permute($rowId * 4 + MESSAGE_ID_SOURCES[$source], $key));
+}
+
+/** Pure: whether $id has the shape of a message id (15 digits in range). Says nothing about the row existing. */
+function message_public_id_shape(string $id): bool {
+    return strlen($id) === 15 && ctype_digit($id) && (int)$id >= MESSAGE_ID_BASE && (int)$id < MESSAGE_ID_BASE + MESSAGE_ID_DOMAIN;
+}
+
+/**
+ * Pure: [source, row id] of a message id under $key, or null when it is not one.
+ *
+ * @return array{0:string, 1:int}|null
+ */
+function message_public_id_decode_with(string $id, string $key): ?array {
+    if (!message_public_id_shape($id)) return null;
+    $value = message_id_permute((int)$id - MESSAGE_ID_BASE, $key, true);
+    $source = array_search($value & 3, MESSAGE_ID_SOURCES, true);
+    $rowId = $value >> 2;
+    return $source !== false && $rowId > 0 ? [$source, $rowId] : null;
+}
+
+/** «شناسه» of a message row ('attempt' | 'bulk' | 'legacy'), or null when there is no key. */
+function message_public_id(string $source, int $rowId): ?string {
+    $key = message_id_key();
+    return $key === null ? null : message_public_id_encode($source, $rowId, $key);
+}
+
+/** @return array{0:string, 1:int}|null [source, row id] of a message id, or null */
+function message_public_id_decode(string $id): ?array {
+    if (!message_public_id_shape($id)) return null; // before touching the key: most ids are not one
+    $key = message_id_key();
+    return $key === null ? null : message_public_id_decode_with($id, $key);
+}

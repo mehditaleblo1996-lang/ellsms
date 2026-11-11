@@ -39,6 +39,8 @@ export interface MessageResult {
   message: string;
   channel?: Channel;
   sent_by_channel?: { bale: number; sms: number };
+  /** each recipient's own message id (15 digits), usable with getMessageState() */
+  recipients?: { destination: string; id: string }[];
 }
 
 export interface BulkJobInput {
@@ -66,6 +68,8 @@ export type RecipientState = 'delivered' | 'undelivered' | 'sent' | 'failed' | '
 export type OverallState = 'delivered' | 'partially_delivered' | 'sent' | 'undelivered' | 'sending' | 'cancelled' | 'unknown' | 'not_available';
 
 export interface RecipientDelivery {
+  /** the message's own random 15-digit id — the number the panel shows for it; null without a transport row */
+  id: string | null;
   destination: string;
   state: RecipientState;
   /** UTC; null until delivered */
@@ -85,8 +89,10 @@ export interface MessageState {
   created_at: string;
 }
 
-export interface OtpState extends RecipientDelivery {
+export interface OtpState extends Omit<RecipientDelivery, 'id'> {
   id: string;
+  /** the message's own random 15-digit id (the panel's «شناسه») */
+  message_id: string | null;
   send_status: string;
   final: boolean;
   created_at: string;

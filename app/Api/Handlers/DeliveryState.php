@@ -257,8 +257,14 @@ function api_destination_spellings(array $destinations): array {
 
 /* ---------- pure: response bodies ---------- */
 
+/**
+ * `id` is the message's own id — «شناسه» of its row in the panel's send report
+ * (app/ApiMessageIds.php) — when the caller put one on the row as `message_id`; null for a
+ * recipient without a transport row.
+ */
 function api_recipient_body(string $destination, string $state, ?array $row): array {
     return [
+        'id'           => isset($row['message_id']) ? (string)$row['message_id'] : null,
         'destination'  => $destination,
         'state'        => $state,
         'delivered_at' => $row['delivered_at'] ?? null,
@@ -298,6 +304,7 @@ function api_otp_state_body(array $otp, ?array $row): array {
     return [
         'id'           => (string)$otp['id'],
         'send_status'  => (string)$otp['status'],
+        'message_id'   => $recipient['id'],
         'destination'  => $recipient['destination'],
         'state'        => $state,
         'final'        => !in_array($state, ['queued', 'sent'], true),
@@ -338,6 +345,20 @@ function api_bulk_state_body(array $job, array $summary, array $items, int $limi
 
 /* ---------- database reads ---------- */
 
+/**
+ * Puts each row's message id on it as `message_id` (app/ApiMessageIds.php), for api_recipient_body().
+ * $source: 'attempt' for ellsms_message_attempts rows, 'bulk' for ellsms_bulk_items rows.
+ */
+function api_state_with_message_ids(array $rows, string $source): array {
+    foreach ($rows as &$row) {
+        if (is_array($row) && isset($row['id'])) {
+            $row['message_id'] = message_public_id($source, (int)$row['id']);
+        }
+    }
+    unset($row);
+    return $rows;
+}
+
 /** Candidate transport rows for one API message row (bounded by user, time and recipient). */
 function api_message_state_candidates(array $message, array $destinations): array {
     if ($destinations === []) return [];
@@ -375,8 +396,9 @@ function api_state_row_in_organization(int $organizationId, mixed $rowOrganizati
  * organization, or was removed from the customer's panel by an admin (app/HiddenMessages.php) — the
  * three are indistinguishable to the caller. Two primary-key reads; nothing is scanned.
  */
-function api_panel_ref_state(int $organizationId, string $source, int $rowId): ?array {
+function api_panel_ref_state(int $organizationId, string $source, int $rowId, ?string $shownId = null): ?array {
     $db = db();
+    if ($source !== 'attempt' && $source !== 'bulk') return null;
     if ($source === 'attempt') {
         // The rows the panel's report lists (sent_report_find()): accepted or refused, with a recipient.
         $st = $db->prepare("SELECT id, organization_id, user_id, destination, status, delivery_status, delivered_at, delivery_checked_at, attempted_at
@@ -390,7 +412,8 @@ function api_panel_ref_state(int $organizationId, string $source, int $rowId): ?
         }
         $destination = normalize_msisdn((string)$row['destination']) ?? (string)$row['destination'];
         $state = api_message_recipient_state($row['status'], $row['delivery_status'] ?? null);
-        return api_panel_ref_state_body('D' . $rowId, $row['status'] === 'failed' ? 'failed' : 'sent', $destination, $state, $row, $row['attempted_at']);
+        $row = api_state_with_message_ids([$row], 'attempt')[0];
+        return api_panel_ref_state_body($shownId ?? 'D' . $rowId, $row['status'] === 'failed' ? 'failed' : 'sent', $destination, $state, $row, $row['attempted_at']);
     }
 
     $st = $db->prepare('SELECT bi.id, bi.job_id, bi.mobile, bi.status, bi.delivery_status, bi.delivered_at, bi.delivery_checked_at, bi.created_at,
@@ -405,7 +428,8 @@ function api_panel_ref_state(int $organizationId, string $source, int $rowId): ?
     // An aimed-bulk number belongs to the platform's bank: the customer gets the mask, as in the panel.
     $destination = bulk_recipient_display((string)$row['mobile'], !empty($row['recipients_masked']), false);
     $state = api_bulk_item_state((string)$row['status'], $row['delivery_status'] ?? null);
-    return api_panel_ref_state_body('B' . $rowId, (string)$row['status'], $destination, $state, $row, $row['created_at']);
+    $row = api_state_with_message_ids([$row], 'bulk')[0];
+    return api_panel_ref_state_body($shownId ?? 'B' . $rowId, (string)$row['status'], $destination, $state, $row, $row['created_at']);
 }
 
 /** The transport rows linked to one API message (app/ApiMessageIds.php); empty when it has none. */
@@ -462,9 +486,15 @@ function api_handle_messages_state(array $ctx): void {
     $principal = $ctx['principal'];
     $id = $ctx['params']['id'] ?? '';
     // «شناسه» of the panel's send report (D34 / B12): any message of the organization, however it was sent.
+    // …or that row's message id, the number the panel shows now (app/ApiMessageIds.php).
     $panelRef = api_state_parse_panel_ref((string)$id);
+    $shownId = null;
+    if ($panelRef === null && ($decoded = message_public_id_decode((string)$id)) !== null) {
+        $panelRef = $decoded; // a legacy row has no delivery report: api_panel_ref_state() answers null
+        $shownId = (string)$id;
+    }
     if ($panelRef !== null) {
-        $body = api_panel_ref_state((int)$principal['organization_id'], $panelRef[0], $panelRef[1]);
+        $body = api_panel_ref_state((int)$principal['organization_id'], $panelRef[0], $panelRef[1], $shownId);
         if ($body === null) {
             ApiResponse::error(404, ApiResponse::CODE_NOT_FOUND, 'Message not found.');
             return;
@@ -494,7 +524,7 @@ function api_handle_messages_state(array $ctx): void {
             trim((string)$message['content']),
             api_message_state_candidates($message, $destinations)
         );
-    ApiResponse::success(200, api_message_state_body($message, $matched));
+    ApiResponse::success(200, api_message_state_body($message, api_state_with_message_ids($matched, 'attempt')));
 }
 
 function api_handle_shared_otp_state(array $ctx): void {
@@ -514,7 +544,7 @@ function api_handle_shared_otp_state(array $ctx): void {
         $candidates = api_otp_state_candidates((int)$otp['user_id'], $destination, min($notBefore), api_local_to_utc((string)$otp['created_at']));
         $row = api_otp_assign_attempts($destination, $otps, $candidates)[(string)$otp['id']] ?? null;
     }
-    ApiResponse::success(200, api_otp_state_body($otp, $row));
+    ApiResponse::success(200, api_otp_state_body($otp, $row === null ? null : api_state_with_message_ids([$row], 'attempt')[0]));
 }
 
 function api_handle_bulk_jobs_state(array $ctx): void {
@@ -567,5 +597,5 @@ function api_handle_bulk_jobs_state(array $ctx): void {
     $hasMore = count($rows) > $limit;
     $rows = array_slice($rows, 0, $limit);
 
-    ApiResponse::success(200, api_bulk_state_body($job, $summary, $rows, $limit, $hasMore));
+    ApiResponse::success(200, api_bulk_state_body($job, $summary, api_state_with_message_ids($rows, 'bulk'), $limit, $hasMore));
 }

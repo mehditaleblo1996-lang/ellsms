@@ -37,7 +37,7 @@ final class SentMessagesReportTest extends IntegrationTestCase
 
         $f = $this->filters(['per_page' => 25]);
         $all = sent_report_page($f, [$this->owner], true);
-        self::assertSame(['D', 'B', 'B', 'D', 'L'], array_map(static fn(array $r): string => $r['ref'][0], $all['rows']),
+        self::assertSame(['D', 'B', 'B', 'D', 'L'], array_map(static fn(array $r): string => SENT_REPORT_SOURCES[$r['source']], $all['rows']),
             'newest first; inside one second bulk before attempt before legacy, higher id first');
         self::assertNull($all['next']);
         self::assertNotContains('989129999999', array_column($all['rows'], 'destination'), 'another account\'s send is not in my list');
@@ -134,7 +134,10 @@ final class SentMessagesReportTest extends IntegrationTestCase
         $this->bulkItem($this->job, '989121000002', 'sent', null, '2026-10-20 08:00:00');
 
         $rows = sent_report_page($this->filters(['ref' => 'b' . $id]), [$this->owner], true)['rows'];
-        self::assertSame(['B' . $id], array_column($rows, 'ref'));
+        self::assertSame([message_public_id('bulk', $id)], array_column($rows, 'ref'), 'shown as its random message id');
+        // …and that id finds the same row, in the filter and in the detail.
+        self::assertSame([$id], array_map('intval', array_column(sent_report_page($this->filters(['ref' => message_public_id('bulk', $id)]), [$this->owner], true)['rows'], 'id')));
+        self::assertSame($id, (int)sent_report_find((string)message_public_id('bulk', $id), [$this->owner], true, false)['id']);
 
         $detail = sent_report_find('B' . $id, [$this->owner], true, false);
         self::assertNotNull($detail);

@@ -122,7 +122,11 @@ curl -X POST https://datisrayan.com/api/v1/messages \
     "status": "sent",
     "sent_count": 2,
     "total_count": 2,
-    "channel": "sms"
+    "channel": "sms",
+    "recipients": [
+      { "destination": "989121234567", "id": "222092113875936" },
+      { "destination": "989351111111", "id": "150114141852808" }
+    ]
   }
 }
 </pre></div>
@@ -262,14 +266,19 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?limit=100&amp;state=undel
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/api/v1/bulk-jobs/{id}/state</span></td><td><span class="c">bulk:read</span></td><td>ارسال انبوه (<span class="c">POST /bulk-jobs</span>) — تعداد هر وضعیت و گیرنده‌ها صفحه به صفحه (بخش ۵).</td></tr>
 </table>
 <p><span class="c">{id}</span> همان شناسه‌ای است که هنگام ارسال در پاسخ برگشته است. هر سه مسیر با <span class="c">POST</span> هم دقیقاً همین پاسخ را می‌دهند؛ بدنه لازم نیست و در ارسال انبوه می‌توانید <span class="c">limit</span>، <span class="c">after</span> و <span class="c">state</span> را در بدنه‌ی JSON بفرستید.</p>
-<div class="call"><b class="h">کدام شناسه؟</b>
-<p><span class="c">id</span> پاسخ <span class="c">POST /messages</span> یک عدد تصادفی ۱۶ رقمی است (مثل <span class="c">4821730095512264</span>) که به‌صورت رشته برمی‌گردد؛ آن را ذخیره کنید. این شناسه با «شناسه» گزارش پنل (مثل <span class="c">D34</span>) و با «شناسه اپراتور» (حدود ۱۹ رقم) فرق دارد؛ «شناسه اپراتور» در API خطای <span class="c">404</span> می‌دهد. در پنل، همین شناسه با نام «شناسه‌ی API» زیر شناسه‌ی هر ردیف در «لیست پیام‌های ارسالی» و در جزئیات پیام دیده می‌شود. شناسه‌های کوتاه ارسال‌های قبلی (مثل <span class="c">482</span>) همچنان کار می‌کنند.</p></div>
+<h3>شناسه‌ها: پنل و API یک شناسه دارند</h3>
+<table class="t">
+  <tr><th style="width:22%">شناسه</th><th style="width:30%">شکل</th><th>یعنی و کجا دیده می‌شود</th></tr>
+  <tr><td>شناسه‌ی پیام</td><td>۱۵ رقم<br><span class="c">222092113875936</span></td><td>یک پیام به یک گیرنده. ستون «شناسه» گزارش پنل، <span class="c">recipients[].id</span> در API و <span class="c">public_id</span> در وب‌هوک تحویل.</td></tr>
+  <tr><td>شناسه‌ی ارسال</td><td>۱۶ رقم<br><span class="c">4821730095512264</span></td><td>کل یک ارسال API با همه‌ی گیرنده‌هایش. <span class="c">id</span> پاسخ <span class="c">POST /messages</span>؛ در پنل با نام «شناسه‌ی API» زیر شناسه‌ی ردیف.</td></tr>
+</table>
+<p>هر دو تصادفی‌اند، به‌صورت رشته برمی‌گردند و هر دو را می‌توانید به‌جای <span class="c">{id}</span> بگذارید. شناسه‌های قبلی (<span class="c">D34</span>، <span class="c">B12</span> و شماره‌های کوتاه مثل <span class="c">482</span>) همچنان کار می‌کنند. «شناسه اپراتور» (حدود ۱۹ رقم) پذیرفته نمی‌شود و خطای <span class="c">404</span> می‌دهد.</p>
 <div class="code"><div class="lbl">REQUEST</div><pre>
 curl https://datisrayan.com/api/v1/messages/4821730095512264/state \
   -H "Authorization: Bearer $DATIS_API_KEY"
 </pre></div>
 <div class="call ok"><b class="h">هر پیامی، با شناسه‌ی پنل</b>
-<p>پیامی را که با API نفرستاده‌اید (از خود پنل، زمان‌بندی، منشی یا ارسال حجیم) هم می‌توانید بپرسید: به‌جای <span class="c">{id}</span> همان «شناسه» ستون گزارش پنل را بگذارید، مثلاً <span class="c">GET /api/v1/messages/D10321/state</span> و برای یک ردیف ارسال حجیم <span class="c">B12</span>. پاسخ همان شکل زیر را دارد، با یک گیرنده.</p></div>
+<p>پیامی را که با API نفرستاده‌اید (از خود پنل، زمان‌بندی، منشی یا ارسال حجیم) هم می‌توانید بپرسید: همان عدد ستون «شناسه» گزارش پنل را به‌جای <span class="c">{id}</span> بگذارید، مثلاً <span class="c">GET /api/v1/messages/222092113875936/state</span>. پاسخ همان شکل زیر را دارد، با یک گیرنده.</p></div>
 <div class="code"><div class="lbl">RESPONSE · 200</div><pre>
 { "data": {
   "id": "4821730095512264",
@@ -280,10 +289,12 @@ curl https://datisrayan.com/api/v1/messages/4821730095512264/state \
                "failed": 0, "unknown": 0, "not_available": 0,
                "queued": 0, "cancelled": 0 },
   "recipients": [
-    { "destination": "989121234567", "state": "delivered",
+    { "id": "222092113875936",
+      "destination": "989121234567", "state": "delivered",
       "delivered_at": "2026-11-10 11:00:12",
       "checked_at": "2026-11-10 11:01:00" },
-    { "destination": "989351112233", "state": "undelivered",
+    { "id": "150114141852808",
+      "destination": "989351112233", "state": "undelivered",
       "delivered_at": null,
       "checked_at": "2026-11-10 11:01:00" }
   ],
@@ -297,6 +308,7 @@ curl https://datisrayan.com/api/v1/messages/4821730095512264/state \
   <tr><td><span class="c">state</span></td><td>وضعیت تحویل کل ارسال (جدول «مقدارهای state کل ارسال»).</td></tr>
   <tr><td><span class="c">final</span></td><td><span class="c">true</span> یعنی وضعیت دیگر تغییر نمی‌کند و لازم نیست دوباره بپرسید.</td></tr>
   <tr><td><span class="c">summary</span></td><td>تعداد گیرنده‌ها در هر وضعیت. همیشه کل ارسال را می‌شمارد.</td></tr>
+  <tr><td><span class="c">recipients[].id</span></td><td>شناسه‌ی همان پیام (۱۵ رقم)؛ همان عدد ستون «شناسه» پنل.</td></tr>
   <tr><td><span class="c">recipients[].destination</span></td><td>شماره‌ی گیرنده.</td></tr>
   <tr><td><span class="c">recipients[].state</span></td><td>وضعیت تحویل همان گیرنده (جدول «مقدارهای state هر گیرنده»).</td></tr>
   <tr><td><span class="c">recipients[].delivered_at</span></td><td>زمان رسیدن به گوشی؛ تا وقتی نرسیده <span class="c">null</span> است.</td></tr>
@@ -495,7 +507,7 @@ curl -X POST https://datisrayan.com/api/v1/telegram/messages \
   <tr><td><span class="c">telegram.message.sent</span> / <span class="c">.read</span> / <span class="c">.failed</span></td><td>پیام تلگرام ارسال شد / خوانده شد / ناموفق بود.</td></tr>
   <tr><td><span class="c">payment.credited</span></td><td>اعتبار حساب شارژ شد.</td></tr>
 </table>
-<p class="note">رویدادهای <span class="c">message.delivered</span> و <span class="c">message.undelivered</span> برای پیامی که با <span class="c">POST /messages</span> فرستاده‌اید، فیلد <span class="c">api_message_id</span> را هم دارند: همان <span class="c">id</span> پاسخ ارسال، تا بدانید گزارش مربوط به کدام ارسال شماست.</p>
+<p class="note">رویدادهای <span class="c">message.delivered</span> و <span class="c">message.undelivered</span> برای پیامی که با <span class="c">POST /messages</span> فرستاده‌اید، فیلد <span class="c">api_message_id</span> را هم دارند: همان <span class="c">id</span> پاسخ ارسال، تا بدانید گزارش مربوط به کدام ارسال شماست. همه‌ی این رویدادها فیلد <span class="c">public_id</span> هم دارند: شناسه‌ی ۱۵ رقمی همان پیام، همان عدد ستون «شناسه» پنل.</p>
 
 <h3>بررسی امضا — حتماً انجام دهید</h3>
 <p>هر درخواست وبهوک این هدرها را دارد. با بررسی امضا مطمئن می‌شوید درخواست واقعاً از داتیس رایان گستر ایرانیان آمده و دست‌کاری نشده است:</p>

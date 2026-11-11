@@ -404,8 +404,11 @@ integration without a public HTTPS address, polled: `GET /api/v1/messages/{id}/s
 `GET /api/v1/otp/{id}/state` (`otp:send`) and `GET /api/v1/bulk-jobs/{id}/state` (`bulk:read`, paginated
 per recipient) — see «Delivery state without webhooks» in `docs/public-api.md`; customers read it as
 «وضعیت تحویل پیام (message state)» in the API guide PDF (§6), on `/integrations` and in `/guide.php`.
-The three state routes answer `POST` as well as `GET`, and `/messages/{id}/state` also takes the panel
-report's own reference (`D34`, `B12`) so any message of the organization can be polled. The `id` of `POST /api/v1/messages` is a random
+The three state routes answer `POST` as well as `GET`, and every message has one random 15-digit id shared by the panel
+(«شناسه» in the send report) and the API (`recipients[].id`, `public_id` in the delivery webhooks):
+`/messages/{id}/state` takes it for any message of the organization, however it was sent. It is not
+stored — a keyed permutation of the row number (`message_id_key` in `ellsms_settings`, created by
+`db/migrations/2026_11_14_message_id_key.sql`, never to be changed) — so old messages have one too; the old references (`D34`, `B12`) still work. The `id` of `POST /api/v1/messages` is a random
 16-digit number (older sends keep their short id), shown in the panel as «شناسه‌ی API» in the send
 report and on the message page — `app/ApiMessageIds.php`, `db/migrations/2026_11_13_api_message_public_id.sql`,
 «Message ids» in `docs/public-api.md`.

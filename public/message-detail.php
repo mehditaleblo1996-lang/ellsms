@@ -140,7 +140,10 @@ require __DIR__ . '/../app/views/header.php';
   <h2>اطلاعات پیام</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>شناسه داخلی</th><td class="num"><?= to_persian_digits((string)$attempt['id']) ?></td>
+    <?php /* «شناسه»: the message's random id, as in the send report and the API (app/ApiMessageIds.php).
+             The row number itself is shown to admins only. */
+          $messageId = message_public_id('attempt', (int)$attempt['id']); ?>
+    <tr><th>شناسه</th><td class="provider-ref"><?= e($messageId ?? ('D' . $attempt['id'])) ?><?php if (is_admin()): ?> <small style="opacity:.7">(ردیف <?= to_persian_digits((string)$attempt['id']) ?>)</small><?php endif; ?></td>
         <th>نوع درخواست</th><td><?= e(report_reference_type_label($attempt['reference_type'])) ?></td></tr>
     <?php /* The id POST /api/v1/messages returned for this message (app/ApiMessageIds.php); a string, never a number. */
           $apiMessageId = api_message_ids_for_attempts([(int)$attempt['id']])[(int)$attempt['id']] ?? null;

@@ -179,7 +179,7 @@ require __DIR__ . '/../app/views/header.php';
     <?= vip_filter_select($f['vip']) ?>
     <?php endif; ?>
     <label>شناسه پیام
-      <input type="text" name="ref" value="<?= e($f['ref']) ?>" class="ltr" placeholder="B12 یا شناسه‌ی سرویس‌دهنده" autocomplete="off">
+      <input type="text" name="ref" value="<?= e($f['ref']) ?>" class="ltr" placeholder="شناسه‌ی پیام یا شناسه‌ی سرویس‌دهنده" autocomplete="off">
     </label>
     <label>فرستنده
       <input type="text" name="sender" value="<?= e($f['sender']) ?>" class="ltr" inputmode="numeric" placeholder="500045…" autocomplete="off">

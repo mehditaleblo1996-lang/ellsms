@@ -315,7 +315,8 @@ final class DeliveryStateTest extends IntegrationTestCase
         $this->assertSame('sent', $d['send_status']);
         $this->assertSame('delivered', $d['state']);
         $this->assertTrue($d['final']);
-        $this->assertSame([['destination' => '989121110031', 'state' => 'delivered', 'delivered_at' => '2026-11-10 10:00:30', 'checked_at' => null]], $d['recipients']);
+        $messageId = \message_public_id('attempt', $attemptId);
+        $this->assertSame([['id' => $messageId, 'destination' => '989121110031', 'state' => 'delivered', 'delivered_at' => '2026-11-10 10:00:30', 'checked_at' => null]], $d['recipients']);
         $this->assertSame(1, $d['summary']['delivered']);
         $this->assertSame('2026-11-10 10:00:00', $d['created_at']);
         // Case does not matter; the bare number is not this message (it would be an API id).
@@ -338,6 +339,69 @@ final class DeliveryStateTest extends IntegrationTestCase
             $db->prepare("INSERT INTO ellsms_hidden_messages (source, message_id, hidden_by, reason) VALUES ('attempt', ?, ?, 'test')")->execute([$attemptId, $this->userId]);
             $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => 'D' . $attemptId])[0]);
         }
+    }
+
+    public function testEveryRecipientHasOneIdSharedByThePanelAndTheApi(): void
+    {
+        putenv('WEBHOOK_MASTER_KEY=' . base64_encode(random_bytes(32)));
+        $this->assertTrue(webhook_endpoint_create($this->organizationId, $this->userId, 'https://example.org/hook', 'ids', [\WebhookEvents::MESSAGE_DELIVERED])['ok']);
+        webhook_subscriptions_cache_reset();
+
+        [$status, $sent] = $this->call('api_handle_messages_send', [], [
+            'originator' => $this->ownLine, 'destinations' => ['09121110051', '09121110052'], 'content' => 'one id',
+        ]);
+        $this->assertSame(201, $status, json_encode($sent, JSON_UNESCAPED_UNICODE));
+        $sendId = $sent['data']['id'];
+        $recipients = $sent['data']['recipients'];
+        $this->assertSame(['989121110051', '989121110052'], array_column($recipients, 'destination'));
+        $a1 = (int)$this->attemptsFor('989121110051')[0]['id'];
+        $a2 = (int)$this->attemptsFor('989121110052')[0]['id'];
+        foreach ($recipients as $r) {
+            $this->assertMatchesRegularExpression('/^[1-3]\d{14}$/', $r['id'], 'a 15-digit message id');
+        }
+        // The id is the one the panel's report shows for that row, and it names exactly that row.
+        $this->assertSame([\sent_report_public_ref('attempt', $a1), \sent_report_public_ref('attempt', $a2)], array_column($recipients, 'id'));
+        $this->assertSame(['attempt', $a1], \sent_report_resolve_ref($recipients[0]['id']));
+        $this->assertNotSame($sendId, $recipients[0]['id']);
+
+        // The same ids in GET /messages/{id} and in the state of the whole send.
+        $this->assertSame($recipients, $this->call('api_handle_messages_get', ['id' => $sendId])[1]['data']['recipients']);
+        $state = $this->call('api_handle_messages_state', ['id' => $sendId])[1]['data'];
+        $this->assertSame(array_column($recipients, 'id'), array_column($state['recipients'], 'id'));
+
+        // One recipient's id answers the state route with that one recipient.
+        $this->assertTrue(gateway_status_record('attempt', $a2, 'sent', 'delivered', '2026-11-10 10:00:30', 'DELIVRD'));
+        [$status, $one] = $this->call('api_handle_messages_state', ['id' => $recipients[1]['id']]);
+        $this->assertSame(200, $status, json_encode($one));
+        $this->assertSame($recipients[1]['id'], $one['data']['id']);
+        $this->assertSame('delivered', $one['data']['state']);
+        $this->assertSame([['id' => $recipients[1]['id'], 'destination' => '989121110052', 'state' => 'delivered', 'delivered_at' => '2026-11-10 10:00:30', 'checked_at' => $one['data']['recipients'][0]['checked_at']]], $one['data']['recipients']);
+        $this->assertSame('sent', $this->call('api_handle_messages_state', ['id' => $recipients[0]['id']])[1]['data']['state']);
+        // The old reference of the same row still works and carries the same id.
+        $this->assertSame($recipients[1]['id'], $this->call('api_handle_messages_state', ['id' => 'D' . $a2])[1]['data']['recipients'][0]['id']);
+
+        // The delivery webhook names the message by the same id.
+        $st = db()->prepare("SELECT payload_json FROM ellsms_webhook_events WHERE organization_id = ? AND event_type = 'message.delivered' ORDER BY id DESC LIMIT 1");
+        $st->execute([$this->organizationId]);
+        $payload = json_decode((string)$st->fetchColumn(), true);
+        $data = $payload['data'] ?? $payload;
+        $this->assertSame($recipients[1]['id'], $data['public_id'] ?? null, json_encode($payload));
+        $this->assertSame($sendId, $data['api_message_id']);
+
+        // Another organization, and ids that name no row of anyone.
+        $other = $this->otherOrgPrincipal([\ApiScopes::MESSAGES_READ]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => $recipients[0]['id']], [], [], $other)[0]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => (string)\message_public_id('attempt', 987654321)])[0]);
+        $this->assertSame(404, $this->call('api_handle_messages_state', ['id' => (string)\message_public_id('legacy', $a1)])[0], 'a legacy row has no delivery report');
+
+        // A bulk item: its id in the job's state, and that id alone on the state route.
+        $jobId = $this->makeBulkJob('done', [['989121110053', 'sent', 'delivered', '2026-11-10 10:00:00']]);
+        $job = $this->call('api_handle_bulk_jobs_state', ['id' => (string)$jobId])[1]['data'];
+        $itemId = $job['recipients'][0]['id'];
+        $this->assertSame(\message_public_id('bulk', (int)$job['recipients'][0]['item_id']), $itemId);
+        $byId = $this->call('api_handle_messages_state', ['id' => $itemId])[1]['data'];
+        $this->assertSame($itemId, $byId['id']);
+        $this->assertSame('989121110053', $byId['recipients'][0]['destination']);
     }
 
     public function testABulkItemsPanelReferenceAnswersTheStateRoute(): void

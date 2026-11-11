@@ -95,6 +95,23 @@ function sent_report_ref(string $source, int $id): string {
     return (SENT_REPORT_SOURCES[$source] ?? '?') . $id;
 }
 
+/**
+ * «شناسه» shown for a row: its random message id (app/ApiMessageIds.php — the same number the API
+ * returns as recipients[].id), or the old letter reference when no id can be made.
+ */
+function sent_report_public_ref(string $source, int $id): string {
+    return message_public_id($source, $id) ?? sent_report_ref($source, $id);
+}
+
+/**
+ * [source, id] of what a row is addressed by: its message id, or an old letter reference (B12, D34,
+ * L56) — a link or a note written before message ids keeps opening its message. Null: neither.
+ */
+function sent_report_resolve_ref(string $ref): ?array {
+    $ref = trim(report_latin_digits($ref));
+    return message_public_id_decode($ref) ?? sent_report_parse_ref($ref);
+}
+
 /** Pure: a reference typed by the user ("b12", " D34 ") -> [source, id], or null. */
 function sent_report_parse_ref(string $ref): ?array {
     if (!preg_match('/^\s*([BDLbdl])\s*-?\s*(\d{1,19})\s*$/', report_latin_digits($ref), $m)) return null;
@@ -336,8 +353,14 @@ function sent_report_source_query(string $source, array $f, ?array $scope, bool 
     $hasReportColumns = backend_message_attempts_have_report_columns();
     if ($source === 'attempt' && !$hasReportColumns && ($f['sender'] !== '' || $f['q'] !== '')) return null;
 
-    $ref = $f['ref'] !== '' ? sent_report_parse_ref($f['ref']) : null;
-    if ($ref !== null && $ref[0] !== $source) return null;
+    // «شناسه پیام»: a message id or an old letter reference names one row of one source. A message
+    // id is a plain number, which a provider's reference can be too — that one is matched as either.
+    $ref = $f['ref'] !== '' ? sent_report_resolve_ref($f['ref']) : null;
+    $refMayBeProviderId = $ref !== null && message_public_id_shape($f['ref']);
+    if ($ref !== null && $ref[0] !== $source) {
+        if (!$refMayBeProviderId) return null;
+        $ref = null; // not this source's row: only its provider reference can still match
+    }
     if ($ref === null && $f['ref'] !== '' && $source === 'legacy') return null; // no provider reference there
 
     [$from, $time, $id, $userCol, $destCol, $senderCol, $contentCol, $providerCol, $hidden] = match ($source) {
@@ -371,7 +394,10 @@ function sent_report_source_query(string $source, array $f, ?array $scope, bool 
         $where[] = $scope === [] ? '1 = 0' : "{$userCol} IN (" . implode(',', array_fill(0, count($scope), '?')) . ')';
         array_push($params, ...$scope);
     }
-    if ($ref !== null) {
+    if ($ref !== null && $refMayBeProviderId && $source !== 'legacy') {
+        $where[] = "({$id} = ? OR {$providerCol} = ?)";
+        array_push($params, $ref[1], $f['ref']);
+    } elseif ($ref !== null) {
         $where[] = "{$id} = ?";
         $params[] = $ref[1];
     } elseif ($f['ref'] !== '') {
@@ -608,7 +634,7 @@ function sent_report_decorate(array $rows): array {
         $content = (string)($row['content'] ?? '');
         $row['format'] = $content === '' ? '—' : sent_report_format($content);
         $row['parts'] = message_parts_of_row($row);
-        $row['ref'] = sent_report_ref($row['source'], (int)$row['id']);
+        $row['ref'] = sent_report_public_ref($row['source'], (int)$row['id']);
         $row['type_label'] = $types[$row['report_type']] ?? $row['report_type'];
         $row['status_label'] = $statuses[$row['report_status']] ?? $row['report_status'];
         if (!sent_report_show_delivery()) {
@@ -639,7 +665,7 @@ function sent_report_operator_names(array $ids): array {
  * exist or the viewer may not see it). Gateway and route names are only filled in for admins.
  */
 function sent_report_find(string $ref, ?array $scope, bool $hide, bool $isAdmin): ?array {
-    $parsed = sent_report_parse_ref($ref);
+    $parsed = sent_report_resolve_ref($ref);
     if ($parsed === null) return null;
     [$source, $id] = $parsed;
     if ($source === 'legacy' && !sent_report_legacy_available()) return null;

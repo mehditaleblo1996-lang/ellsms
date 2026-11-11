@@ -89,6 +89,34 @@ function api_messages_insert(array $values): array {
     return [$rowId, (string)$rowId];
 }
 
+/**
+ * [{destination, id}] for the transport rows of a send: each recipient's own message id
+ * (app/ApiMessageIds.php), the number its row carries in the panel's send report. Empty when there
+ * are no rows or no ids can be made; never throws — the send has already gone out.
+ *
+ * @param list<int> $attemptIds
+ * @return list<array{destination:string, id:string}>
+ */
+function api_message_recipient_ids(array $attemptIds): array {
+    $attemptIds = array_values(array_unique(array_filter(array_map('intval', $attemptIds), static fn(int $id): bool => $id > 0)));
+    if ($attemptIds === []) return [];
+    try {
+        $in = implode(',', array_fill(0, count($attemptIds), '?'));
+        $st = db()->prepare("SELECT id, destination FROM ellsms_message_attempts WHERE id IN ({$in}) AND destination IS NOT NULL ORDER BY id");
+        $st->execute($attemptIds);
+        $out = [];
+        foreach ($st->fetchAll() as $row) {
+            $id = message_public_id('attempt', (int)$row['id']);
+            if ($id === null) continue;
+            $out[] = ['destination' => normalize_msisdn((string)$row['destination']) ?? (string)$row['destination'], 'id' => $id];
+        }
+        return $out;
+    } catch (Throwable $t) {
+        Logger::warning('api_message.recipient_ids_failed', ['exception' => $t->getMessage()]);
+        return [];
+    }
+}
+
 function api_handle_messages_send(array $ctx): void {
     $principal = $ctx['principal'];
     $body = $ctx['body'];
@@ -218,6 +246,8 @@ function api_handle_messages_send(array $ctx): void {
         $ok ? null : 'send_failed', $clientMessageId,
     ]);
     api_message_link_attempts($rowId, $attemptIds);
+    // Each recipient's own id — «شناسه» of its row in the panel's send report.
+    $recipients = api_message_recipient_ids($attemptIds);
 
     try {
         webhook_event_emit(
@@ -241,7 +271,7 @@ function api_handle_messages_send(array $ctx): void {
             'channel'     => (string)$channel,
             'sent_by_channel' => $byChannel,
             'message'     => $info,
-        ],
+        ] + ($recipients !== [] ? ['recipients' => $recipients] : []),
     ];
     if (!$ok) {
         $httpStatus = 402; // payment/business-rejection shape distinct from a validation failure
@@ -264,6 +294,7 @@ function api_handle_messages_get(array $ctx): void {
     }
     ApiResponse::success(200, [
         'id'          => api_message_public_id_of($row),
+        'recipients'  => api_message_recipient_ids(api_message_attempt_ids((int)$row['id'])),
         'status'      => $row['status'],
         'originator'  => $row['originator'],
         'destinations' => json_decode($row['destinations_json'], true) ?: [],

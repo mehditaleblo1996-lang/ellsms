@@ -254,7 +254,8 @@ identical. Returns a final status, not `202` (the destination count cap above is
 one-request-lifetime operation). `originator` may be omitted to use the organization's configured
 default. Response:
 ```json
-{ "data": { "id": "4821730095512264", "status": "sent", "sent_count": 1, "total_count": 1, "message": "..." } }
+{ "data": { "id": "4821730095512264", "status": "sent", "sent_count": 1, "total_count": 1, "message": "...",
+  "recipients": [ { "destination": "989121234567", "id": "222092113875936" } ] } }
 ```
 `status` is one of `sent`, `partially_sent`, `failed`. This id is the API's OWN resource id
 (`ellsms_api_messages`), independent of the backend platform's own message records.
@@ -276,6 +277,12 @@ nothing about how many messages anyone sent in between. Module: `app/ApiMessageI
   was the row number of `ellsms_api_messages` (a short number such as `"482"`). Those rows have no
   public id and still answer to that number, so an id a customer stored earlier keeps working.
   Nothing is backfilled. The row number of a *new* send is not an id of the API (`404`).
+- **Each recipient also has its own id** — `recipients[].id`, a random 15-digit number as a string
+  (e.g. `"222092113875936"`). It is the same number the panel shows in «شناسه» for that message's
+  row, it is in `POST /messages`' answer, in `GET /messages/{id}`, in every state answer and in the
+  delivery webhooks (`public_id`), and `GET /messages/{id}/state` takes it as `{id}`. A send's `id`
+  (16 digits) names the whole send; a recipient's `id` (15 digits) names one message to one number.
+  See «One id per message» below.
 - **It is not the panel's reference nor the operator's.** «شناسه» in the panel's send report is the
   report's own reference (`D34`, `B12`), and «شناسه اپراتور» is the provider's id for one recipient
   (often 19 digits). The operator's id is never accepted; the panel reference is accepted by the
@@ -301,23 +308,42 @@ integration that has no public HTTPS address (e.g. developing on localhost). `{i
 send returned. Same data as the webhooks; free; poll every few minutes until `final` is `true`, not
 every second. Handler: `app/Api/Handlers/DeliveryState.php`.
 
-**Any message, by its panel reference.** `GET /messages/{id}/state` also takes «شناسه» of the panel's
-send report as `{id}` — `D34` (one recipient of a direct send: panel, API, schedule, auto-reply, …)
-or `B12` (one recipient of a bulk job) — so a message that was not sent through `POST /messages`
-can be polled too. Case-insensitive; the legacy `L…` references have no delivery report and are
-`404`. The body is the same shape with exactly one recipient and `id` set to the reference:
+**One id per message, shared by the panel and the API.** Every message to one recipient has a random
+15-digit id — «شناسه» in the panel's send report («لیست پیام‌های ارسالی»), `recipients[].id` in the
+API, `public_id` in the delivery webhooks. `GET /messages/{id}/state` takes it as `{id}`, whatever
+sent the message (panel, API, schedule, auto-reply, a bulk job), so a message that was not sent
+through `POST /messages` can be polled too. The body is the same shape with exactly one recipient:
 ```json
-{ "data": { "id": "D10321", "send_status": "sent", "state": "delivered", "final": true,
+{ "data": { "id": "222092113875936", "send_status": "sent", "state": "delivered", "final": true,
   "summary": { "delivered": 1, "undelivered": 0, "sent": 0, "failed": 0, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
-  "recipients": [ { "destination": "989121234567", "state": "delivered", "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" } ],
+  "recipients": [ { "id": "222092113875936", "destination": "989121234567", "state": "delivered", "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" } ],
   "created_at": "2026-11-10 11:00:05" } }
 ```
+How the id is made (`app/ApiMessageIds.php`): nothing is stored. The id is the row's source and row
+number (`ellsms_message_attempts` / `ellsms_bulk_items` / legacy `outbound_message`) put through a
+keyed permutation — an 8-round Feistel network over 48 bits, HMAC-SHA256 round function — plus
+10^14, and the same key turns it back into the row. So every message has one, also those sent before
+this existed; no table gained a column and the send path writes nothing extra. Always 15 digits (`100000000000000` … `381474976710655`), which keeps it apart from a send's
+16-digit id and from the old short numbers, and below 2^53. The key is 32 random bytes in
+`ellsms_settings` (`message_id_key`), created by `db/migrations/2026_11_14_message_id_key.sql` (one
+`INSERT IGNORE`; no table is altered) and read once per process. Where that migration has not run
+yet the key is created on first use, though never inside a database transaction — a key written in
+a transaction that rolls back would be lost after ids were made with it. **It must
+never be changed or lost**: with another key every id names another row (the daily backup carries
+`ellsms_settings`; a staging copy of the database has the same key and so the same ids). Without a
+readable key, or for a row number beyond 2^46, there is no id (`null`) and the panel shows the old
+letter reference.
+
+The panel's older references still work everywhere they did — `D34` (one recipient of a direct
+send) and `B12` (one recipient of a bulk job) in `{id}` here, in the report's «شناسه پیام» filter and
+in a detail link — case-insensitive; `id` in the answer is then that reference. The legacy `L…`
+references (and a message id that decodes to a legacy row) have no delivery report and are `404`.
 `send_status` is `sent`/`failed` for a `D` reference and the bulk item's own status for a `B`
 reference. Rules (`api_panel_ref_state()`): the row must belong to the key's organization — by its
 own `organization_id`, or, for a row recorded without one, by its sender being an active member —
 and must not have been removed from the customer's panel by an admin (`app/HiddenMessages.php`);
-otherwise `404`, indistinguishable from a reference that does not exist. It costs two primary-key
-reads, never a scan. These references are the panel's sequential row numbers, not random ids. An
+otherwise `404`, indistinguishable from an id that names no row. It costs two primary-key
+reads, never a scan. An
 aimed-bulk job's numbers are returned masked (`0912***4567`), here and in `GET /bulk-jobs/{id}/state`,
 as in the panel and the webhooks.
 
@@ -375,15 +401,15 @@ last check) are UTC.
   "id": "4821730095512264", "send_status": "sent", "state": "partially_delivered", "final": true,
   "summary": { "delivered": 1, "undelivered": 1, "sent": 0, "failed": 0, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "recipients": [
-    { "destination": "989121234567", "state": "delivered",   "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" },
-    { "destination": "989351112233", "state": "undelivered", "delivered_at": null, "checked_at": "2026-11-10 11:01:00" }
+    { "id": "222092113875936", "destination": "989121234567", "state": "delivered",   "delivered_at": "2026-11-10 11:00:12", "checked_at": "2026-11-10 11:01:00" },
+    { "id": "150114141852808", "destination": "989351112233", "state": "undelivered", "delivered_at": null, "checked_at": "2026-11-10 11:01:00" }
   ],
   "created_at": "2026-11-10 11:00:05" } }
 ```
 
 `GET /otp/{id}/state`:
 ```json
-{ "data": { "id": "57", "send_status": "sent", "destination": "989121234567", "state": "delivered",
+{ "data": { "id": "57", "send_status": "sent", "message_id": "326180327440739", "destination": "989121234567", "state": "delivered",
   "final": true, "delivered_at": "2026-11-10 11:00:09", "checked_at": "2026-11-10 11:01:00", "created_at": "2026-11-10 14:30:05" } }
 ```
 (`created_at` is the OTP row's own local time, as in `GET /otp/{id}`.)
@@ -395,7 +421,7 @@ last check) are UTC.
   "summary": { "delivered": 950, "undelivered": 30, "sent": 0, "failed": 20, "unknown": 0, "not_available": 0, "queued": 0, "cancelled": 0 },
   "total_rows": 1000,
   "recipients": [
-    { "item_id": "120001", "destination": "989121234567", "state": "delivered", "delivered_at": "2026-11-10 11:02:00", "checked_at": "2026-11-10 11:03:00" }
+    { "item_id": "120001", "id": "332118387136327", "destination": "989121234567", "state": "delivered", "delivered_at": "2026-11-10 11:02:00", "checked_at": "2026-11-10 11:03:00" }
   ],
   "next_cursor": "120100", "limit": 100, "created_at": "2026-11-10 11:00:00" } }
 ```

@@ -75,6 +75,9 @@ function webhook_emit_delivery_state(string $source, int $rowId, string $state, 
             ];
         }
         if (!webhook_org_subscribes($organizationId, $eventType)) return;
+        // The message's own id — «شناسه» of its row in the panel, recipients[].id in the API.
+        $publicId = message_public_id($source === 'attempt' ? 'attempt' : 'bulk', $rowId);
+        if ($publicId !== null) $data['public_id'] = $publicId;
         if ($source === 'attempt') {
             // The id POST /api/v1/messages returned for this message, when it was sent that way
             // (app/ApiMessageIds.php) — lets the receiver tie the report to its own send.

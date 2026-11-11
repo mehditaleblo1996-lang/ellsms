@@ -245,6 +245,38 @@ final class LazyReportPartsHttpTest extends TestCase
         }
     }
 
+    public function testTheReportShowsRandomMessageIdsAndStillOpensOldReferences(): void
+    {
+        $session = $this->sessionFor($this->adminId);
+        $attemptId = $this->attemptIds[3];
+        $messageId = message_public_id('attempt', $attemptId);
+        $this->assertNotNull($messageId);
+
+        $list = $this->request('/reports-v2.php?' . $this->dayQuery() . '&per_page=100&_part=list', $session);
+        $this->assertSame(200, $list['code']);
+        $this->assertStringContainsString('data-detail="' . $messageId . '"', $list['body']);
+        $this->assertStringContainsString('>' . $messageId . '<', $list['body'], 'shown in the «شناسه» column');
+        // No row is addressed by its sequential row number any more.
+        $this->assertSame(0, preg_match('/data-detail="[BDL]\d+"/', $list['body']));
+        $this->assertSame(31, preg_match_all('/data-detail="[1-3]\d{14}" tabindex/', $list['body']), 'every row, of all three sources');
+
+        // The drawer opens by the message id, and by the old letter reference (an old link or note).
+        foreach ([$messageId, 'D' . $attemptId] as $ref) {
+            $detail = $this->request('/reports-v2.php?_part=detail&m=' . $ref, $session);
+            $this->assertSame(200, $detail['code']);
+            $this->assertStringContainsString($messageId, $detail['body'], $ref);
+            $this->assertStringNotContainsString('پیام پیدا نشد', $detail['body'], $ref);
+        }
+        $this->assertStringContainsString('پیام پیدا نشد', $this->request('/reports-v2.php?_part=detail&m=' . message_public_id('attempt', 987654321), $session)['body']);
+
+        // «شناسه پیام» in the filters finds exactly that row, by either spelling.
+        foreach ([$messageId, 'D' . $attemptId] as $ref) {
+            $found = $this->request('/reports-v2.php?' . $this->dayQuery() . '&ref=' . $ref . '&_part=list', $session);
+            $this->assertSame(1, substr_count($found['body'], '<tr data-detail='), $ref);
+            $this->assertStringContainsString('data-detail="' . $messageId . '"', $found['body']);
+        }
+    }
+
     public function testAPartWithoutASessionRedirectsToLoginInsteadOfAnsweringAsThePart(): void
     {
         $r = $this->request('/reports-v2.php?_part=summary', null);

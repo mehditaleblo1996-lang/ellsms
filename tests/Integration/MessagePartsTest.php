@@ -118,7 +118,7 @@ final class MessagePartsTest extends IntegrationTestCase
         [$jy, $jm, $jd] = gregorian_to_jalali(2026, 10, 20);
         $f = sent_report_filters(['from_y' => $jy, 'from_m' => $jm, 'from_d' => $jd, 'to_y' => $jy, 'to_m' => $jm, 'to_d' => $jd], false, '2026-10-20');
         $rows = array_column(sent_report_page($f, [$this->user], true)['rows'], 'parts', 'ref');
-        self::assertSame(['B' . $id => 4, 'B' . $unfilled => 2], $rows);
+        self::assertSame([message_public_id('bulk', $id) => 4, message_public_id('bulk', $unfilled) => 2], $rows);
         self::assertSame(4, sent_report_find('B' . $id, [$this->user], true, false)['parts']);
     }
 

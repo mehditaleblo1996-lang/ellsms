@@ -168,6 +168,14 @@ components:
           type: object
           properties:
             id: { type: string, description: "Random 16-digit number as a string, e.g. \"4821730095512264\". Sends made before public ids keep their short row number." }
+            recipients:
+              type: array
+              description: Each recipient's own message id (15 digits) — the number the panel shows for that message. Absent when the send wrote no transport rows.
+              items:
+                type: object
+                properties:
+                  destination: { type: string }
+                  id: { type: string }
             status: { type: string, enum: [sent, partially_sent, failed] }
             sent_count: { type: integer }
             total_count: { type: integer }
@@ -196,6 +204,7 @@ components:
     Recipient:
       type: object
       properties:
+        id: { type: string, nullable: true, description: "The message's own random 15-digit id — the number the panel's send report shows for its row; accepted as {id} by /messages/{id}/state. Null for a recipient without a transport row." }
         destination: { type: string }
         state: { $ref: '#/components/schemas/RecipientState' }
         delivered_at: { type: string, nullable: true, description: UTC }
@@ -223,6 +232,7 @@ components:
           properties:
             id: { type: string }
             send_status: { type: string, enum: [sending, sent, failed] }
+            message_id: { type: string, nullable: true, description: "The message's own random 15-digit id (the panel's «شناسه»); null until it has a transport row." }
             destination: { type: string }
             state: { $ref: '#/components/schemas/RecipientState' }
             final: { type: boolean }
@@ -411,10 +421,11 @@ paths:
     get:
       summary: Delivery state of a message, per recipient — polling alternative to the delivery webhooks (scope messages:read)
       description: >
-        `{id}` is the id POST /messages returned, or the reference the panel's send report shows for
-        any message of the organization — `D34` (one recipient of a direct send) or `B12` (one
-        recipient of a bulk job). A reference answers with exactly one recipient.
-      parameters: [{ name: id, in: path, required: true, description: "The id POST /messages returned, or a panel reference (D34 / B12)", schema: { type: string } }]
+        `{id}` is the id POST /messages returned (16 digits: the whole send), or the id of one
+        message to one recipient (15 digits) — recipients[].id, the number the panel's send report
+        shows for any message of the organization, however it was sent. The panel's older
+        references `D34` / `B12` are still accepted. A message id answers with exactly one recipient.
+      parameters: [{ name: id, in: path, required: true, description: "A send id (16 digits), a message id (15 digits), or an old panel reference (D34 / B12)", schema: { type: string } }]
       responses:
         "200": { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MessageState' } } } }
         "404": { $ref: '#/components/responses/NotFound' }
