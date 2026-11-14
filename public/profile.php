@@ -72,19 +72,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $new = $_POST['new'] ?? '';
         $rep = $_POST['repeat'] ?? '';
 
-        // Phase 8 (Invariant B): identity provider, not a direct user_ query.
-        $hash = backend_user_password_hash((int)$me['id']);
-
-        if (!backend_verify_password($cur, (string)$hash)) {
+        // The rules, the storage and the limit on guessing all live in app/PasswordSecurity.php.
+        if (!current_password_attempt_allowed((int)$me['id'])) {
+            flash('error', current_password_rate_limit_message());
+        } elseif (!is_string($cur) || !is_string($new) || !account_password_verify((int)$me['id'], $cur)) {
             flash('error', 'رمز عبور فعلی درست نیست.');
-        } elseif (strlen($new) < 6) {
-            flash('error', 'رمز عبور جدید باید حداقل ۶ نویسه باشد.');
+        } elseif (($policyError = password_policy_error($new, (string)$me['username'])) !== null) {
+            flash('error', $policyError);
         } elseif ($new !== $rep) {
             flash('error', 'دو رمز عبور جدید یکسان نیستند.');
+        } elseif ($new === $cur) {
+            flash('error', 'رمز عبور جدید باید با رمز عبور فعلی فرق داشته باشد.');
         } else {
-            backend_update_user_password((int)$me['id'], backend_hash_password($new));
+            account_password_set((int)$me['id'], $new);
+            // This session made the change, so it stays; every other session of the account is signed out.
+            session_bind_password_version((int)$me['id']);
             audit((int)$me['id'], 'password.change');
-            flash('success', 'رمز عبور تغییر کرد — این تغییر همه‌جا برای این حساب اعمال می‌شود.');
+            Logger::info('auth.password_changed', ['user_id' => $me['id']]);
+            flash('success', 'رمز عبور تغییر کرد. در دستگاه‌ها و مرورگرهای دیگر باید دوباره با رمز جدید وارد شوید.');
         }
     } elseif ($do === 'profile_personal') {
         $result = profile_user_save((int)$me['id'], [
@@ -639,9 +644,11 @@ if ($accountType === 'legal' && $organizationId > 0) {
     <input type="hidden" name="do" value="password">
     <div class="form-grid">
       <label>رمز عبور فعلی <input type="password" name="current" autocomplete="current-password" required></label>
-      <label>رمز عبور جدید <input type="password" name="new" minlength="6" autocomplete="new-password" required></label>
-      <label>تکرار رمز عبور جدید <input type="password" name="repeat" minlength="6" autocomplete="new-password" required></label>
+      <label>رمز عبور جدید <input type="password" name="new" autocomplete="new-password" required<?= password_policy_input_attrs((string)$me['username']) ?>></label>
+      <label>تکرار رمز عبور جدید <input type="password" name="repeat" autocomplete="new-password" required data-pw-repeat="new"></label>
     </div>
+    <?= password_policy_hint_html() ?>
+    <p class="hint">پس از تغییر رمز، این حساب در همه‌ی دستگاه‌ها و مرورگرهای دیگر از پنل خارج می‌شود.</p>
     <?php if (!$profileReadOnly): ?>
       <div class="form-actions"><button class="btn btn-primary">تغییر رمز عبور</button></div>
     <?php endif; ?>

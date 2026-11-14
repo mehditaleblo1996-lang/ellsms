@@ -103,6 +103,25 @@ An endpoint that fails validation at creation time is never saved. One that some
 into a blocked range (DNS rebinding) fails at delivery time with `error_code =
 ssrf_blocked_<reason>`, classified as a **permanent** failure (not retried).
 
+### The checked address is the address connected to
+
+`webhook_url_validate()` resolves the host **once**, checks every address, and returns the first one
+as a `CURLOPT_RESOLVE` entry (`host:port:ip`). The delivery (`webhook_attempt_delivery()`) and the
+WebEngage DSN call (`app/WebEngage.php`, custom URLs) hand that entry to curl, so curl connects to the
+address that was just checked and never looks the name up a second time. Without the pin a hostile
+DNS server could answer the check with a public address and curl's own lookup with `127.0.0.1` or an
+internal host. The TLS certificate is still verified against the hostname.
+
+### What is logged when an internal target is blocked
+
+| When | Where it is recorded |
+|---|---|
+| **At delivery** — a saved endpoint now resolves to an internal address (the DNS-rebinding case) | application log `security.webhook.ssrf_blocked` (level `critical`, with the host, the resolved IPs, the endpoint, delivery and organization ids); audit log (`ellsms_audit_log`, action `security.webhook.ssrf_blocked`, under the user who created the endpoint); «لاگ فعالیت‌ها» where the audit store is configured for the worker; an alert in «هشدارها» / the admin Telegram chat (`security.webhook.ssrf_blocked.<channel>:<endpoint>`, severity `critical`); metric `webhook.ssrf_blocked`; and the delivery row itself (`error_code = ssrf_blocked_blocked_ip_range`) |
+| **At save** — a customer tries to save a URL that points at an internal address | application log `security.webhook.internal_url_refused` (level `warning`) and one audit row with the same action; no alert, because a typo such as `http://localhost/` lands here too |
+
+Both are written by `webhook_report_ssrf_block()` / `webhook_log_refused_internal_url()` in
+`app/Webhooks.php`. Tests: `tests/Unit/WebhookDnsPinningTest.php`.
+
 ## Secret storage
 
 The signing secret is generated with a CSPRNG at creation/rotation time, shown to you **exactly

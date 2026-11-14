@@ -450,11 +450,20 @@ function webengage_dsn_attempt(array $row): array {
     if ($url === null) {
         return ['outcome' => 'failed', 'http_status' => null, 'error' => 'no_dsn_url'];
     }
+    $pin = [];
     if ($row['dsn_region'] === 'custom') {
         $check = webhook_url_validate($url);
         if (!$check['ok']) {
+            if (webhook_refusal_is_internal_target((string)$check['reason'])) {
+                webhook_report_ssrf_block('webengage', $url, $check, [
+                    'organization_id' => (int)($row['organization_id'] ?? 0),
+                    'dsn_id'          => (int)($row['id'] ?? 0),
+                ]);
+            }
             return ['outcome' => 'failed', 'http_status' => null, 'error' => 'url_blocked_' . $check['reason']];
         }
+        // The address that was checked is the address connected to (no second DNS lookup by curl).
+        $pin = $check['resolve'] ?? [];
     }
     $token = $row['token_ciphertext'] !== null
         ? webhook_decrypt_secret((string)$row['token_ciphertext'], (string)$row['token_nonce'], (string)$row['token_tag'])
@@ -465,6 +474,9 @@ function webengage_dsn_attempt(array $row): array {
     }
 
     $ch = curl_init($url);
+    if ($pin !== []) {
+        curl_setopt($ch, CURLOPT_RESOLVE, $pin);
+    }
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => json_encode(webengage_dsn_payload($row), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),

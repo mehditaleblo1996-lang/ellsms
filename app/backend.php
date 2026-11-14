@@ -1520,6 +1520,16 @@ function backend_create_account(array $data): array {
     $result = backend_api_request('POST', '/api/users/', $data, 5, 20);
 
     if ($result['ok'] && $result['http'] === 201) {
+        // The backend stores its own SHA-256 of the new password. With PASSWORD_HASH_MODE=argon2id
+        // that is converted to an Argon2id verifier at once, not left until the first sign-in.
+        $createdId = (int)(is_array($result['data']) ? ($result['data']['id'] ?? 0) : 0);
+        if ($createdId > 0) {
+            try {
+                account_password_adopt_backend_hash($createdId);
+            } catch (Throwable $e) {
+                Logger::error('auth.password_convert_failed', ['user_id' => $createdId, 'exception' => $e]);
+            }
+        }
         return [true, 'حساب ساخته شد.', $result['data']];
     }
     if ($result['http'] === 0) {

@@ -74,7 +74,8 @@ require __DIR__ . '/../app/views/reseller_header.php';
         <span class="hint" style="display:block">فقط برای زیرنماینده و مشتری سازمانی.</span>
       </label>
       <label>نام کاربری * <input type="text" name="username" class="ltr" required minlength="5"></label>
-      <label>رمز عبور * <input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
+      <label>رمز عبور * <input type="password" name="password" required autocomplete="new-password"<?= password_policy_input_attrs('', 'username') ?>>
+        <?= password_policy_hint_html() ?></label>
       <label>نام * <input type="text" name="first_name" required></label>
       <label>نام خانوادگی * <input type="text" name="last_name" required></label>
       <label>ایمیل * <input type="email" name="email" class="ltr" required></label>

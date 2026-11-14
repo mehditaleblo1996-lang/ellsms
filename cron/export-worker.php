@@ -154,7 +154,8 @@ function export_run_one(array $job, int $chunkRows, int $leaseSeconds, int $maxR
                     if (empty($filters['is_admin'])) {
                         $csvRow[9] = '';
                     }
-                    fputcsv($out, array_merge([$source['label']], export_csv_columns($csvRow, 0, $showDelivery)));
+                    // Message text and recipients are customer data: csv_safe_row() keeps them from running as formulas.
+                    fputcsv($out, csv_safe_row(array_merge([$source['label']], export_csv_columns($csvRow, 0, $showDelivery))));
                     $cursor = (int)$r['id'];
                     $written++;
 

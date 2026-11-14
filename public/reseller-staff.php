@@ -30,10 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password = (string)($_POST['password'] ?? '');
         if ($row === null || $row['reseller_user_id'] !== $resellerId) {
             flash('error', reseller_error_message('staff_not_found'));
-        } elseif (strlen($password) < 8) {
-            flash('error', 'رمز عبور باید حداقل ۸ نویسه باشد.');
+        } elseif (($policyError = password_policy_error($password, (string)(backend_find_user_login_state_by_id($staffId)['username'] ?? ''))) !== null) {
+            flash('error', $policyError);
         } else {
-            backend_update_user_password($staffId, backend_hash_password($password));
+            account_password_set($staffId, $password);
             audit($actorId, 'reseller.staff_password_reset', "reseller=#{$resellerId} staff=#{$staffId}");
             flash('success', 'رمز عبور کارمند تغییر کرد.');
         }
@@ -83,7 +83,7 @@ require __DIR__ . '/../app/views/reseller_header.php';
           <?= csrf_field() ?>
           <input type="hidden" name="do" value="password">
           <input type="hidden" name="staff_user_id" value="<?= $s['staff_user_id'] ?>">
-          <input type="password" name="password" minlength="8" autocomplete="new-password" placeholder="رمز عبور جدید" aria-label="رمز عبور جدید" required>
+          <input type="password" name="password" autocomplete="new-password" placeholder="رمز عبور جدید" aria-label="رمز عبور جدید" title="حداقل ۸ نویسه، دست‌کم یک حرف و یک عدد" required<?= password_policy_input_attrs() ?>>
           <button class="btn btn-sm btn-ghost">تغییر رمز</button>
         </form>
       </div>
@@ -98,7 +98,8 @@ require __DIR__ . '/../app/views/reseller_header.php';
     <input type="hidden" name="do" value="create">
     <div class="form-grid">
       <label>نام کاربری * <input type="text" name="username" class="ltr" required minlength="5"></label>
-      <label>رمز عبور * <input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+      <label>رمز عبور * <input type="password" name="password" required autocomplete="new-password"<?= password_policy_input_attrs('', 'username') ?>>
+        <?= password_policy_hint_html() ?></label>
       <label>نام * <input type="text" name="first_name" required></label>
       <label>نام خانوادگی * <input type="text" name="last_name" required></label>
       <label>ایمیل * <input type="email" name="email" class="ltr" required></label>

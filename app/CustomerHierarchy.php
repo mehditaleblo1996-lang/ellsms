@@ -521,9 +521,12 @@ function customer_create_sub_account(array $parentUser, array $input, ?int $acto
     $email      = trim((string)($input['email'] ?? ''));
     $mobile     = normalize_msisdn((string)($input['mobile'] ?? ''));
     $nationalId = trim(from_persian_digits((string)($input['national_id'] ?? '')));
-    if ($username === '' || strlen($password) < 6 || $firstName === '' || $lastName === ''
+    if ($username === '' || $firstName === '' || $lastName === ''
         || $email === '' || !$mobile || strlen($nationalId) !== 10) {
         return ['ok' => false, 'reason' => 'fields_required'];
+    }
+    if (password_policy_problems($password, $username) !== []) {
+        return ['ok' => false, 'reason' => 'weak_password'];
     }
     $domainId = backend_user_domain_id($parentId) ?? (int)(backend_list_domains()[0]['id'] ?? 0);
     if ($domainId <= 0) return ['ok' => false, 'reason' => 'no_domain'];
@@ -896,7 +899,8 @@ function customer_error_message(string $reason): string {
         'invalid_amount'         => 'مبلغ نامعتبر است.',
         'invalid_direction'      => 'عملیات نامعتبر است.',
         'insufficient_balance'   => 'اعتبار کافی نیست.',
-        'fields_required'        => 'همه‌ی فیلدهای ستاره‌دار را به‌درستی پر کنید (رمز عبور حداقل ۶ نویسه و کد ملی دقیقاً ۱۰ رقم).',
+        'fields_required'        => 'همه‌ی فیلدهای ستاره‌دار را به‌درستی پر کنید (کد ملی دقیقاً ۱۰ رقم).',
+        'weak_password'          => 'رمز عبور پذیرفته نشد: حداقل ۸ نویسه، دست‌کم یک حرف و یک عدد، و متفاوت با نام کاربری.',
         'no_domain'              => 'دامنه‌ای برای ساخت حساب پیدا نشد؛ با پشتیبانی تماس بگیرید.',
         'backend_failed'         => 'ساخت حساب در سامانه‌ی مرکزی ناموفق بود.',
         'not_migrated'           => 'جدول‌های نمایندگی هنوز در پایگاه داده ساخته نشده‌اند (مهاجرت 2026_10_12_customer_hierarchy.sql).',
