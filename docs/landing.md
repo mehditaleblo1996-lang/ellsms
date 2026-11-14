@@ -10,7 +10,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | `public/assets/css/style.css` | Base styles of the public pages, the banner, the bento grid and the other sections |
 | `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 6, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
-| `public/assets/img/banks/` | Bank logos for `#customers`, one file per bank named `<slug>.svg/.webp/.png/.jpg` |
+| `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
 
 There is no database table behind the banner or the showcase: they are fixed HTML. The page reads
 only `ellsms_pricing_packages` (pricing cards) and the registration setting (how an account is
@@ -30,21 +30,23 @@ are not shown on this page.
 | `#pricing` | Pricing cards (only when packages exist) |
 | `#how` | Three steps to the first send |
 | `#use-cases` | Use cases |
-| `#customers` | «مشتریان و همکاران بانکی»: bank logo tiles (see below) |
+| `#customers` | «مشتریان و همکاران»: customer logo tiles (see below) |
 | `#trust`, `#faq` | Trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
 The nav has a «منشی هوشمند» link to `/landing.php#ai-secretary`.
 
-## «مشتریان و همکاران بانکی» (`#customers`)
+## «مشتریان و همکاران» (`#customers`)
 
-One tile per bank from the `$customerBanks` list at the top of `landing.php`: اقتصاد نوین, سرمایه,
-کارآفرین, سینا, ملی ایران, پارسیان, گردشگری. Each entry has a `slug`, the Persian `name`, a one-letter
+One tile per customer from the `$customers` list at the top of `landing.php`: the banks اقتصاد نوین,
+سرمایه, کارآفرین, سینا, ملی ایران, پارسیان, گردشگری, and «وزارت آموزش و پرورش» (`education`) 
+«وزارت ارتباطات و فناوری اطلاعات» (`ict`), and the companies تپسی (`tapsi`), اسنپ (`snapp`),
+دیجی‌کالا (`digikala`), دیوار (`divar`) and جابینجا (`jobinja`). Each entry has a `slug`, the Persian `name`, a one-letter
 `mono` and a brand `color`.
 
-The logo is the first of `public/assets/img/banks/<slug>.svg`, `.webp`, `.png`, `.jpg` that exists,
-shown on a white plate so the bank's own colours read correctly on the dark page. With no file the
+The logo is the first of `public/assets/img/customers/<slug>.svg`, `.webp`, `.png`, `.jpg` that exists,
+shown on a white plate so the customer's own colours read correctly on the dark page. With no file the
 tile shows a monogram badge in `color` instead, so a missing logo never breaks the layout. To add or
-replace a logo, drop the file in that folder; to add a bank, add a row to `$customerBanks`. Styles:
+replace a logo, drop the file in that folder; to add a customer, add a row to `$customers`. Styles:
 `.lp-bank-*` in `style.css`.
 
 ## Top banner

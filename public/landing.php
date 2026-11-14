@@ -12,9 +12,9 @@ $pageTitle = 'پنل هوشمند پیامک';
 $extraStyles = ['/assets/css/landing-ai.css'];
 $metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی هوشمند با هوش مصنوعی، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
-// «مشتریان و همکاران بانکی»: one tile per bank. The logo is public/assets/img/banks/<slug>.(svg|webp|png|jpg);
+// «مشتریان و همکاران»: one tile per customer (banks, ministries, companies). The logo is public/assets/img/customers/<slug>.(svg|webp|png|jpg);
 // until a file is there the tile shows a coloured monogram in the bank's colour instead.
-$customerBanks = [
+$customers = [
     ['slug' => 'eghtesad-novin', 'name' => 'بانک اقتصاد نوین', 'mono' => 'ا', 'color' => '#5b2a86'],
     ['slug' => 'sarmayeh',       'name' => 'بانک سرمایه',      'mono' => 'س', 'color' => '#1f4e8c'],
     ['slug' => 'karafarin',      'name' => 'بانک کارآفرین',    'mono' => 'ک', 'color' => '#00843d'],
@@ -22,14 +22,21 @@ $customerBanks = [
     ['slug' => 'melli',          'name' => 'بانک ملی ایران',   'mono' => 'م', 'color' => '#0b3b74'],
     ['slug' => 'parsian',        'name' => 'بانک پارسیان',     'mono' => 'پ', 'color' => '#a6192e'],
     ['slug' => 'gardeshgari',    'name' => 'بانک گردشگری',     'mono' => 'گ', 'color' => '#c8102e'],
+    ['slug' => 'education',      'name' => 'وزارت آموزش و پرورش', 'mono' => 'آ', 'color' => '#0f6e5a'],
+    ['slug' => 'ict',            'name' => 'وزارت ارتباطات و فناوری اطلاعات', 'mono' => 'ف', 'color' => '#1d5fa8'],
+    ['slug' => 'tapsi',          'name' => 'تپسی',             'mono' => 'ت', 'color' => '#f15a24'],
+    ['slug' => 'snapp',          'name' => 'اسنپ',             'mono' => 'ا', 'color' => '#00b85c'],
+    ['slug' => 'digikala',       'name' => 'دیجی‌کالا',         'mono' => 'د', 'color' => '#ef394e'],
+    ['slug' => 'divar',          'name' => 'دیوار',            'mono' => 'د', 'color' => '#a62626'],
+    ['slug' => 'jobinja',        'name' => 'جابینجا',          'mono' => 'ج', 'color' => '#1b8f7a'],
 ];
-foreach ($customerBanks as &$bank) {
-    $bank['logo'] = null;
+foreach ($customers as &$c) {
+    $c['logo'] = null;
     foreach (['svg', 'webp', 'png', 'jpg'] as $ext) {
-        if (is_file(__DIR__ . "/assets/img/banks/{$bank['slug']}.{$ext}")) { $bank['logo'] = "/assets/img/banks/{$bank['slug']}.{$ext}"; break; }
+        if (is_file(__DIR__ . "/assets/img/customers/{$c['slug']}.{$ext}")) { $c['logo'] = "/assets/img/customers/{$c['slug']}.{$ext}"; break; }
     }
 }
-unset($bank);
+unset($c);
 require __DIR__ . '/../app/views/public_header.php';
 ?>
   <!-- Top banner: six animated slides (plain HTML/CSS + a tiny script below, no video file).
@@ -1022,20 +1029,20 @@ require __DIR__ . '/../app/views/public_header.php';
 
   <section id="customers" class="lp-section lp-customers lp-reveal">
     <div class="lp-section-head">
-      <h2>مشتریان و همکاران بانکی</h2>
-      <p>بانک‌هایی که اطلاع‌رسانی پیامکی خود را به ما سپرده‌اند.</p>
+      <h2>مشتریان و همکاران</h2>
+      <p>سازمان‌هایی که اطلاع‌رسانی پیامکی خود را به ما سپرده‌اند.</p>
     </div>
     <ul class="lp-bank-grid">
-      <?php foreach ($customerBanks as $i => $bank): ?>
+      <?php foreach ($customers as $i => $c): ?>
       <li class="lp-bank lp-reveal" style="--i:<?= (int) $i ?>">
         <span class="lp-bank-logo">
-          <?php if ($bank['logo'] !== null): ?>
-          <img src="<?= e($bank['logo']) ?>" alt="لوگوی <?= e($bank['name']) ?>" loading="lazy" decoding="async">
+          <?php if ($c['logo'] !== null): ?>
+          <img src="<?= e($c['logo']) ?>" alt="لوگوی <?= e($c['name']) ?>" loading="lazy" decoding="async">
           <?php else: ?>
-          <span class="lp-bank-mono" style="--bank:<?= e($bank['color']) ?>" aria-hidden="true"><?= e($bank['mono']) ?></span>
+          <span class="lp-bank-mono" style="--bank:<?= e($c['color']) ?>" aria-hidden="true"><?= e($c['mono']) ?></span>
           <?php endif; ?>
         </span>
-        <span class="lp-bank-name"><?= e($bank['name']) ?></span>
+        <span class="lp-bank-name"><?= e($c['name']) ?></span>
       </li>
       <?php endforeach; ?>
     </ul>
