@@ -717,7 +717,13 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-nav-links { display: flex; gap: 4px; flex: 1; justify-content: center; }
 .lp-nav-links a {
   position: relative; color: #c9d4f2; font-weight: 600; font-size: 14px; padding: 8px 12px; border-radius: 10px;
-  transition: color .2s ease, background-color .2s ease;
+  transition: color .2s ease, background-color .2s ease; white-space: nowrap;
+}
+/* Eight links + «ورود به پنل پیامک» are tight on small laptops/tablets: shrink before the hamburger takes over at 900px. */
+@media (min-width: 901px) and (max-width: 1240px) {
+  .lp-nav-links { gap: 0; }
+  .lp-nav-links a { padding: 8px 7px; font-size: 13px; }
+  .lp-nav-inner { gap: 10px; }
 }
 .lp-nav-links a:hover { color: #fff; background: rgba(96, 165, 250, .12); text-decoration: none; }
 .lp-nav-links a::after {
@@ -917,7 +923,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
     max-height: 0; overflow: hidden; opacity: 0;
     transition: max-height .25s ease, opacity .2s ease;
   }
-  .lp-nav-links.is-open { max-height: 380px; opacity: 1; }
+  .lp-nav-links.is-open { max-height: 480px; opacity: 1; }
   .lp-nav-links a { padding: 12px 8px; border-radius: 0; border-bottom: 1px solid rgba(255, 255, 255, .07); }
   .lp-nav-links a::after { display: none; }
   .lp-nav-links a:last-child { border-bottom: 0; }

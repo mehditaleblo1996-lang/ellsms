@@ -5,7 +5,7 @@
  *  /assets/... stylesheet paths a single page adds after style.css). */
 $loggedIn     = (bool) current_user();
 $primaryHref  = $loggedIn ? '/index.php' : '/login.php';
-$primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به پنل';
+$primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به پنل پیامک';
 ?><!doctype html>
 <html lang="fa" dir="rtl">
 <head>

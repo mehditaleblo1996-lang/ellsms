@@ -33,7 +33,9 @@ are not shown on this page.
 | `#how` | Three steps to the first send |
 | `#use-cases`, `#trust`, `#faq` | Use cases, trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
-The nav has a «محصولات» link to `/landing.php#products` and a «منشی هوشمند» link to
+The nav button reads «ورود به پنل پیامک» (the site sells more than the SMS panel; «بازگشت به داشبورد»
+when logged in; the same label is used by the hero and the SMS product row). The nav has a «محصولات»
+link to `/landing.php#products` and a «منشی هوشمند» link to
 `/landing.php#ai-secretary`.
 
 ## Top banner
