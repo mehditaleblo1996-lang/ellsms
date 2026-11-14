@@ -22,7 +22,6 @@ are not shown on this page.
 |---|---|
 | — | **Top banner**: six animated slides (bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») |
 | — | Hero with the 3D phone scene |
-| `#flow` | «از فایل مخاطبین تا گوشی مشتری»: a contacts file + template becoming personal SMS |
 | `#features` | Bento grid of services. The last, full-width tile is «منشی هوشمند با هوش مصنوعی» and links to `#ai-secretary`. |
 | `#ai-secretary` | **«منشی هوشمند» showcase**: the seven-step slider described below |
 | `#compare` | Manual sending vs. the panel |
