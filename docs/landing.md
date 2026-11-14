@@ -8,8 +8,8 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | `public/landing.php` | The page: banner, hero, sections, and the small inline scripts that drive the sliders |
 | `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav, footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page. |
 | `public/assets/css/style.css` | Base styles of the public pages, the banner, the bento grid and the other sections |
-| `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 6, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
-| `public/assets/css/landing-products.css` | The «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
+| `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 7, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
+| `public/assets/css/landing-products.css` | Banner slide 1 «یک مجموعه، پنج خدمت» (`.lp-suite-*`) and the «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/*.php` | One animated SVG scene per product line (`sms`, `cloud`, `ai`, `it`, `voip`), included by the `#products` section |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
 | `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
@@ -23,7 +23,7 @@ are not shown on this page.
 
 | Anchor | Section |
 |---|---|
-| — | **Top banner**: six animated slides (bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») |
+| — | **Top banner**: seven animated slides («یک مجموعه، پنج خدمت» — all five product lines, bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») |
 | — | Hero with the 3D phone scene |
 | `#products` | **«محصولات و خدمات»**: the five product lines of the company, described below |
 | `#flow` | «از فایل مخاطبین تا گوشی مشتری»: a contacts file + template becoming personal SMS |
@@ -66,10 +66,37 @@ Only the first copy of the top rail is exposed to screen readers (the rest is `a
 ## Top banner
 
 Slides are `<article class="lp-banner-slide">` inside `[data-lp-banner]`, with one dot per slide in
-`.lp-banner-dots`. Slide 6 (`#lpSlide6`, `.lp-banner-ai`) shows a chat in which a customer asks about
+`.lp-banner-dots`. Slide 7 (`#lpSlide7`, `.lp-banner-ai`) shows a chat in which a customer asks about
 a product and the secretary answers from a «محصولات» table; its button scrolls to `#ai-secretary`.
 
-Behaviour: auto-advance every 7 s; pauses on hover, keyboard focus, off-screen and hidden tab;
+### Slide 1 — «یک مجموعه، پنج خدمت» (`#lpSlide1`, `.lp-suite`)
+
+The first thing a visitor sees: the five product lines (`#products`) as a solar system around the
+DATIS mark, with the headline «یک مجموعه، پنج خدمت؛ همه‌ی فناوری کسب‌وکار شما», a list of the five
+lines (name + one line each; on phones just the names, as chips) and two buttons: «مشاهده‌ی محصولات»
+(`#products`) and «درخواست مشاوره» (`/contact.php`). The slide's five-entry `$suite` array holds the
+names, sub-lines and icons.
+
+Animation, all CSS (no script beyond the banner's own), in two parts:
+
+| Time | What happens |
+|---|---|
+| 0 s | The core ignites (scales up with an overshoot, glow), two shockwave rings expand |
+| 0.5 s | The orbit ring draws itself; the far and inner dotted rings fade in and start turning |
+| 0.85 s + k·0.45 s | A light beam shoots from the core towards product k |
+| 1 s + k·0.45 s | Product k flies out along its beam and lands on the orbit (overshoot) |
+| 1.1 s + k·0.45 s | Item k of the list rises in, in step with its planet |
+| 1.6 s + k·0.45 s | Product k's name label pops under it |
+| 2.4 s → | A comet runs around the orbit |
+| 3.6 s → | Data pulses run from the core to every product, one after another |
+| 4.2 s → | A spotlight walks over the five every 1.5 s: the planet grows and glows, and its list item lights up |
+| always | The whole system turns once a minute; the products stay upright (counter-rotation); the core breathes, its light sweep turns; dust twinkles |
+
+Sizes are in container units of the stage (`--R` orbit radius, `--P` planet size), so the scene
+scales from desktop (500px) to phone (310px or 38% of the screen height). Every element's plain
+style is its final frame: with reduced motion the slide shows the complete system, still.
+
+Behaviour: auto-advance every 7 s (a slide can stay longer with `data-duration` in ms; slide 1 uses 12000); pauses on hover, keyboard focus, off-screen and hidden tab;
 «توقف اسلایدها» stops it for good (WCAG 2.2.2). The dots are an ARIA tablist (arrows, Home, End),
 swipe works on touch screens, and with `prefers-reduced-motion` the banner stays on slide 1 with no
 motion.

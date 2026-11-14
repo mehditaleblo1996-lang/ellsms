@@ -39,8 +39,8 @@ foreach ($customers as &$c) {
 unset($c);
 require __DIR__ . '/../app/views/public_header.php';
 ?>
-  <!-- Top banner: six animated slides (plain HTML/CSS + a tiny script below, no video file).
-       Slide 1 reuses the tilted-phone shot of the ELLSMS promo video as one still (≈43 KB WebP);
+  <!-- Top banner: seven animated slides (plain HTML/CSS + a tiny script below, no video file).
+       Slide 1 is the five-product «یک مجموعه، پنج خدمت» scene; slide 2 reuses the tilted-phone shot of the ELLSMS promo video as one still (≈43 KB WebP);
        everything else is drawn in CSS/SVG. Auto-advances, pauses on hover/off-screen, and stays on
        the first slide without motion for prefers-reduced-motion. -->
   <section class="lp-banner" data-lp-banner aria-roledescription="carousel" aria-label="معرفی داتیس رایان گستر ایرانیان">
@@ -52,11 +52,71 @@ require __DIR__ . '/../app/views/public_header.php';
     </svg>
     <div class="lp-banner-track">
 
-      <article class="lp-banner-slide is-active" id="lpSlide1" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۶">
+      <!-- Slide 1 «یک مجموعه، پنج خدمت»: the five product lines as a solar system around the DATIS core.
+           A ~4 s opening (core ignites, shockwave, orbits draw, each product flies out along its beam,
+           labels pop, the list on the copy side lights up in step), then a live loop (the system turns,
+           data pulses run from the core to every product, a spotlight walks over the five in sync with
+           the list). Styles: landing-products.css («banner slide 1»). Stays on screen 12 s. -->
+      <?php $suite = [
+          ['sms',   'پیامک و بازاریابی',  'ارسال انبوه، هوشمند و خودکار', '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>'],
+          ['cloud', 'خدمات ابری',          'VPS، هاست، دامنه و فضای ابری', '<path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 1 0 6 16.5"/><path d="M6 19h11.5"/>'],
+          ['ai',    'هوش مصنوعی',          'تولید محتوا و اتوماسیون',     '<path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/>'],
+          ['it',    'فناوری اطلاعات',      'شبکه، سرور، امنیت، پشتیبانی', '<path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/>'],
+          ['voip',  'تلفن سازمانی',        'VoIP، منشی تلفنی، صف تماس',   '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>'],
+      ]; ?>
+      <article class="lp-banner-slide is-active" id="lpSlide1" data-duration="12000" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۷">
+        <div class="lp-banner-visual lp-suite" aria-hidden="true">
+          <div class="lp-suite-stage">
+            <svg class="lp-suite-rings" viewBox="0 0 400 400">
+              <circle cx="200" cy="200" r="190" class="is-far"/>
+              <circle cx="200" cy="200" r="148" class="is-orbit" pathLength="100"/>
+              <circle cx="200" cy="200" r="104" class="is-inner"/>
+              <circle cx="200" cy="200" r="148" class="is-comet" pathLength="100"/>
+            </svg>
+            <span class="lp-suite-shock"></span><span class="lp-suite-shock is-late"></span>
+            <?php foreach ([[12,18,0],[84,10,1.2],[92,62,2.1],[70,90,.6],[8,74,1.7],[30,40,2.6],[60,28,.9],[22,92,3]] as [$x, $y, $d]): ?>
+            <i class="lp-suite-dust" style="--x:<?= $x ?>%;--y:<?= $y ?>%;--d:<?= $d ?>s"></i>
+            <?php endforeach; ?>
+            <div class="lp-suite-orbit">
+              <?php foreach ($suite as $k => [$tone, $name, , $icon]): ?>
+              <div class="lp-suite-arm is-<?= $tone ?>" style="--a:<?= -90 + $k * 72 ?>deg;--k:<?= $k ?>">
+                <span class="lp-suite-beam"><i></i></span>
+                <div class="lp-suite-pos"><div class="lp-suite-up"><div class="lp-suite-counter">
+                  <div class="lp-suite-planet"><svg viewBox="0 0 24 24"><?= $icon ?></svg></div>
+                  <span class="lp-suite-label"><?= e($name) ?></span>
+                </div></div></div>
+              </div>
+              <?php endforeach; ?>
+            </div>
+            <div class="lp-suite-core">
+              <span class="lp-suite-core-ring"></span>
+              <img src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="64" height="41">
+            </div>
+          </div>
+        </div>
+        <div class="lp-banner-copy">
+          <h2>یک مجموعه، <span class="is-blue">پنج خدمت</span>؛ همه‌ی فناوری <span class="is-green">کسب‌وکار شما</span></h2>
+          <p>داتیس رایان گستر ایرانیان از پیامک و بازاریابی تا زیرساخت ابری، هوش مصنوعی، پشتیبانی فناوری اطلاعات و تلفن سازمانی را یکجا و با یک تیم پشتیبانی ارائه می‌دهد.</p>
+          <ul class="lp-suite-list">
+            <?php foreach ($suite as $k => [$tone, $name, $sub, $icon]): ?>
+            <li class="is-<?= $tone ?>" style="--k:<?= $k ?>">
+              <span class="lp-suite-li-ico"><svg viewBox="0 0 24 24"><?= $icon ?></svg></span>
+              <b><?= e($name) ?></b><small><?= e($sub) ?></small>
+            </li>
+            <?php endforeach; ?>
+          </ul>
+          <div class="lp-suite-cta">
+            <a href="#products" class="btn btn-primary">مشاهده‌ی محصولات</a>
+            <a href="/contact.php" class="btn btn-ghost">درخواست مشاوره</a>
+          </div>
+        </div>
+      </article>
+
+      <article class="lp-banner-slide" id="lpSlide2" role="tabpanel" aria-roledescription="slide" aria-label="۲ از ۷">
         <div class="lp-banner-visual lp-banner-phone" aria-hidden="true">
           <picture>
             <source srcset="/assets/img/landing/banner-phone.webp" type="image/webp">
-            <img src="/assets/img/landing/banner-phone.jpg" alt="" width="640" height="720" decoding="async" fetchpriority="high">
+            <img src="/assets/img/landing/banner-phone.jpg" alt="" width="640" height="720" decoding="async">
           </picture>
           <svg class="lp-banner-streaks" viewBox="0 0 640 720" preserveAspectRatio="none">
             <path d="M-20 300C140 250 330 330 640 280"/><path d="M-20 360C170 330 360 420 640 360" style="animation-delay:1.1s"/><path d="M-20 420C120 420 300 470 640 450" style="animation-delay:2.2s"/>
@@ -75,7 +135,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide2" role="tabpanel" aria-roledescription="slide" aria-label="۲ از ۶">
+      <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۷">
         <div class="lp-banner-visual lp-banner-smart" aria-hidden="true">
           <div class="lp-smart-template">سلام <b>{نام}</b>، شما <b>{شانس}</b> شانس دارید</div>
           <div class="lp-smart-bubble" style="--i:0">سلام <b>علی</b>، شما <b>۲</b> شانس دارید <em>✓</em></div>
@@ -94,7 +154,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide3" role="tabpanel" aria-roledescription="slide" aria-label="۳ از ۶">
+      <article class="lp-banner-slide" id="lpSlide4" role="tabpanel" aria-roledescription="slide" aria-label="۴ از ۷">
         <div class="lp-banner-visual lp-banner-report" aria-hidden="true">
           <div class="lp-report-card">
             <div class="lp-report-head"><span>نمونه — ارسال امروز</span><b>۱۲٬۴۸۰</b></div>
@@ -116,7 +176,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide4" role="tabpanel" aria-roledescription="slide" aria-label="۴ از ۶">
+      <article class="lp-banner-slide" id="lpSlide5" role="tabpanel" aria-roledescription="slide" aria-label="۵ از ۷">
         <div class="lp-banner-visual lp-banner-voice" aria-hidden="true">
           <div class="lp-voice-card">
             <div class="lp-voice-head">
@@ -148,7 +208,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide5" role="tabpanel" aria-roledescription="slide" aria-label="۵ از ۶">
+      <article class="lp-banner-slide" id="lpSlide6" role="tabpanel" aria-roledescription="slide" aria-label="۶ از ۷">
         <div class="lp-banner-visual lp-banner-bale" aria-hidden="true">
           <div class="lp-bale-chat">
             <div class="lp-bale-head">
@@ -182,7 +242,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </article>
 
-      <article class="lp-banner-slide" id="lpSlide6" role="tabpanel" aria-roledescription="slide" aria-label="۶ از ۶">
+      <article class="lp-banner-slide" id="lpSlide7" role="tabpanel" aria-roledescription="slide" aria-label="۷ از ۷">
         <div class="lp-banner-visual lp-banner-ai" aria-hidden="true">
           <div class="lp-ai-chat">
             <div class="lp-ai-chat-head">
@@ -223,6 +283,7 @@ require __DIR__ . '/../app/views/public_header.php';
         <button type="button" role="tab" id="lpSlideTab4" aria-controls="lpSlide4" aria-selected="false" aria-label="اسلاید ۴" tabindex="-1"></button>
         <button type="button" role="tab" id="lpSlideTab5" aria-controls="lpSlide5" aria-selected="false" aria-label="اسلاید ۵" tabindex="-1"></button>
         <button type="button" role="tab" id="lpSlideTab6" aria-controls="lpSlide6" aria-selected="false" aria-label="اسلاید ۶" tabindex="-1"></button>
+        <button type="button" role="tab" id="lpSlideTab7" aria-controls="lpSlide7" aria-selected="false" aria-label="اسلاید ۷" tabindex="-1"></button>
       </div>
     </div>
   </section>
@@ -259,7 +320,8 @@ require __DIR__ . '/../app/views/public_header.php';
   function schedule() {
     clearTimeout(timer);
     if (stopped || hovering || focused || !visible || document.hidden) return;
-    timer = setTimeout(function () { show(current + 1); schedule(); }, 7000);
+    // A slide may ask for longer with data-duration (ms), e.g. slide 1's opening animation.
+    timer = setTimeout(function () { show(current + 1); schedule(); }, +slides[current].getAttribute('data-duration') || 7000);
   }
   function setStopped(on) {
     stopped = on;
