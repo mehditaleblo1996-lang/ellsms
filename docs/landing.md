@@ -7,17 +7,18 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 |---|---|
 | `public/landing.php` | The page: banner, hero, sections, and the small inline scripts that drive the sliders |
 | `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav, footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page. |
-| `public/assets/css/style.css` | Base styles of the public pages, the banner, the bento grid and the other sections |
-| `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 7, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
+| `public/assets/css/style.css` | Base styles of the public pages, the banner and the other sections |
+| `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat of banner slide 7 (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
 | `public/assets/css/landing-products.css` | Banner slide 1 «یک مجموعه، پنج خدمت» (`.lp-suite-*`) and the «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/*.php` | One animated SVG scene per product line (`sms`, `cloud`, `ai`, `it`, `voip`), included by the `#products` section |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
 | `public/assets/js/landing-customers.js` | Drives the `#customers` logo rail (scroll speed-up, hover glide, drag, centre focus) |
 | `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
 
-There is no database table behind the banner or the showcase: they are fixed HTML. The page reads
-only `ellsms_pricing_packages` (pricing cards) and the registration setting (how an account is
-obtained). No migration is needed. Admin-managed slides from «اسلایدر صفحه‌ی اصلی» (`/slides.php`)
+There is no database table behind the banner or the sections: they are fixed HTML. The page reads
+only the registration setting (how the FAQ says an account is obtained). No migration is needed.
+The SMS packages managed at `/pricing.php` (`ellsms_pricing_packages`) are not shown on this page
+since the pricing section was removed. Admin-managed slides from «اسلایدر صفحه‌ی اصلی» (`/slides.php`)
 are not shown on this page.
 
 ## Sections, top to bottom
@@ -27,19 +28,19 @@ are not shown on this page.
 | — | **Top banner**: seven animated slides («یک مجموعه، پنج خدمت» — all five product lines, bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») |
 | — | Hero with the 3D phone scene |
 | `#products` | **«محصولات و خدمات»**: the five product lines of the company, described below |
-| `#features` | Bento grid of services. The last, full-width tile is «منشی هوشمند با هوش مصنوعی» and links to `#ai-secretary`. |
-| `#ai-secretary` | **«منشی هوشمند» showcase**: the seven-step slider described below |
-| `#compare` | Manual sending vs. the panel |
-| `#pricing` | Pricing cards (only when packages exist) |
-| `#how` | Three steps to the first send |
-| `#use-cases` | Use cases |
 | `#customers` | «مشتریان و همکاران»: one scrolling rail of monochrome customer logos (see below) |
 | `#trust`, `#faq` | Trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
 The nav button reads «ورود به پنل پیامک» (the site sells more than the SMS panel; «بازگشت به داشبورد»
-when logged in; the same label is used by the hero and the SMS product row). The nav has a «محصولات»
-link to `/landing.php#products` and a «منشی هوشمند» link to
-`/landing.php#ai-secretary`.
+when logged in; the same label is used by the hero and the SMS product row). The nav links are «محصولات»
+(`/landing.php#products`), «سوالات» (`/landing.php#faq`), «راهنمای استفاده» and «تماس با ما».
+
+The sections «از فایل مخاطبین تا گوشی مشتری» (`#flow`), «هر روش ارسالی که نیاز دارید» (`#features`),
+the «منشی هوشمند» seven-step showcase (`#ai-secretary`), «چرا به‌جای ارسال دستی؟» (`#compare`),
+«بسته‌های پیامک» (`#pricing`), «سه قدم تا اولین ارسال» (`#how`) and «برای چه کسب‌وکارهایی مناسب
+است؟» (`#use-cases`) were removed; «مشتریان و همکاران» now follows «محصولات و خدمات». Links that used
+to point at them now go to `#products` («مشاهده‌ی محصولات» in the hero and banner) or to
+`/guide.php#guide-ai-secretary` (banner slide 7 and the FAQ answer about «منشی هوشمند»).
 
 ## «مشتریان و همکاران» (`#customers`)
 
@@ -85,7 +86,8 @@ does nothing and the rail is replaced by one still, wrapped list of every custom
 
 Slides are `<article class="lp-banner-slide">` inside `[data-lp-banner]`, with one dot per slide in
 `.lp-banner-dots`. Slide 7 (`#lpSlide7`, `.lp-banner-ai`) shows a chat in which a customer asks about
-a product and the secretary answers from a «محصولات» table; its button scrolls to `#ai-secretary`.
+a product and the secretary answers from a «محصولات» table; its button opens the customer guide's
+«منشی هوشمند» section (`/guide.php#guide-ai-secretary`).
 
 ### Slide 1 — «یک مجموعه، پنج خدمت» (`#lpSlide1`, `[data-lp-suite]`, `.lp-suite-*`)
 
@@ -154,7 +156,7 @@ to an animated SVG scene. Rows alternate sides (`.is-flip`) and stack on screens
 
 | Anchor | Product line | Sub-services | Scene | Buttons |
 |---|---|---|---|---|
-| `#product-sms` | سامانه پیامکی و بازاریابی | ارسال انبوه و هدفمند، پیامک هوشمند با قالب پویا، زمان‌بندی و ارسال دوره‌ای، منشی هوشمند و وب‌سرویس | Phone sending to recipients, delivery ticks, rising chart | Panel login + `#features` |
+| `#product-sms` | سامانه پیامکی و بازاریابی | ارسال انبوه و هدفمند، پیامک هوشمند با قالب پویا، زمان‌بندی و ارسال دوره‌ای، منشی هوشمند و وب‌سرویس | Phone sending to recipients, delivery ticks, rising chart | Panel login |
 | `#product-cloud` | خدمات ابری و زیرساختی | سرور مجازی (VPS)، هاست و دامنه، فضای ذخیره‌سازی ابری، پایش و پشتیبان‌گیری | Cloud over blinking racks, two-way data, spinning globe, filling storage | `/contact.php` |
 | `#product-ai` | هوش مصنوعی و اتوماسیون | تولید محتوا با هوش مصنوعی، اتوماسیون فرآیندهای کسب‌وکار، دستیار و چت‌بات هوشمند، گزارش و تحلیل خودکار | AI core with a neural net, self-writing document, workflow with a gear | `/contact.php` |
 | `#product-it` | خدمات فناوری اطلاعات | پشتیبانی شبکه، نصب و راه‌اندازی سرور، نگهداری و پشتیبانی نرم‌افزار، مشاوره‌ی امنیت زیرساخت | Network topology with traffic, scanned server, shield drawing its check, gears | `/contact.php` |
@@ -172,50 +174,3 @@ script toggles `.is-live` with an IntersectionObserver, and off-screen scenes ha
 all (they show their fully drawn still frame). With `prefers-reduced-motion` every animation in the
 section is off. The section itself is not `.lp-reveal` (it is too tall to reach the reveal threshold
 on a phone); its head, pills and each row reveal separately.
-
-## «منشی هوشمند» showcase (`#ai-secretary`)
-
-A seven-step slider that explains the AI SMS secretary ([ai-secretary.md](ai-secretary.md)) to
-visitors. Each step has a text side (title, paragraph, four points) and an animated scene drawn in
-HTML/CSS/SVG (no images, no library):
-
-| Step | Title | Scene | Feature doc |
-|---|---|---|---|
-| 1 | پاسخ خودکار، شبانه‌روزی | Phone conversation: question, typing dots, answer, booking confirmed; «۲۴/۷» and SMS/Telegram badges | [ai-secretary.md](ai-secretary.md) |
-| 2 | راه‌اندازی در چند دقیقه | Settings card: template picked, mode «منشی کسب‌وکار», business info typed line by line, switch turns on | [ai-secretary.md](ai-secretary.md#assistant-settings-per-line) |
-| 3 | مسیر هر پیام | Vertical pipeline lit in order: inbound → «۱۱/۱۲» → keyword rules → AI → answer from the same line | [ai-secretary.md](ai-secretary.md#how-a-message-flows) |
-| 4 | جواب از جدول‌های شما | «سفارش‌ها» table scanned, the sender's row highlighted, other rows blurred («فقط شماره‌ی خود مشتری»), answer with tracking code | [ai-data.md](ai-data.md) |
-| 5 | ارجاع به اپراتور | Customer asks for a person → hand-off notice with a ringing bell → operator reply → «ادامه با منشی هوشمند» | [ai-data.md](ai-data.md) |
-| 6 | پیام اول با هوش مصنوعی | Table rows + instruction → personalized messages tagged پیامک / بله | [ai-outreach.md](ai-outreach.md) |
-| 7 | امن، با هزینه‌ی شفاف | Shield with the guards ticked, and a cost card: SMS of the answer + AI by tariff, charged after a successful send | [ai-secretary.md](ai-secretary.md#guards), [ai-billing.md](ai-billing.md) |
-
-Under the slider a note says the service is enabled per account by support, with «درخواست فعال‌سازی»
-(`/contact.php`) and «راهنمای منشی هوشمند» (`/guide.php#guide-ai-secretary`, which opens that guide
-section).
-
-Keep the text in step with the feature: when the secretary's behaviour, guards or billing change,
-update the matching step here (and `public/guide.php`). The sample prices and names in the scenes
-are illustrations, not tariffs.
-
-### How it works
-
-- Markup: `[data-lp-ai]` holds `.lp-ai-tabs` (an ARIA tablist, one `.lp-ai-tab` per step, generated
-  from `$aiSteps` in `landing.php`) and `.lp-ai-panels` (one `.lp-ai-slide` tabpanel per step; the
-  inactive ones carry `hidden`).
-- Scene animation: an element with `.lp-ai-pop` is hidden and rises in when its slide gets
-  `.is-active`, after its own `--t` delay. Re-activating a slide replays its scene.
-- Timer: the active tab's progress bar (`.lp-ai-tab-bar i`, 9 s) is the clock; its `animationend`
-  moves to the next step. The bar is paused (`.is-holding`) while the pointer is over the slider,
-  while something inside has focus, while less than about a third of it is on screen, while the
-  browser tab is hidden, or after «توقف». When the slider comes back into view the current scene
-  replays from its start.
-- Navigation: click a tab, «مرحله‌ی قبل/بعد», arrow keys on the tabs (up/down when the tabs are a
-  column, left/right when they are a row, RTL-aware), Home/End, or swipe.
-- Layout: tabs in a column beside the panel on wide screens; under 1080 px they become a sideways
-  scrolling strip above it (the active tab is scrolled into the middle), under 860 px the scene sits
-  above the text.
-- `prefers-reduced-motion`: no auto-advance, no animation, every scene is shown complete.
-
-To add a step: add a row to `$aiSteps`, add the matching `<article class="lp-ai-slide" id="lpAiStepN">`
-(with `hidden`), update «مرحله‌ی N از M» on every step and the «/ M» counter, and add the scene's
-styles to `landing-ai.css`.

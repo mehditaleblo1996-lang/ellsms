@@ -231,7 +231,6 @@ $sections = [
             ['/ai-secretary.php', 'منشی هوشمند'],
             ['/ai-data.php', 'جدول‌های داده‌ی منشی'],
             ['/autoreply.php', 'منشی پیامک (کلیدواژه)'],
-            ['/landing.php#ai-secretary', 'معرفی تصویری منشی هوشمند'],
         ],
     ],
     [

@@ -805,75 +805,14 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 
 .lp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
 .lp-grid-narrow { grid-template-columns: repeat(4, 1fr); }
-/* Frosted-glass treatment shared by every card-like surface on the dark
-   public pages — a translucent fill (var(--card)) plus blur so the ambient
-   background glow behind each card bleeds through instead of being hidden
-   by a flat panel. */
-.lp-card, .lp-price-card, .lp-compare-table, .lp-guide-item, .lp-usecase {
+
+/* Frosted-glass treatment for the FAQ cards on the dark public pages — a
+   translucent fill (var(--card)) plus blur so the ambient background glow
+   behind each card bleeds through instead of being hidden by a flat panel. */
+.lp-guide-item {
   backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
   box-shadow: 0 1px 0 rgba(255,255,255,.06) inset;
 }
-.lp-card {
-  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
-  padding: 24px; transition: box-shadow .2s ease, transform .2s ease, border-color .2s ease;
-}
-.lp-card:hover { box-shadow: 0 16px 34px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.06) inset; transform: translateY(-2px); border-color: rgba(167,139,250,.4); }
-.lp-card h3 { font-size: 16px; font-weight: 700; margin: 4px 0 8px; }
-.lp-card p { color: var(--muted); font-size: 14px; margin: 0; }
-
-.lp-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 42px; height: 42px; border-radius: 12px; background: var(--grad); color: #fff; margin-bottom: 6px;
-}
-.lp-icon svg { width: 21px; height: 21px; }
-
-/* Bento feature grid: the smart-template feature is the product's real
-   differentiator, so it gets the large tile instead of being one of eight
-   equal boxes — the layout itself argues for what matters most. */
-.lp-bento {
-  display: grid; gap: 18px; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(0, auto);
-  grid-template-areas:
-    "flag flag wide wide"
-    "flag flag c1   c2"
-    "c3   c4   c5   c6";
-}
-.lp-bento .lp-card { height: 100%; display: flex; flex-direction: column; }
-.lp-bento-flag { grid-area: flag; background: var(--grad); border: 0; color: #fff; justify-content: center; padding: 30px; }
-.lp-bento-flag h3 { font-size: 20px; }
-.lp-bento-flag p { color: rgba(255,255,255,.85); font-size: 14.5px; }
-.lp-icon-light { background: rgba(255,255,255,.18); }
-.lp-bento-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.lp-chip {
-  font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 999px;
-  background: rgba(255,255,255,.16); color: #fff;
-}
-.lp-chip code { font-family: var(--mono); }
-.lp-bento-wide { grid-area: wide; }
-.lp-bento-c1 { grid-area: c1; }
-.lp-bento-c2 { grid-area: c2; }
-.lp-bento-c3 { grid-area: c3; }
-.lp-bento-c4 { grid-area: c4; }
-.lp-bento-c5 { grid-area: c5; }
-.lp-bento-c6 { grid-area: c6; }
-
-.lp-how { background: var(--tint); border: 1px solid var(--line); border-radius: 28px; backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
-.lp-steps {
-  list-style: none; margin: 0; padding: 0; counter-reset: step;
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; position: relative;
-}
-.lp-steps li { background: transparent; padding: 0 22px; position: relative; }
-.lp-steps li + li::before {
-  content: ""; position: absolute; top: 17px; inset-inline-start: -1px; width: 100%; height: 2px;
-  background: linear-gradient(90deg, var(--indigo), var(--blue)); opacity: .28;
-}
-.lp-step-no {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 50%; background: var(--grad); color: #fff;
-  font-weight: 800; font-family: var(--mono); margin-bottom: 18px; position: relative; z-index: 1;
-  box-shadow: 0 0 0 6px var(--tint);
-}
-.lp-steps h3 { font-size: 16px; font-weight: 700; margin: 0 0 8px; }
-.lp-steps p { color: var(--muted); font-size: 14px; margin: 0; }
 
 .lp-trust-item { padding: 6px 0; }
 .lp-trust-item h4 { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
@@ -912,13 +851,6 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 
 @media (max-width: 980px) {
   .lp-grid, .lp-grid-narrow { grid-template-columns: repeat(2, 1fr); }
-  .lp-bento {
-    grid-template-columns: repeat(2, 1fr);
-    grid-template-areas: "flag flag" "flag flag" "wide wide" "c1 c2" "c3 c4" "c5 c6";
-  }
-  .lp-steps { grid-template-columns: 1fr; gap: 22px; }
-  .lp-steps li { padding: 0; }
-  .lp-steps li + li::before { display: none; }
   .lp-hero h1 { font-size: 34px; }
   .lp-hero-stats { gap: 14px 0; }
   .lp-hero-stats li { width: 50%; border-inline-start: 0 !important; padding: 10px 12px !important; }
@@ -942,8 +874,6 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .lp-brand-logo { height: 44px; }
   .lp-nav-inner { gap: 12px; padding: 10px 16px; }
   .lp-grid, .lp-grid-narrow { grid-template-columns: 1fr; }
-  .lp-bento { grid-template-columns: 1fr; grid-template-areas: none; }
-  .lp-bento .lp-card { grid-area: auto; }
   .lp-hero { padding: 54px 20px 30px; }
   .lp-hero h1 { font-size: 27px; }
   .lp-section { padding: 50px 20px; }
@@ -1502,45 +1432,6 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .lp-slide-caption-inner { padding: 0 18px 22px; }
 }
 
-/* ---------- Manual-vs-ELLSMS comparison ---------- */
-.lp-compare-table { max-width: 880px; margin: 0 auto; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: var(--card); }
-.lp-compare-row { display: grid; grid-template-columns: 1.1fr 1fr 1fr; }
-.lp-compare-row + .lp-compare-row { border-top: 1px solid var(--line); }
-.lp-compare-row > div { padding: 16px 18px; font-size: 13.5px; display: flex; align-items: center; }
-.lp-compare-row > div:first-child { font-weight: 700; color: var(--ink); }
-.lp-compare-head { background: var(--canvas); }
-.lp-compare-head > div { font-weight: 700; font-size: 13px; color: var(--muted); }
-.lp-compare-head .lp-compare-highlight { color: var(--lp-accent); }
-.lp-compare-no { color: var(--muted); }
-.lp-compare-no::before { content: "–"; margin-inline-end: 8px; color: #c7cbe0; font-weight: 800; }
-.lp-compare-yes { color: var(--ink); font-weight: 600; }
-.lp-compare-yes::before { content: "✓"; margin-inline-end: 8px; color: var(--ok); font-weight: 800; }
-.lp-compare-row:not(.lp-compare-head) .lp-compare-highlight,
-.lp-compare-row:not(.lp-compare-head) > div:nth-child(3) { background: var(--ok-bg); }
-
-@media (max-width: 700px) {
-  .lp-compare-row { grid-template-columns: 1fr; }
-  .lp-compare-row > div:first-child { background: var(--canvas); font-size: 12.5px; padding-bottom: 8px; }
-  .lp-compare-head > div:not(:first-child) { padding-bottom: 4px; }
-  .lp-compare-row:not(.lp-compare-head) > div:nth-child(2),
-  .lp-compare-row:not(.lp-compare-head) > div:nth-child(3) { padding-top: 4px; }
-}
-
-/* ---------- Use cases ---------- */
-.lp-usecase {
-  background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 24px;
-  transition: box-shadow .2s ease, transform .2s ease;
-}
-.lp-usecase:hover { box-shadow: 0 16px 34px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.06) inset; transform: translateY(-2px); border-color: rgba(167,139,250,.4); }
-.lp-usecase h3 { font-size: 15.5px; font-weight: 700; margin: 4px 0 8px; }
-.lp-usecase p { color: var(--muted); font-size: 13.5px; margin: 0; }
-.lp-icon-tint-a { background: linear-gradient(135deg, #4a32e8, #7c3aed); }
-.lp-icon-tint-b { background: linear-gradient(135deg, #2e63f6, #06b6d4); }
-.lp-icon-tint-c { background: linear-gradient(135deg, #157347, #22c55e); }
-.lp-icon-tint-d { background: linear-gradient(135deg, #b45309, #f59e0b); }
-.lp-icon-tint-e { background: linear-gradient(135deg, #be185d, #ec4899); }
-.lp-icon-tint-f { background: linear-gradient(135deg, #0f766e, #14b8a6); }
-
 /* ---------- Customers: one rail of monochrome logos ---------- */
 /* The rail runs edge to edge (full viewport width) with the ends faded out. The track holds the list
    twice and moves by -50%, so the loop has no seam. Without JS this CSS animation runs it and
@@ -1638,31 +1529,6 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   margin-bottom: 10px;
 }
 .lp-trust-icon svg { width: 17px; height: 17px; }
-
-/* ---------- Pricing ---------- */
-.lp-pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: stretch; }
-.lp-price-card {
-  position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
-  padding: 26px; display: flex; flex-direction: column; gap: 12px;
-}
-.lp-price-card.is-featured { border-color: var(--lp-accent); box-shadow: 0 20px 50px rgba(124,58,237,.35); }
-.lp-price-badge {
-  position: absolute; top: -12px; right: 22px; background: var(--grad); color: #fff;
-  font-size: 12px; font-weight: 700; padding: 4px 14px; border-radius: 999px;
-}
-.lp-price-card h3 { font-size: 17px; font-weight: 700; margin: 4px 0 0; }
-.lp-price-amount { font-size: 26px; font-weight: 800; font-family: var(--mono); direction: ltr; unicode-bidi: isolate; text-align: right; }
-.lp-price-amount span { font-size: 13px; font-weight: 600; color: var(--muted); font-family: var(--font); margin-inline-start: 4px; }
-.lp-price-credit { color: var(--muted); font-size: 13.5px; margin-top: -8px; }
-.lp-price-features { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; flex: 1; }
-.lp-price-features li { font-size: 13.5px; color: var(--ink); padding-inline-start: 26px; position: relative; }
-.lp-price-features li::before {
-  content: "✓"; position: absolute; inset-inline-start: 0; top: -1px;
-  width: 17px; height: 17px; border-radius: 50%; background: var(--ok-bg); color: var(--ok);
-  font-size: 10px; font-weight: 800; display: flex; align-items: center; justify-content: center;
-}
-
-@media (max-width: 900px) { .lp-pricing-grid { grid-template-columns: 1fr; } }
 
 /* ---------- Guide (public accordion) ---------- */
 .lp-guide-list { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }

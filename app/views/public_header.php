@@ -28,10 +28,6 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
       <a href="/landing.php#products">محصولات</a>
-      <a href="/landing.php#features">امکانات</a>
-      <a href="/landing.php#ai-secretary">منشی هوشمند</a>
-      <a href="/landing.php#pricing">بسته‌های پیامک</a>
-      <a href="/landing.php#how">نحوه‌ی کار</a>
       <a href="/landing.php#faq">سوالات</a>
       <a href="/guide.php">راهنمای استفاده</a>
       <a href="/contact.php">تماس با ما</a>
