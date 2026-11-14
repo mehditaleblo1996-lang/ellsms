@@ -1267,7 +1267,7 @@ require __DIR__ . '/../app/views/public_header.php';
           </li>
     <?php };
     ?>
-    <div class="lp-marquee">
+    <div class="lp-marquee" data-lp-marquee>
       <?php foreach ($customerRails as $r => $rail): ?>
       <div class="lp-marquee-row"<?= $r === 1 ? ' aria-hidden="true"' : '' ?>>
         <div class="lp-marquee-track">
@@ -1281,6 +1281,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <?php endforeach; ?>
     </div>
   </section>
+  <script src="/assets/js/landing-customers.js" defer></script>
 
   <section id="trust" class="lp-section lp-trust lp-reveal">
     <div class="lp-section-head">

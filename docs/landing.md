@@ -12,6 +12,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | `public/assets/css/landing-products.css` | Banner slide 1 «یک مجموعه، پنج خدمت» (`.lp-suite-*`) and the «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/*.php` | One animated SVG scene per product line (`sms`, `cloud`, `ai`, `it`, `voip`), included by the `#products` section |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
+| `public/assets/js/landing-customers.js` | Drives the `#customers` logo rails (scroll speed-up, hover glide, drag, centre focus) |
 | `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
 
 There is no database table behind the banner or the showcase: they are fixed HTML. The page reads
@@ -56,11 +57,25 @@ replace a logo, drop the file in that folder (a square, trimmed image, e.g. 240�
 customer, add a row to `$customers`.
 
 The tiles run as two edge-to-edge **rails** (`.lp-marquee`) moving in opposite directions — the top
-one to the right (70 s per loop), the bottom one, in reverse order, to the left (80 s) — with the ends
-faded out by a mask. Pure CSS, no script: each `.lp-marquee-track` holds the list twice and slides by
-−50%, so the loop is seamless. Hover or keyboard focus pauses both rails, and the hovered tile lifts.
-Only the first copy of the top rail is exposed to screen readers (the rest is `aria-hidden`). With
-`prefers-reduced-motion` the rails are replaced by one still, wrapped list of every customer. Styles:
+one to the right, the bottom one (in reverse order) to the left — with the ends faded out by a mask.
+Each `.lp-marquee-track` holds the list twice, so the loop is seamless. Only the first copy of the top
+rail is exposed to screen readers (the rest is `aria-hidden`).
+
+Motion is driven by `public/assets/js/landing-customers.js` (loaded right after the section, adds
+`.is-live`):
+
+| Behaviour | Detail |
+|---|---|
+| Base speed | 38 px/s right (top), 32 px/s left (bottom) |
+| Scroll | scrolling down pushes each rail faster its own way, scrolling up runs it backwards; the boost fades out in about a second |
+| Hover / focus | the rail under the pointer glides to a stop and starts again smoothly; the other rail keeps going |
+| Drag | mouse or touch drags a rail sideways and the throw keeps its momentum (`touch-action: pan-y`, so a vertical swipe still scrolls the page) |
+| Centre focus | tiles near the middle are full size; towards the ends they shrink (×0.86) and fade (`--s`, `--o`) |
+| Tile effects (CSS) | a gleam sweeps across each tile every 7 s (staggered), a spotlight follows the pointer, the hovered tile lifts and glows and its logo tilts |
+
+The script runs only while the section is on screen and the tab is visible. Without it the rails run on
+a plain CSS animation (70 s / 80 s per loop) that pauses on hover. With `prefers-reduced-motion` the
+script does nothing and the rails are replaced by one still, wrapped list of every customer. Styles:
 `.lp-marquee-*` and `.lp-bank-*` in `style.css`.
 
 ## Top banner
