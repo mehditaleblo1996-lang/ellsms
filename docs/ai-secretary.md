@@ -13,7 +13,7 @@ writes. The answer is sent from the same line, like an auto-reply.
 | AI tariff (phase 3) | Each answer costs its SMS plus the AI part, charged after a successful send | [ai-billing.md](ai-billing.md) |
 | Data tables and hand-off (phase 4) | Answers from the customer's own tables and documents; a sender only sees its own rows; hand-off to a human operator | [ai-data.md](ai-data.md) |
 | Phase 5 | «پیام اول» (AI-written first messages by SMS/Bale), answers on the customer's own Telegram account, documents, proxy/relay, prompt caching | [ai-outreach.md](ai-outreach.md), [§Telegram](#telegram-phase-5) |
-| Public showcase | The landing page advertises the secretary: banner slide 6, a feature tile and a seven-step slider at `/landing.php#ai-secretary` | [landing.md](landing.md) |
+| Public showcase | The landing page advertises the secretary: banner slide 7, a feature tile and a seven-step slider at `/landing.php#ai-secretary` | [landing.md](landing.md) |
 | Customer guide | «منشی هوشمند (پاسخ با هوش مصنوعی)» in `public/guide.php` (`/guide.php#guide-ai-secretary`) | — |
 
 Thinking models: if a model returns only reasoning and no answer (its output budget ran out), the
