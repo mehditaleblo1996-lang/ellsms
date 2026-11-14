@@ -60,6 +60,16 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 ELLSMS has its own push receivers, with the same URLs the backend platform used: `https://<host>/mo?from=…&to=…&content=…` for inbound SMS (Persian and emoji supported) and `https://<host>/delivery?id=…&status=…` for delivery reports. Guard them with `SMS_CALLBACK_TOKEN` and/or `SMS_CALLBACK_ALLOWED_IPS`. See [`docs/sms-callbacks.md`](docs/sms-callbacks.md).
 
+## Dashboard (داشبورد)
+
+The home page (`/index.php`) shows shortcuts, today's cards, a 7-day stacked chart and the latest
+messages and bulk sends, read from ELLSMS's own send records (`app/Dashboard.php`). Today's cards are
+«کل پیامک‌های امروز» and what became of them — «ارسال‌شده امروز» (still waiting for a delivery report),
+«تحویل‌شده امروز», «ناموفق امروز» — which add up to the total, plus «در صف ارسال»; customers without
+delivery reports see «کل»، «ارسال‌شده»، «ناموفق» and «در صف ارسال». Bold numbers are SMS parts, the small
+line messages, with a comparison against yesterday up to the same time. No API route. See
+[`docs/dashboard.md`](docs/dashboard.md).
+
 ## Message reports (لیست پیام‌های ارسالی / دریافتی)
 
 «لیست پیام‌های ارسالی» (`/messages/reports`, also `/reports.php`) lists every sent message — direct, API,
@@ -687,6 +697,7 @@ updated in the same change** — see `CLAUDE.md`.
 [technical-debt](docs/technical-debt.md)
 
 **Panel reports**
+[dashboard](docs/dashboard.md) ·
 [status-report](docs/status-report.md) ·
 [reporting-scalability](docs/reporting-scalability.md) ·
 [daily-metadata-aggregation](docs/daily-metadata-aggregation.md)
