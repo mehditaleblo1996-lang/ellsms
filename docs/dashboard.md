@@ -27,22 +27,24 @@ admins and customers on [delivery-based billing](delivery-based-billing.md)).
 | Card | Counts | Field |
 |---|---|---|
 | «کل پیامک‌های امروز» | every message tried today: accepted by the provider + refused at send time | `total` |
-| «ارسال‌شده امروز» | accepted, still waiting for a final delivery report («در انتظار گزارش تحویل»; the chart's «در انتظار گزارش») | `pending` |
+| «ارسال‌شده امروز» | accepted by the provider and not reported delivered: still waiting for a report, or reported undelivered (failed / rejected / expired) | `not_delivered` |
 | «تحویل‌شده امروز» | the delivery report says delivered; also «نرخ تحویل» = delivered ÷ accepted | `delivered` |
-| «ناموفق امروز» | refused at send time, or reported undelivered (failed / rejected / expired) | `failed` |
+| «ناموفق امروز» | refused at send time (never accepted by the provider) | `send_failed` |
 | «در صف ارسال» | recipients still waiting in running bulk sends (not tried yet, so not in «کل»), plus the number of active schedules | `dashboard_queued_count()` |
 
 So «ارسال‌شده» + «تحویل‌شده» + «ناموفق» = «کل پیامک‌های امروز». A message moves from «ارسال‌شده» to
-«تحویل‌شده» or «ناموفق» when its report arrives; «ارسال‌شده» has no comparison chip, since yesterday's
-messages have mostly had their reports by now.
+«تحویل‌شده» when a delivered report arrives; one reported undelivered stays in «ارسال‌شده» (the operator
+did accept it). «ارسال‌شده» has no comparison chip, since yesterday's messages have mostly had their
+reports by now. Note the 7-day chart splits differently: its «ناموفق» also holds messages reported
+undelivered, and its «در انتظار گزارش» only the ones still waiting.
 
 **Without delivery reports — four cards**: «کل پیامک‌های امروز» (accepted + refused), «ارسال‌شده امروز»
 (everything the provider accepted), «ناموفق امروز» (refused at send time only) and «در صف ارسال»;
 «ارسال‌شده» + «ناموفق» = «کل».
 
 `dashboard_counts_between()` returns `sent`, `delivered`, `failed`, `send_failed` (and their `*_parts`);
-`dashboard_with_totals()` adds `total` = sent + send_failed and `pending` = sent − delivered − reported
-undelivered (never below 0), for counts and parts alike.
+`dashboard_with_totals()` adds `total` = sent + send_failed and `not_delivered` = sent − delivered (never
+below 0), for counts and parts alike.
 
 **Layout.** Four cards sit in one row. Five cards: on a wide screen «کل پیامک‌های امروز» stands tall
 beside a 2×2 of the others; at 980 px and below it takes a full row above the 2×2 (`.dash-stats`,

@@ -23,14 +23,14 @@ final class DashboardHelpersTest extends TestCase
         $c = dashboard_with_totals(['sent' => 10, 'delivered' => 6, 'failed' => 3, 'send_failed' => 2,
                                     'sent_parts' => 14, 'delivered_parts' => 8, 'failed_parts' => 4, 'send_failed_parts' => 2]);
         self::assertSame(12, $c['total'], 'every message tried: accepted + refused');
-        self::assertSame(3, $c['pending'], '«ارسال‌شده»: accepted, no final report yet');
-        self::assertSame($c['total'], $c['pending'] + $c['delivered'] + $c['failed']);
+        self::assertSame(4, $c['not_delivered'], '«ارسال‌شده»: accepted, not reported delivered — the 3 waiting and the expired one');
+        self::assertSame($c['total'], $c['not_delivered'] + $c['delivered'] + $c['send_failed']);
         self::assertSame(16, $c['total_parts']);
-        self::assertSame(4, $c['pending_parts']);
-        self::assertSame($c['total_parts'], $c['pending_parts'] + $c['delivered_parts'] + $c['failed_parts']);
+        self::assertSame(6, $c['not_delivered_parts']);
+        self::assertSame($c['total_parts'], $c['not_delivered_parts'] + $c['delivered_parts'] + $c['send_failed_parts']);
 
         $plain = dashboard_with_totals(['sent' => 1, 'delivered' => 2, 'failed' => 0, 'send_failed' => 0]);
-        self::assertSame(0, $plain['pending'], 'never negative');
+        self::assertSame(0, $plain['not_delivered'], 'never negative');
         self::assertArrayNotHasKey('total_parts', $plain, 'no parts asked, none derived');
     }
 

@@ -64,8 +64,9 @@ ELLSMS has its own push receivers, with the same URLs the backend platform used:
 
 The home page (`/index.php`) shows shortcuts, today's cards, a 7-day stacked chart and the latest
 messages and bulk sends, read from ELLSMS's own send records (`app/Dashboard.php`). Today's cards are
-«کل پیامک‌های امروز» and what became of them — «ارسال‌شده امروز» (still waiting for a delivery report),
-«تحویل‌شده امروز», «ناموفق امروز» — which add up to the total, plus «در صف ارسال»; customers without
+«کل پیامک‌های امروز» and what became of them — «ارسال‌شده امروز» (accepted by the operator, not reported
+delivered), «تحویل‌شده امروز», «ناموفق امروز» (refused at send time) — which add up to the total, plus
+«در صف ارسال»; customers without
 delivery reports see «کل»، «ارسال‌شده»، «ناموفق» and «در صف ارسال». Bold numbers are SMS parts, the small
 line messages, with a comparison against yesterday up to the same time. No API route. See
 [`docs/dashboard.md`](docs/dashboard.md).
