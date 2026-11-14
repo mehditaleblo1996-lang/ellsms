@@ -52,59 +52,83 @@ require __DIR__ . '/../app/views/public_header.php';
     </svg>
     <div class="lp-banner-track">
 
-      <!-- Slide 1 «یک مجموعه، پنج خدمت»: the five product lines as a solar system around the DATIS core.
-           A ~4 s opening (core ignites, shockwave, orbits draw, each product flies out along its beam,
-           labels pop, the list on the copy side lights up in step), then a live loop (the system turns,
-           data pulses run from the core to every product, a spotlight walks over the five in sync with
-           the list). Styles: landing-products.css («banner slide 1»). Stays on screen 12 s. -->
+      <!-- Slide 1 «یک مجموعه، پنج خدمت»: the five product lines on a tilted 3D orbit around the DATIS core.
+           Opening (~1.6 s): core ignites, shockwave, orbit draws, the products swirl out of the core.
+           Then every 2.6 s the orbit turns the next product to the front: it grows, a glass card with
+           its three main services unfolds under it, and the panel on the copy side switches to it.
+           The chips are buttons that jump to a product. Script: the second <script> after the banner;
+           styles: landing-products.css («banner slide 1»); docs/landing.md. Stays on screen 14.8 s. -->
       <?php $suite = [
-          ['sms',   'پیامک و بازاریابی',  'ارسال انبوه، هوشمند و خودکار', '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>'],
-          ['cloud', 'خدمات ابری',          'VPS، هاست، دامنه و فضای ابری', '<path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 1 0 6 16.5"/><path d="M6 19h11.5"/>'],
-          ['ai',    'هوش مصنوعی',          'تولید محتوا و اتوماسیون',     '<path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/>'],
-          ['it',    'فناوری اطلاعات',      'شبکه، سرور، امنیت، پشتیبانی', '<path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/>'],
-          ['voip',  'تلفن سازمانی',        'VoIP، منشی تلفنی، صف تماس',   '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>'],
-      ]; ?>
-      <article class="lp-banner-slide is-active" id="lpSlide1" data-duration="12000" role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۷">
+          ['sms',   'پیامک و بازاریابی', 'سامانه پیامکی و بازاریابی', 'ارسال انبوه، شخصی‌سازی‌شده و زمان‌بندی‌شده، منشی هوشمند و گزارش لحظه‌ای تحویل هر پیام — همه در یک پنل.', ['ارسال انبوه و هدفمند', 'قالب پویا و زمان‌بندی', 'منشی هوشمند و وب‌سرویس'], '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>'],
+          ['cloud', 'خدمات ابری',        'خدمات ابری و زیرساختی',     'سرور مجازی با منابع اختصاصی، هاست و دامنه و فضای ذخیره‌سازی ابری امن، با پشتیبانی فنی کارشناسان داتیس.', ['سرور مجازی (VPS)', 'هاست و دامنه', 'فضای ذخیره‌سازی ابری'], '<path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 1 0 6 16.5"/><path d="M6 19h11.5"/>'],
+          ['ai',    'هوش مصنوعی',        'هوش مصنوعی و اتوماسیون',    'محتوای تبلیغاتی را در چند ثانیه بسازید و کارهای تکراری کسب‌وکار را به گردش‌کارهای خودکار بسپارید.', ['تولید محتوا با هوش مصنوعی', 'اتوماسیون فرآیندها', 'چت‌بات و دستیار هوشمند'], '<path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/>'],
+          ['it',    'فناوری اطلاعات',    'خدمات فناوری اطلاعات',      'راه‌اندازی، نگهداری و ایمن‌سازی شبکه، سرورها و نرم‌افزارهای سازمان شما؛ یک تیم فنی کامل بدون هزینه‌ی استخدام.', ['پشتیبانی شبکه', 'نصب و راه‌اندازی سرور', 'مشاوره‌ی امنیت زیرساخت'], '<path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/>'],
+          ['voip',  'تلفن سازمانی',      'تلفن و ارتباطات سازمانی',   'سانترال تحت شبکه، منشی تلفنی گویا، صف تماس و اتصال شعب؛ تا هیچ تماس مشتری بی‌پاسخ نماند.', ['سانترال تحت شبکه (VoIP)', 'منشی تلفنی و صف تماس', 'اتصال شعب و ضبط مکالمات'], '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>'],
+      ];
+      $suiteNum = static fn (int $k): string => ['۰۱', '۰۲', '۰۳', '۰۴', '۰۵'][$k] . ' / ۰۵'; ?>
+      <article class="lp-banner-slide is-active" id="lpSlide1" data-duration="14800" data-lp-suite role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۷">
         <div class="lp-banner-visual lp-suite" aria-hidden="true">
-          <div class="lp-suite-stage">
-            <svg class="lp-suite-rings" viewBox="0 0 400 400">
-              <circle cx="200" cy="200" r="190" class="is-far"/>
-              <circle cx="200" cy="200" r="148" class="is-orbit" pathLength="100"/>
-              <circle cx="200" cy="200" r="104" class="is-inner"/>
-              <circle cx="200" cy="200" r="148" class="is-comet" pathLength="100"/>
-            </svg>
-            <span class="lp-suite-shock"></span><span class="lp-suite-shock is-late"></span>
-            <?php foreach ([[12,18,0],[84,10,1.2],[92,62,2.1],[70,90,.6],[8,74,1.7],[30,40,2.6],[60,28,.9],[22,92,3]] as [$x, $y, $d]): ?>
-            <i class="lp-suite-dust" style="--x:<?= $x ?>%;--y:<?= $y ?>%;--d:<?= $d ?>s"></i>
-            <?php endforeach; ?>
-            <div class="lp-suite-orbit">
-              <?php foreach ($suite as $k => [$tone, $name, , $icon]): ?>
-              <div class="lp-suite-arm is-<?= $tone ?>" style="--a:<?= -90 + $k * 72 ?>deg;--k:<?= $k ?>">
-                <span class="lp-suite-beam"><i></i></span>
-                <div class="lp-suite-pos"><div class="lp-suite-up"><div class="lp-suite-counter">
-                  <div class="lp-suite-planet"><svg viewBox="0 0 24 24"><?= $icon ?></svg></div>
-                  <span class="lp-suite-label"><?= e($name) ?></span>
-                </div></div></div>
-              </div>
+          <div class="lp-suite-stage" data-suite-stage>
+            <div class="lp-suite-floor"></div>
+            <div class="lp-suite-dustlayer">
+              <?php foreach ([[10,14,0],[86,8,1.2],[94,48,2.1],[74,30,.6],[6,62,1.7],[28,6,2.6],[62,4,.9],[18,40,3],[90,76,1.4],[4,86,.3]] as [$x, $y, $d]): ?>
+              <i style="--x:<?= $x ?>%;--y:<?= $y ?>%;--d:<?= $d ?>s"></i>
               <?php endforeach; ?>
             </div>
+            <svg class="lp-suite-back" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <ellipse cx="50" cy="38" rx="47" ry="22" class="is-far" pathLength="100"/>
+              <ellipse cx="50" cy="38" rx="36" ry="17" class="is-orbit" pathLength="100"/>
+              <ellipse cx="50" cy="38" rx="22" ry="10.5" class="is-inner" pathLength="100"/>
+              <ellipse cx="50" cy="38" rx="36" ry="17" class="is-comet" pathLength="100"/>
+              <?php foreach ($suite as $k => $p): ?>
+              <line x1="50" y1="38" x2="50" y2="38" class="lp-suite-beam is-<?= $p[0] ?>" data-suite-beam/>
+              <?php endforeach; ?>
+              <circle r=".9" class="lp-suite-spark" data-suite-spark/>
+              <circle r=".9" class="lp-suite-spark" data-suite-spark/>
+            </svg>
+            <span class="lp-suite-shock"></span><span class="lp-suite-shock is-late"></span>
             <div class="lp-suite-core">
               <span class="lp-suite-core-ring"></span>
               <img src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="64" height="41">
             </div>
+            <?php foreach ($suite as $k => $p): ?>
+            <div class="lp-suite-pw is-<?= $p[0] ?>" style="--k:<?= $k ?>" data-suite-planet>
+              <div class="lp-suite-planet"><svg viewBox="0 0 24 24"><?= $p[5] ?></svg></div>
+              <span class="lp-suite-label"><?= e($p[1]) ?></span>
+            </div>
+            <?php endforeach; ?>
+            <?php foreach ($suite as $k => $p): ?>
+            <div class="lp-suite-card is-<?= $p[0] ?><?= $k === 0 ? ' is-on' : '' ?>" data-suite-card>
+              <div class="lp-suite-card-head">
+                <span class="lp-suite-card-ico"><svg viewBox="0 0 24 24"><?= $p[5] ?></svg></span>
+                <b><?= e($p[2]) ?></b>
+              </div>
+              <ul>
+                <?php foreach ($p[4] as $j => $f): ?><li style="--j:<?= $j ?>"><?= e($f) ?></li><?php endforeach; ?>
+              </ul>
+            </div>
+            <?php endforeach; ?>
           </div>
         </div>
         <div class="lp-banner-copy">
           <h2>یک مجموعه، <span class="is-blue">پنج خدمت</span>؛ همه‌ی فناوری <span class="is-green">کسب‌وکار شما</span></h2>
-          <p>داتیس رایان گستر ایرانیان از پیامک و بازاریابی تا زیرساخت ابری، هوش مصنوعی، پشتیبانی فناوری اطلاعات و تلفن سازمانی را یکجا و با یک تیم پشتیبانی ارائه می‌دهد.</p>
-          <ul class="lp-suite-list">
-            <?php foreach ($suite as $k => [$tone, $name, $sub, $icon]): ?>
-            <li class="is-<?= $tone ?>" style="--k:<?= $k ?>">
-              <span class="lp-suite-li-ico"><svg viewBox="0 0 24 24"><?= $icon ?></svg></span>
-              <b><?= e($name) ?></b><small><?= e($sub) ?></small>
-            </li>
+          <div class="lp-suite-focus">
+            <?php foreach ($suite as $k => $p): ?>
+            <div class="lp-suite-fp is-<?= $p[0] ?><?= $k === 0 ? ' is-on' : '' ?>" data-suite-panel<?= $k === 0 ? '' : ' aria-hidden="true"' ?>>
+              <span class="lp-suite-fp-num"><?= e($suiteNum($k)) ?></span>
+              <h3><?= e($p[2]) ?></h3>
+              <p><?= e($p[3]) ?></p>
+            </div>
             <?php endforeach; ?>
-          </ul>
+            <div class="lp-suite-progress" aria-hidden="true"><i data-suite-progress></i></div>
+          </div>
+          <div class="lp-suite-chips" role="group" aria-label="محصولات داتیس رایان">
+            <?php foreach ($suite as $k => $p): ?>
+            <button type="button" class="is-<?= $p[0] ?><?= $k === 0 ? ' is-on' : '' ?>" aria-pressed="<?= $k === 0 ? 'true' : 'false' ?>" data-suite-chip>
+              <span class="lp-suite-chip-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><?= $p[5] ?></svg></span><?= e($p[1]) ?>
+            </button>
+            <?php endforeach; ?>
+          </div>
           <div class="lp-suite-cta">
             <a href="#products" class="btn btn-primary">مشاهده‌ی محصولات</a>
             <a href="/contact.php" class="btn btn-ghost">درخواست مشاوره</a>
@@ -363,6 +387,124 @@ require __DIR__ . '/../app/views/public_header.php';
   }
   document.addEventListener('visibilitychange', schedule);
   show(0); setStopped(stopped);
+})();
+</script>
+<script>
+(function () {
+  // Banner slide 1: the five products on a tilted orbit (docs/landing.md, «Slide 1»). Positions are
+  // computed here every frame from one angle (phi) and written as transforms in cqw of the stage;
+  // the loop runs only while the slide is active. Auto-stepping stops with the banner's «توقف» and
+  // for reduced motion (the chips still work, without the tween).
+  var slide = document.querySelector('[data-lp-suite]');
+  if (!slide) return;
+  var banner = slide.closest('[data-lp-banner]');
+  var stage = slide.querySelector('[data-suite-stage]');
+  var planets = slide.querySelectorAll('[data-suite-planet]');
+  var beams = slide.querySelectorAll('[data-suite-beam]');
+  var sparks = slide.querySelectorAll('[data-suite-spark]');
+  var cards = slide.querySelectorAll('[data-suite-card]');
+  var panels = slide.querySelectorAll('[data-suite-panel]');
+  var chips = slide.querySelectorAll('[data-suite-chip]');
+  var bar = slide.querySelector('[data-suite-progress]');
+  var N = planets.length, STEP = 360 / N;
+  var CX = 50, CY = 38, RX = 36, RY = 17;             // orbit, in cqw (the SVG uses the same numbers)
+  var OPEN = 1600, DWELL = 2600, HOLD = 6000, TWEEN = 1100;
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var focus = 0, phi = 90, phiFrom = 90, phiTo = 90, tweenAt = -1;
+  var clock = 0, last = 0, dwellAt = OPEN, dwell = DWELL, raf = 0;
+
+  function ease(t) { return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+  function back(t) { var c = 1.6; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); }
+  function clamp(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+  function paused() { return banner.classList.contains('is-stopped') || banner.classList.contains('is-paused') || document.hidden; }
+
+  function setFocus(k, byUser) {
+    k = (k + N) % N;
+    var target = 90 + k * STEP;
+    var delta = ((target - phi) % 360 + 360) % 360;   // auto: always turn the same way
+    if (byUser && delta > 180) delta -= 360;          // a click takes the short way round
+    focus = k;
+    if (still) { phi = phiTo = phi + delta; tweenAt = -1; }
+    else { phiFrom = phi; phiTo = phi + delta; tweenAt = performance.now(); }
+    dwellAt = Math.max(clock, OPEN); dwell = byUser ? HOLD : DWELL;
+    panels.forEach(function (p, i) { p.classList.toggle('is-on', i === k); if (i === k) p.removeAttribute('aria-hidden'); else p.setAttribute('aria-hidden', 'true'); });
+    chips.forEach(function (c, i) { c.classList.toggle('is-on', i === k); c.setAttribute('aria-pressed', i === k ? 'true' : 'false'); });
+    if (still) render();
+  }
+
+  function render() {
+    var open = still ? 1 : clock / OPEN;
+    var swirl = still ? 0 : 150 * (1 - easeOut(clamp(open)));
+    var fx = CX, fy = CY;
+    for (var k = 0; k < N; k++) {
+      var r = still ? 1 : back(clamp((clock - 350 - k * 120) / 750));
+      var th = (phi - swirl - k * STEP) * Math.PI / 180;
+      var s = Math.sin(th), d = (s + 1) / 2;
+      var x = CX + RX * r * Math.cos(th), y = CY + RY * r * s;
+      var boost = Math.pow(Math.max(0, s), 12) * .26;
+      var sc = (.56 + .44 * d + boost) * (.25 + .75 * clamp(r));
+      var el = planets[k];
+      el.style.transform = 'translate(' + x.toFixed(2) + 'cqw,' + y.toFixed(2) + 'cqw) translate(-50%,-50%) scale(' + sc.toFixed(3) + ')';
+      el.style.zIndex = s < 0 ? 2 + Math.round(d * 2) : 6 + Math.round(d * 4);
+      el.style.opacity = ((.38 + .62 * d) * clamp(r * 1.6)).toFixed(3);
+      el.style.setProperty('--d', d.toFixed(3));
+      var front = k === focus && s > .97;
+      el.classList.toggle('is-focus', front);
+      cards[k].classList.toggle('is-on', front && open >= 1);
+      beams[k].setAttribute('x2', x.toFixed(2)); beams[k].setAttribute('y2', y.toFixed(2));
+      beams[k].style.opacity = (clamp(r) * (k === focus ? 1 : .18 + .25 * d)).toFixed(3);
+      beams[k].classList.toggle('is-hot', k === focus);
+      if (k === focus) { fx = x; fy = y; }
+    }
+    sparks.forEach(function (sp, i) {   // two sparks running down the hot beam
+      var t = ((clock / 1300) + i * .5) % 1;
+      sp.setAttribute('cx', (CX + (fx - CX) * t).toFixed(2)); sp.setAttribute('cy', (CY + (fy - CY) * t).toFixed(2));
+      sp.style.opacity = still || open < 1 ? 0 : (Math.sin(t * Math.PI)).toFixed(3);
+    });
+    if (bar) bar.style.transform = 'scaleX(' + (still ? 0 : clamp((clock - dwellAt) / dwell)).toFixed(3) + ')';
+  }
+
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    var dt = last ? Math.min(now - last, 100) : 0; last = now;
+    if (!paused()) clock += dt;
+    if (tweenAt >= 0) {
+      var t = clamp((now - tweenAt) / TWEEN);
+      phi = phiFrom + (phiTo - phiFrom) * ease(t);
+      if (t >= 1) tweenAt = -1;
+    }
+    if (!paused() && clock >= OPEN && clock - dwellAt >= dwell) setFocus(focus + 1, false);
+    render();
+  }
+
+  function start() {
+    cancelAnimationFrame(raf);
+    clock = 0; last = 0; phi = phiFrom = phiTo = 90; tweenAt = -1;
+    setFocus(0, false); dwellAt = OPEN; dwell = DWELL;
+    if (still) { clock = OPEN; render(); return; }
+    raf = requestAnimationFrame(frame);
+  }
+  function stop() { cancelAnimationFrame(raf); raf = 0; }
+
+  chips.forEach(function (c, i) { c.addEventListener('click', function () { setFocus(i, true); }); });
+  new MutationObserver(function () {
+    if (slide.classList.contains('is-active')) { if (!raf) start(); } else stop();
+  }).observe(slide, { attributes: true, attributeFilter: ['class'] });
+
+  // Mouse parallax (desktop pointers only): the stage tilts towards the pointer.
+  if (!still && window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    var vis = slide.querySelector('.lp-suite');
+    vis.addEventListener('pointermove', function (e) {
+      var b = vis.getBoundingClientRect();
+      stage.style.setProperty('--tx', ((e.clientX - b.left) / b.width - .5).toFixed(3));
+      stage.style.setProperty('--ty', ((e.clientY - b.top) / b.height - .5).toFixed(3));
+    });
+    vis.addEventListener('pointerleave', function () { stage.style.setProperty('--tx', 0); stage.style.setProperty('--ty', 0); });
+  }
+
+  if (slide.classList.contains('is-active')) start(); else render();
 })();
 </script>
 

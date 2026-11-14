@@ -84,34 +84,50 @@ Slides are `<article class="lp-banner-slide">` inside `[data-lp-banner]`, with o
 `.lp-banner-dots`. Slide 7 (`#lpSlide7`, `.lp-banner-ai`) shows a chat in which a customer asks about
 a product and the secretary answers from a «محصولات» table; its button scrolls to `#ai-secretary`.
 
-### Slide 1 — «یک مجموعه، پنج خدمت» (`#lpSlide1`, `.lp-suite`)
+### Slide 1 — «یک مجموعه، پنج خدمت» (`#lpSlide1`, `[data-lp-suite]`, `.lp-suite-*`)
 
-The first thing a visitor sees: the five product lines (`#products`) as a solar system around the
-DATIS mark, with the headline «یک مجموعه، پنج خدمت؛ همه‌ی فناوری کسب‌وکار شما», a list of the five
-lines (name + one line each; on phones just the names, as chips) and two buttons: «مشاهده‌ی محصولات»
-(`#products`) and «درخواست مشاوره» (`/contact.php`). The slide's five-entry `$suite` array holds the
-names, sub-lines and icons.
+The first thing a visitor sees: the five product lines (`#products`) on a tilted 3D orbit around the
+DATIS mark. The orbit turns each product to the front in turn and explains it.
 
-Animation, all CSS (no script beyond the banner's own), in two parts:
+**Content.** The slide's `$suite` array (one entry per line: tone, short name, title, one-paragraph
+description, three main services, icon) feeds everything: the planets, the glass cards, the copy
+panel and the chips.
+
+**Visual (left).** A glowing disc (the orbit plane), three ellipses (the middle one is the orbit),
+the core with the DATIS mark, five planets with name labels, a beam from the core to each planet, and
+one glass card per product. Planets behind the core are smaller, dimmer and drawn under it; the
+front one is biggest. The script places the planets every frame from one angle, in container units
+of the stage (`100cqw` square; core at 50/38, orbit rx 36, ry 17 — the same numbers are in the SVG,
+the CSS and the script).
+
+**Copy (right).** The fixed headline «یک مجموعه، پنج خدمت؛ همه‌ی فناوری کسب‌وکار شما», a panel with
+the focused product («۰۲ / ۰۵», title, description) and a progress bar to the next product, five
+chip buttons (one per product) and the buttons «مشاهده‌ی محصولات» (`#products`) and «درخواست
+مشاوره» (`/contact.php`).
+
+**Timeline.**
 
 | Time | What happens |
 |---|---|
-| 0 s | The core ignites (scales up with an overshoot, glow), two shockwave rings expand |
-| 0.5 s | The orbit ring draws itself; the far and inner dotted rings fade in and start turning |
-| 0.85 s + k·0.45 s | A light beam shoots from the core towards product k |
-| 1 s + k·0.45 s | Product k flies out along its beam and lands on the orbit (overshoot) |
-| 1.1 s + k·0.45 s | Item k of the list rises in, in step with its planet |
-| 1.6 s + k·0.45 s | Product k's name label pops under it |
-| 2.4 s → | A comet runs around the orbit |
-| 3.6 s → | Data pulses run from the core to every product, one after another |
-| 4.2 s → | A spotlight walks over the five every 1.5 s: the planet grows and glows, and its list item lights up |
-| always | The whole system turns once a minute; the products stay upright (counter-rotation); the core breathes, its light sweep turns; dust twinkles |
+| 0 s | The core ignites (scales up with an overshoot, glow); two shockwaves spread flat along the plane |
+| 0.2–0.6 s | The plane and the ellipses fade in; the orbit draws itself |
+| 0.35 s + k·0.12 s | Product k swirls out of the core onto the orbit (the whole ring spins 150° into place) |
+| 1.6 s | Opening done: product 1 (پیامک) is in front, its card unfolds |
+| every 2.6 s | The orbit turns (1.1 s, eased) to bring the next product to the front, coming from the right. The front product grows, its ring pulses, its beam turns hot with two sparks running to it, and its card unfolds (tilts in, icon pops, the three services slide in one by one). The copy panel, the progress bar and the chip switch with it. |
+| always | Comet on the orbit, the dotted ellipses run, the core breathes and its light sweep turns, the planets bob, dust twinkles |
+| 14.8 s | The banner moves to slide 2 (`data-duration="14800"`: the opening plus all five products) |
 
-Sizes are in container units of the stage (`--R` orbit radius, `--P` planet size), so the scene
-scales from desktop (500px) to phone (310px or 38% of the screen height). Every element's plain
-style is its final frame: with reduced motion the slide shows the complete system, still.
+**Interaction.** Clicking a chip turns the orbit the short way to that product and holds it for 6 s
+before stepping on (focus inside the banner also stops the banner moving to the next slide). On a
+desktop pointer the stage tilts towards the mouse (parallax), the dust layer and card move against it.
 
-Behaviour: auto-advance every 7 s (a slide can stay longer with `data-duration` in ms; slide 1 uses 12000); pauses on hover, keyboard focus, off-screen and hidden tab;
+**Pauses and accessibility.** The script runs only while the slide is active; its clock stops while
+the banner is off screen, the tab is hidden, or the visitor pressed «توقف اسلایدها». With reduced
+motion there is no opening, no auto-step and no tween: the complete still frame (product 1 in front,
+its card open) is shown, and the chips switch products instantly. The visual is `aria-hidden`; the
+same information is in the copy panel and the chips, which are real buttons with `aria-pressed`.
+
+Behaviour: auto-advance every 7 s (a slide can stay longer with `data-duration` in ms; slide 1 uses 14800); pauses on hover, keyboard focus, off-screen and hidden tab;
 «توقف اسلایدها» stops it for good (WCAG 2.2.2). The dots are an ARIA tablist (arrows, Home, End),
 swipe works on touch screens, and with `prefers-reduced-motion` the banner stays on slide 1 with no
 motion.
