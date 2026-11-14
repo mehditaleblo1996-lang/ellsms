@@ -1581,18 +1581,19 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 
 /* ---------- Customers: two logo rails scrolling in opposite directions ---------- */
 /* The rails run edge to edge (full viewport width) with the ends faded out. Each track holds the
-   list twice and moves by -50%, so the loop has no seam. Hover or focus pauses both rails. */
+   list twice and moves by -50%, so the loop has no seam. Without JS this CSS animation runs it and
+   hover/focus pauses it; public/assets/js/landing-customers.js takes over when it loads (.is-live). */
 .lp-customers { padding-bottom: 80px; }
 .lp-marquee {
   --gap: 18px;
   width: 100vw; margin-inline: calc(50% - 50vw);
-  display: grid; gap: var(--gap); padding-block: 10px;
+  display: grid; gap: 0;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
           mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
 }
-.lp-marquee-row { overflow: hidden; direction: ltr; padding-block: 8px; }
+.lp-marquee-row { overflow: hidden; direction: ltr; padding-block: 16px; } /* room for the hover lift and glow */
 .lp-marquee-track {
-  display: flex; width: max-content;
+  display: flex; width: max-content; position: relative;
   animation: lp-marquee 70s linear infinite;
 }
 .lp-marquee-row:first-child .lp-marquee-track { animation-direction: reverse; }
@@ -1605,16 +1606,42 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   display: flex; gap: var(--gap);
 }
 .lp-bank {
-  direction: rtl; flex: none;
+  direction: rtl; flex: none; position: relative; overflow: hidden; isolation: isolate;
   display: flex; align-items: center; gap: 14px;
   background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 12px 14px 12px 26px;
-  transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
+  transform: scale(var(--s, 1)); opacity: var(--o, 1);
+  transition: box-shadow .3s ease, border-color .3s ease, translate .3s cubic-bezier(.2,.8,.2,1);
 }
+/* A gleam that sweeps across each tile now and then, staggered along the rail. */
+.lp-bank::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.10) 48%, rgba(167,139,250,.14) 52%, transparent 65%);
+  transform: translateX(-120%);
+  animation: lp-bank-shine 7s ease-in-out infinite;
+}
+.lp-marquee-set .lp-bank:nth-child(3n+1)::after { animation-delay: .4s; }
+.lp-marquee-set .lp-bank:nth-child(3n+2)::after { animation-delay: 2.7s; }
+.lp-marquee-set .lp-bank:nth-child(3n)::after   { animation-delay: 5s; }
+@keyframes lp-bank-shine { 0%, 70% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
+/* Pointer spotlight (position set by landing-customers.js). */
+.lp-bank::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0;
+  background: radial-gradient(180px circle at var(--mx, 50%) var(--my, 50%), rgba(167,139,250,.28), transparent 70%);
+  transition: opacity .3s ease;
+}
+.lp-bank:hover::before { opacity: 1; }
 .lp-bank:hover {
-  transform: translateY(-4px) scale(1.03);
-  border-color: rgba(167,139,250,.55);
-  box-shadow: 0 18px 40px rgba(0,0,0,.4), 0 0 0 1px rgba(167,139,250,.25), 0 0 28px rgba(124,58,237,.25);
+  translate: 0 -5px; opacity: 1;
+  border-color: rgba(167,139,250,.6);
+  box-shadow: 0 20px 44px rgba(0,0,0,.45), 0 0 0 1px rgba(167,139,250,.3), 0 0 34px rgba(124,58,237,.3);
 }
+.lp-bank-logo { transition: transform .4s cubic-bezier(.2,.8,.2,1); }
+.lp-bank:hover .lp-bank-logo { transform: rotate(-4deg) scale(1.08); }
+/* Driven by the script: the CSS animation steps aside, and the rails can be dragged. */
+.lp-marquee.is-live .lp-marquee-track { animation: none; will-change: transform; }
+.lp-marquee.is-live .lp-marquee-row { touch-action: pan-y; cursor: grab; user-select: none; -webkit-user-select: none; }
+.lp-marquee.is-live .lp-marquee-row.is-dragging { cursor: grabbing; }
+.lp-marquee.is-live .lp-bank img { -webkit-user-drag: none; pointer-events: none; }
 /* Logos sit on a white plate so each customer's own colours read the same on the dark page. */
 .lp-bank-logo {
   flex: none; display: flex; align-items: center; justify-content: center;
@@ -1639,7 +1666,9 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .lp-marquee-row { direction: rtl; }
   .lp-marquee-track { animation: none; width: auto; }
   .lp-marquee-set { flex-wrap: wrap; justify-content: center; padding: 0; }
-  .lp-bank, .lp-bank:hover { transition: none; transform: none; }
+  .lp-bank, .lp-bank:hover { transition: none; transform: none; translate: none; opacity: 1; }
+  .lp-bank::after { display: none; }
+  .lp-bank:hover .lp-bank-logo { transform: none; }
 }
 
 /* ---------- Trust icons ---------- */
