@@ -53,29 +53,36 @@ DATIS mark. The orbit turns each product to the front in turn and explains it.
 description, three main services, icon) feeds everything: the planets, the glass cards, the copy
 panel and the chips.
 
-**Visual (left).** A glowing disc (the orbit plane), three ellipses (the middle one is the orbit),
-the core with the DATIS mark, five planets with name labels, a beam from the core to each planet, and
-one glass card per product. Planets behind the core are smaller, dimmer and drawn under it; the
-front one is biggest. The script places the planets every frame from one angle, in container units
-of the stage (`100cqw` square; core at 50/38, orbit rx 36, ry 17 — the same numbers are in the SVG,
-the CSS and the script).
+**Visual (left).** A holographic floor (concentric ellipses and spokes that fade out, with ripples
+running across it), a soft nebula, three ellipses (the middle one is the orbit, with a gradient and a
+glow; its front half is drawn again above the core so the orbit really passes in front of it), the
+core (an energy sphere with the DATIS mark, a turning light sweep, a colour aura in the five product
+colours and two tilted gyroscope rings), five glossy gem-like planets with a glow pool under each,
+name labels, a beam from the core to each planet, and one holographic card per product. Planets
+behind the core are smaller, darker, less saturated and drawn under it; the front one is the
+biggest. The script places the planets every frame from one angle, in container units of the stage
+(`100cqw` square; core at 50/38, orbit rx 36, ry 17 — the same numbers are in the SVG, the CSS and
+the script).
 
 **Copy (right).** The fixed headline «یک مجموعه، پنج خدمت؛ همه‌ی فناوری کسب‌وکار شما», a panel with
-the focused product («۰۲ / ۰۵», title, description) and a progress bar to the next product, five
-chip buttons (one per product) and the buttons «مشاهده‌ی محصولات» (`#products`) and «درخواست
-مشاوره» (`/contact.php`).
+the focused product («۰۲ / ۰۵», title, description; it switches with a blur-and-rise) and a progress
+bar to the next product, five chip buttons (one per product) and the buttons «مشاهده‌ی محصولات»
+(`#products`) and «درخواست مشاوره» (`/contact.php`).
 
 **Timeline.**
 
 | Time | What happens |
 |---|---|
-| 0 s | The core ignites (scales up with an overshoot, glow); two shockwaves spread flat along the plane |
-| 0.2–0.6 s | The plane and the ellipses fade in; the orbit draws itself |
-| 0.35 s + k·0.12 s | Product k swirls out of the core onto the orbit (the whole ring spins 150° into place) |
-| 1.6 s | Opening done: product 1 (پیامک) is in front, its card unfolds |
-| every 2.6 s | The orbit turns (1.1 s, eased) to bring the next product to the front, coming from the right. The front product grows, its ring pulses, its beam turns hot with two sparks running to it, and its card unfolds (tilts in, icon pops, the three services slide in one by one). The copy panel, the progress bar and the chip switch with it. |
-| always | Comet on the orbit, the dotted ellipses run, the core breathes and its light sweep turns, the planets bob, dust twinkles |
-| 14.8 s | The banner moves to slide 2 (`data-duration="14800"`: the opening plus all five products) |
+| 0–0.7 s | Warp: 18 light streaks rush into the centre |
+| 0.62 s | White flash from the centre |
+| 0.7 s | The core ignites (scales up with an overshoot); then it breathes |
+| 0.8–1.4 s | The floor grid, aura, gyroscope rings and ellipses fade in; the orbit draws itself; two shockwaves spread flat along the plane |
+| 0.85 s + k·0.12 s | Product k swirls out of the core onto the orbit (the whole ring spins 160° into place) |
+| 2.1 s | Opening done: product 1 (پیامک) is in front |
+| on every arrival | Burst at the front product: a flat ring along the floor and ten particles; a spinning Saturn ring appears around it, its halo pulses, its beam turns hot with two sparks running to it; its card materialises like a hologram (wipe from the top with a flicker, a scan line, icon pops, the three services slide in one by one) |
+| every 2.6 s | The orbit turns (1.1 s, eased) to bring the next product to the front, coming from the right; the copy panel, progress bar and chip switch with it |
+| always | Floor ripples, comet on the orbit, dotted ellipses running, aura and gyroscope rings turning, planets bobbing, dust twinkling, nebula drifting, the whole scene swaying slowly |
+| 15.3 s | The banner moves to slide 2 (`data-duration="15300"`: the opening plus all five products) |
 
 **Interaction.** Clicking a chip turns the orbit the short way to that product and holds it for 6 s
 before stepping on (focus inside the banner also stops the banner moving to the next slide). On a
@@ -87,7 +94,7 @@ motion there is no opening, no auto-step and no tween: the complete still frame 
 its card open) is shown, and the chips switch products instantly. The visual is `aria-hidden`; the
 same information is in the copy panel and the chips, which are real buttons with `aria-pressed`.
 
-Behaviour: auto-advance every 7 s (a slide can stay longer with `data-duration` in ms; slide 1 uses 14800); pauses on hover, keyboard focus, off-screen and hidden tab;
+Behaviour: auto-advance every 7 s (a slide can stay longer with `data-duration` in ms; slide 1 uses 15300); pauses on hover, keyboard focus, off-screen and hidden tab;
 «توقف اسلایدها» stops it for good (WCAG 2.2.2). The dots are an ARIA tablist (arrows, Home, End),
 swipe works on touch screens, and with `prefers-reduced-motion` the banner stays on slide 1 with no
 motion.
