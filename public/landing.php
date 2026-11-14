@@ -12,6 +12,31 @@ $pageTitle = 'پنل هوشمند پیامک';
 $extraStyles = ['/assets/css/landing-ai.css', '/assets/css/landing-products.css'];
 $metaDescription = 'سامانه پیامکی و بازاریابی، خدمات ابری (VPS، هاست، دامنه و فضای ابری)، هوش مصنوعی و اتوماسیون، خدمات فناوری اطلاعات و تلفن سازمانی VoIP — ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی هوشمند با هوش مصنوعی، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
+// «مشتریان و همکاران»: one tile per customer (banks, ministries, companies). The logo is public/assets/img/customers/<slug>.(svg|webp|png|jpg);
+// until a file is there the tile shows a coloured monogram in the bank's colour instead.
+$customers = [
+    ['slug' => 'eghtesad-novin', 'name' => 'بانک اقتصاد نوین', 'mono' => 'ا', 'color' => '#5b2a86'],
+    ['slug' => 'sarmayeh',       'name' => 'بانک سرمایه',      'mono' => 'س', 'color' => '#1f4e8c'],
+    ['slug' => 'karafarin',      'name' => 'بانک کارآفرین',    'mono' => 'ک', 'color' => '#00843d'],
+    ['slug' => 'sina',           'name' => 'بانک سینا',        'mono' => 'س', 'color' => '#0067b1'],
+    ['slug' => 'melli',          'name' => 'بانک ملی ایران',   'mono' => 'م', 'color' => '#0b3b74'],
+    ['slug' => 'parsian',        'name' => 'بانک پارسیان',     'mono' => 'پ', 'color' => '#a6192e'],
+    ['slug' => 'gardeshgari',    'name' => 'بانک گردشگری',     'mono' => 'گ', 'color' => '#c8102e'],
+    ['slug' => 'education',      'name' => 'وزارت آموزش و پرورش', 'mono' => 'آ', 'color' => '#0f6e5a'],
+    ['slug' => 'ict',            'name' => 'وزارت ارتباطات و فناوری اطلاعات', 'mono' => 'ف', 'color' => '#1d5fa8'],
+    ['slug' => 'tapsi',          'name' => 'تپسی',             'mono' => 'ت', 'color' => '#f15a24'],
+    ['slug' => 'snapp',          'name' => 'اسنپ',             'mono' => 'ا', 'color' => '#00b85c'],
+    ['slug' => 'digikala',       'name' => 'دیجی‌کالا',         'mono' => 'د', 'color' => '#ef394e'],
+    ['slug' => 'divar',          'name' => 'دیوار',            'mono' => 'د', 'color' => '#a62626'],
+    ['slug' => 'jobinja',        'name' => 'جابینجا',          'mono' => 'ج', 'color' => '#1b8f7a'],
+];
+foreach ($customers as &$c) {
+    $c['logo'] = null;
+    foreach (['svg', 'webp', 'png', 'jpg'] as $ext) {
+        if (is_file(__DIR__ . "/assets/img/customers/{$c['slug']}.{$ext}")) { $c['logo'] = "/assets/img/customers/{$c['slug']}.{$ext}"; break; }
+    }
+}
+unset($c);
 require __DIR__ . '/../app/views/public_header.php';
 ?>
   <!-- Top banner: six animated slides (plain HTML/CSS + a tiny script below, no video file).
@@ -1156,6 +1181,43 @@ require __DIR__ . '/../app/views/public_header.php';
         <h3>شرکت‌های خدماتی</h3>
         <p>کد یک‌بارمصرف برای ورود امن، و اعلان وضعیت سفارش یا قرارداد به مشتریان.</p>
       </article>
+    </div>
+  </section>
+
+  <section id="customers" class="lp-section lp-customers lp-reveal">
+    <div class="lp-section-head">
+      <h2>مشتریان و همکاران</h2>
+      <p>سازمان‌هایی که اطلاع‌رسانی پیامکی خود را به ما سپرده‌اند.</p>
+    </div>
+    <?php
+    // Two rails moving in opposite directions. Each rail holds the list twice so translating it by
+    // -50% loops seamlessly; only the first copy of the first rail is exposed to screen readers.
+    $customerRails = [$customers, array_reverse($customers)];
+    $renderCustomer = static function (array $c): void { ?>
+          <li class="lp-bank">
+            <span class="lp-bank-logo">
+              <?php if ($c['logo'] !== null): ?>
+              <img src="<?= e($c['logo']) ?>" alt="لوگوی <?= e($c['name']) ?>" loading="lazy" decoding="async" width="120" height="120">
+              <?php else: ?>
+              <span class="lp-bank-mono" style="--bank:<?= e($c['color']) ?>" aria-hidden="true"><?= e($c['mono']) ?></span>
+              <?php endif; ?>
+            </span>
+            <span class="lp-bank-name"><?= e($c['name']) ?></span>
+          </li>
+    <?php };
+    ?>
+    <div class="lp-marquee">
+      <?php foreach ($customerRails as $r => $rail): ?>
+      <div class="lp-marquee-row"<?= $r === 1 ? ' aria-hidden="true"' : '' ?>>
+        <div class="lp-marquee-track">
+          <?php foreach ([0, 1] as $copy): ?>
+          <ul class="lp-marquee-set"<?= $copy === 1 ? ' aria-hidden="true"' : '' ?>>
+            <?php foreach ($rail as $c) $renderCustomer($c); ?>
+          </ul>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endforeach; ?>
     </div>
   </section>
 

@@ -12,6 +12,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | `public/assets/css/landing-products.css` | The «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/*.php` | One animated SVG scene per product line (`sms`, `cloud`, `ai`, `it`, `voip`), included by the `#products` section |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
+| `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
 
 There is no database table behind the banner or the showcase: they are fixed HTML. The page reads
 only `ellsms_pricing_packages` (pricing cards) and the registration setting (how an account is
@@ -31,10 +32,34 @@ are not shown on this page.
 | `#compare` | Manual sending vs. the panel |
 | `#pricing` | Pricing cards (only when packages exist) |
 | `#how` | Three steps to the first send |
-| `#use-cases`, `#trust`, `#faq` | Use cases, trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
+| `#use-cases` | Use cases |
+| `#customers` | «مشتریان و همکاران»: two scrolling rails of customer logos (see below) |
+| `#trust`, `#faq` | Trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
 The nav has a «محصولات» link to `/landing.php#products` and a «منشی هوشمند» link to
 `/landing.php#ai-secretary`.
+
+## «مشتریان و همکاران» (`#customers`)
+
+One tile per customer from the `$customers` list at the top of `landing.php`: the banks اقتصاد نوین,
+سرمایه, کارآفرین, سینا, ملی ایران, پارسیان, گردشگری, and «وزارت آموزش و پرورش» (`education`) 
+«وزارت ارتباطات و فناوری اطلاعات» (`ict`), and the companies تپسی (`tapsi`), اسنپ (`snapp`),
+دیجی‌کالا (`digikala`), دیوار (`divar`) and جابینجا (`jobinja`). Each entry has a `slug`, the Persian `name`, a one-letter
+`mono` and a brand `color`.
+
+The logo is the first of `public/assets/img/customers/<slug>.svg`, `.webp`, `.png`, `.jpg` that exists,
+shown on a white plate so the customer's own colours read correctly on the dark page. With no file the
+tile shows a monogram badge in `color` instead, so a missing logo never breaks the layout. To add or
+replace a logo, drop the file in that folder (a square, trimmed image, e.g. 240×240 WebP); to add a
+customer, add a row to `$customers`.
+
+The tiles run as two edge-to-edge **rails** (`.lp-marquee`) moving in opposite directions — the top
+one to the right (70 s per loop), the bottom one, in reverse order, to the left (80 s) — with the ends
+faded out by a mask. Pure CSS, no script: each `.lp-marquee-track` holds the list twice and slides by
+−50%, so the loop is seamless. Hover or keyboard focus pauses both rails, and the hovered tile lifts.
+Only the first copy of the top rail is exposed to screen readers (the rest is `aria-hidden`). With
+`prefers-reduced-motion` the rails are replaced by one still, wrapped list of every customer. Styles:
+`.lp-marquee-*` and `.lp-bank-*` in `style.css`.
 
 ## Top banner
 
