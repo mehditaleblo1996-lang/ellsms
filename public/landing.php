@@ -9,8 +9,8 @@ if (reseller_brand_for_host() !== null) redirect('/login');
 // registration_verify_otp() — so it is described as approval too.)
 $registrationOpen = registration_enabled();
 $pageTitle = 'پنل هوشمند پیامک';
-$extraStyles = ['/assets/css/landing-ai.css'];
-$metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی هوشمند با هوش مصنوعی، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
+$extraStyles = ['/assets/css/landing-ai.css', '/assets/css/landing-products.css'];
+$metaDescription = 'سامانه پیامکی و بازاریابی، خدمات ابری (VPS، هاست، دامنه و فضای ابری)، هوش مصنوعی و اتوماسیون، خدمات فناوری اطلاعات و تلفن سازمانی VoIP — ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی هوشمند با هوش مصنوعی، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
 require __DIR__ . '/../app/views/public_header.php';
 ?>
@@ -351,6 +351,163 @@ require __DIR__ . '/../app/views/public_header.php';
       </div>
     </div>
   </section>
+
+  <!-- «محصولات و خدمات»: the five product lines of Datis Rayan (docs/landing.md#products). Each line
+       is an <article> with a text side and an animated SVG scene (no images, no library). Scenes
+       animate only while on screen (.is-live, script below) and are still for reduced motion.
+       Styles: public/assets/css/landing-products.css. -->
+  <?php
+  $productLines = [
+      [
+          'id' => 'product-sms', 'tone' => 'sms', 'scene' => 'sms',
+          'tag' => 'محصول اصلی', 'title' => 'سامانه پیامکی و بازاریابی',
+          'lead' => 'پنل پیامک تحت وب برای ارسال انبوه، شخصی‌سازی‌شده و خودکار؛ از یک پیام تبلیغاتی ساده تا کمپین‌های هدفمند با قالب پویا، زمان‌بندی با تقویم شمسی، منشی هوشمند با هوش مصنوعی و گزارش لحظه‌ای تحویل هر پیام. همه‌ی ابزارهای بازاریابی پیامکی کسب‌وکار شما در یک پنل.',
+          'items' => [
+              ['ارسال انبوه و هدفمند', 'ارسال به فایل مخاطبین، گروه‌ها، ارسال منطقه‌ای و نظیربه‌نظیر با خط اختصاصی.', 'send'],
+              ['پیامک هوشمند با قالب پویا', 'یک قالب بنویسید و برای هر ردیف فایل، پیامی با نام و مبلغ و کد خودش بفرستید.', 'spark'],
+              ['زمان‌بندی و ارسال دوره‌ای', 'کمپین‌های تولد، یادآوری قسط و پیام‌های تکرارشونده با تقویم شمسی.', 'clock'],
+              ['منشی هوشمند و وب‌سرویس', 'پاسخ خودکار با هوش مصنوعی، API و SDK برای اتصال سایت و نرم‌افزار شما.', 'bot'],
+          ],
+          'cta' => 'panel',
+      ],
+      [
+          'id' => 'product-cloud', 'tone' => 'cloud', 'scene' => 'cloud',
+          'tag' => 'زیرساخت', 'title' => 'خدمات ابری و زیرساختی',
+          'lead' => 'زیرساخت پایدار و مقیاس‌پذیر برای میزبانی سایت، اپلیکیشن و داده‌های کسب‌وکار شما. از یک هاست ساده برای وب‌سایت شرکتی تا سرور مجازی قدرتمند و فضای ذخیره‌سازی ابری امن — با منابع قابل ارتقا و پشتیبانی فنی کارشناسان داتیس رایان.',
+          'items' => [
+              ['سرور مجازی (VPS)', 'منابع اختصاصی پردازنده، حافظه و دیسک SSD، دسترسی کامل root و انتخاب سیستم‌عامل.', 'server'],
+              ['هاست و دامنه', 'هاست لینوکسی و وردپرسی با کنترل‌پنل، گواهی SSL و ثبت و مدیریت دامنه‌ی ملی و بین‌المللی.', 'globe'],
+              ['فضای ذخیره‌سازی ابری', 'نگهداری امن فایل‌ها و نسخه‌های پشتیبان با امکان افزایش ظرفیت هر زمان که لازم شد.', 'db'],
+              ['پایش و پشتیبان‌گیری', 'نظارت بر سلامت سرویس‌ها و پشتیبان‌گیری منظم برای آسودگی خاطر شما.', 'pulse'],
+          ],
+          'cta' => 'contact',
+      ],
+      [
+          'id' => 'product-ai', 'tone' => 'ai', 'scene' => 'ai',
+          'tag' => 'هوش مصنوعی', 'title' => 'هوش مصنوعی و اتوماسیون',
+          'lead' => 'کارهای تکراری را به هوش مصنوعی بسپارید و زمان تیم‌تان را صرف کارهای مهم‌تر کنید. محتوای تبلیغاتی و پیام‌های کمپین را در چند ثانیه به فارسی روان بسازید و فرآیندهای کسب‌وکار — از ثبت سفارش تا پیگیری مشتری — را خودکار کنید.',
+          'items' => [
+              ['تولید محتوا با هوش مصنوعی', 'متن تبلیغاتی، پیامک کمپین، پست شبکه‌های اجتماعی و توضیح محصول، متناسب با لحن برند شما.', 'pen'],
+              ['اتوماسیون فرآیندهای کسب‌وکار', 'گردش‌کارهای خودکار بین فرم، فروشگاه، CRM و پیامک؛ بدون کار دستی و خطای انسانی.', 'flow'],
+              ['دستیار و چت‌بات هوشمند', 'پاسخ‌گویی شبانه‌روزی به مشتریان از روی اطلاعات و جدول‌های کسب‌وکار شما.', 'bot'],
+              ['گزارش و تحلیل خودکار', 'خلاصه‌ی روزانه‌ی فروش، پیام‌ها و عملکرد، بدون ساختن دستی گزارش.', 'chart'],
+          ],
+          'cta' => 'contact',
+      ],
+      [
+          'id' => 'product-it', 'tone' => 'it', 'scene' => 'it',
+          'tag' => 'خدمات فنی', 'title' => 'خدمات فناوری اطلاعات',
+          'lead' => 'یک تیم فنی کامل، بدون هزینه‌ی استخدام. کارشناسان داتیس رایان شبکه، سرورها و نرم‌افزارهای سازمان شما را راه‌اندازی می‌کنند، سالم نگه می‌دارند و در برابر تهدیدها ایمن می‌کنند؛ تا شما فقط روی کسب‌وکارتان تمرکز کنید.',
+          'items' => [
+              ['پشتیبانی شبکه', 'طراحی، راه‌اندازی و عیب‌یابی شبکه‌ی سیمی و بی‌سیم دفتر و شعب، حضوری و از راه دور.', 'net'],
+              ['نصب و راه‌اندازی سرور', 'نصب و پیکربندی سرورهای ویندوز و لینوکس، مجازی‌سازی و سرویس‌های سازمانی.', 'server'],
+              ['نگهداری و پشتیبانی نرم‌افزار', 'به‌روزرسانی، رفع اشکال و پشتیبانی مستمر نرم‌افزارها و سامانه‌های سازمان.', 'wrench'],
+              ['مشاوره‌ی امنیت زیرساخت', 'ارزیابی آسیب‌پذیری، سخت‌سازی سرورها، فایروال و سیاست‌های دسترسی امن.', 'shield'],
+          ],
+          'cta' => 'contact',
+      ],
+      [
+          'id' => 'product-voip', 'tone' => 'voip', 'scene' => 'voip',
+          'tag' => 'ارتباطات', 'title' => 'تلفن و ارتباطات سازمانی',
+          'lead' => 'سیستم تلفن سازمانی مبتنی بر VoIP؛ تماس‌های داخلی و شعب روی بستر اینترنت، منشی تلفنی گویا و صف تماس برای اینکه هیچ تماس مشتری بی‌پاسخ نماند. داخلی‌ها روی گوشی رومیزی، موبایل یا کامپیوتر، هر جا که تیم شما باشد.',
+          'items' => [
+              ['سانترال تحت شبکه (VoIP)', 'راه‌اندازی مرکز تلفن IP، تعریف داخلی‌ها و اتصال به خطوط شهری و سیپ‌ترانک.', 'phone'],
+              ['منشی تلفنی و صف تماس', 'پیام خوشامد، منوی گویا («برای فروش ۱ را بگیرید») و توزیع هوشمند تماس‌ها بین کارشناسان.', 'menu'],
+              ['اتصال شعب و دورکاری', 'تماس رایگان بین دفاتر و داخلی روی موبایل برای همکارانی که بیرون از دفترند.', 'branch'],
+              ['ضبط و گزارش مکالمات', 'ضبط تماس‌ها، گزارش تماس‌های ازدست‌رفته و عملکرد هر داخلی برای کنترل کیفیت.', 'rec'],
+          ],
+          'cta' => 'contact',
+      ],
+  ];
+  $prodIcons = [
+      'send'   => '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>',
+      'spark'  => '<path d="m12 3 1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.5L12 3Z"/><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/>',
+      'clock'  => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+      'bot'    => '<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9 17h6"/>',
+      'server' => '<rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6"/>',
+      'globe'  => '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3Z"/>',
+      'db'     => '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+      'pulse'  => '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+      'pen'    => '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+      'flow'   => '<rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="15" width="6" height="6" rx="1.5"/><path d="M6 9v3a3 3 0 0 0 3 3h6"/><path d="m13 13 2 2-2 2"/>',
+      'chart'  => '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>',
+      'net'    => '<rect x="9" y="2" width="6" height="5" rx="1"/><rect x="2" y="17" width="6" height="5" rx="1"/><rect x="16" y="17" width="6" height="5" rx="1"/><path d="M12 7v5M5 17v-2a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v2"/>',
+      'wrench' => '<path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 1-5-5L13 2l1.7 4.3Z" transform="scale(-1 1) translate(-24 0)"/>',
+      'shield' => '<path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5l-8-3Z"/><path d="m9 12 2 2 4-4"/>',
+      'phone'  => '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>',
+      'menu'   => '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
+      'branch' => '<path d="M3 21h18M5 21V8l7-5 7 5v13"/><path d="M9 21v-6h6v6"/>',
+      'rec'    => '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>',
+  ];
+  $prodIcon = static fn (string $k): string => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $prodIcons[$k] . '</svg>';
+  // Scenes are rendered in their own scope so their loop variables cannot overwrite $p/$k here.
+  $renderProdScene = static function (string $file): void { require $file; };
+  $prodNavIcon = ['sms' => 'send', 'cloud' => 'server', 'ai' => 'spark', 'it' => 'shield', 'voip' => 'phone'];
+  ?>
+  <section id="products" class="lp-section lp-prod-section" aria-labelledby="lpProdTitle">
+    <div class="lp-section-head lp-prod-head lp-reveal">
+      <span class="lp-prod-eyebrow">محصولات و خدمات</span>
+      <h2 id="lpProdTitle">یک شریک فناوری برای <span class="lp-heading-accent">همه‌ی نیازهای</span> کسب‌وکار شما</h2>
+      <p>از پیامک و بازاریابی تا زیرساخت ابری، هوش مصنوعی، پشتیبانی فناوری اطلاعات و تلفن سازمانی — داتیس رایان گستر ایرانیان همه را یکجا، با یک تیم پشتیبانی ارائه می‌دهد.</p>
+    </div>
+
+    <nav class="lp-prod-nav lp-reveal" aria-label="فهرست محصولات">
+      <?php foreach ($productLines as $k => $p): ?>
+      <a href="#<?= e($p['id']) ?>" class="lp-prod-pill is-<?= e($p['tone']) ?>" style="--i:<?= $k ?>">
+        <span class="lp-prod-pill-ico"><?= $prodIcon($prodNavIcon[$p['tone']]) ?></span>
+        <span><?= e($p['title']) ?></span>
+      </a>
+      <?php endforeach; ?>
+    </nav>
+
+    <div class="lp-prod-list">
+      <?php foreach ($productLines as $k => $p): $n = $k + 1; ?>
+      <article id="<?= e($p['id']) ?>" class="lp-prod is-<?= e($p['tone']) ?><?= $k % 2 ? ' is-flip' : '' ?> lp-reveal" aria-labelledby="<?= e($p['id']) ?>-t">
+        <div class="lp-prod-visual">
+          <div class="lp-prod-scene" data-lp-prod-scene aria-hidden="true">
+            <?php $renderProdScene(__DIR__ . '/../app/views/landing_product_scenes/' . $p['scene'] . '.php'); ?>
+          </div>
+        </div>
+        <div class="lp-prod-body">
+          <div class="lp-prod-meta">
+            <span class="lp-prod-num"><?= e(['۰۱', '۰۲', '۰۳', '۰۴', '۰۵'][$k]) ?></span>
+            <span class="lp-prod-tag"><?= e($p['tag']) ?></span>
+          </div>
+          <h3 id="<?= e($p['id']) ?>-t"><?= e($p['title']) ?></h3>
+          <p class="lp-prod-lead"><?= e($p['lead']) ?></p>
+          <ul class="lp-prod-items">
+            <?php foreach ($p['items'] as $j => [$t, $d, $ic]): ?>
+            <li style="--j:<?= $j ?>">
+              <span class="lp-prod-ico"><?= $prodIcon($ic) ?></span>
+              <div><strong><?= e($t) ?></strong><span><?= e($d) ?></span></div>
+            </li>
+            <?php endforeach; ?>
+          </ul>
+          <div class="lp-prod-cta">
+            <?php if ($p['cta'] === 'panel'): ?>
+            <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
+            <a href="#features" class="btn btn-ghost">امکانات پنل پیامک</a>
+            <?php else: ?>
+            <a href="/contact.php" class="btn btn-primary">درخواست مشاوره و قیمت</a>
+            <a href="/contact.php" class="btn btn-ghost">تماس با کارشناسان</a>
+            <?php endif; ?>
+          </div>
+        </div>
+      </article>
+      <?php endforeach; ?>
+    </div>
+  </section>
+<script>
+(function () {
+  // Product scenes animate only while on screen; with no IntersectionObserver they just run.
+  var scenes = document.querySelectorAll('[data-lp-prod-scene]');
+  if (!('IntersectionObserver' in window)) { scenes.forEach(function (s) { s.classList.add('is-live'); }); return; }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (en) { en.target.classList.toggle('is-live', en.isIntersecting); });
+  }, { threshold: 0.2 });
+  scenes.forEach(function (s) { io.observe(s); });
+})();
+</script>
 
   <!-- How it works: one contacts file + one template -> a personal SMS per row, delivered.
        Plain HTML/CSS with a tiny script below (no library); it pauses off-screen and shows a
