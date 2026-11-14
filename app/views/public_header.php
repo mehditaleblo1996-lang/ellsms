@@ -27,6 +27,7 @@ $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به 
       <img class="lp-brand-logo" src="<?= e(asset_url('/assets/img/brand/logo-animated-light.svg')) ?>" alt="" aria-hidden="true">
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
+      <a href="/landing.php#products">محصولات</a>
       <a href="/landing.php#features">امکانات</a>
       <a href="/landing.php#ai-secretary">منشی هوشمند</a>
       <a href="/landing.php#pricing">بسته‌های پیامک</a>

@@ -9,6 +9,8 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav, footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page. |
 | `public/assets/css/style.css` | Base styles of the public pages, the banner, the bento grid and the other sections |
 | `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 6, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
+| `public/assets/css/landing-products.css` | The «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
+| `app/views/landing_product_scenes/*.php` | One animated SVG scene per product line (`sms`, `cloud`, `ai`, `it`, `voip`), included by the `#products` section |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
 
 There is no database table behind the banner or the showcase: they are fixed HTML. The page reads
@@ -22,6 +24,7 @@ are not shown on this page.
 |---|---|
 | — | **Top banner**: six animated slides (bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») |
 | — | Hero with the 3D phone scene |
+| `#products` | **«محصولات و خدمات»**: the five product lines of the company, described below |
 | `#flow` | «از فایل مخاطبین تا گوشی مشتری»: a contacts file + template becoming personal SMS |
 | `#features` | Bento grid of services. The last, full-width tile is «منشی هوشمند با هوش مصنوعی» and links to `#ai-secretary`. |
 | `#ai-secretary` | **«منشی هوشمند» showcase**: the seven-step slider described below |
@@ -30,7 +33,8 @@ are not shown on this page.
 | `#how` | Three steps to the first send |
 | `#use-cases`, `#trust`, `#faq` | Use cases, trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
-The nav has a «منشی هوشمند» link to `/landing.php#ai-secretary`.
+The nav has a «محصولات» link to `/landing.php#products` and a «منشی هوشمند» link to
+`/landing.php#ai-secretary`.
 
 ## Top banner
 
@@ -45,6 +49,34 @@ motion.
 
 To add a slide: add the `<article>` (ids `lpSlideN`, `aria-label="N از M"` on every slide), add its
 dot button, and update the `M` in every label.
+
+## «محصولات و خدمات» (`#products`)
+
+Right after the hero, the page lists every product line of Datis Rayan, not only the SMS panel. A
+row of quick-nav pills links to each line; each line is an `<article id="product-…">` with a number,
+a tag, a title, a full paragraph, four sub-services (icon, title, one sentence) and two buttons, next
+to an animated SVG scene. Rows alternate sides (`.is-flip`) and stack on screens under 960px.
+
+| Anchor | Product line | Sub-services | Scene | Buttons |
+|---|---|---|---|---|
+| `#product-sms` | سامانه پیامکی و بازاریابی | ارسال انبوه و هدفمند، پیامک هوشمند با قالب پویا، زمان‌بندی و ارسال دوره‌ای، منشی هوشمند و وب‌سرویس | Phone sending to recipients, delivery ticks, rising chart | Panel login + `#features` |
+| `#product-cloud` | خدمات ابری و زیرساختی | سرور مجازی (VPS)، هاست و دامنه، فضای ذخیره‌سازی ابری، پایش و پشتیبان‌گیری | Cloud over blinking racks, two-way data, spinning globe, filling storage | `/contact.php` |
+| `#product-ai` | هوش مصنوعی و اتوماسیون | تولید محتوا با هوش مصنوعی، اتوماسیون فرآیندهای کسب‌وکار، دستیار و چت‌بات هوشمند، گزارش و تحلیل خودکار | AI core with a neural net, self-writing document, workflow with a gear | `/contact.php` |
+| `#product-it` | خدمات فناوری اطلاعات | پشتیبانی شبکه، نصب و راه‌اندازی سرور، نگهداری و پشتیبانی نرم‌افزار، مشاوره‌ی امنیت زیرساخت | Network topology with traffic, scanned server, shield drawing its check, gears | `/contact.php` |
+| `#product-voip` | تلفن و ارتباطات سازمانی | سانترال تحت شبکه (VoIP)، منشی تلفنی و صف تماس، اتصال شعب و دورکاری، ضبط و گزارش مکالمات | Ringing VoIP core linking two offices and a mobile, voice equaliser, IVR menu | `/contact.php` |
+
+Only the SMS panel is sold inside the panel; the other four lines are services ordered through
+«تماس با ما», so the section names no prices. The content is the `$productLines` array at the top of
+the section in `landing.php`: edit a line's text or sub-services there. To add a line, add an entry,
+a scene file `app/views/landing_product_scenes/<scene>.php`, a tone block (`.is-<tone>`) in
+`landing-products.css`, and a nav-pill icon in `$prodNavIcon`. Scenes are included through a closure,
+so their loop variables cannot leak into the page.
+
+Motion: the scenes are pure CSS animations on SVG (`.ps-flow`, `.ps-blink`, `.ps-pop`, …). A small
+script toggles `.is-live` with an IntersectionObserver, and off-screen scenes have no animation at
+all (they show their fully drawn still frame). With `prefers-reduced-motion` every animation in the
+section is off. The section itself is not `.lp-reveal` (it is too tall to reach the reveal threshold
+on a phone); its head, pills and each row reveal separately.
 
 ## «منشی هوشمند» showcase (`#ai-secretary`)
 
