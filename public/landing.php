@@ -517,6 +517,181 @@ require __DIR__ . '/../app/views/public_header.php';
     </div>
   </section>
 
+  <!-- «با منشی هوشمند داتیس آشنا شوید»: the 60-second explainer film (docs/landing.md#ai-video).
+       Nothing downloads until the visitor presses play (preload="none", lazy cover image), and it never
+       starts by itself. Phones held upright get the vertical cut, small screens the 720p copy.
+       Without JavaScript it is a plain <video controls>. Source project: datis-advertise/video. -->
+  <section id="ai-video" class="lp-section lp-ai lp-ai-video lp-reveal" aria-labelledby="lpAiVideoTitle">
+    <div class="lp-section-head">
+      <p class="lp-ai-eyebrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>ویدیوی معرفی، ۶۰ ثانیه</p>
+      <h2 id="lpAiVideoTitle">با منشی هوشمند داتیس آشنا شوید</h2>
+      <p>ببینید هوش مصنوعی چطور پیام‌های اختصاصی می‌سازد، به مشتریان پاسخ می‌دهد و ارتباطات کسب‌وکار شما را ساده‌تر می‌کند.</p>
+    </div>
+
+    <figure class="lp-vid" data-lp-video>
+      <div class="lp-vid-frame" data-lp-vid-frame>
+        <video class="lp-vid-media" controls preload="none" playsinline
+               aria-label="ویدیوی معرفی منشی هوشمند داتیس"
+               data-src-wide="/assets/video/ai-explainer/datis-ai-explainer-16x9-web.mp4"
+               data-src-small="/assets/video/ai-explainer/datis-ai-explainer-16x9-720p.mp4"
+               data-src-tall="/assets/video/ai-explainer/datis-ai-explainer-9x16-web.mp4">
+          <source src="/assets/video/ai-explainer/datis-ai-explainer-16x9-web.mp4" type="video/mp4">
+          مرورگر شما پخش ویدیو را پشتیبانی نمی‌کند. <a href="/assets/video/ai-explainer/datis-ai-explainer-16x9-web.mp4">دریافت ویدیو</a>
+        </video>
+        <picture class="lp-vid-cover" data-lp-vid-cover hidden>
+          <source media="(max-width: 640px) and (orientation: portrait)" srcset="/assets/video/ai-explainer/cover-9x16.webp" type="image/webp">
+          <img src="/assets/video/ai-explainer/cover-16x9.webp" alt="" loading="lazy" decoding="async" width="1920" height="1080">
+        </picture>
+        <button type="button" class="lp-vid-big" data-lp-vid-start hidden>
+          <span class="lp-vid-big-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></svg></span>
+          <span class="lp-vid-big-text"><b>پخش ویدیو</b><small>۶۰ ثانیه، با صدا و زیرنویس</small></span>
+        </button>
+      </div>
+      <div class="lp-vid-bar" data-lp-vid-bar role="group" aria-label="کنترل‌های ویدیو" hidden>
+        <button type="button" class="lp-vid-btn" data-lp-vid-toggle aria-label="پخش">
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+        </button>
+        <button type="button" class="lp-vid-btn" data-lp-vid-replay aria-label="پخش دوباره از ابتدا">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+        </button>
+        <div class="lp-vid-track" data-lp-vid-seek role="slider" tabindex="0" aria-label="زمان ویدیو" aria-valuemin="0" aria-valuemax="60" aria-valuenow="0" aria-valuetext="۰ از ۶۰ ثانیه">
+          <span class="lp-vid-fill" data-lp-vid-fill></span>
+        </div>
+        <span class="lp-vid-time" data-lp-vid-time aria-hidden="true">۰:۰۰ / ۱:۰۰</span>
+        <button type="button" class="lp-vid-btn" data-lp-vid-mute aria-label="بی‌صدا" aria-pressed="false">
+          <svg class="i-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4zM16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M4 9h4l5-4v14l-5-4H4z"/></svg>
+          <svg class="i-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="m16 9.5 5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <button type="button" class="lp-vid-btn" data-lp-vid-fs aria-label="تمام‌صفحه">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <figcaption class="lp-vid-caption">
+        <details>
+          <summary>متن کامل ویدیو</summary>
+          <p>سلام! من دستیار هوشمند داتیس هستم. می‌خوام نشونت بدم چطور پیامک‌هات رو هوشمندتر کنی!</p>
+          <p>به‌جای یه متن تکراری برای همه، می‌تونی برای هر مشتری یه پیام مخصوص خودش بسازی.</p>
+          <p>فقط اطلاعات مشتری‌ها رو انتخاب کن و بگو چه پیامی می‌خوای. هوش مصنوعی متن‌ها رو آماده می‌کنه.</p>
+          <p>مشتری سؤال می‌پرسه؟ منشی هوشمند داتیس با اطلاعات کسب‌وکارت جوابش رو می‌ده.</p>
+          <p>با اطلاعات محصولات و سفارش‌هات کار می‌کنه و گفت‌وگوی قبلی مشتری رو هم در نظر می‌گیره.</p>
+          <p>اگه مشتری به کمک بیشتری نیاز داشته باشه، گفت‌وگو می‌تونه به اپراتور انسانی ارجاع بشه.</p>
+          <p>همه‌چیز قابل کنترله؛ از پیش‌نمایش پیام‌ها تا محدودیت ارسال، هزینه‌ها و گزارش‌ها.</p>
+          <p>وقتشه ارتباط با مشتری‌هات رو هوشمندتر کنی! داتیس رایان؛ یه قدم جلوتر در ارتباطات. منتظرتیم!</p>
+          <p class="lp-vid-note">نام‌ها، شماره‌ها، کدهای رهگیری و نمودارهای داخل ویدیو نمونه‌اند.</p>
+        </details>
+      </figcaption>
+    </figure>
+
+    <div class="lp-ai-cta">
+      <p>منشی هوشمند برای حساب‌هایی فعال می‌شود که سرویس هوش مصنوعی برایشان روشن شده و خط ارسال دارند.</p>
+      <div>
+        <a href="#ai-secretary" class="btn btn-primary">آشنایی با مراحل منشی هوشمند</a>
+        <a href="/contact.php" class="btn btn-ghost">درخواست فعال‌سازی</a>
+      </div>
+    </div>
+  </section>
+<script>
+(function () {
+  var root = document.querySelector('[data-lp-video]');
+  if (!root || !('querySelector' in document)) return;
+  var video = root.querySelector('video');
+  var frame = root.querySelector('[data-lp-vid-frame]');
+  var cover = root.querySelector('[data-lp-vid-cover]');
+  var start = root.querySelector('[data-lp-vid-start]');
+  var bar = root.querySelector('[data-lp-vid-bar]');
+  var toggle = root.querySelector('[data-lp-vid-toggle]');
+  var replay = root.querySelector('[data-lp-vid-replay]');
+  var mute = root.querySelector('[data-lp-vid-mute]');
+  var fs = root.querySelector('[data-lp-vid-fs]');
+  var seek = root.querySelector('[data-lp-vid-seek]');
+  var fill = root.querySelector('[data-lp-vid-fill]');
+  var time = root.querySelector('[data-lp-vid-time]');
+  var fa = '۰۱۲۳۴۵۶۷۸۹';
+  var faNum = function (s) { return String(s).replace(/[0-9]/g, function (d) { return fa[d]; }); };
+  var clock = function (t) { t = Math.max(0, Math.round(t || 0)); return faNum(Math.floor(t / 60) + ':' + (t % 60 < 10 ? '0' : '') + (t % 60)); };
+  var mq = function (q) { return window.matchMedia && window.matchMedia(q).matches; };
+  var chosen = false;
+
+  // Enhanced player: hide the native controls, show the cover, the start button and our own bar.
+  video.removeAttribute('controls');
+  root.classList.add('is-enhanced');
+  cover.hidden = false; start.hidden = false; bar.hidden = false;
+
+  // The right file for this screen, picked once, just before the first play (nothing loads before).
+  function pickSource() {
+    if (chosen) return;
+    chosen = true;
+    var tall = mq('(max-width: 640px) and (orientation: portrait)');
+    var small = !tall && (window.innerWidth * (window.devicePixelRatio || 1)) < 1400;
+    var src = tall ? video.dataset.srcTall : (small ? video.dataset.srcSmall : video.dataset.srcWide);
+    root.classList.toggle('is-tall', tall);
+    var s = video.querySelector('source');
+    if (s && s.getAttribute('src') !== src) { s.setAttribute('src', src); video.load(); }
+  }
+  function play() {
+    pickSource();
+    root.classList.add('is-started');
+    var p = video.play();
+    if (p && p.catch) p.catch(function () { /* the visitor can press play again */ });
+  }
+  function sync() {
+    var playing = !video.paused && !video.ended;
+    root.classList.toggle('is-playing', playing);
+    toggle.setAttribute('aria-label', playing ? 'توقف' : 'پخش');
+    mute.setAttribute('aria-pressed', video.muted ? 'true' : 'false');
+    mute.setAttribute('aria-label', video.muted ? 'پخش صدا' : 'بی‌صدا');
+    var d = video.duration || 60, t = video.currentTime || 0;
+    fill.style.width = Math.min(100, (t / d) * 100) + '%';
+    time.textContent = clock(t) + ' / ' + clock(d);
+    seek.setAttribute('aria-valuemax', String(Math.round(d)));
+    seek.setAttribute('aria-valuenow', String(Math.round(t)));
+    seek.setAttribute('aria-valuetext', faNum(Math.round(t)) + ' از ' + faNum(Math.round(d)) + ' ثانیه');
+    root.classList.toggle('is-ended', video.ended);
+  }
+  function togglePlay() { if (video.paused || video.ended) play(); else video.pause(); }
+  function jump(dt) { pickSource(); video.currentTime = Math.max(0, Math.min((video.duration || 60) - 0.1, video.currentTime + dt)); sync(); }
+
+  start.addEventListener('click', play);
+  frame.addEventListener('click', function (e) { if (e.target === video && root.classList.contains('is-started')) togglePlay(); });
+  toggle.addEventListener('click', togglePlay);
+  replay.addEventListener('click', function () { pickSource(); video.currentTime = 0; play(); });
+  mute.addEventListener('click', function () { video.muted = !video.muted; sync(); });
+  fs.addEventListener('click', function () {
+    var el = root; // the whole player, so the control bar stays usable in full screen
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (el.requestFullscreen) el.requestFullscreen();
+    else if (video.webkitEnterFullscreen) { pickSource(); video.webkitEnterFullscreen(); }
+  });
+  seek.addEventListener('click', function (e) {
+    var r = seek.getBoundingClientRect();
+    pickSource();
+    video.currentTime = ((e.clientX - r.left) / r.width) * (video.duration || 60);
+    sync();
+  });
+  // Keyboard: Space/K play-pause, M mute, arrows ±5 s (the time bar runs left to right like any player).
+  root.addEventListener('keydown', function (e) {
+    if (e.target.tagName === 'SUMMARY' || e.altKey || e.ctrlKey || e.metaKey) return;
+    var k = e.key;
+    if ((k === ' ' && e.target === seek) || k === 'k' || k === 'K') { e.preventDefault(); togglePlay(); }
+    else if (k === 'm' || k === 'M') { e.preventDefault(); video.muted = !video.muted; sync(); }
+    else if (k === 'ArrowRight' && e.target === seek) { e.preventDefault(); jump(5); }
+    else if (k === 'ArrowLeft' && e.target === seek) { e.preventDefault(); jump(-5); }
+    else if (k === 'Home' && e.target === seek) { e.preventDefault(); jump(-1e9); }
+    else if (k === 'End' && e.target === seek) { e.preventDefault(); jump(1e9); }
+  });
+  ['play', 'pause', 'ended', 'timeupdate', 'durationchange', 'volumechange', 'loadedmetadata'].forEach(function (ev) { video.addEventListener(ev, sync); });
+  // Pause when the film scrolls out of view or the tab is hidden: no sound from off-screen.
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      if (!entries[0].isIntersecting && !video.paused) video.pause();
+    }, { threshold: 0.15 }).observe(frame);
+  }
+  document.addEventListener('visibilitychange', function () { if (document.hidden && !video.paused) video.pause(); });
+  sync();
+})();
+</script>
+
   <!-- «منشی هوشمند» showcase: a seven-step slider that explains the AI SMS secretary
        (docs/ai-secretary.md, docs/landing.md). Each step pairs a CSS/SVG animated scene with real text.
        Tabs on the side are an ARIA tablist; auto-advance is driven by each tab's progress bar

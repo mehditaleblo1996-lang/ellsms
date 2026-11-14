@@ -10,6 +10,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | `public/assets/css/style.css` | Base styles of the public pages, the banner, the bento grid and the other sections |
 | `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 6, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
+| `public/assets/video/ai-explainer/` | The «منشی هوشمند» explainer film shown in `#ai-video` (three MP4 cuts and two covers) |
 
 There is no database table behind the banner or the showcase: they are fixed HTML. The page reads
 only `ellsms_pricing_packages` (pricing cards) and the registration setting (how an account is
@@ -24,6 +25,7 @@ are not shown on this page.
 | — | Hero with the 3D phone scene |
 | `#flow` | «از فایل مخاطبین تا گوشی مشتری»: a contacts file + template becoming personal SMS |
 | `#features` | Bento grid of services. The last, full-width tile is «منشی هوشمند با هوش مصنوعی» and links to `#ai-secretary`. |
+| `#ai-video` | **«با منشی هوشمند داتیس آشنا شوید»**: the 60-second explainer film, described below |
 | `#ai-secretary` | **«منشی هوشمند» showcase**: the seven-step slider described below |
 | `#compare` | Manual sending vs. the panel |
 | `#pricing` | Pricing cards (only when packages exist) |
@@ -45,6 +47,42 @@ motion.
 
 To add a slide: add the `<article>` (ids `lpSlideN`, `aria-label="N از M"` on every slide), add its
 dot button, and update the `M` in every label.
+
+## Explainer film (`#ai-video`)
+
+A 60-second Persian film in which the DATIS robot explains, with worked examples: personal messages
+built from a customer table, «پیام اول» (table → filter → instruction → two previews → confirmation →
+send), an incoming SMS answered from the sender's own order row, conversation memory, hand-off to a
+human operator (the AI stops answering), and the controls (preview, sending caps, cancelling what is
+left, SMS + AI cost). Every name, number, tracking code and chart in it is a fictional sample.
+
+| File in `public/assets/video/ai-explainer/` | Used for |
+|---|---|
+| `datis-ai-explainer-16x9-web.mp4` | 1920×1080, 60 fps: the default |
+| `datis-ai-explainer-16x9-720p.mp4` | 1280×720: landscape screens narrower than about 1400 device pixels |
+| `datis-ai-explainer-9x16-web.mp4` | 1080×1920: phones held upright (`max-width: 640px` and portrait) |
+| `cover-16x9.webp`, `cover-9x16.webp` | The cover shown before play (lazy-loaded `<picture>`) |
+
+The films have burned-in Persian subtitles, so they are understandable with the sound off; the full
+narration is also under «متن کامل ویدیو» below the player.
+
+Behaviour (inline script after the section, styles in `landing-ai.css` under `#ai-video`):
+
+- Nothing is downloaded before the visitor presses «پخش ویدیو» (`preload="none"`, the cover image is
+  `loading="lazy"`). The file is chosen at that moment for the screen. It never autoplays.
+- Controls: play/pause, replay from the start, a time bar (click, or focus it and use ←/→ ±5 s,
+  Home/End), mute, and full screen. Space or K plays/pauses, M mutes. All buttons have Persian
+  `aria-label`s and a visible focus ring; the time bar is an ARIA slider.
+- Playback pauses when the player scrolls out of view or the tab is hidden.
+- `prefers-reduced-motion`: no transitions on the player; the film only ever plays on request.
+- Without JavaScript the `<video controls>` element plays the 16:9 file with the browser's controls.
+- Below the player: «آشنایی با مراحل منشی هوشمند» (`#ai-secretary`) and «درخواست فعال‌سازی»
+  (`/contact.php`).
+
+To replace the film, keep the file names (or update the `data-src-*` attributes and the `<source>`).
+The film is made with Remotion from source kept outside this repository
+(`mehditaleblo1996-lang/datis-advertise`, `video/datis-ai-explainer/`): narration, timing, scenes
+and render scripts live there. Keep each web file well under 15 MB.
 
 ## «منشی هوشمند» showcase (`#ai-secretary`)
 

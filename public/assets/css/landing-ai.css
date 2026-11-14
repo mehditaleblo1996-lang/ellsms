@@ -426,6 +426,99 @@
   .lp-ai-cta { padding: 16px; }
 }
 
+/* ---------- #ai-video: the 60-second explainer film (docs/landing.md#ai-video) ---------- */
+.lp-ai-video .lp-section-head p:last-child { line-height: 1.9; }
+.lp-vid { margin: 0 auto; max-width: 1040px; }
+/* the enhanced parts start [hidden] and the script reveals them; without JavaScript they stay hidden */
+.lp-vid [hidden] { display: none !important; }
+.lp-vid-frame {
+  position: relative; aspect-ratio: 16 / 9; border-radius: 24px; overflow: hidden; background: #060915;
+  border: 1px solid rgba(167, 139, 250, .28);
+  box-shadow: 0 40px 90px -40px rgba(74, 50, 232, .6), 0 0 0 1px rgba(255, 255, 255, .04) inset;
+}
+.lp-vid-media { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; background: #060915; }
+.lp-vid-cover { position: absolute; inset: 0; display: block; transition: opacity .35s ease; }
+.lp-vid-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lp-vid.is-started .lp-vid-cover { opacity: 0; pointer-events: none; }
+.lp-vid.is-started .lp-vid-big { opacity: 0; pointer-events: none; }
+.lp-vid.is-ended .lp-vid-big { opacity: 1; pointer-events: auto; }
+
+/* the big start button: an icon disc and a label, centred on the cover */
+.lp-vid-big {
+  position: absolute; inset: auto 50% 50% auto; transform: translate(50%, 50%);
+  display: inline-flex; align-items: center; gap: 14px; padding: 12px 22px 12px 14px; border-radius: 999px;
+  color: #fff; font: inherit; cursor: pointer; text-align: right;
+  background: rgba(10, 16, 38, .72); border: 1px solid rgba(255, 255, 255, .22);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, .6); transition: transform .2s ease, background .2s ease, opacity .3s ease;
+}
+.lp-vid-big:hover { background: rgba(46, 99, 246, .55); transform: translate(50%, 50%) scale(1.03); }
+.lp-vid-big-icon {
+  width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: linear-gradient(135deg, #4a32e8, #2e63f6); box-shadow: 0 0 0 6px rgba(0, 217, 245, .16), 0 0 28px rgba(0, 217, 245, .45);
+}
+.lp-vid-big-icon svg { width: 26px; height: 26px; fill: #fff; margin-left: 4px; }
+.lp-vid-big-text { display: flex; flex-direction: column; line-height: 1.5; }
+.lp-vid-big-text b { font-size: 17px; font-weight: 800; white-space: nowrap; }
+.lp-vid-big-text small { font-size: 13px; color: #c9d3f5; white-space: nowrap; }
+
+/* control bar: a media timeline runs left to right, as in every player, also on an RTL page */
+.lp-vid-bar {
+  direction: ltr; display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 6px 10px; border-radius: 16px;
+  background: rgba(255, 255, 255, .05); border: 1px solid rgba(167, 139, 250, .22);
+}
+.lp-vid-btn {
+  width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 12px; cursor: pointer;
+  color: #e6ebff; background: transparent; border: 0; transition: background .2s ease;
+}
+.lp-vid-btn:hover { background: rgba(255, 255, 255, .08); }
+.lp-vid-btn svg { width: 22px; height: 22px; fill: currentColor; }
+.lp-vid-btn .i-pause, .lp-vid-btn .i-muted { display: none; }
+.lp-vid.is-playing .lp-vid-btn .i-play { display: none; }
+.lp-vid.is-playing .lp-vid-btn .i-pause { display: block; }
+.lp-vid-btn[aria-pressed="true"] .i-sound { display: none; }
+.lp-vid-btn[aria-pressed="true"] .i-muted { display: block; }
+.lp-vid-track {
+  position: relative; flex: 1 1 auto; height: 44px; cursor: pointer; border-radius: 8px;
+  background: linear-gradient(rgba(255, 255, 255, .16), rgba(255, 255, 255, .16)) center / 100% 6px no-repeat;
+}
+.lp-vid-fill {
+  position: absolute; left: 0; top: 50%; height: 6px; width: 0; margin-top: -3px; border-radius: 6px;
+  background: linear-gradient(90deg, #2e63f6, #00d9f5); box-shadow: 0 0 12px rgba(0, 217, 245, .5);
+}
+.lp-vid-fill::after {
+  content: ""; position: absolute; right: -7px; top: 50%; width: 14px; height: 14px; margin-top: -7px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 10px rgba(0, 217, 245, .8);
+}
+.lp-vid-time { flex: none; min-width: 92px; text-align: center; font-size: 13.5px; color: #c9d3f5; font-variant-numeric: tabular-nums; }
+:is(.lp-vid-btn, .lp-vid-track, .lp-vid-big, .lp-vid-caption summary):focus-visible { outline: 3px solid #00d9f5; outline-offset: 2px; }
+
+.lp-vid-caption { margin-top: 12px; }
+.lp-vid-caption details { border-radius: 14px; background: rgba(255, 255, 255, .03); border: 1px solid rgba(167, 139, 250, .18); padding: 4px 16px; }
+.lp-vid-caption summary { cursor: pointer; padding: 8px 0; font-size: 14px; font-weight: 700; color: #ddd6fe; }
+.lp-vid-caption p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.9; color: #d5dcf5; }
+.lp-vid-caption .lp-vid-note { color: #a7b4d6; font-size: 13px; }
+
+/* phones held upright play the vertical cut in a vertical frame */
+.lp-vid.is-tall .lp-vid-frame { aspect-ratio: 9 / 16; max-height: 80vh; max-height: 80svh; margin: 0 auto; }
+@media (max-width: 640px) and (orientation: portrait) {
+  .lp-vid.is-enhanced:not(.is-started) .lp-vid-frame { aspect-ratio: 9 / 16; max-height: 78vh; max-height: 78svh; margin: 0 auto; }
+}
+@media (max-width: 560px) {
+  .lp-vid-frame { border-radius: 18px; }
+  .lp-vid-big { gap: 10px; padding: 10px 16px 10px 10px; }
+  .lp-vid-big-icon { width: 50px; height: 50px; }
+  .lp-vid-big-text b { white-space: nowrap; font-size: 16px; }
+  .lp-vid-big-text small { display: none; }
+  .lp-vid-time { min-width: 0; font-size: 12.5px; }
+  .lp-vid-bar { gap: 2px; padding: 4px 6px; }
+}
+
+/* full screen: the whole player, film on top and controls underneath */
+.lp-vid:fullscreen { display: flex; flex-direction: column; justify-content: center; max-width: none; padding: 12px; background: #060915; }
+.lp-vid:fullscreen .lp-vid-frame { flex: 1 1 auto; aspect-ratio: auto; border-radius: 0; border: 0; }
+.lp-vid:fullscreen .lp-vid-caption { display: none; }
+
 /* ---------- reduced motion: every scene shown complete and still ---------- */
 @media (prefers-reduced-motion: reduce) {
   .lp-ai *, .lp-banner-ai *, .lp-bento-ai::after { animation: none !important; }
@@ -439,4 +532,6 @@
   .lp-ai-switch i { right: 19px; }
   .lp-ai-tr.is-hit { background: rgba(52, 211, 153, .16); box-shadow: inset -3px 0 0 #34d399; color: #fff; }
   .lp-ai-tab.is-active .lp-ai-tab-bar i { transform: scaleX(1); }
+  .lp-vid-big, .lp-vid-big:hover, .lp-vid-cover, .lp-vid-btn { transition: none; }
+  .lp-vid-big:hover { transform: translate(50%, 50%); }
 }
