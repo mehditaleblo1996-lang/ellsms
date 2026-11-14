@@ -1030,7 +1030,6 @@ require __DIR__ . '/../app/views/public_header.php';
   <section id="customers" class="lp-section lp-customers lp-reveal">
     <div class="lp-section-head">
       <h2>مشتریان و همکاران</h2>
-      <p>سازمان‌هایی که اطلاع‌رسانی پیامکی خود را به ما سپرده‌اند.</p>
     </div>
     <?php
     // Two rails moving in opposite directions. Each rail holds the list twice so translating it by
