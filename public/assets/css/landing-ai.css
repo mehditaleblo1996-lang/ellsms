@@ -50,10 +50,7 @@
   100% { opacity: 0; height: 0; padding-block: 0; margin-top: -10px; }
 }
 
-.lp-ai-ch {
-  display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; line-height: 1.6;
-
-/* ---------- banner slide 6 ---------- */
+/* ---------- banner slide 7 ---------- */
 .lp-banner-ai { width: min(400px, 94%); margin-inline: auto; }
 .lp-ai-chat {
   position: relative; border-radius: 24px; overflow: hidden; background: var(--ai-glass);
