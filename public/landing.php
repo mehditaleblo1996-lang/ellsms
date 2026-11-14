@@ -53,9 +53,10 @@ require __DIR__ . '/../app/views/public_header.php';
     <div class="lp-banner-track">
 
       <!-- Slide 1 «یک مجموعه، پنج خدمت»: the five product lines on a tilted 3D orbit around the DATIS core.
-           Opening (~1.6 s): core ignites, shockwave, orbit draws, the products swirl out of the core.
-           Then every 2.6 s the orbit turns the next product to the front: it grows, a glass card with
-           its three main services unfolds under it, and the panel on the copy side switches to it.
+           Opening (~2.1 s): light streaks warp into the centre, a flash, the core ignites, shockwaves, the
+           orbit draws, the products swirl out of the core. Then every 2.6 s the orbit turns the next
+           product to the front: it bursts (ring + particles), gets a spinning ring, a holographic card
+           with its three main services materialises under it, and the copy panel switches to it.
            The chips are buttons that jump to a product. Script: the second <script> after the banner;
            styles: landing-products.css («banner slide 1»); docs/landing.md. Stays on screen 14.8 s. -->
       <?php $suite = [
@@ -66,33 +67,52 @@ require __DIR__ . '/../app/views/public_header.php';
           ['voip',  'تلفن سازمانی',      'تلفن و ارتباطات سازمانی',   'سانترال تحت شبکه، منشی تلفنی گویا، صف تماس و اتصال شعب؛ تا هیچ تماس مشتری بی‌پاسخ نماند.', ['سانترال تحت شبکه (VoIP)', 'منشی تلفنی و صف تماس', 'اتصال شعب و ضبط مکالمات'], '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/>'],
       ];
       $suiteNum = static fn (int $k): string => ['۰۱', '۰۲', '۰۳', '۰۴', '۰۵'][$k] . ' / ۰۵'; ?>
-      <article class="lp-banner-slide is-active" id="lpSlide1" data-duration="14800" data-lp-suite role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۷">
+      <article class="lp-banner-slide is-active" id="lpSlide1" data-duration="15300" data-lp-suite role="tabpanel" aria-roledescription="slide" aria-label="۱ از ۷">
         <div class="lp-banner-visual lp-suite" aria-hidden="true">
           <div class="lp-suite-stage" data-suite-stage>
-            <div class="lp-suite-floor"></div>
+            <div class="lp-suite-nebula"></div>
             <div class="lp-suite-dustlayer">
-              <?php foreach ([[10,14,0],[86,8,1.2],[94,48,2.1],[74,30,.6],[6,62,1.7],[28,6,2.6],[62,4,.9],[18,40,3],[90,76,1.4],[4,86,.3]] as [$x, $y, $d]): ?>
+              <?php foreach ([[10,14,0],[86,8,1.2],[94,48,2.1],[74,30,.6],[6,62,1.7],[28,6,2.6],[62,4,.9],[18,40,3],[90,76,1.4],[4,86,.3],[50,2,2.2],[96,24,.8]] as [$x, $y, $d]): ?>
               <i style="--x:<?= $x ?>%;--y:<?= $y ?>%;--d:<?= $d ?>s"></i>
               <?php endforeach; ?>
             </div>
             <svg class="lp-suite-back" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="lpSuiteOrbitG" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#a78bfa"/><stop offset=".5" stop-color="#67e8f9"/><stop offset="1" stop-color="#f0abfc"/></linearGradient>
+              </defs>
+              <g class="lp-suite-grid">
+                <?php foreach ([12, 24, 48] as $rx): ?><ellipse cx="50" cy="38" rx="<?= $rx ?>" ry="<?= round($rx * .472, 2) ?>"/><?php endforeach; ?>
+                <?php for ($i = 0; $i < 12; $i++): $t = deg2rad($i * 30); ?><line x1="<?= round(50 + 11 * cos($t), 2) ?>" y1="<?= round(38 + 5.2 * sin($t), 2) ?>" x2="<?= round(50 + 48 * cos($t), 2) ?>" y2="<?= round(38 + 22.6 * sin($t), 2) ?>"/><?php endfor; ?>
+              </g>
+              <?php for ($i = 0; $i < 3; $i++): ?><ellipse cx="50" cy="38" rx="40" ry="18.9" class="lp-suite-ripple" style="--r:<?= $i ?>"/><?php endfor; ?>
               <ellipse cx="50" cy="38" rx="47" ry="22" class="is-far" pathLength="100"/>
+              <ellipse cx="50" cy="38" rx="36" ry="17" class="is-orbit-glow"/>
               <ellipse cx="50" cy="38" rx="36" ry="17" class="is-orbit" pathLength="100"/>
               <ellipse cx="50" cy="38" rx="22" ry="10.5" class="is-inner" pathLength="100"/>
               <ellipse cx="50" cy="38" rx="36" ry="17" class="is-comet" pathLength="100"/>
               <?php foreach ($suite as $k => $p): ?>
               <line x1="50" y1="38" x2="50" y2="38" class="lp-suite-beam is-<?= $p[0] ?>" data-suite-beam/>
               <?php endforeach; ?>
-              <circle r=".9" class="lp-suite-spark" data-suite-spark/>
-              <circle r=".9" class="lp-suite-spark" data-suite-spark/>
+              <circle r="1" class="lp-suite-spark" data-suite-spark/>
+              <circle r="1" class="lp-suite-spark" data-suite-spark/>
             </svg>
+            <div class="lp-suite-warp">
+              <?php for ($i = 0; $i < 18; $i++): ?><i style="--a:<?= $i * 20 + ($i % 3) * 7 ?>deg;--w:<?= ($i * 7) % 5 * .06 ?>s"></i><?php endfor; ?>
+            </div>
+            <span class="lp-suite-aura"></span>
+            <span class="lp-suite-gyro"></span><span class="lp-suite-gyro is-b"></span>
             <span class="lp-suite-shock"></span><span class="lp-suite-shock is-late"></span>
             <div class="lp-suite-core">
-              <span class="lp-suite-core-ring"></span>
               <img src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="64" height="41">
             </div>
+            <svg class="lp-suite-front" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <path d="M14 38A36 17 0 0 0 86 38" class="is-glow"/>
+              <path d="M14 38A36 17 0 0 0 86 38" class="is-line"/>
+            </svg>
             <?php foreach ($suite as $k => $p): ?>
             <div class="lp-suite-pw is-<?= $p[0] ?>" style="--k:<?= $k ?>" data-suite-planet>
+              <span class="lp-suite-burst"><?php for ($i = 0; $i < 10; $i++): ?><i style="--a:<?= $i * 36 ?>deg"></i><?php endfor; ?></span>
+              <span class="lp-suite-sat"></span>
               <div class="lp-suite-planet"><svg viewBox="0 0 24 24"><?= $p[5] ?></svg></div>
               <span class="lp-suite-label"><?= e($p[1]) ?></span>
             </div>
@@ -108,6 +128,7 @@ require __DIR__ . '/../app/views/public_header.php';
               </ul>
             </div>
             <?php endforeach; ?>
+            <span class="lp-suite-flash"></span>
           </div>
         </div>
         <div class="lp-banner-copy">
@@ -408,9 +429,11 @@ require __DIR__ . '/../app/views/public_header.php';
   var bar = slide.querySelector('[data-suite-progress]');
   var N = planets.length, STEP = 360 / N;
   var CX = 50, CY = 38, RX = 36, RY = 17;             // orbit, in cqw (the SVG uses the same numbers)
-  var OPEN = 1600, DWELL = 2600, HOLD = 6000, TWEEN = 1100;
+  var OPEN = 2100, DWELL = 2600, HOLD = 6000, TWEEN = 1100, SWIRL = 850;
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+  var wasFront = [];
+  function burst(el) { var b = el.querySelector('.lp-suite-burst'); b.classList.remove('is-go'); void b.offsetWidth; b.classList.add('is-go'); }
   var focus = 0, phi = 90, phiFrom = 90, phiTo = 90, tweenAt = -1;
   var clock = 0, last = 0, dwellAt = OPEN, dwell = DWELL, raf = 0;
 
@@ -436,10 +459,11 @@ require __DIR__ . '/../app/views/public_header.php';
 
   function render() {
     var open = still ? 1 : clock / OPEN;
-    var swirl = still ? 0 : 150 * (1 - easeOut(clamp(open)));
+    var spin = still ? 1 : clamp((clock - SWIRL + 200) / (OPEN - SWIRL + 200));
+    var swirl = still ? 0 : 160 * (1 - easeOut(spin));
     var fx = CX, fy = CY;
     for (var k = 0; k < N; k++) {
-      var r = still ? 1 : back(clamp((clock - 350 - k * 120) / 750));
+      var r = still ? 1 : back(clamp((clock - SWIRL - k * 120) / 750));
       var th = (phi - swirl - k * STEP) * Math.PI / 180;
       var s = Math.sin(th), d = (s + 1) / 2;
       var x = CX + RX * r * Math.cos(th), y = CY + RY * r * s;
@@ -447,10 +471,11 @@ require __DIR__ . '/../app/views/public_header.php';
       var sc = (.56 + .44 * d + boost) * (.25 + .75 * clamp(r));
       var el = planets[k];
       el.style.transform = 'translate(' + x.toFixed(2) + 'cqw,' + y.toFixed(2) + 'cqw) translate(-50%,-50%) scale(' + sc.toFixed(3) + ')';
-      el.style.zIndex = s < 0 ? 2 + Math.round(d * 2) : 6 + Math.round(d * 4);
-      el.style.opacity = ((.38 + .62 * d) * clamp(r * 1.6)).toFixed(3);
+      el.style.zIndex = s < 0 ? 1 + Math.round(d) : 6 + Math.round(d * 4);
+      el.style.opacity = ((.7 + .3 * d) * clamp(r * 1.6)).toFixed(3);
       el.style.setProperty('--d', d.toFixed(3));
       var front = k === focus && s > .97;
+      if (open >= 1) { if (front && !wasFront[k] && !still) burst(el); wasFront[k] = front; }   // arrival burst
       el.classList.toggle('is-focus', front);
       cards[k].classList.toggle('is-on', front && open >= 1);
       beams[k].setAttribute('x2', x.toFixed(2)); beams[k].setAttribute('y2', y.toFixed(2));
@@ -481,7 +506,7 @@ require __DIR__ . '/../app/views/public_header.php';
 
   function start() {
     cancelAnimationFrame(raf);
-    clock = 0; last = 0; phi = phiFrom = phiTo = 90; tweenAt = -1;
+    clock = 0; last = 0; phi = phiFrom = phiTo = 90; tweenAt = -1; wasFront = [];
     setFocus(0, false); dwellAt = OPEN; dwell = DWELL;
     if (still) { clock = OPEN; render(); return; }
     raf = requestAnimationFrame(frame);
