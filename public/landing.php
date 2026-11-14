@@ -12,6 +12,24 @@ $pageTitle = 'پنل هوشمند پیامک';
 $extraStyles = ['/assets/css/landing-ai.css'];
 $metaDescription = 'ارسال مستقیم، دوره‌ای و تدریجی، پیامک هوشمند با قالب پویا، منشی هوشمند با هوش مصنوعی، منشی پیامک خودکار و گزارش لحظه‌ای — همه در یک پنل پیامکی یکپارچه.';
 $packages = db()->query('SELECT * FROM ellsms_pricing_packages WHERE active = 1 ORDER BY sort_order ASC, id ASC')->fetchAll();
+// «مشتریان و همکاران بانکی»: one tile per bank. The logo is public/assets/img/banks/<slug>.(svg|webp|png|jpg);
+// until a file is there the tile shows a coloured monogram in the bank's colour instead.
+$customerBanks = [
+    ['slug' => 'eghtesad-novin', 'name' => 'بانک اقتصاد نوین', 'mono' => 'ا', 'color' => '#5b2a86'],
+    ['slug' => 'sarmayeh',       'name' => 'بانک سرمایه',      'mono' => 'س', 'color' => '#1f4e8c'],
+    ['slug' => 'karafarin',      'name' => 'بانک کارآفرین',    'mono' => 'ک', 'color' => '#00843d'],
+    ['slug' => 'sina',           'name' => 'بانک سینا',        'mono' => 'س', 'color' => '#0067b1'],
+    ['slug' => 'melli',          'name' => 'بانک ملی ایران',   'mono' => 'م', 'color' => '#0b3b74'],
+    ['slug' => 'parsian',        'name' => 'بانک پارسیان',     'mono' => 'پ', 'color' => '#a6192e'],
+    ['slug' => 'gardeshgari',    'name' => 'بانک گردشگری',     'mono' => 'گ', 'color' => '#c8102e'],
+];
+foreach ($customerBanks as &$bank) {
+    $bank['logo'] = null;
+    foreach (['svg', 'webp', 'png', 'jpg'] as $ext) {
+        if (is_file(__DIR__ . "/assets/img/banks/{$bank['slug']}.{$ext}")) { $bank['logo'] = "/assets/img/banks/{$bank['slug']}.{$ext}"; break; }
+    }
+}
+unset($bank);
 require __DIR__ . '/../app/views/public_header.php';
 ?>
   <!-- Top banner: six animated slides (plain HTML/CSS + a tiny script below, no video file).
@@ -1000,6 +1018,27 @@ require __DIR__ . '/../app/views/public_header.php';
         <p>کد یک‌بارمصرف برای ورود امن، و اعلان وضعیت سفارش یا قرارداد به مشتریان.</p>
       </article>
     </div>
+  </section>
+
+  <section id="customers" class="lp-section lp-customers lp-reveal">
+    <div class="lp-section-head">
+      <h2>مشتریان و همکاران بانکی</h2>
+      <p>بانک‌هایی که اطلاع‌رسانی پیامکی خود را به ما سپرده‌اند.</p>
+    </div>
+    <ul class="lp-bank-grid">
+      <?php foreach ($customerBanks as $i => $bank): ?>
+      <li class="lp-bank lp-reveal" style="--i:<?= (int) $i ?>">
+        <span class="lp-bank-logo">
+          <?php if ($bank['logo'] !== null): ?>
+          <img src="<?= e($bank['logo']) ?>" alt="لوگوی <?= e($bank['name']) ?>" loading="lazy" decoding="async">
+          <?php else: ?>
+          <span class="lp-bank-mono" style="--bank:<?= e($bank['color']) ?>" aria-hidden="true"><?= e($bank['mono']) ?></span>
+          <?php endif; ?>
+        </span>
+        <span class="lp-bank-name"><?= e($bank['name']) ?></span>
+      </li>
+      <?php endforeach; ?>
+    </ul>
   </section>
 
   <section id="trust" class="lp-section lp-trust lp-reveal">
