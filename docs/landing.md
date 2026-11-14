@@ -30,7 +30,7 @@ are not shown on this page.
 | `#pricing` | Pricing cards (only when packages exist) |
 | `#how` | Three steps to the first send |
 | `#use-cases` | Use cases |
-| `#customers` | «مشتریان و همکاران»: customer logo tiles (see below) |
+| `#customers` | «مشتریان و همکاران»: two scrolling rails of customer logos (see below) |
 | `#trust`, `#faq` | Trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
 The nav has a «منشی هوشمند» link to `/landing.php#ai-secretary`.
@@ -46,8 +46,16 @@ One tile per customer from the `$customers` list at the top of `landing.php`: th
 The logo is the first of `public/assets/img/customers/<slug>.svg`, `.webp`, `.png`, `.jpg` that exists,
 shown on a white plate so the customer's own colours read correctly on the dark page. With no file the
 tile shows a monogram badge in `color` instead, so a missing logo never breaks the layout. To add or
-replace a logo, drop the file in that folder; to add a customer, add a row to `$customers`. Styles:
-`.lp-bank-*` in `style.css`.
+replace a logo, drop the file in that folder (a square, trimmed image, e.g. 240×240 WebP); to add a
+customer, add a row to `$customers`.
+
+The tiles run as two edge-to-edge **rails** (`.lp-marquee`) moving in opposite directions — the top
+one to the right (70 s per loop), the bottom one, in reverse order, to the left (80 s) — with the ends
+faded out by a mask. Pure CSS, no script: each `.lp-marquee-track` holds the list twice and slides by
+−50%, so the loop is seamless. Hover or keyboard focus pauses both rails, and the hovered tile lifts.
+Only the first copy of the top rail is exposed to screen readers (the rest is `aria-hidden`). With
+`prefers-reduced-motion` the rails are replaced by one still, wrapped list of every customer. Styles:
+`.lp-marquee-*` and `.lp-bank-*` in `style.css`.
 
 ## Top banner
 

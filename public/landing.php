@@ -1032,20 +1032,36 @@ require __DIR__ . '/../app/views/public_header.php';
       <h2>مشتریان و همکاران</h2>
       <p>سازمان‌هایی که اطلاع‌رسانی پیامکی خود را به ما سپرده‌اند.</p>
     </div>
-    <ul class="lp-bank-grid">
-      <?php foreach ($customers as $i => $c): ?>
-      <li class="lp-bank lp-reveal" style="--i:<?= (int) $i ?>">
-        <span class="lp-bank-logo">
-          <?php if ($c['logo'] !== null): ?>
-          <img src="<?= e($c['logo']) ?>" alt="لوگوی <?= e($c['name']) ?>" loading="lazy" decoding="async">
-          <?php else: ?>
-          <span class="lp-bank-mono" style="--bank:<?= e($c['color']) ?>" aria-hidden="true"><?= e($c['mono']) ?></span>
-          <?php endif; ?>
-        </span>
-        <span class="lp-bank-name"><?= e($c['name']) ?></span>
-      </li>
+    <?php
+    // Two rails moving in opposite directions. Each rail holds the list twice so translating it by
+    // -50% loops seamlessly; only the first copy of the first rail is exposed to screen readers.
+    $customerRails = [$customers, array_reverse($customers)];
+    $renderCustomer = static function (array $c): void { ?>
+          <li class="lp-bank">
+            <span class="lp-bank-logo">
+              <?php if ($c['logo'] !== null): ?>
+              <img src="<?= e($c['logo']) ?>" alt="لوگوی <?= e($c['name']) ?>" loading="lazy" decoding="async" width="120" height="120">
+              <?php else: ?>
+              <span class="lp-bank-mono" style="--bank:<?= e($c['color']) ?>" aria-hidden="true"><?= e($c['mono']) ?></span>
+              <?php endif; ?>
+            </span>
+            <span class="lp-bank-name"><?= e($c['name']) ?></span>
+          </li>
+    <?php };
+    ?>
+    <div class="lp-marquee">
+      <?php foreach ($customerRails as $r => $rail): ?>
+      <div class="lp-marquee-row"<?= $r === 1 ? ' aria-hidden="true"' : '' ?>>
+        <div class="lp-marquee-track">
+          <?php foreach ([0, 1] as $copy): ?>
+          <ul class="lp-marquee-set"<?= $copy === 1 ? ' aria-hidden="true"' : '' ?>>
+            <?php foreach ($rail as $c) $renderCustomer($c); ?>
+          </ul>
+          <?php endforeach; ?>
+        </div>
+      </div>
       <?php endforeach; ?>
-    </ul>
+    </div>
   </section>
 
   <section id="trust" class="lp-section lp-trust lp-reveal">
