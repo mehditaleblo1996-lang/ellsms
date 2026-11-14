@@ -1593,17 +1593,17 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 /* Logos sit on a white plate so a bank's own colours read the same on the dark page. */
 .lp-bank-logo {
   display: flex; align-items: center; justify-content: center;
-  width: 76px; height: 76px; border-radius: 18px; background: #fff; padding: 10px;
+  width: 96px; height: 96px; border-radius: 20px; background: #fff; padding: 8px;
 }
-.lp-bank-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.lp-bank-logo img { width: 100%; height: 100%; object-fit: contain; }
 .lp-bank-mono {
   display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;
-  border-radius: 12px; background: var(--bank); color: #fff; font-size: 26px; font-weight: 800;
+  border-radius: 14px; background: var(--bank); color: #fff; font-size: 30px; font-weight: 800;
 }
 .lp-bank-name { font-size: 14px; font-weight: 700; }
 @media (max-width: 520px) {
   .lp-bank-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  .lp-bank-logo { width: 64px; height: 64px; }
+  .lp-bank-logo { width: 84px; height: 84px; }
 }
 @media (prefers-reduced-motion: reduce) { .lp-bank, .lp-bank:hover { transition: none; transform: none; } }
 
