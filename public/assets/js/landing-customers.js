@@ -1,7 +1,7 @@
-/* «مشتریان و همکاران» rails on /landing.php (docs/landing.md#customers).
+/* «مشتریان و همکاران» logo rail on /landing.php (docs/landing.md#customers).
  *
- * Without this script the rails still run on a plain CSS animation. With it (.is-live) the rails are
- * driven frame by frame so they can:
+ * Without this script the rail still runs on a plain CSS animation. With it (.is-live) the rail is
+ * driven frame by frame so it can:
  *   - speed up while the page scrolls, and run backwards while it scrolls up, easing back afterwards;
  *   - glide to a stop under the pointer instead of freezing, and start again smoothly;
  *   - be dragged sideways (mouse or touch) and keep the throw's momentum;
@@ -15,7 +15,7 @@
   if (!root || !window.requestAnimationFrame) return;
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-  var BASE = [38, -32];          // px per second for each rail; + moves right, - moves left
+  var BASE = [38];               // px per second per rail (one rail today); + moves right, - moves left
   var rows = Array.prototype.map.call(root.querySelectorAll('.lp-marquee-row'), function (row, i) {
     return {
       el: row,

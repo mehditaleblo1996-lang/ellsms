@@ -1393,9 +1393,9 @@ require __DIR__ . '/../app/views/public_header.php';
       <h2>مشتریان و همکاران</h2>
     </div>
     <?php
-    // Two rails moving in opposite directions. Each rail holds the list twice so translating it by
-    // -50% loops seamlessly; only the first copy of the first rail is exposed to screen readers.
-    $customerRails = [$customers, array_reverse($customers)];
+    // One rail of monochrome logos (coloured on hover/focus). It holds the list twice so translating
+    // it by -50% loops seamlessly; only the first copy is exposed to screen readers.
+    $customerRails = [$customers];
     $renderCustomer = static function (array $c): void { ?>
           <li class="lp-bank">
             <span class="lp-bank-logo">
@@ -1409,6 +1409,14 @@ require __DIR__ . '/../app/views/public_header.php';
           </li>
     <?php };
     ?>
+    <!-- Monochrome logos: every pixel becomes white, its darkness becomes opacity (1.3 × (1 − luminance)),
+         so a logo's white square vanishes and the mark stays. Used by .lp-bank-logo img in style.css. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <filter id="lp-logo-mono" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  -0.2764 -0.9298 -0.0939 0 1.3"/>
+        <feComposite in2="SourceAlpha" operator="in"/>
+      </filter>
+    </svg>
     <div class="lp-marquee" data-lp-marquee>
       <?php foreach ($customerRails as $r => $rail): ?>
       <div class="lp-marquee-row"<?= $r === 1 ? ' aria-hidden="true"' : '' ?>>

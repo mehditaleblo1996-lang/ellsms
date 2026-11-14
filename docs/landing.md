@@ -12,7 +12,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | `public/assets/css/landing-products.css` | Banner slide 1 «یک مجموعه، پنج خدمت» (`.lp-suite-*`) and the «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/*.php` | One animated SVG scene per product line (`sms`, `cloud`, `ai`, `it`, `voip`), included by the `#products` section |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
-| `public/assets/js/landing-customers.js` | Drives the `#customers` logo rails (scroll speed-up, hover glide, drag, centre focus) |
+| `public/assets/js/landing-customers.js` | Drives the `#customers` logo rail (scroll speed-up, hover glide, drag, centre focus) |
 | `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
 
 There is no database table behind the banner or the showcase: they are fixed HTML. The page reads
@@ -34,7 +34,7 @@ are not shown on this page.
 | `#pricing` | Pricing cards (only when packages exist) |
 | `#how` | Three steps to the first send |
 | `#use-cases` | Use cases |
-| `#customers` | «مشتریان و همکاران»: two scrolling rails of customer logos (see below) |
+| `#customers` | «مشتریان و همکاران»: one scrolling rail of monochrome customer logos (see below) |
 | `#trust`, `#faq` | Trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
 The nav button reads «ورود به پنل پیامک» (the site sells more than the SMS panel; «بازگشت به داشبورد»
@@ -51,31 +51,35 @@ One tile per customer from the `$customers` list at the top of `landing.php`: th
 `mono` and a brand `color`.
 
 The logo is the first of `public/assets/img/customers/<slug>.svg`, `.webp`, `.png`, `.jpg` that exists,
-shown on a white plate so the customer's own colours read correctly on the dark page. With no file the
-tile shows a monogram badge in `color` instead, so a missing logo never breaks the layout. To add or
+shown **monochrome** by default: the inline SVG filter `#lp-logo-mono` (in the section markup) paints
+every pixel white and turns its darkness into opacity, so the file's white square disappears and the
+logo stays as a light mark on the dark page (opacity .7; .85 on touch screens, which have no hover).
+On hover or keyboard focus the tile lifts and the logo shows in its own colours on a white plate, with
+the name brightening. With no file the tile shows a monogram badge instead (grey by default, filled with
+the customer's `color` on hover), so a missing logo never breaks the layout. The logo files themselves
+stay full-colour on white; no separate monochrome copy is needed. To add or
 replace a logo, drop the file in that folder (a square, trimmed image, e.g. 240×240 WebP); to add a
 customer, add a row to `$customers`.
 
-The tiles run as two edge-to-edge **rails** (`.lp-marquee`) moving in opposite directions — the top
-one to the right, the bottom one (in reverse order) to the left — with the ends faded out by a mask.
-Each `.lp-marquee-track` holds the list twice, so the loop is seamless. Only the first copy of the top
-rail is exposed to screen readers (the rest is `aria-hidden`).
+The tiles run as one edge-to-edge **rail** (`.lp-marquee`) moving to the right, with the ends faded out
+by a mask. The `.lp-marquee-track` holds the list twice, so the loop is seamless. Only the first copy is
+exposed to screen readers (the second is `aria-hidden`).
 
 Motion is driven by `public/assets/js/landing-customers.js` (loaded right after the section, adds
 `.is-live`):
 
 | Behaviour | Detail |
 |---|---|
-| Base speed | 38 px/s right (top), 32 px/s left (bottom) |
-| Scroll | scrolling down pushes each rail faster its own way, scrolling up runs it backwards; the boost fades out in about a second |
-| Hover / focus | the rail under the pointer glides to a stop and starts again smoothly; the other rail keeps going |
-| Drag | mouse or touch drags a rail sideways and the throw keeps its momentum (`touch-action: pan-y`, so a vertical swipe still scrolls the page) |
+| Base speed | 38 px/s to the right |
+| Scroll | scrolling down pushes the rail faster, scrolling up runs it backwards; the boost fades out in about a second |
+| Hover / focus | the rail glides to a stop under the pointer and starts again smoothly |
+| Drag | mouse or touch drags the rail sideways and the throw keeps its momentum (`touch-action: pan-y`, so a vertical swipe still scrolls the page) |
 | Centre focus | tiles near the middle are full size; towards the ends they shrink (×0.86) and fade (`--s`, `--o`) |
-| Tile effects (CSS) | a gleam sweeps across each tile every 7 s (staggered), a spotlight follows the pointer, the hovered tile lifts and glows and its logo tilts |
+| Tile effects (CSS) | tiles have no plate or border at rest; the hovered/focused tile gets a card background, lifts 4 px, and its logo turns from monochrome to full colour on a white plate |
 
-The script runs only while the section is on screen and the tab is visible. Without it the rails run on
-a plain CSS animation (70 s / 80 s per loop) that pauses on hover. With `prefers-reduced-motion` the
-script does nothing and the rails are replaced by one still, wrapped list of every customer. Styles:
+The script runs only while the section is on screen and the tab is visible. Without it the rail runs on
+a plain CSS animation (70 s per loop) that pauses on hover. With `prefers-reduced-motion` the script
+does nothing and the rail is replaced by one still, wrapped list of every customer. Styles:
 `.lp-marquee-*` and `.lp-bank-*` in `style.css`.
 
 ## Top banner
