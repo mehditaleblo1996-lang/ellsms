@@ -81,7 +81,7 @@ column, to admins and customers alike. A count and its parts always cover the sa
 | Report | Where the parts are |
 |---|---|
 | «لیست پیام‌های ارسالی» (`/messages/reports`) | column «تعداد پارت» per message; each summary card «N پارت» (`sent_report_summary(…, $parts)`); the detail drawer «N پارت» |
-| داشبورد (`/index.php`) | «N پارت» on ارسال امروز / تحویل‌شده امروز / ناموفق امروز (`dashboard_counts_between(…, true)`) |
+| داشبورد (`/index.php`) | «N پارت» on کل پیامک‌های امروز / ارسال‌شده امروز / تحویل‌شده امروز / ناموفق امروز (`dashboard_counts_between(…, true)`, [dashboard](dashboard.md)) |
 | «گزارش وضعیت‌ها» (`/messages/reports/status`) | a «بخش» column beside every «پیامک» column, per month/day and in the totals, the CSV and under the donut ([status-report](status-report.md)) |
 | «لیست پیام‌های دریافتی» (`/inbox.php`) | column «تعداد پارت» per message; the detail drawer |
 | «گزارش ارسال حجیم» (`/reports-bulk.php`) | each summary card «N پارت»; breakdown column «تعداد پارت»; list column «تعداد پارت» |

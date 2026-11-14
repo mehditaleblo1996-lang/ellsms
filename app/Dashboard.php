@@ -44,8 +44,9 @@ function dashboard_today_range(): array {
 
 /**
  * Today's counts: sent = accepted by the provider, delivered = delivery report says delivered,
- * failed = rejected at send time or reported undelivered.
- * @return array{sent:int,delivered:int,failed:int}
+ * failed = rejected at send time or reported undelivered; plus total and pending
+ * (dashboard_with_totals()).
+ * @return array{sent:int,delivered:int,failed:int,send_failed:int,total:int,pending:int}
  */
 function dashboard_today_counts(?array $userIds): array {
     [$from, $to] = dashboard_today_range();
@@ -55,7 +56,7 @@ function dashboard_today_counts(?array $userIds): array {
 /**
  * Yesterday up to this same time of day, so the dashboard compares like with like (a full yesterday
  * against a morning's worth of today would always look like a drop).
- * @return array{sent:int,delivered:int,failed:int}
+ * @return array{sent:int,delivered:int,failed:int,send_failed:int,total:int,pending:int}
  */
 function dashboard_yesterday_counts_so_far(?array $userIds): array {
     [$from] = dashboard_today_range();
@@ -67,8 +68,9 @@ function dashboard_yesterday_counts_so_far(?array $userIds): array {
 /**
  * dashboard_today_counts() for any UTC [from, to) window. With $withParts, each count also comes with
  * its SMS parts (sent_parts, delivered_parts, failed_parts, send_failed_parts — the count stored on
- * each row, else derived from its text: message_parts_sql()).
- * @return array{sent:int,delivered:int,failed:int,send_failed:int,sent_parts?:int,delivered_parts?:int,failed_parts?:int,send_failed_parts?:int}
+ * each row, else derived from its text: message_parts_sql()). total and pending (and their parts) are
+ * derived from these: dashboard_with_totals().
+ * @return array{sent:int,delivered:int,failed:int,send_failed:int,total:int,pending:int,sent_parts?:int,delivered_parts?:int,failed_parts?:int,send_failed_parts?:int,total_parts?:int,pending_parts?:int}
  */
 function dashboard_counts_between(?array $userIds, string $from, string $to, bool $withParts = false): array {
     $undelivered = "'" . implode("','", DASHBOARD_UNDELIVERED) . "'";
@@ -125,7 +127,24 @@ function dashboard_counts_between(?array $userIds, string $from, string $to, boo
     $st->execute(array_merge([$from, $to], $scopeParams));
     $row = $st->fetch() ?: [];
     foreach ($out as $k => $_) $out[$k] += (int)($row[$k] ?? 0);
-    return $out;
+    return dashboard_with_totals($out);
+}
+
+/**
+ * Pure: adds the dashboard's two derived figures to dashboard_counts_between()'s counts (and to their
+ * *_parts when present):
+ *   total   = every message tried in the window: accepted by the provider + refused at send time;
+ *   pending = accepted and still without a final delivery report («ارسال‌شده», the chart's
+ *             «در انتظار گزارش»): sent − delivered − reported undelivered.
+ * So total = pending + delivered + failed, the four cards of the dashboard adding up.
+ */
+function dashboard_with_totals(array $c): array {
+    foreach (isset($c['sent_parts']) ? ['', '_parts'] : [''] as $sfx) {
+        $undelivered = $c['failed' . $sfx] - $c['send_failed' . $sfx];
+        $c['total' . $sfx] = $c['sent' . $sfx] + $c['send_failed' . $sfx];
+        $c['pending' . $sfx] = max(0, $c['sent' . $sfx] - $c['delivered' . $sfx] - $undelivered);
+    }
+    return $c;
 }
 
 /** Pure: percent change from $before to $now, or null when there is nothing to compare with. */

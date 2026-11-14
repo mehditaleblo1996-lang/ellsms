@@ -38,12 +38,25 @@ if (lazy_part_begin('today')) {
         return '<span class="stat-delta ' . ($good ? 'is-good' : 'is-bad') . '" title="' . e($title) . '">'
             . ($pct > 0 ? '↑' : '↓') . ' ' . to_persian_digits((string)abs($pct)) . '٪ <span class="stat-delta-note">نسبت به دیروز</span></span>';
     };
+    // Today's cards: «کل پیامک‌های امروز» and what became of them. With delivery reports, «ارسال‌شده» is
+    // what still waits for its report, so ارسال‌شده + تحویل‌شده + ناموفق = کل; without them it is all the
+    // provider accepted and ارسال‌شده + ناموفق = کل. «در صف ارسال» is not tried yet, so not in کل.
+    $sentKey = $showDelivery ? 'pending' : 'sent';
+    $failedKey = $showDelivery ? 'failed' : 'send_failed';
     ?>
-<div class="grid grid-4">
+<div class="grid dash-stats<?= $showDelivery ? ' has-5' : '' ?>">
   <div class="stat stat-accent">
-    <div class="stat-label">ارسال امروز</div>
-    <div class="stat-value"><span class="stat-unit">پارت</span> <?= to_persian_digits(number_format($today['sent_parts'])) ?></div>
-    <div class="stat-foot"><span class="stat-rate stat-parts"><?= to_persian_digits(number_format($today['sent'])) ?> پیام</span><?= $delta($today['sent'], $yesterday['sent']) ?></div>
+    <div class="stat-label">کل پیامک‌های امروز</div>
+    <div class="stat-value"><span class="stat-unit">پارت</span> <?= to_persian_digits(number_format($today['total_parts'])) ?></div>
+    <div class="stat-foot"><span class="stat-rate stat-parts"><?= to_persian_digits(number_format($today['total'])) ?> پیام</span><?= $delta($today['total'], $yesterday['total']) ?></div>
+  </div>
+  <div class="stat"<?= $showDelivery ? ' title="به اپراتور تحویل داده شده و هنوز گزارش تحویل آن نرسیده است"' : '' ?>>
+    <div class="stat-label">ارسال‌شده امروز</div>
+    <div class="stat-value"><span class="stat-unit">پارت</span> <?= to_persian_digits(number_format($today[$sentKey . '_parts'])) ?></div>
+    <div class="stat-foot">
+      <span class="stat-rate stat-parts"><?= to_persian_digits(number_format($today[$sentKey])) ?> پیام</span>
+      <?php if ($showDelivery): ?><span class="stat-rate">در انتظار گزارش تحویل</span><?php else: ?><?= $delta($today['sent'], $yesterday['sent']) ?><?php endif; ?>
+    </div>
   </div>
   <?php if ($showDelivery): ?>
   <div class="stat">
@@ -56,7 +69,6 @@ if (lazy_part_begin('today')) {
     </div>
   </div>
   <?php endif; ?>
-  <?php $failedKey = $showDelivery ? 'failed' : 'send_failed'; ?>
   <div class="stat">
     <div class="stat-label">ناموفق امروز</div>
     <div class="stat-value"><span class="stat-unit">پارت</span> <?= to_persian_digits(number_format($today[$failedKey . '_parts'])) ?></div>
@@ -251,7 +263,7 @@ $quickActions = array_filter([
 </div>
 <?php endif; ?>
 
-<?= lazy_part_placeholder('today', 110, shape: 'stats') ?>
+<?= lazy_part_placeholder('today', $showDelivery ? 280 : 110, shape: 'stats') /* five cards take two rows */ ?>
 <?= lazy_part_placeholder('chart', 200, shape: 'chart') ?>
 
 <?php
