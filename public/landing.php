@@ -58,7 +58,7 @@ require __DIR__ . '/../app/views/public_header.php';
            product to the front: it bursts (ring + particles), gets a spinning ring, a holographic card
            with its three main services materialises under it, and the copy panel switches to it.
            The chips are buttons that jump to a product. Script: the second <script> after the banner;
-           styles: landing-products.css («banner slide 1»); docs/landing.md. Stays on screen 14.8 s. -->
+           styles: landing-products.css («banner slide 1»); docs/landing.md. Stays on screen 15.3 s. -->
       <?php $suite = [
           ['sms',   'پیامک و بازاریابی', 'سامانه پیامکی و بازاریابی', 'ارسال انبوه، شخصی‌سازی‌شده و زمان‌بندی‌شده، منشی هوشمند و گزارش لحظه‌ای تحویل هر پیام — همه در یک پنل.', ['ارسال انبوه و هدفمند', 'قالب پویا و زمان‌بندی', 'منشی هوشمند و وب‌سرویس'], '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>'],
           ['cloud', 'خدمات ابری',        'خدمات ابری و زیرساختی',     'سرور مجازی با منابع اختصاصی، هاست و دامنه و فضای ذخیره‌سازی ابری امن، با پشتیبانی فنی کارشناسان داتیس.', ['سرور مجازی (VPS)', 'هاست و دامنه', 'فضای ذخیره‌سازی ابری'], '<path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 1 0 6 16.5"/><path d="M6 19h11.5"/>'],
