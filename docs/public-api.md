@@ -95,7 +95,13 @@ never accepted as a partial match. A request against an endpoint the key wasn't 
 Enforced per API key (sustained + a short burst window) and per organization (a higher aggregate
 ceiling, catching one org spraying requests across many keys), plus a generous per-source-IP
 ceiling — see `app/Api/RateLimit.php`. Configurable via `API_RATE_LIMIT_PER_MINUTE` (default 60) and
-`API_RATE_LIMIT_BURST` (default 15). A rate-limited request gets:
+`API_RATE_LIMIT_BURST` (default 15). The production server runs with a higher setting
+(120/min, burst 20 per 10 s), and that is what the customer API guide (PDF, §11 «محدودیت‌ها»)
+documents together with the recommended high-volume pattern: **2 `POST /messages` requests per
+second, evenly spaced (one every 500 ms), each with a full batch of 100 destinations** (= 200 SMS/s,
+12,000/min), one unique `client_message_id` per batch, pause the whole sender for `Retry-After` on a
+429 and resend the same batch. Any deployment that publishes that guide must set
+`API_RATE_LIMIT_PER_MINUTE>=120` and `API_RATE_LIMIT_BURST>=20`. A rate-limited request gets:
 
 ```
 429 Too Many Requests
