@@ -139,7 +139,7 @@ final class BulkProviderBatchingTest extends IntegrationTestCase
         return $batches;
     }
 
-    private function makeGateway(string $sendMode = 'batch'): int
+    private function makeGateway(string $sendMode = 'batch', ?string $endpoint = null): int
     {
         $db = db();
         $code = 'bb_' . bin2hex(random_bytes(3));
@@ -152,7 +152,7 @@ final class BulkProviderBatchingTest extends IntegrationTestCase
                (gateway_id, endpoint_url, http_method, content_type, connect_timeout_ms, request_timeout_ms, tls_verify, auth_type, success_rule_json, batch_mapping_json)
              VALUES (?,?, 'POST','application/json',5000,30000,1,'none',?,?)"
         )->execute([
-            $gatewayId, self::$baseUrl . '/gw/' . $code,
+            $gatewayId, $endpoint ?? (self::$baseUrl . '/gw/' . $code),
             json_encode(['http' => ['min' => 200, 'max' => 299], 'require_json' => true, 'rules' => []]),
             json_encode(['rows_path' => '', 'destination_key' => 'destination', 'status_key' => 'status',
                          'success_values' => ['sent'], 'message_id_key' => 'id']),
@@ -450,6 +450,58 @@ final class BulkProviderBatchingTest extends IntegrationTestCase
         // The rejected one must NOT be sent, and must not have borrowed a neighbour's reference.
         self::assertNotSame('sent', (string)$byMobile[$rejected]['status'], 'a rejected recipient must never be marked sent');
         self::assertNull($byMobile[$rejected]['provider_message_id'], 'a rejected recipient must not carry a provider reference');
+    }
+
+    // ------------------------------------------------------------------ at most once (no automatic resend)
+
+    /** @return array<string,mixed> */
+    private function sendOneThrough(string $endpoint): array
+    {
+        $gatewayId = $this->makeGateway('batch', $endpoint);
+        $this->makeRouteForSender($gatewayId, $this->sender);
+        $job = $this->makeJob(1);
+        $items = bulk_claim_items(db(), 'j.id = ?', [$job['job_id']], 100);
+        self::assertCount(1, $items);
+        bulk_send_claimed_items(db(), $items);
+        return $this->itemStatuses($job['job_id'])[0] + ['job_id' => $job['job_id']];
+    }
+
+    public function testEveryRequestCarriesTheTagOfItsBulkItems(): void
+    {
+        $gatewayId = $this->makeGateway('batch');
+        $this->putParameter($gatewayId, 'userTag', 'variable', 'request_tag', 'string', 50);
+        gateway_cache_reset();
+        $this->makeRouteForSender($gatewayId, $this->sender);
+        $job = $this->makeJob(3);
+        $items = bulk_claim_items(db(), 'j.id = ?', [$job['job_id']], 100);
+        bulk_send_claimed_items(db(), $items);
+
+        $ids = array_map(static fn(array $i): int => (int)$i['id'], $items);
+        $bodies = array_map(static fn(array $r): array => (array)json_decode((string)$r['body'], true), $this->recorded());
+        self::assertCount(1, $bodies);
+        self::assertSame('ellsms:' . min($ids) . '-' . max($ids), $bodies[0]['userTag'], 'the admin can find these rows in the provider report');
+    }
+
+    public function testAProviderRateLimitIsRetriedBecauseNothingWasSent(): void
+    {
+        $row = $this->sendOneThrough(self::$baseUrl . '/http429/x');
+        self::assertSame('pending', (string)$row['status'], 'HTTP 429: the provider did not process the request, so a retry cannot duplicate it');
+    }
+
+    public function testAConnectionThatNeverOpenedIsRetried(): void
+    {
+        $row = $this->sendOneThrough('http://127.0.0.1:1/never');
+        self::assertSame('pending', (string)$row['status'], 'connection refused: nothing reached the provider');
+    }
+
+    public function testAProviderInternalErrorFailsWithItsCodeAndIsNeverResent(): void
+    {
+        $row = $this->sendOneThrough(self::$baseUrl . '/http500/x');
+        self::assertSame('failed', (string)$row['status'], 'HTTP 500: the provider may have processed it — never resent automatically');
+        $st = db()->prepare('SELECT error FROM ellsms_bulk_items WHERE job_id = ?');
+        $st->execute([$row['job_id']]);
+        self::assertStringStartsWith('[BackendUnavailable]', (string)$st->fetchColumn());
+        self::assertSame([], bulk_claim_items(db(), 'j.id = ?', [$row['job_id']], 100));
     }
 
     // ------------------------------------------------------------------ J. gradual throttle

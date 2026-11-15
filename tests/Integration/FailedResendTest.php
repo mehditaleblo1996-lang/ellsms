@@ -125,6 +125,37 @@ final class FailedResendTest extends IntegrationTestCase
         $this->assertSame($this->ownerId, (int)$log['owner_user_id']);
     }
 
+    public function testRowsWithAnUncertainOutcomeAreLeftOutUnlessExplicitlyIncluded(): void
+    {
+        [$jobId, $ids] = $this->seedFinishedJob();
+        // A second failed row whose outcome is unknown: the provider may already have delivered it.
+        \db()->prepare("UPDATE ellsms_bulk_items SET status = 'failed', delivery_status = NULL, error = ? WHERE id = ?")
+            ->execute(['[SEND_UNCERTAIN] نتیجه‌ی ارسال نامشخص است', $ids[4]]);
+        \db()->prepare("UPDATE ellsms_bulk_items SET error = ? WHERE id = ?")->execute(['[BackendRejected] رد شد', $ids[0]]);
+
+        $this->assertSame(2, \failed_resend_count($jobId, true), 'the uncertain row is not counted by default');
+        $this->assertSame(3, \failed_resend_count($jobId, true, true));
+        $this->assertSame(1, \failed_resend_uncertain_count($jobId));
+
+        $result = \failed_resend_queue($jobId, $this->owner(), true);
+        $this->assertTrue($result['ok'], $result['message']);
+        $mobiles = \db()->query('SELECT mobile FROM ellsms_bulk_items WHERE job_id = ' . (int)$result['new_job_id'] . ' ORDER BY id')->fetchAll(\PDO::FETCH_COLUMN);
+        $this->assertSame(['09120001000', '09120001001'], $mobiles, 'a definite failure is resent, the uncertain one is not');
+    }
+
+    public function testUncertainRowsAreResentWhenTheAdminIncludesThem(): void
+    {
+        [$jobId, $ids] = $this->seedFinishedJob();
+        \db()->prepare("UPDATE ellsms_bulk_items SET status = 'failed', delivery_status = NULL, error = ? WHERE id = ?")
+            ->execute(['[BackendTimeout] پاسخ نیامد', $ids[4]]);
+
+        $result = \failed_resend_queue($jobId, $this->owner(), true, true);
+        $this->assertTrue($result['ok'], $result['message']);
+        $this->assertSame(3, (int)$this->job((int)$result['new_job_id'])['total_rows']);
+        $audit = \db()->query("SELECT details FROM ellsms_audit_log WHERE action = 'bulk.failed_resend' ORDER BY id DESC LIMIT 1")->fetchColumn();
+        $this->assertStringContainsString('uncertain rows included', (string)$audit);
+    }
+
     public function testRunningOrMaskedJobsCannotBeResent(): void
     {
         [$jobId] = $this->seedFinishedJob('processing');

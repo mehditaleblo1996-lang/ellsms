@@ -16,6 +16,12 @@ adding a third implementation of either.
 (e.g. `provider_down:legacy_backend`) — see `docs/observability-cardinality.md`'s same rule, since
 this key also becomes a Prometheus label if a future metric ever needs it.
 
+Bulk sending raises two warning incidents (`bulk_send_failure_alert()`, `app/backend.php`), each
+refreshed by every new failure: `bulk_send_failed` — the provider could not take a batch (timeout,
+unreachable, unreadable answer), and `bulk_send_uncertain` — rows the worker lost mid-send
+(`[SEND_UNCERTAIN]`). Those rows are failed with their error code and never re-sent automatically
+(`docs/job-queue-architecture.md` «No automatic resend for bulk items»).
+
 - **Fire** (`AlertManager::fire($alertKey, $severity, $title, $message, $context)`): if no
   open/acknowledged incident exists for this key, creates one and dispatches immediately. If one
   already exists, updates it (message, fire_count, last_fired_at) and re-dispatches only if the

@@ -28,12 +28,27 @@ function failed_resend_max_items(): int {
  * viewer who does not see delivery states, those rows read «ارسال‌شده» and are not resent.
  * The fragment is over `bi` (ellsms_bulk_items).
  */
-function failed_resend_rows_sql(bool $withDelivery): string {
+function failed_resend_rows_sql(bool $withDelivery, bool $includeUncertain = false): string {
     $failed = "bi.status = 'failed'";
     if ($withDelivery) {
         $failed = "(bi.status = 'failed' OR (bi.status <> 'cancelled' AND bi.delivery_status IN ('failed','rejected','expired')))";
     }
-    return "{$failed} AND COALESCE(bi.delivery_status, '') <> 'delivered'";
+    $sql = "{$failed} AND COALESCE(bi.delivery_status, '') <> 'delivered'";
+    return $includeUncertain ? $sql : $sql . ' AND NOT ' . failed_resend_uncertain_sql();
+}
+
+/**
+ * Error codes of rows whose send outcome is UNKNOWN: the provider may already have delivered them
+ * (app/backend.php BULK_SEND_UNCERTAIN_CODE — a worker lost the row mid-send, a timeout, a 5xx, an
+ * unreadable answer). A provider without a duplicate check (PishgamRayan) would send them twice, so a
+ * resend leaves them out unless the admin explicitly includes them.
+ */
+const FAILED_RESEND_UNCERTAIN_CODES = ['SEND_UNCERTAIN', 'BackendTimeout', 'BackendUnavailable', 'BackendInvalidResponse'];
+
+/** SQL over `bi`: the row failed with an uncertain outcome (its error starts with one of those codes). */
+function failed_resend_uncertain_sql(): string {
+    return '(bi.status = \'failed\' AND (' . implode(' OR ', array_map(
+        static fn(string $c): string => "COALESCE(bi.error, '') LIKE " . db()->quote('[' . $c . ']%'), FAILED_RESEND_UNCERTAIN_CODES)) . '))';
 }
 
 /** Whether this job can be resent at all (type, finished, not a masked aimed send). */
@@ -93,9 +108,16 @@ function failed_resend_sender(array $job, array $actor): array {
     ]];
 }
 
-/** Number of rows a resend would take right now. */
-function failed_resend_count(int $jobId, bool $withDelivery): int {
-    $st = db()->prepare('SELECT COUNT(*) FROM ellsms_bulk_items bi WHERE bi.job_id = ? AND ' . failed_resend_rows_sql($withDelivery));
+/** Number of rows a resend would take right now (the uncertain ones only when $includeUncertain). */
+function failed_resend_count(int $jobId, bool $withDelivery, bool $includeUncertain = false): int {
+    $st = db()->prepare('SELECT COUNT(*) FROM ellsms_bulk_items bi WHERE bi.job_id = ? AND ' . failed_resend_rows_sql($withDelivery, $includeUncertain));
+    $st->execute([$jobId]);
+    return (int)$st->fetchColumn();
+}
+
+/** Failed rows whose send outcome is unknown (see FAILED_RESEND_UNCERTAIN_CODES). */
+function failed_resend_uncertain_count(int $jobId): int {
+    $st = db()->prepare('SELECT COUNT(*) FROM ellsms_bulk_items bi WHERE bi.job_id = ? AND ' . failed_resend_uncertain_sql());
     $st->execute([$jobId]);
     return (int)$st->fetchColumn();
 }
@@ -105,7 +127,7 @@ function failed_resend_count(int $jobId, bool $withDelivery): int {
  *
  * @return array{ok: bool, message: string, new_job_id: ?int}
  */
-function failed_resend_queue(int $jobId, array $actor, bool $withDelivery): array {
+function failed_resend_queue(int $jobId, array $actor, bool $withDelivery, bool $includeUncertain = false): array {
     $fail = static fn(string $m): array => ['ok' => false, 'message' => $m, 'new_job_id' => null];
 
     $st = db()->prepare('SELECT * FROM ellsms_bulk_jobs WHERE id = ?');
@@ -140,7 +162,7 @@ function failed_resend_queue(int $jobId, array $actor, bool $withDelivery): arra
             }
         }
 
-        $count = failed_resend_count($jobId, $withDelivery);
+        $count = failed_resend_count($jobId, $withDelivery, $includeUncertain);
         if ($count === 0) return $fail('ردیف ناموفقی برای ارسال مجدد وجود ندارد.');
         if ($count > failed_resend_max_items()) {
             return $fail('تعداد ناموفق‌ها (' . to_persian_digits(number_format($count)) . ') از سقف ارسال مجدد ('
@@ -148,7 +170,7 @@ function failed_resend_queue(int $jobId, array $actor, bool $withDelivery): arra
         }
 
         $rows = db()->prepare('SELECT bi.mobile, bi.content FROM ellsms_bulk_items bi WHERE bi.job_id = ? AND '
-            . failed_resend_rows_sql($withDelivery) . ' ORDER BY bi.id');
+            . failed_resend_rows_sql($withDelivery, $includeUncertain) . ' ORDER BY bi.id');
         $rows->execute([$jobId]);
         $items = [];
         foreach ($rows as $r) {
@@ -169,8 +191,9 @@ function failed_resend_queue(int $jobId, array $actor, bool $withDelivery): arra
             }
         }
         audit((int)($actor['id'] ?? 0), 'bulk.failed_resend', "job #{$jobId} -> job #{$newJobId}: " . count($items) . ' rows'
+            . ($includeUncertain ? ' (uncertain rows included)' : '')
             . ((int)$user['id'] !== (int)($actor['id'] ?? 0) ? ' (as user #' . (int)$user['id'] . ')' : ''));
-        Logger::info('bulk.failed_resend', ['source_job_id' => $jobId, 'new_job_id' => $newJobId, 'rows' => count($items), 'actor_user_id' => $actor['id'] ?? null]);
+        Logger::info('bulk.failed_resend', ['source_job_id' => $jobId, 'new_job_id' => $newJobId, 'rows' => count($items), 'actor_user_id' => $actor['id'] ?? null, 'include_uncertain' => $includeUncertain]);
 
         return ['ok' => true, 'message' => to_persian_digits((string)count($items)) . ' پیامک ناموفق به‌عنوان ارسال نظیر به نظیر جدید (Job #'
             . to_persian_digits((string)$newJobId) . ') در صف قرار گرفت.', 'new_job_id' => $newJobId];

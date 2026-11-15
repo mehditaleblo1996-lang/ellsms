@@ -39,6 +39,16 @@ if (is_string($recordFile) && $recordFile !== '') {
     ], JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
 }
 
+// Fixed HTTP failures, for the bulk at-most-once rules (tests/Integration/BulkProviderBatchingTest.php):
+// 429 = the provider's rate limit refused the request (it was not processed, a retry is safe);
+// 500 = an internal error after the request arrived (it may have been processed, never retried).
+if (str_starts_with($path, '/http429/') || str_starts_with($path, '/http500/')) {
+    http_response_code(str_starts_with($path, '/http429/') ? 429 : 500);
+    header('Content-Type: application/json');
+    echo '{"message":"refused"}';
+    return;
+}
+
 // A redirect target, for proving the transport never follows one (a provider bouncing a request to an
 // internal address would carry its Authorization header there). Recorded above like any other
 // request, so the test can assert that exactly ONE request happened.

@@ -76,11 +76,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'resend_fa
         flash('error', 'شما اجازه‌ی ارسال انبوه ندارید.');
         redirect('/messages/bulk-jobs?id=' . $jobId);
     }
-    $result = failed_resend_queue($jobId, $me, $showDelivery);
+    // Rows whose outcome is unknown (timeout, [SEND_UNCERTAIN], …) may already be on the recipient's
+    // phone: only a platform admin, who can check the provider's own report, may include them.
+    $includeUncertain = is_admin() && !empty($_POST['include_uncertain']);
+    $result = failed_resend_queue($jobId, $me, $showDelivery, $includeUncertain);
     flash($result['ok'] ? 'success' : 'error', $result['message']);
     redirect('/messages/bulk-jobs?id=' . ($result['ok'] ? (int)$result['new_job_id'] : $jobId));
 }
-$resendCount = failed_resend_job_eligible($job) && $canSendBulk() ? failed_resend_count($jobId, $showDelivery) : 0;
+$resendEligible = failed_resend_job_eligible($job) && $canSendBulk();
+$resendCount = $resendEligible ? failed_resend_count($jobId, $showDelivery) : 0;
+$resendUncertain = $resendEligible ? failed_resend_uncertain_count($jobId) : 0;
 $resendHistory = failed_resend_history($jobId);
 $resendSource = failed_resend_source_job($jobId);
 // Aimed bulk (app/AimedBulk.php): numbers from the platform's own bank are shown masked to the
@@ -234,13 +239,21 @@ require __DIR__ . '/../app/views/header.php';
   <?php if ($resendSource !== null): ?>
     <p class="hint">این ارسال، ارسال مجدد ناموفق‌های <a href="/messages/bulk-jobs?id=<?= (int)$resendSource ?>">Job #<?= to_persian_digits((string)$resendSource) ?></a> است.</p>
   <?php endif; ?>
-  <?php if ($resendCount > 0): ?>
+  <?php if ($resendCount > 0 || ($resendUncertain > 0 && is_admin())): ?>
     <form method="post" style="margin:0 0 14px" onsubmit="this.querySelector('button').disabled=true;return true;">
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="resend_failed">
       <button class="btn btn-sm btn-primary" type="submit"
-        onclick="return confirm('<?= e(to_persian_digits(number_format($resendCount))) ?> پیامک ناموفق این ارسال، با همان خط و همان متن، به‌عنوان یک ارسال نظیر به نظیر جدید دوباره ارسال شود؟ هزینه‌ی آن مانند یک ارسال جدید از اعتبار کسر می‌شود.<?= $resendHistory ? ' توجه: ناموفق‌های این ارسال قبلاً هم دوباره ارسال شده‌اند.' : '' ?>');">ارسال مجدد ناموفق‌ها (<?= to_persian_digits(number_format($resendCount)) ?> پیامک)</button>
+        onclick="var u=this.form.querySelector('[name=include_uncertain]');return confirm('<?= e(to_persian_digits(number_format($resendCount))) ?> پیامک ناموفق این ارسال' + (u&&u.checked?' و <?= e(to_persian_digits(number_format($resendUncertain))) ?> پیامک با نتیجه‌ی نامشخص (ممکن است تکراری برسند)':'') + '، با همان خط و همان متن، به‌عنوان یک ارسال نظیر به نظیر جدید دوباره ارسال شود؟ هزینه‌ی آن مانند یک ارسال جدید از اعتبار کسر می‌شود.<?= $resendHistory ? ' توجه: ناموفق‌های این ارسال قبلاً هم دوباره ارسال شده‌اند.' : '' ?>');">ارسال مجدد ناموفق‌ها (<?= to_persian_digits(number_format($resendCount)) ?> پیامک)</button>
+      <?php if ($resendUncertain > 0 && is_admin()): ?>
+        <label class="hint" style="display:block;margin-top:6px"><input type="checkbox" name="include_uncertain" value="1">
+          <?= to_persian_digits(number_format($resendUncertain)) ?> پیامک با نتیجه‌ی نامشخص (پاسخ دیرهنگام یا ارسال نیمه‌کاره) هم ارسال شود — ممکن است به گیرنده رسیده باشند و تکراری برسند؛ پیش از تیک زدن، گزارش تأمین‌کننده را با برچسب <span class="ltr">ellsms:&lt;شناسه&gt;</span> بررسی کنید.</label>
+      <?php elseif ($resendUncertain > 0): ?>
+        <span class="hint" style="display:block;margin-top:6px"><?= to_persian_digits(number_format($resendUncertain)) ?> پیامک دیگر نتیجه‌ی نامشخص دارند و برای جلوگیری از پیامک تکراری دوباره ارسال نمی‌شوند.</span>
+      <?php endif; ?>
     </form>
+  <?php elseif ($resendUncertain > 0): ?>
+    <p class="hint"><?= to_persian_digits(number_format($resendUncertain)) ?> پیامک این ارسال نتیجه‌ی نامشخص دارند و برای جلوگیری از پیامک تکراری دوباره ارسال نمی‌شوند؛ در صورت نیاز با پشتیبانی تماس بگیرید.</p>
   <?php endif; ?>
   <?php if ($resendHistory): ?>
     <p class="hint">ارسال‌های مجدد ناموفق‌ها:

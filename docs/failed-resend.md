@@ -20,6 +20,16 @@ user stopped those on purpose):
 
 A row whose delivery is `delivered` is never resent.
 
+**Rows whose outcome is unknown are left out by default** (`FAILED_RESEND_UNCERTAIN_CODES`,
+`app/FailedResend.php`): a failed row whose error starts with `[SEND_UNCERTAIN]`, `[BackendTimeout]`,
+`[BackendUnavailable]` or `[BackendInvalidResponse]` may already be on the recipient's phone, and a
+provider without a duplicate check (PishgamRayan) would deliver it twice. The page says how many such
+rows the job has. Only a **platform admin** can include them, with the checkbox under the button
+(«… پیامک با نتیجه‌ی نامشخص … هم ارسال شود»), after checking the provider's own report — each request
+carries the tag `ellsms:<first>-<last>` bulk item id where the gateway sends `request_tag`
+(`docs/sms-gateway-connectors.md`). The audit line then says `(uncertain rows included)`. Definite
+failures (invalid number, blacklist, insufficient credit, …) are resent as before.
+
 PishgamRayan's status codes other than `10` are «ارسال‌شده» (`sent`), not failures
 (`docs/sms-gateway-connectors.md` §PishgamRayan), so its undelivered messages are not resent; only its
 send errors are.

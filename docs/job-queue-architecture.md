@@ -61,7 +61,51 @@ condition just checked — a genuine compare-and-swap, not a separate check-then
   **conditional `UPDATE`** (not a second `INSERT`, and deliberately not preceded by its own `SELECT
   ... FOR UPDATE`) attempts a reclaim — see "A note on lock-then-insert deadlocks" below.
 
+## No automatic resend for bulk items (at most once)
+
+A bulk item (`ellsms_bulk_items`) is handed to the provider **at most once**. Production showed why:
+a provider that timed out or whose worker overran its lease had usually accepted the message anyway,
+so the automatic retry and the lease-expiry reclaim re-sent ~20% of one line's messages in a month —
+the provider billed them twice and recipients got them twice, while the panel (correctly) counted
+each message once. Now (`app/backend.php`):
+
+- **No retry on a transport failure that may have reached the provider.** A timeout, a reset, an
+  HTTP 5xx or an unreadable answer fails the row at once — never `pending` again.
+- **The one safe retry: the request never reached the provider.** The connection could not be opened
+  (`gateway_curl_error_never_reached_provider()`: host/proxy not resolved, connection refused), the
+  provider answered **HTTP 429** (its per-second limit refused the request unprocessed — PishgamRayan
+  documents exactly this), or the line's pinned gateway is unavailable (no request made). The
+  transport marks such a result `not_sent`; only then does the row go back to `pending` with the usual
+  backoff (`JOB_MAX_ATTEMPTS`, `JOB_RETRY_BASE_SECONDS`), and no alert is raised.
+- **An expired lease is never reclaimed for sending.** `bulk_claim_items()` only claims `pending`
+  rows; `bulk_fail_expired_leases()` fails the job's `processing` rows whose lease ran out.
+- **A worker only sends rows it still holds.** `bulk_hold_claim()` runs right before every provider
+  request: it renews the lease of the rows still carrying this claim's token and drops the rest, so
+  a long pass (many small p2p requests) neither outlives its lease nor sends a row someone else
+  settled.
+- **A provider batch that throws** fails its rows at once (`bulk_fail_items_uncertain()`) instead of
+  leaving them for a reclaim.
+
+Every such row is `failed` with an **error code** at the start of its `error` text:
+`[SEND_UNCERTAIN]` (the worker lost the row mid-send: the provider may or may not have it) or the
+failure's class / the provider's own code (`[BackendTimeout]`, `[BackendUnavailable]`, …). Each
+failure raises an alert (`docs/alerting.md`): `bulk_send_failed` (the provider could not take a batch)
+or `bulk_send_uncertain`. Resending is an admin's deliberate choice — «ارسال مجدد ناموفق‌ها»
+(`docs/failed-resend.md`) — after checking the provider's own report. Metrics: `bulk.send_uncertain`,
+`bulk.send_failed_transport`, `bulk.claim_lost`.
+
+«ارسال مجدد ناموفق‌ها» leaves these uncertain rows out unless a platform admin ticks them in
+(`docs/failed-resend.md`), and every provider request can carry the tag `ellsms:<first>-<last>` bulk
+item id (`request_tag`) so the admin can check the provider's report first.
+
+The provider-side duplicate guard (`userSuppliedIds` / `idempotency_keys_array`,
+`docs/many-to-many-batching.md#at-least-once-delivery`) is still worth wiring for every provider that
+supports it: it also covers a resend an admin starts by hand.
+
 ## Lease model
+
+(For bulk items the reclaim described here is replaced by the rules above: an expired bulk-item lease
+is settled as `SEND_UNCERTAIN`, never claimed again.)
 
 Every claim stamps `claimed_by`, `claimed_at` (bulk items/schedules), and `lease_expires_at =
 NOW() + WORKER_JOB_LEASE_SECONDS` (default 300s). While the lease is valid, no other worker's claim
@@ -256,8 +300,9 @@ Claim exclusivity (Invariant B, proven under real concurrency by
 `tests/Integration/BulkItemConcurrencyTest.php`) guarantees **at most one worker dispatches a given
 item at a time**. It does **not** guarantee the underlying SMS is delivered exactly once end-to-end:
 if a worker crashes *after* the gateway has accepted/sent a message but *before* this process's own
-finalize `UPDATE` commits, the lease will eventually expire and another worker will reclaim and
-retry — the financial side stays exactly-once (the wallet's per-item/per-occurrence idempotency key
+finalize `UPDATE` commits, the lease will eventually expire and — for schedules and auto-reply —
+another worker will reclaim and retry (a bulk item is failed as `SEND_UNCERTAIN` instead, see «No
+automatic resend for bulk items» above) — the financial side stays exactly-once (the wallet's per-item/per-occurrence idempotency key
 makes a replayed commit a safe no-op), but the backend gateway itself has no idempotency key of its
 own in this integration, so a duplicate *SMS* could in principle be sent in that exact narrow
 window. This is the same honest boundary Phase 3 already documented for direct sends
@@ -279,7 +324,8 @@ doesn't support the idempotency key that would be required to.
   auto-reply log. Cheap indexed aggregates, safe on demand (deliberately not folded into `/health`
   — STEP 33 explicitly warns against an expensive queue scan there).
 - `make jobs-recover` — read-only list of rows whose lease has expired. Every one of these is
-  already self-healing (the next normal worker tick reclaims it automatically); this is for
+  already self-healing (the next normal worker tick reclaims it automatically — or, for a bulk item,
+fails it as `SEND_UNCERTAIN`); this is for
   visibility, not a required step.
 - `make jobs-recover-force` — also clears those expired leases immediately, so the very next tick
   reclaims them rather than waiting on worker timing. Never touches a row whose lease is still
