@@ -187,7 +187,7 @@ function webengage_dsn_status_for_state(string $state): array {
     return match ($state) {
         'delivered' => ['sms_sent', WEBENGAGE_CODE_SUCCESS],
         'expired'   => ['sms_failed', WEBENGAGE_CODE_EXPIRED],
-        'failed', 'rejected' => ['sms_failed', WEBENGAGE_CODE_NOT_DELIVERED],
+        'failed', 'rejected', 'undelivered' => ['sms_failed', WEBENGAGE_CODE_NOT_DELIVERED],
         default     => ['sms_sent', WEBENGAGE_CODE_SUCCESS],
     };
 }

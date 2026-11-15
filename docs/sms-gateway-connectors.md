@@ -289,12 +289,17 @@ Bounded by construction:
 - **Claiming** uses `delivery_checked_at` as its own lease — a row is claimable only if it has not
   been checked within the poll interval, and the claim restates that condition in its `WHERE`, making
   it a genuine compare-and-swap. Two workers cannot poll the same row.
-- **Monotonic by construction.** A terminal state (`delivered`, `failed`, `rejected`, `expired`) is
+- **Monotonic by construction.** A terminal state (`delivered`, `failed`, `rejected`, `expired`, `undelivered`) is
   never overwritten. Providers re-report and polls arrive out of order; a `delivered` row silently
   reverting to `sent` would make the delivery report untrustworthy in a way nobody could detect. The
   guard is enforced twice — in PHP and again in the `UPDATE`'s `WHERE`.
-- **An unmapped provider status becomes `unknown`, never `delivered`.** Reporting an undelivered
-  message as delivered is the one error here with real-world consequences.
+- **An unmapped provider status never becomes `delivered`.** Reporting an undelivered message as
+  delivered is the one error here with real-world consequences. On a gateway **with** a status mapping,
+  a code not in it is `failed` (final, refunded in full) and is logged as `gateway.status.unmapped_token`.
+  An empty code, or a gateway without a mapping, stays `unknown` (`docs/delivery-states.md`).
+- **`undelivered` is a final mapping target, stored as itself** (`2026_11_19_undelivered_state.sql`).
+  It means "did not reach the handset" kept apart from `failed`: polling stops, and the message stays
+  charged (not refunded). Map only codes the operator does not retry to it.
 - **`blacklisted` is a mapping target, stored as `rejected`.** A status mapping may send a provider
   token to `blacklisted` (the operator refused the recipient as blacklisted, e.g. `{"11": "blacklisted"}`).
   `gateway_status_record()` stores it as `rejected`, so it is terminal and billing, delivery refunds,

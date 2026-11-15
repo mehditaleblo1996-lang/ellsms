@@ -122,7 +122,7 @@ function gateway_status_poll_pass(): array {
              WHERE bi.status = 'sent'
                AND bi.gateway_id IS NOT NULL
                AND bi.provider_message_id IS NOT NULL
-               AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN ('delivered','failed','rejected','expired'))
+               AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN (" . GATEWAY_TERMINAL_STORED_SQL . "))
                AND (sc.poll_max_attempts = 0 OR bi.delivery_attempts < sc.poll_max_attempts)
                AND (sc.poll_max_age_seconds = 0
                     OR TIMESTAMPDIFF(SECOND, bi.created_at, NOW()) <= sc.poll_max_age_seconds)
@@ -141,7 +141,7 @@ function gateway_status_poll_pass(): array {
              WHERE ma.status = 'accepted'
                AND ma.gateway_id IS NOT NULL
                AND ma.provider_message_id IS NOT NULL
-               AND (ma.delivery_status IS NULL OR ma.delivery_status NOT IN ('delivered','failed','rejected','expired'))
+               AND (ma.delivery_status IS NULL OR ma.delivery_status NOT IN (" . GATEWAY_TERMINAL_STORED_SQL . "))
                AND (sc.poll_max_attempts = 0 OR ma.delivery_attempts < sc.poll_max_attempts)
                AND (sc.poll_max_age_seconds = 0
                     OR TIMESTAMPDIFF(SECOND, ma.attempted_at, NOW()) <= sc.poll_max_age_seconds)
@@ -353,6 +353,14 @@ function gateway_status_poll_group(array $connector, array $group, array $rows):
 
         $rawProviderStatus = $states['by_id'][$id]['status'];
         $canonical = gateway_status_map($status['statuses'], $rawProviderStatus);
+        if (gateway_status_is_unmapped($status['statuses'], $rawProviderStatus)) {
+            // Counted as failed (gateway_status_map()); logged so the admin can add the code to the mapping.
+            Logger::warning('gateway.status.unmapped_token', [
+                'gateway_id' => $connector['gateway_id'], 'source' => $row['source'], 'row_id' => (int)$row['id'],
+                'token' => gateway_status_provider_token($rawProviderStatus),
+            ]);
+            Metrics::increment('gateway_status_unmapped_token', 1, ['gateway' => $connector['gateway_code']]);
+        }
         $deliveredAt = gateway_status_delivered_at_value($status, $states['by_id'][$id], $canonical);
         if (gateway_status_record((string)$row['source'], (int)$row['id'], $row['delivery_status'], $canonical, $deliveredAt, $rawProviderStatus)) {
             $outcome['updated']++;
@@ -574,7 +582,7 @@ function gateway_status_record(string $source, int $rowId, ?string $current, str
         "UPDATE {$table}
          SET delivery_status = ?, delivered_at = COALESCE(?, delivered_at), provider_status = COALESCE(?, provider_status)
          WHERE id = ?
-           AND (delivery_status IS NULL OR delivery_status NOT IN ('delivered','failed','rejected','expired'))"
+           AND (delivery_status IS NULL OR delivery_status NOT IN (" . GATEWAY_TERMINAL_STORED_SQL . "))"
     );
     $update->execute([$next, $deliveredAt, gateway_status_provider_token($providerStatus), $rowId]);
     if ($update->rowCount() === 0) {
@@ -622,7 +630,7 @@ function gateway_status_provider_token(?string $providerStatus): ?string {
 }
 /**
  * Reopens rows a gateway's OLD status mapping closed: a row whose delivery_status is final
- * (failed/rejected/expired) while its stored provider token now maps to a non-final state goes back
+ * (failed/rejected/expired/undelivered) while its stored provider token now maps to a non-final state goes back
  * to that state, so the poller checks it again (within poll_max_age_seconds) and a later "delivered"
  * can be recorded. Used once after a mapping change — 2026_11_16_pishgamrayan_status_sent.sql,
  * cron/gateway-status-reopen.php. Walks each table by primary key in $chunk-sized ranges, so no
@@ -658,7 +666,7 @@ function gateway_status_reopen(int $gatewayId, bool $apply, int $chunk = 5000): 
             foreach ($byState as $state => $tokens) {
                 $in = implode(',', array_fill(0, count($tokens), '?'));
                 $where = "id BETWEEN ? AND ? AND gateway_id = ? AND {$sentSql}
-                          AND delivery_status IN ('failed','rejected','expired') AND LOWER(provider_status) IN ({$in})";
+                          AND delivery_status IN ('failed','rejected','expired','undelivered') AND LOWER(provider_status) IN ({$in})";
                 $params = array_merge([$from, $from + $chunk - 1, $gatewayId], $tokens);
                 if ($apply) {
                     $st = $db->prepare("UPDATE {$table} SET delivery_status = ? WHERE {$where}");

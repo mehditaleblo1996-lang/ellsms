@@ -31,7 +31,7 @@ function failed_resend_max_items(): int {
 function failed_resend_rows_sql(bool $withDelivery, bool $includeUncertain = false): string {
     $failed = "bi.status = 'failed'";
     if ($withDelivery) {
-        $failed = "(bi.status = 'failed' OR (bi.status <> 'cancelled' AND bi.delivery_status IN ('failed','rejected','expired')))";
+        $failed = "(bi.status = 'failed' OR (bi.status <> 'cancelled' AND bi.delivery_status IN ('failed','rejected','expired','undelivered')))";
     }
     $sql = "{$failed} AND COALESCE(bi.delivery_status, '') <> 'delivered'";
     return $includeUncertain ? $sql : $sql . ' AND NOT ' . failed_resend_uncertain_sql();

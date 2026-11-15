@@ -196,8 +196,8 @@ function report_export_gateway_filter_sql(array $filters): array {
     }
     $statusSql = (report_export_show_delivery($filters) ? [
         'delivered' => "a.delivery_status = 'delivered'",
-        'failed'    => "a.delivery_status IN ('failed','rejected','expired')",
-        'sent'      => "(a.delivery_status IS NULL OR a.delivery_status NOT IN ('delivered','failed','rejected','expired'))",
+        'failed'    => "a.delivery_status IN ('failed','rejected','expired','undelivered')",
+        'sent'      => "(a.delivery_status IS NULL OR a.delivery_status NOT IN ('delivered','failed','rejected','expired','undelivered'))",
         'pending'   => '1 = 0', // an accepted attempt has left; it is never pending
     ] : [
         'failed'    => '1 = 0', // only accepted attempts are exported; without delivery states they are all «sent»
@@ -233,8 +233,8 @@ function report_export_bulk_filter_sql(array $filters): array {
     }
     $statusSql = (report_export_show_delivery($filters) ? [
         'delivered' => "bi.delivery_status = 'delivered'",
-        'failed'    => "(bi.status = 'failed' OR bi.delivery_status IN ('failed','rejected','expired'))",
-        'sent'      => "(bi.status = 'sent' AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN ('delivered','failed','rejected','expired')))",
+        'failed'    => "(bi.status = 'failed' OR bi.delivery_status IN ('failed','rejected','expired','undelivered'))",
+        'sent'      => "(bi.status = 'sent' AND (bi.delivery_status IS NULL OR bi.delivery_status NOT IN ('delivered','failed','rejected','expired','undelivered')))",
         'pending'   => "bi.status IN ('pending','processing')",
     ] : [
         'failed'    => "bi.status IN ('failed','cancelled')",

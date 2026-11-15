@@ -49,7 +49,7 @@ function status_worker_pending(PDO $db, string $table, string $timeColumn): arra
             FROM {$table}
             WHERE gateway_id IS NOT NULL
               AND provider_message_id IS NOT NULL
-              AND (delivery_status IS NULL OR delivery_status NOT IN ('delivered','failed','rejected','expired'))";
+              AND (delivery_status IS NULL OR delivery_status NOT IN (" . GATEWAY_TERMINAL_STORED_SQL . "))";
     $row = $db->query($sql)->fetch() ?: [];
     $oldest = $row['oldest'] ?? null;
     return [

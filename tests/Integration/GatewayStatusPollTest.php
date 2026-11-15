@@ -72,12 +72,13 @@ final class GatewayStatusPollTest extends IntegrationTestCase
 
     /* ================= pure decisions ================= */
 
-    public function testAnUnmappedProviderStatusBecomesUnknownAndNeverDelivered(): void {
+    public function testAnUnmappedProviderStatusBecomesFailedAndNeverDelivered(): void {
         $map = gateway_status_mapping_compile(['DELIVRD' => 'delivered', 'UNDELIV' => 'failed']);
 
         $this->assertSame('delivered', gateway_status_map($map, 'DELIVRD'));
         $this->assertSame('delivered', gateway_status_map($map, 'delivrd'), 'provider casing must not matter');
-        $this->assertSame('unknown', gateway_status_map($map, 'SOMETHING_NEW'));
+        $this->assertSame('failed', gateway_status_map($map, 'SOMETHING_NEW'), 'a gateway with a mapping: anything else is failed');
+        $this->assertSame('unknown', gateway_status_map([], 'SOMETHING_NEW'), 'a gateway without a mapping: unknown');
         $this->assertSame('unknown', gateway_status_map($map, null));
         $this->assertSame('unknown', gateway_status_map($map, ''));
     }

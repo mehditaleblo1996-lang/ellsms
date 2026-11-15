@@ -193,35 +193,31 @@ final class GatewayStatusBatchTest extends IntegrationTestCase
         $this->assertSame('delivered', $this->attempt($rowC)['delivery_status']);
     }
 
-    public function testAnUnmappedProviderStateBecomesUnknownNeverDelivered(): void {
+    public function testAnUnmappedProviderStateBecomesFailedNeverDelivered(): void {
         $gatewayId = $this->makeBatchGateway('/rest/messageState/unmapped');
         $rowA = $this->makeAttempt($gatewayId, self::ID_A);
 
         gateway_status_poll_pass();
 
-        // The provider sent state 97, which the connector maps to nothing. It resolves to `unknown` —
-        // never to `delivered`, which is the one wrong guess with real-world consequences.
+        // The provider sent state 97, which the connector's (non-empty) mapping does not list. The admin
+        // listed every code that means something else, so it is `failed` — final and refunded — never
+        // `delivered` (db/migrations/2026_11_19_undelivered_state.sql).
         $connector = gateway_compiled($gatewayId);
-        $this->assertSame('unknown', gateway_status_map($connector['status']['statuses'], '97'));
+        $this->assertSame('failed', gateway_status_map($connector['status']['statuses'], '97'));
 
-        // And `unknown` does not overwrite the state already known: "the provider said something we
-        // do not understand" is strictly less information than "accepted for delivery", so the row
-        // keeps `sent` (gateway_status_may_transition()). It is emphatically not upgraded.
         $row = $this->attempt($rowA);
-        $this->assertSame('sent', $row['delivery_status']);
-        $this->assertSame(1, (int)$row['delivery_attempts'], 'the poll still counted, so it stays bounded');
+        $this->assertSame('failed', $row['delivery_status']);
+        $this->assertSame('97', $row['provider_status'], 'the raw code is kept for the admin');
     }
 
-    public function testAnUnmappedStateDoesFillAnEmptyDeliveryState(): void {
-        // Where there is nothing to lose, `unknown` IS recorded — that is what makes the gap visible
-        // to an operator rather than leaving a row looking un-polled.
+    public function testAnUnmappedStateFillsAnEmptyDeliveryStateAsFailed(): void {
         $gatewayId = $this->makeBatchGateway('/rest/messageState/unmapped');
         $rowA = $this->makeAttempt($gatewayId, self::ID_A);
         db()->prepare('UPDATE ellsms_message_attempts SET delivery_status = NULL WHERE id = ?')->execute([$rowA]);
 
         gateway_status_poll_pass();
 
-        $this->assertSame('unknown', $this->attempt($rowA)['delivery_status']);
+        $this->assertSame('failed', $this->attempt($rowA)['delivery_status']);
     }
 
     public function testAMissingResponseItemLeavesItsRowUntouchedAndCostsAnAttempt(): void {

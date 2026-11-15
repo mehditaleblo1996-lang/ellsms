@@ -387,7 +387,7 @@ Recipient `state`:
 | state | meaning |
 |---|---|
 | `delivered` | the operator reported it delivered |
-| `undelivered` | the operator reported failed / rejected / expired |
+| `undelivered` | the operator reported failed / rejected / expired / undelivered (`docs/delivery-states.md`) |
 | `sent` | handed to the operator, final report not in yet |
 | `failed` | never handed to the operator |
 | `queued` | not sent yet (a bulk item still in the queue, an OTP still sending) |

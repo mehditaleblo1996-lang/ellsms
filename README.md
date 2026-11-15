@@ -209,6 +209,18 @@ percentage that applies is the one in force when the message was sent. The sched
 `delivery-refunds` catches anything the status path missed. See
 [`docs/delivery-based-billing.md`](docs/delivery-based-billing.md).
 
+## Delivery states, `undelivered` and free failed messages
+
+A gateway's status mapping (Platform Admin → «درگاه‌های پیامک» → status connector → «نگاشت وضعیت
+تحویل») can now map an operator code to **`undelivered`** («تحویل داده‌نشده»). It is a final state
+kept apart from `failed`: polling stops, and the message stays charged. A message sent after the
+migration whose final state is **`failed` / `rejected` / `expired` is refunded in full for every
+customer**, with or without delivery-based billing. On a gateway that has a status mapping, a code
+**not in it counts as `failed`**, and the raw code is logged (`gateway.status.unmapped_token`) and kept
+for the admin. Messages sent before the migration keep the old rules. Migration
+`db/migrations/2026_11_19_undelivered_state.sql`; no API route or setting changes (the API already
+reports these as `undelivered`). See [`docs/delivery-states.md`](docs/delivery-states.md).
+
 ## Status report (گزارش وضعیت‌ها) and SMS parts
 
 **«گزارش و دریافت» → «گزارش وضعیت‌ها»** (`/messages/reports/status`, `public/status-report.php`) shows, per
@@ -626,6 +638,7 @@ updated in the same change** — see `CLAUDE.md`.
 [wallet-architecture](docs/wallet-architecture.md) ·
 [financial-log](docs/financial-log.md) ·
 [delivery-based-billing](docs/delivery-based-billing.md) ·
+[delivery-states](docs/delivery-states.md) ·
 [ai-billing](docs/ai-billing.md) ·
 [manual-payments](docs/manual-payments.md) ·
 [financial-commerce](docs/financial-commerce.md) ·

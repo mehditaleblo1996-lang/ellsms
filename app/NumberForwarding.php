@@ -37,7 +37,7 @@ const NUMBER_FORWARD_VARS = [
 
 /** Vesal's DestinationStatus ordinals — the ${status} a Vesal customer's code already understands. */
 const NUMBER_FORWARD_VESAL_STATUS = [
-    'accepted' => 0, 'queued' => 0, 'sent' => 1, 'delivered' => 2, 'failed' => 3,
+    'accepted' => 0, 'queued' => 0, 'sent' => 1, 'delivered' => 2, 'failed' => 3, 'undelivered' => 3,
     'unknown' => 4, 'expired' => 7, 'rejected' => 8,
 ];
 

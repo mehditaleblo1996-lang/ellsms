@@ -122,7 +122,7 @@ const GATEWAY_ERROR_CLASSES = [
  * (app/Reports/OperatorReport.php, operator_report_refine_status()).
  */
 const GATEWAY_DELIVERY_STATES = [
-    'accepted', 'queued', 'sent', 'delivered', 'failed', 'rejected', 'expired', 'unknown', 'blacklisted',
+    'accepted', 'queued', 'sent', 'delivered', 'failed', 'rejected', 'expired', 'unknown', 'blacklisted', 'undelivered',
 ];
 
 /** Pure: the state actually written to delivery_status for a canonical (mapped) state. */
@@ -131,7 +131,17 @@ function gateway_state_storable(string $state): string {
 }
 
 /** States from which no further polling is worthwhile — the message's fate is settled. */
-const GATEWAY_TERMINAL_STATES = ['delivered', 'failed', 'rejected', 'expired', 'blacklisted'];
+const GATEWAY_TERMINAL_STATES = ['delivered', 'failed', 'rejected', 'expired', 'blacklisted', 'undelivered'];
+
+/**
+ * Final states as they are STORED in delivery_status (no `blacklisted`, which is stored as `rejected`),
+ * as an SQL list. Every query that asks "is this row's fate settled?" uses this one list.
+ *
+ * `undelivered` (db/migrations/2026_11_19_undelivered_state.sql) is the operator's "did not reach the
+ * handset" as its own final state: charged, never refunded, shown as not delivered. `failed`, `rejected`
+ * and `expired` are the ones refunded (app/DeliveryRefunds.php).
+ */
+const GATEWAY_TERMINAL_STORED_SQL = "'delivered','failed','rejected','expired','undelivered'";
 
 function gateway_state_is_terminal(string $state): bool {
     return in_array($state, GATEWAY_TERMINAL_STATES, true);
@@ -1127,15 +1137,32 @@ function gateway_status_mapping_compile(?array $mapping): array {
 /**
  * Maps a provider status token onto a canonical state.
  *
- * An unmapped token becomes `unknown` and NEVER `delivered`: reporting an undelivered message as
- * delivered is the one error here with real-world consequences, so the default leans the safe way and
- * the operator sees the gap instead.
+ * An unmapped token NEVER becomes `delivered`: reporting an undelivered message as delivered is the one
+ * error here with real-world consequences.
+ *
+ *   - no token at all (empty answer)            → `unknown`, polling goes on;
+ *   - the gateway has no status mapping         → `unknown` (nothing to compare against);
+ *   - the gateway HAS a mapping, token not in it → `failed`: the admin listed every code that means
+ *     something else, so anything outside the list is a failure — final, and refunded
+ *     (app/DeliveryRefunds.php). The raw token is kept in provider_status and logged
+ *     (gateway.status.unmapped_token) so the admin can add it to the mapping.
  */
 function gateway_status_map(array $compiledMap, ?string $providerStatus): string {
-    if ($providerStatus === null || $providerStatus === '') {
+    $token = $providerStatus === null ? '' : trim($providerStatus);
+    if ($token === '') {
         return 'unknown';
     }
-    return $compiledMap[mb_strtolower($providerStatus)] ?? 'unknown';
+    $key = mb_strtolower($token);
+    if (isset($compiledMap[$key])) {
+        return $compiledMap[$key];
+    }
+    return $compiledMap === [] ? 'unknown' : 'failed';
+}
+
+/** Whether gateway_status_map() fell through to its unmapped-token default for this token. */
+function gateway_status_is_unmapped(array $compiledMap, ?string $providerStatus): bool {
+    $token = $providerStatus === null ? '' : trim($providerStatus);
+    return $token !== '' && $compiledMap !== [] && !isset($compiledMap[mb_strtolower($token)]);
 }
 
 /**
