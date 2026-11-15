@@ -74,7 +74,7 @@ function bulk_reconcile_provider_report(int $jobId, string $csvPath, bool $apply
     if ($fh === false) {
         throw new RuntimeException("cannot read {$csvPath}");
     }
-    $header = fgetcsv($fh);
+    $header = fgetcsv($fh, null, ",", "\"", "\\");
     if ($header === false) {
         throw new RuntimeException('empty CSV');
     }
@@ -89,7 +89,7 @@ function bulk_reconcile_provider_report(int $jobId, string $csvPath, bool $apply
     $matches = [];   // item id => [provider id, delivery status, provider code]
     $unknownStatus = [];
     $reportRows = 0;
-    while (($row = fgetcsv($fh)) !== false) {
+    while (($row = fgetcsv($fh, null, ",", "\"", "\\")) !== false) {
         $tag = (string)($row[$col['UserTag']] ?? '');
         if (!preg_match('/^ellsms:(\d+)(?:-(\d+))?$/', $tag, $m)) {
             continue;
