@@ -86,6 +86,16 @@ each message once. Now (`app/backend.php`):
 - **A provider batch that throws** fails its rows at once (`bulk_fail_items_uncertain()`) instead of
   leaving them for a reclaim.
 
+- **Settling a provider batch never loses the provider's answer.** Several workers settling batches
+  of the same account at once deadlocked on the rows they share (job counters, reservation, wallet
+  account) — in production six workers failed 1,257 accepted rows of one job as `[SEND_UNCERTAIN]`.
+  Settlement is now serialized per account (`bulk_settlement_lock()`, MySQL named lock
+  `ellsms_bulk_settle_u<user id>`, held for the milliseconds the settlement takes), a deadlock or lock
+  wait timeout is retried (`BULK_SETTLE_ATTEMPTS` = 5, `db_is_retryable_lock_error()`), then the
+  per-item path runs, and if even that fails `bulk_record_accepted_unsettled()` records the accepted
+  rows as sent with their provider ids (uncharged — the job's billing check flags them and the alert
+  `bulk_settlement_failed` goes out) and the refused ones as failed with the provider's code.
+
 Every such row is `failed` with an **error code** at the start of its `error` text:
 `[SEND_UNCERTAIN]` (the worker lost the row mid-send: the provider may or may not have it) or the
 failure's class / the provider's own code (`[BackendTimeout]`, `[BackendUnavailable]`, …). Each
