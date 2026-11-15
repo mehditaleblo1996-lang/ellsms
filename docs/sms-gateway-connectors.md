@@ -385,6 +385,15 @@ ids, a negative entry fails only its own recipient) and `StatusWithTime` (correl
 48 h). The migration is inert until a route or number points at the gateway, and its `Authorization`
 header ships as a test placeholder to be replaced in the admin panel.
 
+**PishgamRayan and duplicate sends (WebAPI guide v6.1, 1405/03).** `Send` takes only `messageBodies`,
+`recipientNumbers`, `senderNumber` and an optional `userTag` (≤ 40 characters, a label for grouping
+messages in their panel — not checked for uniqueness). The API has **no client-side message id and no
+duplicate check**, so a repeated request is sent and billed again; `userSuppliedIds`/`duplicate_values`
+(Vesal) do not apply here. The only protection is ELLSMS sending each bulk row at most once
+(`docs/job-queue-architecture.md` «No automatic resend for bulk items»). HTTP `429` is the per-second
+send limit: the request was not processed, so the bulk worker retries it; `500` and timeouts are never
+retried. `Status`/`StatusWithTime` read the last 48 h (30 days only between 01:00 and 05:00).
+
 **PishgamRayan status codes (`2026_11_16_pishgamrayan_status_sent.sql`).** Only `10` («رسیده به گوشی»)
 is final: it is `delivered`. Every other code — `-1` وجود ندارد, `0` در انتظار ارسال, `1` ارسال به
 مخابرات, `2` نرسیده به مخابرات, `3` لیست سیاه, `4` نرسیده به گوشی, `5` رسیده به گوشی جزئی, `13` خطا در

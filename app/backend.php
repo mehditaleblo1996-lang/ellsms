@@ -133,6 +133,9 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         // the provider's own code per recipient where it gave one, else the classified error.
         'provider_error_codes'   => $result['rejected'] ?? [],
         'error_class'            => $result['provider_error_code'] ?? $result['error_class'] ?? null,
+        // True only when no request reached the provider (connection refused, HTTP 429, pinned gateway
+        // down): nothing can have been sent, so the bulk worker may safely try again.
+        'not_sent'               => !empty($result['not_sent']),
         'attempt_ids'            => [],
     ];
 
@@ -2328,9 +2331,19 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
         $db->prepare('UPDATE ellsms_bulk_items SET provider_audit_id = ? WHERE id = ?')->execute([$auditId, $item['id']]);
     }
 
-    // No automatic retry, ever (see BULK_SEND_UNCERTAIN_CODE): a timeout or an unreadable answer may
-    // still have been accepted and billed by the provider, so the row fails with its error code and
-    // bulk_send_group() raises the alert. An admin resends deliberately.
+    // The ONE safe retry: no request reached the provider at all (connection refused, HTTP 429 rate
+    // limit, pinned gateway down) — nothing can have been sent, so trying again cannot duplicate it.
+    if ($retryable && !empty($gatewayMeta['not_sent']) && $attemptCount < job_max_attempts()) {
+        $delay = job_retry_backoff_seconds($attemptCount);
+        $db->prepare("UPDATE ellsms_bulk_items SET status='pending', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE id=?")
+           ->execute(['در حال تلاش مجدد (درخواست به تأمین‌کننده نرسید): ' . $info, $delay, $item['id']]);
+        Logger::warning('job.retry_scheduled', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'attempt' => $attemptCount, 'delay_seconds' => $delay, 'reason' => 'not_sent']);
+        return false;
+    }
+
+    // Otherwise no automatic retry, ever (see BULK_SEND_UNCERTAIN_CODE): a timeout, a 5xx or an
+    // unreadable answer may still have been accepted and billed by the provider, so the row fails with
+    // its error code and bulk_send_group() raises the alert. An admin resends deliberately.
     $code = (string)($gatewayMeta['provider_error_codes'][$destination] ?? $gatewayMeta['error_class'] ?? '');
     if ($code !== '' && !str_starts_with($info, '[')) {
         $info = '[' . mb_substr($code, 0, 60) . '] ' . $info;
@@ -2607,7 +2620,7 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
 
     // The provider could not take the batch (timeout, unreachable, unreadable answer): those rows
     // failed with their code instead of being retried — say so (Telegram/email alert).
-    if (!$ok && $retryable) {
+    if (!$ok && $retryable && empty($gatewayMeta['not_sent'])) {
         Metrics::increment('bulk.send_failed_transport', count($items));
         bulk_send_failure_alert('bulk_send_failed', (int)$items[0]['job_id'], count($items), (string)($gatewayMeta['error_class'] ?? 'transport'));
     }

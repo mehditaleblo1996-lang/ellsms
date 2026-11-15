@@ -69,10 +69,14 @@ so the automatic retry and the lease-expiry reclaim re-sent ~20% of one line's m
 the provider billed them twice and recipients got them twice, while the panel (correctly) counted
 each message once. Now (`app/backend.php`):
 
-- **No retry on a transport failure.** A timeout, unreachable provider or unreadable answer
-  (`BackendError::isRetryable()`) fails the row at once — never `pending` again with
-  `next_attempt_at`. `JOB_MAX_ATTEMPTS`/backoff no longer apply to bulk items (schedules and
-  auto-reply still use them).
+- **No retry on a transport failure that may have reached the provider.** A timeout, a reset, an
+  HTTP 5xx or an unreadable answer fails the row at once — never `pending` again.
+- **The one safe retry: the request never reached the provider.** The connection could not be opened
+  (`gateway_curl_error_never_reached_provider()`: host/proxy not resolved, connection refused), the
+  provider answered **HTTP 429** (its per-second limit refused the request unprocessed — PishgamRayan
+  documents exactly this), or the line's pinned gateway is unavailable (no request made). The
+  transport marks such a result `not_sent`; only then does the row go back to `pending` with the usual
+  backoff (`JOB_MAX_ATTEMPTS`, `JOB_RETRY_BASE_SECONDS`), and no alert is raised.
 - **An expired lease is never reclaimed for sending.** `bulk_claim_items()` only claims `pending`
   rows; `bulk_fail_expired_leases()` fails the job's `processing` rows whose lease ran out.
 - **A worker only sends rows it still holds.** `bulk_hold_claim()` runs right before every provider
