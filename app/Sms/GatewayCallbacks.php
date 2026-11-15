@@ -292,11 +292,15 @@ function sms_callback_receive_mo(array $params, ?int $now = null): array {
     return ['http' => 200, 'body' => ['ok' => true, 'id' => $id, 'duplicate' => $id === null]];
 }
 
-/** Canonical state for a pushed provider token: the gateway's own mapping first, then the defaults. */
+/**
+ * Canonical state for a pushed provider token: the gateway's own mapping first, then the defaults.
+ * A token neither knows is `failed` when the gateway has a status mapping (the admin listed every code
+ * that means something else — gateway_status_map()), `unknown` when it has none.
+ */
 function sms_callback_status_canonical(?array $connector, string $token): string {
     $map = is_array($connector['status']['statuses'] ?? null) ? $connector['status']['statuses'] : [];
     $key = mb_strtolower(trim($token));
-    return $map[$key] ?? SMS_CALLBACK_DEFAULT_STATUSES[$key] ?? 'unknown';
+    return $map[$key] ?? SMS_CALLBACK_DEFAULT_STATUSES[$key] ?? ($map === [] || $key === '' ? 'unknown' : 'failed');
 }
 
 /** A provider delivery time as UTC 'Y-m-d H:i:s' (what delivered_at holds); zone-less = Tehran time. */
@@ -353,6 +357,14 @@ function sms_callback_receive_dlr(array $params, ?int $now = null): array {
 
     $connector = gateway_compiled((int)$rows[0]['gateway_id']);
     $canonical = sms_callback_status_canonical($connector, $token);
+    $tokenKey = mb_strtolower($token);
+    if (!isset(SMS_CALLBACK_DEFAULT_STATUSES[$tokenKey])
+        && gateway_status_is_unmapped(is_array($connector['status']['statuses'] ?? null) ? $connector['status']['statuses'] : [], $token)) {
+        // Counted as failed; logged so the admin can add the code to the gateway's status mapping.
+        Logger::warning('gateway.status.unmapped_token', [
+            'gateway_id' => (int)$rows[0]['gateway_id'], 'token' => gateway_status_provider_token($token), 'via' => 'callback',
+        ]);
+    }
     $deliveredAt = $canonical === 'delivered'
         ? sms_callback_delivered_at(sms_callback_param($params, SMS_CALLBACK_DLR_TIME_KEYS), $now)
         : null;

@@ -811,7 +811,7 @@ function remote_db_stats(int $connectionId, ?string $since = null): array {
             SUM(bi.status = 'sent') AS sent,
             SUM(bi.status IN ('failed','cancelled')) AS send_failed,
             SUM(bi.delivery_status = 'delivered') AS delivered,
-            SUM(bi.delivery_status IN ('failed','rejected','expired')) AS not_delivered
+            SUM(bi.delivery_status IN ('failed','rejected','expired','undelivered')) AS not_delivered
            FROM ellsms_remote_db_rows r
            LEFT JOIN ellsms_bulk_items bi ON bi.id = r.bulk_item_id
           WHERE r.connection_id = ? AND r.created_at >= ?"

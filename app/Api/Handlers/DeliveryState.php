@@ -50,7 +50,7 @@ function api_message_recipient_state(?string $attemptStatus, ?string $deliverySt
     if ($attemptStatus === 'failed') return 'failed';
     return match ($deliveryStatus) {
         'delivered'                        => 'delivered',
-        'failed', 'rejected', 'expired'    => 'undelivered',
+        'failed', 'rejected', 'expired', 'undelivered' => 'undelivered',
         'accepted', 'queued', 'sent'       => 'sent',
         'unknown'                          => 'unknown',
         default                            => 'not_available',
@@ -77,7 +77,7 @@ function api_bulk_state_condition(string $state): ?string {
         'cancelled'     => "bi.status = 'cancelled'",
         'failed'        => "bi.status = 'failed'",
         'delivered'     => "bi.status = 'sent' AND bi.delivery_status = 'delivered'",
-        'undelivered'   => "bi.status = 'sent' AND bi.delivery_status IN ('failed','rejected','expired')",
+        'undelivered'   => "bi.status = 'sent' AND bi.delivery_status IN ('failed','rejected','expired','undelivered')",
         'sent'          => "bi.status = 'sent' AND bi.delivery_status IN ('accepted','queued','sent')",
         'unknown'       => "bi.status = 'sent' AND bi.delivery_status = 'unknown'",
         'not_available' => "bi.status = 'sent' AND bi.delivery_status IS NULL",

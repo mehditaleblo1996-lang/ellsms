@@ -335,7 +335,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
     $encodingSql = static fn(string $col): string =>
         "CASE WHEN {$col} IS NULL OR {$col} = '' THEN 'na' WHEN CHAR_LENGTH({$col}) <> LENGTH({$col}) THEN 'fa' ELSE 'en' END";
     $deliverySql = static fn(string $col): string =>
-        "CASE WHEN {$col} = 'delivered' THEN 'delivered' WHEN {$col} = 'failed' THEN 'undelivered'
+        "CASE WHEN {$col} = 'delivered' THEN 'delivered' WHEN {$col} IN ('failed','undelivered') THEN 'undelivered'
               WHEN {$col} = 'expired' THEN 'expired' WHEN {$col} = 'rejected' THEN 'rejected'
               WHEN {$col} = 'unknown' THEN 'unknown' ELSE 'sent' END";
     $memberIn = static function (string $col, array &$params) use ($scope): string {

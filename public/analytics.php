@@ -74,7 +74,7 @@ if (lazy_part_begin('traffic')) {
         // Pricing tables not migrated yet: detect_operator() falls back to its built-in map.
     }
 
-    $undelivered = "'failed','rejected','expired'";
+    $undelivered = "'failed','rejected','expired','undelivered'";
     // Rows written before the report columns existed have no sender line or text (0 parts).
     $hasReportColumns = backend_message_attempts_have_report_columns();
     $attemptOriginator = $hasReportColumns ? 'a.originator' : "''";

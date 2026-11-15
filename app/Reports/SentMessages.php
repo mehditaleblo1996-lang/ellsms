@@ -31,7 +31,7 @@ require_once __DIR__ . '/MessageDetail.php';
 const SENT_REPORT_SOURCES = ['bulk' => 'B', 'attempt' => 'D', 'legacy' => 'L'];
 /** Tie-break order of the sources inside one second: higher first (part of the keyset cursor). */
 const SENT_REPORT_SOURCE_RANK = ['bulk' => 3, 'attempt' => 2, 'legacy' => 1];
-const SENT_REPORT_UNDELIVERED = ['failed', 'rejected', 'expired'];
+const SENT_REPORT_UNDELIVERED = ['failed', 'rejected', 'expired', 'undelivered'];
 const SENT_REPORT_PER_PAGE = [25, 50, 100];
 /** Rows a page shows unless the viewer picks another «تعداد در صفحه». */
 const SENT_REPORT_DEFAULT_PER_PAGE = 100;

@@ -168,7 +168,7 @@ $stuck = (int)$db->query(
     "SELECT COUNT(*) FROM ellsms_bulk_items
      WHERE gateway_id IS NOT NULL AND status = 'sent'
        AND provider_message_id IS NOT NULL
-       AND (delivery_status IS NULL OR delivery_status NOT IN ('delivered','failed','rejected','expired'))
+       AND (delivery_status IS NULL OR delivery_status NOT IN (" . GATEWAY_TERMINAL_STORED_SQL . "))
        AND created_at < DATE_SUB(NOW(), INTERVAL 2 DAY)"
 )->fetchColumn();
 gateway_report($stuck > 0, false, $stuck === 0

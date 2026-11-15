@@ -8,6 +8,12 @@
  * as an append-only `delivery_refund` ledger credit. A message with no final report is never
  * refunded — "we never heard back" is not proof it was not delivered.
  *
+ * FAILED MESSAGES ARE FREE (db/migrations/2026_11_19_undelivered_state.sql). A message SENT at or after
+ * the `delivery_failed_free_since` setting whose final state is failed / rejected / expired is refunded
+ * 100% for EVERY customer, with or without delivery-based billing (refund row period_id 0). The final
+ * state `undelivered` («تحویل داده‌نشده») is never refunded. Messages sent before the cutoff keep the
+ * rule above, so nothing already sent changes.
+ *
  * WHICH PERCENTAGE. The one in force when the message was SENT (ellsms_delivery_billing_periods),
  * not when its report arrives. Reports arrive minutes or hours later; turning the service off or
  * changing the percentage in between must not change what a message already in flight was sold as.
@@ -31,6 +37,14 @@ declare(strict_types=1);
 /** Final delivery states that count as "not delivered" for a refund. */
 const DELIVERY_REFUND_STATES = ['failed', 'rejected', 'expired'];
 
+/**
+ * Setting written once by db/migrations/2026_11_19_undelivered_state.sql: messages SENT at or after
+ * this moment are refunded IN FULL when their final state is failed / rejected / expired, for every
+ * customer — delivery-based billing or not. Earlier messages keep the old rule. `undelivered` is never
+ * refunded (not in DELIVERY_REFUND_STATES).
+ */
+const DELIVERY_FAILED_FREE_SETTING = 'delivery_failed_free_since';
+
 /** Wallet ledger type of a delivery refund credit. */
 const DELIVERY_REFUND_LEDGER_TYPE = 'delivery_refund';
 
@@ -49,6 +63,34 @@ function delivery_billing_available(?bool $set = null): bool {
         }
     }
     return $available;
+}
+
+/**
+ * The «failed messages are free» cutoff ('Y-m-d H:i:s', database clock), or null before the migration
+ * ran. Read once per process. $set overrides it (tests): '' = no cutoff (the old rule only),
+ * 'reload' = read the setting again.
+ */
+function delivery_failed_free_since(?string $set = null): ?string {
+    if ($set === 'reload') {
+        unset($GLOBALS['__delivery_failed_free_since']);
+    } elseif ($set !== null) {
+        $GLOBALS['__delivery_failed_free_since'] = $set === '' ? null : $set;
+    }
+    if (!array_key_exists('__delivery_failed_free_since', $GLOBALS)) {
+        try {
+            $value = setting_fresh(DELIVERY_FAILED_FREE_SETTING);
+        } catch (PDOException) {
+            $value = null;
+        }
+        $GLOBALS['__delivery_failed_free_since'] =
+            $value !== null && preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value) === 1 ? $value : null;
+    }
+    return $GLOBALS['__delivery_failed_free_since'];
+}
+
+/** Pure: whether a message sent at $sentAt falls under «failed messages are free» (cutoff $since). */
+function delivery_failed_is_free(?string $since, string $sentAt): bool {
+    return $since !== null && $sentAt !== '' && strcmp($sentAt, $since) >= 0;
 }
 
 /** How far back the sweep looks for unrefunded reports, in days. */
@@ -326,9 +368,15 @@ function delivery_refund_apply(string $source, int $rowId): array {
     if (!$row['sendable'] || !in_array($row['delivery_status'], DELIVERY_REFUND_STATES, true)) {
         return ['ok' => false, 'reason' => 'not_final', 'amount' => 0];
     }
-    $period = delivery_billing_period_at($db, $row['user_id'], $row['sent_at']);
-    if ($period === null) {
-        return ['ok' => false, 'reason' => 'not_enabled', 'amount' => 0];
+    // «Failed messages are free»: a message sent after the cutoff is refunded in full for everyone,
+    // with no delivery-billing period behind it (period_id 0). Before the cutoff, the old rule.
+    if (delivery_failed_is_free(delivery_failed_free_since(), $row['sent_at'])) {
+        $period = ['id' => 0, 'refund_percent' => 100];
+    } else {
+        $period = delivery_billing_period_at($db, $row['user_id'], $row['sent_at']);
+        if ($period === null) {
+            return ['ok' => false, 'reason' => 'not_enabled', 'amount' => 0];
+        }
     }
     if ($row['charged'] === null) {
         return ['ok' => false, 'reason' => 'charge_pending', 'amount' => 0];
@@ -438,6 +486,44 @@ function delivery_refund_sweep(bool $dryRun = false): array {
         $candidates[] = ['attempt', (int)$id];
     }
 
+    // «Failed messages are free» (every customer, sent after the cutoff): the same two scans without the
+    // periods table. Bounded by the lookback window and the cutoff, on (created_at …) / (status, attempted_at).
+    $freeSince = delivery_failed_free_since();
+    if ($freeSince !== null) {
+        $from = max($since, $freeSince);
+        $bulk = $db->prepare(
+            "SELECT bi.id
+             FROM ellsms_bulk_items bi
+             JOIN ellsms_wallet_transactions t ON t.idempotency_key = CONCAT('commit:bulk_item:', bi.id)
+             LEFT JOIN ellsms_delivery_refunds r ON r.source = 'bulk_item' AND r.source_id = bi.id
+             WHERE bi.created_at >= ? AND bi.status = 'sent' AND bi.delivery_status IN ({$states})
+               AND r.id IS NULL
+             ORDER BY bi.id LIMIT {$limit}"
+        );
+        $bulk->execute([$from]);
+        foreach ($bulk->fetchAll(PDO::FETCH_COLUMN) as $id) {
+            $candidates[] = ['bulk_item', (int)$id];
+        }
+        $attempts = $db->prepare(
+            "SELECT ma.id
+             FROM ellsms_message_attempts ma
+             LEFT JOIN ellsms_delivery_refunds r ON r.source = 'attempt' AND r.source_id = ma.id
+             WHERE ma.status = 'accepted' AND ma.attempted_at >= ?
+               AND ma.delivery_status IN ({$states}) AND ma.charged_credits > 0
+               AND r.id IS NULL
+             ORDER BY ma.id LIMIT {$limit}"
+        );
+        $attempts->execute([$from]);
+        foreach ($attempts->fetchAll(PDO::FETCH_COLUMN) as $id) {
+            $candidates[] = ['attempt', (int)$id];
+        }
+        $unique = [];
+        foreach ($candidates as $candidate) {
+            $unique[$candidate[0] . ':' . $candidate[1]] = $candidate;
+        }
+        $candidates = array_values($unique);
+    }
+
     $stats['candidates'] = count($candidates);
     if ($dryRun) {
         return $stats;
@@ -519,9 +605,10 @@ function delivery_refunds_recent(int $userId, int $limit = 20): array {
 
 function delivery_refund_state_label(string $state): string {
     return match ($state) {
-        'failed'   => 'تحویل نشده',
-        'rejected' => 'رد شده توسط اپراتور',
-        'expired'  => 'منقضی شده',
-        default    => $state,
+        'failed'      => 'تحویل نشده',
+        'undelivered' => 'تحویل داده‌نشده',
+        'rejected'    => 'رد شده توسط اپراتور',
+        'expired'     => 'منقضی شده',
+        default       => $state,
     };
 }

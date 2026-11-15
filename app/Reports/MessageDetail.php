@@ -20,6 +20,7 @@ function report_delivery_status_label(?string $status): string {
         'failed'    => 'ناموفق',
         'rejected'  => 'رد شده',
         'expired'   => 'منقضی',
+        'undelivered' => 'تحویل داده‌نشده',
         'unknown'   => 'نامشخص',
         default     => 'نامشخص',
     };
@@ -28,7 +29,7 @@ function report_delivery_status_label(?string $status): string {
 function report_delivery_status_class(?string $status): string {
     return match ($status) {
         'delivered'                     => 'delivered',
-        'failed', 'rejected', 'expired' => 'failed',
+        'failed', 'rejected', 'expired', 'undelivered' => 'failed',
         'sent', 'accepted', 'queued'    => 'sent',
         'pending'                       => 'pending',
         default                         => 'unknown',
@@ -247,7 +248,7 @@ function report_build_timeline(array $row): array {
     }
     if (!empty($row['delivered_at'])) {
         $steps[] = ['label' => 'تحویل', 'at' => (string)$row['delivered_at'], 'state' => 'delivered'];
-    } elseif (in_array($status, ['failed', 'rejected', 'expired'], true)) {
+    } elseif (in_array($status, ['failed', 'rejected', 'expired', 'undelivered'], true)) {
         $steps[] = ['label' => report_delivery_status_label($status), 'at' => null, 'state' => 'failed'];
     } else {
         $steps[] = ['label' => 'هنوز تحویل نشده', 'at' => null, 'state' => 'pending'];

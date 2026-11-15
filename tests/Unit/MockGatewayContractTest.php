@@ -33,7 +33,7 @@ final class MockGatewayContractTest extends TestCase
      * The canonical statuses a connector's status_mapping_json may target.
      * Mirrors GATEWAY_DELIVERY_STATUSES in app/Sms/GatewayConnector.php.
      */
-    private const CANONICAL = ['accepted', 'queued', 'sent', 'delivered', 'failed', 'rejected', 'expired', 'unknown'];
+    private const CANONICAL = ['accepted', 'queued', 'sent', 'delivered', 'failed', 'rejected', 'expired', 'unknown', 'blacklisted', 'undelivered'];
 
     public function testTheSeederOnlyMapsProviderTokensToCanonicalStatuses(): void
     {

@@ -217,7 +217,7 @@ function remote_db_target_state(string $rowState, ?string $itemStatus, ?string $
         'failed', 'cancelled' => ['failed', true],
         'sent' => match ($deliveryStatus) {
             'delivered' => ['delivered', true],
-            'failed'    => ['not_delivered', true],
+            'failed', 'undelivered' => ['not_delivered', true],
             'rejected'  => ['rejected', true],
             'expired'   => ['expired', true],
             'unknown'   => ['unknown', false],
