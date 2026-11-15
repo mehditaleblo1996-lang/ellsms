@@ -98,6 +98,28 @@ or `bulk_send_uncertain`. Resending is an admin's deliberate choice — «ارس
 (`docs/failed-resend.md`), and every provider request can carry the tag `ellsms:<first>-<last>` bulk
 item id (`request_tag`) so the admin can check the provider's report first.
 
+### Reconciling uncertain rows from the provider's report
+
+`cron/bulk-reconcile-provider-report.php` (`app/BulkReconcile.php`) settles a job's `[SEND_UNCERTAIN]`
+rows from the provider's own outbox export (PishgamRayan CSV: `Number`, `UserTag`, `RecipientId`,
+`MessageStatus`). A report row is matched to its item by the request tag `ellsms:<first>-<last>` and
+the number's last 10 digits. Every listed row becomes `sent` with the provider's message id, delivery
+state and status code (the status worker keeps following it), the job's counters move, and the
+owner is charged the row's frozen price — a direct `sms_debit` keyed `commit:bulk_item:<id>` (the
+reservation was released when the job finished), so a rerun never charges twice. An admin-owned job
+is not charged; `--no-charge` skips charging; an insufficient balance leaves the row sent but
+uncharged and the billing check flags the job. Rows the report does not list stay failed. Dry run by
+default:
+
+```
+docker compose exec app php cron/bulk-reconcile-provider-report.php --job=1030 --csv=storage/report.csv
+docker compose exec app php cron/bulk-reconcile-provider-report.php --job=1030 --csv=storage/report.csv --apply
+```
+
+The bulk billing check (`app/BulkBilling.php`) compares the reservation with the commits that came
+out of it only (`balance_before = balance_after`); such a direct debit still counts as a charge for
+the sent rows.
+
 The provider-side duplicate guard (`userSuppliedIds` / `idempotency_keys_array`,
 `docs/many-to-many-batching.md#at-least-once-delivery`) is still worth wiring for every provider that
 supports it: it also covers a resend an admin starts by hand.
