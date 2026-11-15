@@ -10,7 +10,7 @@ before.
 |---|---|---|
 | `payments-reconcile` | every 10 min | re-verifies payments whose callback never arrived or whose verify failed, and credits the ones ZarinPal completed |
 | `invoices-expire` | every 15 min | marks issued invoices past their `due_at` expired (an invoice without one never expires; a late payment still marks it paid) |
-| `delivery-refunds` | every 5 min | refunds undelivered messages of delivery-based-billing users that the status path itself missed (`docs/delivery-based-billing.md`); a no-op until an admin switches the service on for someone |
+| `delivery-refunds` | every 5 min | refunds what the status path itself missed: failed / rejected / expired messages of every customer sent after the `delivery_failed_free_since` cutoff (100%, `docs/delivery-states.md`), and of delivery-based-billing users sent before it (`docs/delivery-based-billing.md`) |
 | `subscription-lifecycle` | every 15 min | trial and grace expiry, period rollover, stale usage reservations (skips itself while `BILLING_ENABLED=0`) |
 | `bulk-archive` | every minute | advances approved bulk-archive runs one bounded pass |
 | `message-parts` | every minute | fills the SMS part count (`parts`) into message rows written before it was stored — a bounded slice per run (at most 50 s); once caught up, only the rows added since the last run (`docs/message-parts.md`) |

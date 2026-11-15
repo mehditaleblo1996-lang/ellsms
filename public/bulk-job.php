@@ -104,7 +104,7 @@ if (!in_array($per, [50,100,200], true)) $per = 100;
 $reportStatuses = $showDelivery ? ['pending', 'sent', 'delivered', 'failed'] : ['pending', 'sent', 'failed'];
 $canonicalStatusSql = $showDelivery ? "CASE
     WHEN bi.delivery_status = 'delivered' THEN 'delivered'
-    WHEN bi.delivery_status IN ('failed','rejected','expired') OR bi.status IN ('failed','cancelled') THEN 'failed'
+    WHEN bi.delivery_status IN ('failed','rejected','expired','undelivered') OR bi.status IN ('failed','cancelled') THEN 'failed'
     WHEN bi.status = 'sent' THEN 'sent'
     ELSE 'pending'
 END" : "CASE

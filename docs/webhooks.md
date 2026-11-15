@@ -15,7 +15,7 @@ with automatic retries and a dead-letter state for endpoints that stay broken.
 | `bulk.failed` | A bulk job finished with **zero** messages sent (total failure) |
 | `payment.credited` | A ZarinPal payment was successfully claimed and credited to a wallet |
 | `message.delivered` | The provider reported a message **delivered** (final state) — any send path, gateway mode (#39) |
-| `message.undelivered` | The provider reported a final **failed / rejected / expired** state (#39) |
+| `message.undelivered` | The provider reported a final **failed / rejected / expired / undelivered** state (#39, `docs/delivery-states.md`) |
 | `message.received` | An inbound SMS arrived on one of the organization's lines — either inbound store (#39) |
 | `telegram.message.sent` | A message of the Telegram user-account service was sent from the customer's Telegram account (`docs/telegram-user-service.md`) |
 | `telegram.message.read` | That message was read by its recipient (tracked for 48 h after sending) |

@@ -10,7 +10,7 @@
  */
 
 const DASHBOARD_DIRECT_TYPES = ['direct_send', 'schedule', 'autoreply', 'ai_secretary'];
-const DASHBOARD_UNDELIVERED = ['failed', 'rejected', 'expired'];
+const DASHBOARD_UNDELIVERED = ['failed', 'rejected', 'expired', 'undelivered'];
 
 /** Accounts whose sends $me may see on the dashboard: null for an admin (all). */
 function dashboard_scope_user_ids(array $me): ?array {

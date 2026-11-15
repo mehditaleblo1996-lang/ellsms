@@ -15,7 +15,7 @@ user stopped those on purpose):
 
 - `ellsms_bulk_items.status = 'failed'` (the send itself failed), and
 - for a viewer who sees delivery states (admins, customers on delivery-based billing —
-  `delivery_status_visible()`): rows whose `delivery_status` is `failed`, `rejected` or `expired`.
+  `delivery_status_visible()`): rows whose `delivery_status` is `failed`, `rejected`, `expired` or `undelivered` (`docs/delivery-states.md`).
   For any other customer those rows read «ارسال‌شده» and are **not** resent.
 
 A row whose delivery is `delivered` is never resent.

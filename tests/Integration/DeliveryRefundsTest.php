@@ -62,6 +62,9 @@ final class DeliveryRefundsTest extends IntegrationTestCase
     {
         parent::setUp();
         delivery_billing_available(true);
+        // The tests below exercise the delivery-billing rule, i.e. messages sent before the «failed
+        // messages are free» cutoff; the free rule has its own tests at the end.
+        delivery_failed_free_since('');
         @file_put_contents(self::$recordFile, '');
         @file_put_contents(self::$recordFile . '.vesal', '');
         $this->userId = $this->makeUser();
@@ -71,6 +74,7 @@ final class DeliveryRefundsTest extends IntegrationTestCase
 
     protected function tearDown(): void
     {
+        delivery_failed_free_since('reload');
         putenv('SMS_GATEWAY_TRANSPORT');
         sms_pricing_cache_reset();
         gateway_cache_reset();
@@ -386,5 +390,74 @@ final class DeliveryRefundsTest extends IntegrationTestCase
         gateway_status_record('attempt', (int)$rows[0]['id'], 'sent', 'delivered', gmdate('Y-m-d H:i:s'));
 
         $this->assertSame($before - $charged + (int)$failed['charged_credits'], $this->balance(), 'only the undelivered destination comes back');
+    }
+
+    /* ================= failed messages are free (2026_11_19_undelivered_state.sql) ================= */
+
+    public function testAfterTheCutoffAFailedMessageIsRefundedInFullWithoutDeliveryBilling(): void
+    {
+        delivery_failed_free_since(gmdate('Y-m-d H:i:s', time() - 86400));
+        $failed = $this->chargedItem(120);
+        $rejected = $this->chargedItem(80);
+        $before = $this->balance();
+
+        gateway_status_record('bulk_item', $failed, 'sent', 'failed', null, '97');
+        gateway_status_record('bulk_item', $rejected, 'sent', 'blacklisted', null, '3');
+
+        $this->assertSame($before + 200, $this->balance(), 'failed and blacklisted (stored as rejected): full refund, service off');
+        $row = db()->query('SELECT * FROM ellsms_delivery_refunds WHERE source_id = ' . $failed)->fetch();
+        $this->assertSame(0, (int)$row['period_id'], 'no delivery-billing period behind it');
+        $this->assertSame(100, (int)$row['refund_percent']);
+    }
+
+    public function testAfterTheCutoffTheFullRefundWinsOverADeliveryBillingPercentage(): void
+    {
+        delivery_failed_free_since(gmdate('Y-m-d H:i:s', time() - 86400));
+        $this->enable(50);
+        $itemId = $this->chargedItem(151);
+        $before = $this->balance();
+
+        gateway_status_record('bulk_item', $itemId, 'sent', 'expired', null);
+
+        $this->assertSame($before + 151, $this->balance());
+    }
+
+    public function testUndeliveredIsFinalAndNeverRefunded(): void
+    {
+        delivery_failed_free_since(gmdate('Y-m-d H:i:s', time() - 86400));
+        $this->enable(100);
+        $itemId = $this->chargedItem(100);
+        $before = $this->balance();
+
+        $this->assertTrue(gateway_status_record('bulk_item', $itemId, 'sent', 'undelivered', null, '4'));
+        $this->assertFalse(gateway_status_record('bulk_item', $itemId, 'undelivered', 'delivered', gmdate('Y-m-d H:i:s'), '10'), 'final: a later report does not change it');
+
+        $this->assertSame($before, $this->balance());
+        $this->assertSame('not_final', delivery_refund_apply('bulk_item', $itemId)['reason']);
+        $this->assertSame('undelivered', db()->query('SELECT delivery_status FROM ellsms_bulk_items WHERE id = ' . $itemId)->fetchColumn());
+    }
+
+    public function testAMessageSentBeforeTheCutoffKeepsTheOldRule(): void
+    {
+        delivery_failed_free_since(gmdate('Y-m-d H:i:s', time() + 86400));
+        $itemId = $this->chargedItem(100);
+        $before = $this->balance();
+
+        gateway_status_record('bulk_item', $itemId, 'sent', 'failed', null);
+
+        $this->assertSame($before, $this->balance());
+        $this->assertSame('not_enabled', delivery_refund_apply('bulk_item', $itemId)['reason']);
+    }
+
+    public function testTheSweepRefundsAFailedMessageOfAUserWithoutDeliveryBilling(): void
+    {
+        delivery_failed_free_since(gmdate('Y-m-d H:i:s', time() - 86400));
+        $itemId = $this->chargedItem(90, 'failed');
+        $before = $this->balance();
+
+        delivery_refund_sweep();
+
+        $this->assertSame($before + 90, $this->balance());
+        $this->assertSame('already_refunded', delivery_refund_apply('bulk_item', $itemId)['reason']);
     }
 }

@@ -723,7 +723,10 @@ require __DIR__ . '/../app/views/header.php';
         <label>سقف فاصله‌ی استعلام‌ها (ثانیه، ۰ = بدون افزایش) <input type="number" name="poll_backoff_max_seconds" class="ltr" min="0" value="<?= (int)($connectorRow['poll_backoff_max_seconds'] ?? 0) ?>"></label>
         <?php endif; ?>
       </div>
-      <p class="muted">وضعیت نگاشت‌نشده همیشه «نامشخص» می‌شود و هرگز «تحویل‌شده» در نظر گرفته نمی‌شود.
+      <p class="muted">وقتی نگاشت پر باشد، هر کدی که در آن نیست «ناموفق» (<span class="ltr">failed</span>) ثبت می‌شود، استعلامش تمام می‌شود
+        و هزینه‌اش به کاربر برمی‌گردد؛ کد خام در لاگ و ستون «کد سرویس‌دهنده» می‌ماند. پاسخ بدون کد، یا درگاه بدون نگاشت، «نامشخص» می‌ماند.
+        هیچ کدی هرگز خودبه‌خود «تحویل‌شده» نمی‌شود. <span class="ltr">failed</span>، <span class="ltr">rejected</span> و
+        <span class="ltr">expired</span> برای همه رایگان‌اند؛ <span class="ltr">undelivered</span> (تحویل داده‌نشده) نهایی است ولی هزینه‌اش برنمی‌گردد.
         وضعیت‌های مجاز: <span class="ltr"><?= e(implode('، ', GATEWAY_DELIVERY_STATES)) ?></span>؛ <span class="ltr">blacklisted</span> (لیست سیاه مخابرات) مثل «رد شده» ثبت می‌شود
         و در «گزارش وضعیت‌ها» زیر «لیست سیاه» می‌آید — مثال: <span class="ltr">{"11": "blacklisted"}</span></p>
     <?php endif; ?>

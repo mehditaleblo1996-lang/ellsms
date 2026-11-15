@@ -1,5 +1,11 @@
 # Delivery-based billing (ارسال بر اساس تحویل)
 
+> **Since `db/migrations/2026_11_19_undelivered_state.sql`:** a message sent after the
+> `delivery_failed_free_since` cutoff whose final state is failed / rejected / expired is refunded **in
+> full for every customer**, whether this service is on or not. The percentage below applies only to
+> messages sent before the cutoff. The final state `undelivered` is never refunded. This service still
+> decides who sees delivery states in the reports. See [`docs/delivery-states.md`](delivery-states.md).
+
 An admin can switch on delivery-based billing for an individual user. While it is on, if a message
 that user sent through the gateway transport gets a final delivery report of **failed**, **rejected**
 or **expired**, a configurable percentage of what that message cost is credited back to the user's
@@ -38,7 +44,8 @@ page `message-detail.php` redirects such a customer to the report.
 
 | Final delivery state | Refunded? |
 |---|---|
-| `failed`, `rejected`, `expired` | yes, `refund_percent` of the message's charge, rounded down to whole Rials (an operator-blacklist answer is stored as `rejected`) |
+| `failed`, `rejected`, `expired` | yes, `refund_percent` of the message's charge, rounded down to whole Rials (an operator-blacklist answer is stored as `rejected`). For messages sent after the `delivery_failed_free_since` cutoff: **100% for every customer**, service on or off ([`docs/delivery-states.md`](delivery-states.md)) |
+| `undelivered` («تحویل داده‌نشده», 2026_11_19_undelivered_state.sql) | no: a final state the admin maps an operator code to when the message stays charged |
 | `delivered` | no |
 | no final report (`sent`, `queued`, `unknown`, or polling gave up) | no: without a report there is no proof the message wasn't delivered |
 | refused at send time (the item is `failed` and never sent) | already free: a message is only charged once the gateway accepts it |
