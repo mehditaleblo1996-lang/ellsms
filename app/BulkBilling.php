@@ -34,7 +34,7 @@ function bulk_billing_issues_available(): bool {
 /**
  * Pure: what is wrong with a job's figures, in Persian, or null when they add up.
  *
- * @param array{sent:int, unpriced:int, expected:int, charged_count:int, charged:int, reserved:int, released:int, reservation_active:bool} $f
+ * @param array{sent:int, unpriced:int, expected:int, charged_count:int, charged:int, charged_from_reservation?:int, reserved:int, released:int, reservation_active:bool} $f
  */
 function bulk_billing_problem(array $f): ?string {
     $problems = [];
@@ -48,9 +48,9 @@ function bulk_billing_problem(array $f): ?string {
     }
     if ($f['reservation_active']) {
         $problems[] = 'رزرو این ارسال بعد از پایان آزاد نشده است';
-    } elseif ($f['reserved'] !== $f['charged'] + $f['released']) {
+    } elseif ($f['reserved'] !== ($f['charged_from_reservation'] ?? $f['charged']) + $f['released']) {
         $problems[] = 'رزرو ' . to_persian_digits(number_format($f['reserved'])) . ' ریال با کسر و برگشت ('
-            . to_persian_digits(number_format($f['charged'] + $f['released'])) . ' ریال) برابر نیست';
+            . to_persian_digits(number_format(($f['charged_from_reservation'] ?? $f['charged']) + $f['released'])) . ' ریال) برابر نیست';
     }
     return $problems ? implode('؛ ', $problems) : null;
 }
@@ -74,7 +74,12 @@ function bulk_billing_check_job(int $jobId): ?string {
                                FROM ellsms_bulk_items WHERE job_id = ? AND status = 'sent'");
         $items->execute([$jobId]);
         $i = $items->fetch();
-        $ledger = $db->prepare("SELECT type, COUNT(*) n, COALESCE(SUM(amount), 0) total FROM ellsms_wallet_transactions
+        // A reservation commit leaves the available balance unchanged (balance_before = balance_after);
+        // a direct debit — rows settled after the job finished (cron/bulk-reconcile-provider-report.php)
+        // — moves it, and is not part of the reservation's own arithmetic.
+        $ledger = $db->prepare("SELECT type, COUNT(*) n, COALESCE(SUM(amount), 0) total,
+                                       COALESCE(SUM(CASE WHEN balance_before = balance_after THEN amount ELSE 0 END), 0) from_reservation
+                                FROM ellsms_wallet_transactions
                                 WHERE reference_type = 'bulk_job' AND reference_id = ? AND type IN ('sms_debit', 'reservation_release')
                                 GROUP BY type");
         $ledger->execute([(string)$jobId]);
@@ -88,6 +93,7 @@ function bulk_billing_check_job(int $jobId): ?string {
             'expected'           => (int)$i['expected'],
             'charged_count'      => (int)($byType['sms_debit']['n'] ?? 0),
             'charged'            => -(int)($byType['sms_debit']['total'] ?? 0),
+            'charged_from_reservation' => -(int)($byType['sms_debit']['from_reservation'] ?? 0),
             'reserved'           => (int)$reservation['amount'],
             'released'           => (int)($byType['reservation_release']['total'] ?? 0),
             'reservation_active' => (string)$reservation['status'] === 'active',

@@ -19,7 +19,9 @@ this key also becomes a Prometheus label if a future metric ever needs it.
 Bulk sending raises two warning incidents (`bulk_send_failure_alert()`, `app/backend.php`), each
 refreshed by every new failure: `bulk_send_failed` — the provider could not take a batch (timeout,
 unreachable, unreadable answer), and `bulk_send_uncertain` — rows the worker lost mid-send
-(`[SEND_UNCERTAIN]`). Those rows are failed with their error code and never re-sent automatically
+(`[SEND_UNCERTAIN]`); and `bulk_settlement_failed` — the provider
+accepted a batch but its charge could not be written (the rows are recorded as sent, uncharged).
+Those rows are failed with their error code and never re-sent automatically
 (`docs/job-queue-architecture.md` «No automatic resend for bulk items»).
 
 - **Fire** (`AlertManager::fire($alertKey, $severity, $title, $message, $context)`): if no

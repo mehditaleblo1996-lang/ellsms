@@ -107,6 +107,40 @@ final class BulkJobQueueTest extends IntegrationTestCase
         $this->assertSame('failed', $this->itemRow($itemId)['status']);
     }
 
+    public function testAnUnsettleableBatchStillRecordsWhatTheProviderAccepted(): void
+    {
+        $job = $this->makeFundedBulkJob(3);
+        $items = bulk_claim_items(db(), 'j.id = ?', [$job['jobId']], 10);
+        $this->assertCount(3, $items);
+        $meta = [
+            'gateway_id' => null,
+            'provider_message_ids' => [$items[0]['mobile'] => '7001', $items[1]['mobile'] => '7002'],
+            'provider_error_codes' => [$items[2]['mobile'] => '-20'],
+        ];
+        $sent = bulk_record_accepted_unsettled(db(), $items, $meta, [(string)$items[0]['mobile'], (string)$items[1]['mobile']], true);
+
+        $this->assertSame(2, $sent);
+        $this->assertSame(['sent', '7001'], [$this->itemRow((int)$items[0]['id'])['status'], $this->itemRow((int)$items[0]['id'])['provider_message_id']]);
+        $this->assertSame('sent', $this->itemRow((int)$items[1]['id'])['status']);
+        $third = $this->itemRow((int)$items[2]['id']);
+        $this->assertSame('failed', $third['status']);
+        $this->assertStringStartsWith('[-20]', (string)$third['error'], 'a provider refusal keeps its code — never [SEND_UNCERTAIN]');
+        $counts = db()->query("SELECT sent_rows, failed_rows FROM ellsms_bulk_jobs WHERE id = {$job['jobId']}")->fetch();
+        $this->assertSame([2, 1], [(int)$counts['sent_rows'], (int)$counts['failed_rows']]);
+    }
+
+    public function testADeadlockIsRecognisedAsRetryable(): void
+    {
+        $deadlock = new \PDOException('SQLSTATE[40001]: Serialization failure: 1213 Deadlock found');
+        $deadlock->errorInfo = ['40001', 1213, 'Deadlock found'];
+        $this->assertTrue(db_is_retryable_lock_error($deadlock));
+        $this->assertTrue(db_is_retryable_lock_error(new \RuntimeException('wrapped', 0, $deadlock)));
+        $other = new \PDOException('SQLSTATE[23000]: duplicate');
+        $other->errorInfo = ['23000', 1062, 'Duplicate entry'];
+        $this->assertFalse(db_is_retryable_lock_error($other));
+        $this->assertFalse(db_is_retryable_lock_error(new \RuntimeException('no')));
+    }
+
     public function testBulkSendOneItemMarksCancelledWhenJobCancelledBeforeDispatch(): void
     {
         $job = $this->makeFundedBulkJob(1);

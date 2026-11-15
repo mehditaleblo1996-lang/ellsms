@@ -86,6 +86,16 @@ each message once. Now (`app/backend.php`):
 - **A provider batch that throws** fails its rows at once (`bulk_fail_items_uncertain()`) instead of
   leaving them for a reclaim.
 
+- **Settling a provider batch never loses the provider's answer.** Several workers settling batches
+  of the same account at once deadlocked on the rows they share (job counters, reservation, wallet
+  account) — in production six workers failed 1,257 accepted rows of one job as `[SEND_UNCERTAIN]`.
+  Settlement is now serialized per account (`bulk_settlement_lock()`, MySQL named lock
+  `ellsms_bulk_settle_u<user id>`, held for the milliseconds the settlement takes), a deadlock or lock
+  wait timeout is retried (`BULK_SETTLE_ATTEMPTS` = 5, `db_is_retryable_lock_error()`), then the
+  per-item path runs, and if even that fails `bulk_record_accepted_unsettled()` records the accepted
+  rows as sent with their provider ids (uncharged — the job's billing check flags them and the alert
+  `bulk_settlement_failed` goes out) and the refused ones as failed with the provider's code.
+
 Every such row is `failed` with an **error code** at the start of its `error` text:
 `[SEND_UNCERTAIN]` (the worker lost the row mid-send: the provider may or may not have it) or the
 failure's class / the provider's own code (`[BackendTimeout]`, `[BackendUnavailable]`, …). Each
@@ -97,6 +107,28 @@ or `bulk_send_uncertain`. Resending is an admin's deliberate choice — «ارس
 «ارسال مجدد ناموفق‌ها» leaves these uncertain rows out unless a platform admin ticks them in
 (`docs/failed-resend.md`), and every provider request can carry the tag `ellsms:<first>-<last>` bulk
 item id (`request_tag`) so the admin can check the provider's report first.
+
+### Reconciling uncertain rows from the provider's report
+
+`cron/bulk-reconcile-provider-report.php` (`app/BulkReconcile.php`) settles a job's `[SEND_UNCERTAIN]`
+rows from the provider's own outbox export (PishgamRayan CSV: `Number`, `UserTag`, `RecipientId`,
+`MessageStatus`). A report row is matched to its item by the request tag `ellsms:<first>-<last>` and
+the number's last 10 digits. Every listed row becomes `sent` with the provider's message id, delivery
+state and status code (the status worker keeps following it), the job's counters move, and the
+owner is charged the row's frozen price — a direct `sms_debit` keyed `commit:bulk_item:<id>` (the
+reservation was released when the job finished), so a rerun never charges twice. An admin-owned job
+is not charged; `--no-charge` skips charging; an insufficient balance leaves the row sent but
+uncharged and the billing check flags the job. Rows the report does not list stay failed. Dry run by
+default:
+
+```
+docker compose exec app php cron/bulk-reconcile-provider-report.php --job=1030 --csv=storage/report.csv
+docker compose exec app php cron/bulk-reconcile-provider-report.php --job=1030 --csv=storage/report.csv --apply
+```
+
+The bulk billing check (`app/BulkBilling.php`) compares the reservation with the commits that came
+out of it only (`balance_before = balance_after`); such a direct debit still counts as a charge for
+the sent rows.
 
 The provider-side duplicate guard (`userSuppliedIds` / `idempotency_keys_array`,
 `docs/many-to-many-batching.md#at-least-once-delivery`) is still worth wiring for every provider that
