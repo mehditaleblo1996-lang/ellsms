@@ -57,7 +57,7 @@ function legal_identity_block(): string {
 }
 
 /**
- * The trust badges shown in both footers. With an eNamad id and code entered in settings, the eNamad
+ * The trust badges shown in both footers (ساماندهی، اینماد، اتحادیه کسب و کارهای مجازی). With an eNamad id and code entered in settings, the eNamad
  * badge is the official one: an image served by trustseal.enamad.ir inside a link to its public
  * verification page. Without them it stays the plain image that was there before — which proves
  * nothing to a visitor, so the real id/code should be entered (see the settings page).
@@ -80,7 +80,32 @@ function legal_trust_badges_html(int $height): string {
     }
     $samandehi = '<img src="/assets/img/footer-image-1.png" alt="نشان ملی ثبت رسانه‌های دیجیتال (ساماندهی)" loading="lazy" decoding="async" style="' . $style . '">';
 
-    return $samandehi . $enamad;
+    return $samandehi . $enamad . legal_ecunion_badge_html($height);
+}
+
+/**
+ * The «عضو اتحادیه کشوری کسب و کارهای مجازی» (ecunion.ir) membership badge. Drawn inline rather than
+ * as an <img> so its caption uses the site font and the footer's text colour (readable on both the
+ * dark landing footer and the light panel footer). Clicking it opens ecunion.ir's verification page
+ * for datisrayan.com in a popup — or, without JavaScript, in a new tab.
+ */
+function legal_ecunion_badge_html(int $height): string {
+    $url = 'https://ecunion.ir/verify/datisrayan.com?token=66339366af96fdccce72';
+    $width = (int) round($height * 240 / 360);
+    $popup = "window.open(this.href,'ecunion','toolbar=no,location=no,status=no,menubar=no,scrollbars=1,resizable=0,width=580,height=600,top=30');return false;";
+
+    return '<a class="ecunion-badge" href="' . e($url) . '" target="_blank" rel="noopener" onclick="' . e($popup) . '"'
+         . ' aria-label="عضو اتحادیه کشوری کسب و کارهای مجازی — استعلام در سایت ecunion.ir" style="display:block;line-height:0;color:inherit">'
+         . '<svg viewBox="0 0 240 360" width="' . $width . '" height="' . $height . '" role="img" aria-hidden="true" focusable="false" style="display:block">'
+         . '<path d="m120 243l94-54 0-109-94 54 0 109z" fill="#808285"/>'
+         . '<path d="m120 254l-103-60 0-119 103-60 103 60 0 119-103 60z" fill="none" stroke="#00aeef" stroke-width="5" stroke-linejoin="round"/>'
+         . '<path d="m214 80l-94-54-94 54 94 54 94-54z" fill="#00aeef"/>'
+         . '<path d="m26 80l0 109 94 54 0-109-94-54z" fill="#58595b"/>'
+         . '<path d="m120 157l47-27 0-23-47-27-47 27 0 54 47 27 47-27" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>'
+         . '<g fill="currentColor" font-family="Vazirmatn, \'B Yekan\', Tahoma, sans-serif" font-weight="700" font-size="25" text-anchor="middle" direction="rtl">'
+         . '<text x="120" y="300">عضو اتحادیه کشوری</text>'
+         . '<text x="120" y="343">کسب و کارهای مجازی</text>'
+         . '</g></svg></a>';
 }
 
 /** Links to the legal pages, for both footers. */

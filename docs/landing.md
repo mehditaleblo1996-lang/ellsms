@@ -6,7 +6,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | File | What |
 |---|---|
 | `public/landing.php` | The page: banner, hero, sections, and the small inline scripts that drive the sliders |
-| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav, footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page. |
+| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav, footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page. The footer's trust badges (ساماندهی، اینماد and the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. |
 | `public/assets/css/style.css` | Base styles of the public pages, the banner, the bento grid and the other sections |
 | `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 6, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
