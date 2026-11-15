@@ -19,6 +19,11 @@ How a bulk send (p2p, smart, gradual, imports, regional, aimed — `ellsms_bulk_
    protection are keyed on them.
 3. When the send finishes or is cancelled, what was not spent comes back in one
    `reservation_release` row.
+4. Rarely, after the send finished: rows that the provider's own report shows as sent although the
+   worker had failed them as `[SEND_UNCERTAIN]` are charged by
+   `cron/bulk-reconcile-provider-report.php` — same `sms_debit` type, reference and key, but taken from
+   the available balance (balance before ≠ after), because the reservation is already released. They
+   are part of the send's row like any other charge (`docs/job-queue-architecture.md`).
 
 The log therefore shows a bulk send as **one row**, «هزینه‌ی ارسال گروهی», with:
 
