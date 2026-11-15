@@ -466,6 +466,22 @@ final class BulkProviderBatchingTest extends IntegrationTestCase
         return $this->itemStatuses($job['job_id'])[0] + ['job_id' => $job['job_id']];
     }
 
+    public function testEveryRequestCarriesTheTagOfItsBulkItems(): void
+    {
+        $gatewayId = $this->makeGateway('batch');
+        $this->putParameter($gatewayId, 'userTag', 'variable', 'request_tag', 'string', 50);
+        gateway_cache_reset();
+        $this->makeRouteForSender($gatewayId, $this->sender);
+        $job = $this->makeJob(3);
+        $items = bulk_claim_items(db(), 'j.id = ?', [$job['job_id']], 100);
+        bulk_send_claimed_items(db(), $items);
+
+        $ids = array_map(static fn(array $i): int => (int)$i['id'], $items);
+        $bodies = array_map(static fn(array $r): array => (array)json_decode((string)$r['body'], true), $this->recorded());
+        self::assertCount(1, $bodies);
+        self::assertSame('ellsms:' . min($ids) . '-' . max($ids), $bodies[0]['userTag'], 'the admin can find these rows in the provider report');
+    }
+
     public function testAProviderRateLimitIsRetriedBecauseNothingWasSent(): void
     {
         $row = $this->sendOneThrough(self::$baseUrl . '/http429/x');

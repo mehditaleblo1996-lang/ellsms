@@ -389,8 +389,16 @@ header ships as a test placeholder to be replaced in the admin panel.
 `recipientNumbers`, `senderNumber` and an optional `userTag` (≤ 40 characters, a label for grouping
 messages in their panel — not checked for uniqueness). The API has **no client-side message id and no
 duplicate check**, so a repeated request is sent and billed again; `userSuppliedIds`/`duplicate_values`
-(Vesal) do not apply here. The only protection is ELLSMS sending each bulk row at most once
-(`docs/job-queue-architecture.md` «No automatic resend for bulk items»). HTTP `429` is the per-second
+(Vesal) do not apply here. The protection is ELLSMS sending each bulk row at most once
+(`docs/job-queue-architecture.md` «No automatic resend for bulk items») and «ارسال مجدد ناموفق‌ها»
+leaving rows with an unknown outcome out (`docs/failed-resend.md`). To check such a row by hand,
+`userTag` carries the send variable **`request_tag`** — `ellsms:<first>-<last>` bulk item id of the
+request (`ellsms:<id>` for one row, `ellsms` for a direct/API send; under 40 characters): find the
+row's id and number in the bulk job page, then the number and that tag in PishgamRayan's report.
+Migration `db/migrations/2026_11_18_pishgamrayan_user_tag.sql` adds it to the seeded `pishgamrayan`
+gateway (rerun-safe); any other PishgamRayan gateway gets it in «درگاه‌های پیامک» → send parameters:
+body, `userTag`, variable `request_tag`, string. On `SendP2P` the per-recipient `userTags` array can
+take `idempotency_keys_array` (`ellsms:bulk_item:<id>`) instead. HTTP `429` is the per-second
 send limit: the request was not processed, so the bulk worker retries it; `500` and timeouts are never
 retried. `Status`/`StatusWithTime` read the last 48 h (30 days only between 01:00 and 05:00).
 

@@ -48,6 +48,12 @@ const GATEWAY_SEND_VARIABLES = [
     // nothing: empty unless EVERY recipient in the group has one, because such providers reject a
     // list whose length differs from the recipients'. Pair it with data type `integer_array`.
     'idempotency_ids_array',
+    // One label for the whole request, for providers with a single free-text tag field
+    // (PishgamRayan `userTag`, ≤ 40 characters): 'ellsms:<first>-<last>' — the lowest and highest bulk
+    // item id in the request ('ellsms:<id>' for one), or 'ellsms' for a send with no bulk items. Not
+    // a duplicate check: it lets an admin find in the provider's own report whether a row whose
+    // outcome is unknown ([SEND_UNCERTAIN], a timeout) actually went out (gateway_request_tag()).
+    'request_tag',
 ];
 
 /**

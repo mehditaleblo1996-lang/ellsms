@@ -94,6 +94,10 @@ or `bulk_send_uncertain`. Resending is an admin's deliberate choice — «ارس
 (`docs/failed-resend.md`) — after checking the provider's own report. Metrics: `bulk.send_uncertain`,
 `bulk.send_failed_transport`, `bulk.claim_lost`.
 
+«ارسال مجدد ناموفق‌ها» leaves these uncertain rows out unless a platform admin ticks them in
+(`docs/failed-resend.md`), and every provider request can carry the tag `ellsms:<first>-<last>` bulk
+item id (`request_tag`) so the admin can check the provider's report first.
+
 The provider-side duplicate guard (`userSuppliedIds` / `idempotency_keys_array`,
 `docs/many-to-many-batching.md#at-least-once-delivery`) is still worth wiring for every provider that
 supports it: it also covers a resend an admin starts by hand.

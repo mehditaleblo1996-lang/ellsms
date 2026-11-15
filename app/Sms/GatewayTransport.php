@@ -106,7 +106,7 @@ function gateway_send_context(array $input): array {
     $idempotencyIdsArray=gateway_idempotency_ids($idempotencyKeysArray);
     return [
         'sender'=>$sender,'recipient'=>(string)($input['recipient']??($recipients[0]??'')),'recipients'=>implode(',',$recipients),'recipients_array'=>$recipients,
-        'senders_array'=>$count>0?array_fill(0,$count,$sender):[],'messages_array'=>$messagesArray,'idempotency_keys_array'=>$idempotencyKeysArray,'idempotency_ids_array'=>$idempotencyIdsArray,
+        'senders_array'=>$count>0?array_fill(0,$count,$sender):[],'messages_array'=>$messagesArray,'idempotency_keys_array'=>$idempotencyKeysArray,'idempotency_ids_array'=>$idempotencyIdsArray,'request_tag'=>gateway_request_tag($idempotencyKeysArray),
         'message'=>$message,'message_type'=>(string)($input['message_type']??''),'request_id'=>(string)($input['request_id']??Logger::currentRequestId()),
         'organization_id'=>(string)($input['organization_id']??''),'operator_code'=>(string)($input['operator_code']??''),'route_code'=>(string)($input['route_code']??''),
         'gateway_code'=>(string)($input['gateway_code']??''),'sender_user_id'=>(string)($input['sender_user_id']??''),'timestamp'=>(string)time(),
@@ -129,6 +129,23 @@ function gateway_idempotency_ids(array $keys): array {
         $ids[] = ltrim($m[1], '0');
     }
     return $ids;
+}
+
+/**
+ * The `request_tag` variable: 'ellsms:<lowest>-<highest>' bulk item id of this request, 'ellsms:<id>'
+ * for one row, 'ellsms' when the request carries no bulk item (direct/API sends). With ids below
+ * 10^15 it stays under PishgamRayan's 40-character userTag limit.
+ *
+ * @param list<string> $keys the request's idempotency keys ('ellsms:bulk_item:<id>')
+ */
+function gateway_request_tag(array $keys): string {
+    $ids = [];
+    foreach ($keys as $key) {
+        if (preg_match('/:(\d{1,18})$/D', (string)$key, $m) === 1 && (int)$m[1] > 0) $ids[] = (int)$m[1];
+    }
+    if ($ids === []) return 'ellsms';
+    $min = min($ids); $max = max($ids);
+    return $min === $max ? 'ellsms:' . $min : 'ellsms:' . $min . '-' . $max;
 }
 
 function gateway_status_context(array $input): array {
