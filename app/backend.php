@@ -1977,12 +1977,18 @@ function bulk_send_failure_alert(string $kind, int $jobId, int $items, string $c
         return;
     }
     try {
-        $title = $kind === 'bulk_send_uncertain' ? 'ارسال انبوه با نتیجه‌ی نامشخص' : 'خطای تأمین‌کننده در ارسال انبوه';
+        $title = match ($kind) {
+            'bulk_send_uncertain'    => 'ارسال انبوه با نتیجه‌ی نامشخص',
+            'bulk_settlement_failed' => 'ثبت هزینه‌ی ارسال انبوه ناموفق',
+            default                  => 'خطای تأمین‌کننده در ارسال انبوه',
+        };
         \AlertManager::fire(
             $kind,
             \AlertManager::SEVERITY_WARNING,
             $title,
-            'ارسال #' . $jobId . ': ' . $items . ' پیام با کد خطای ' . $code . ' ناموفق ثبت شد و خودکار دوباره ارسال نمی‌شود.',
+            $kind === 'bulk_settlement_failed'
+                ? 'ارسال #' . $jobId . ': ' . $items . ' پیام را تأمین‌کننده پذیرفت و «ارسال‌شده» ثبت شد، ولی هزینه‌اش کسر نشد (خطای دیتابیس). مغایرت مالی این ارسال را بررسی کنید.'
+                : 'ارسال #' . $jobId . ': ' . $items . ' پیام با کد خطای ' . $code . ' ناموفق ثبت شد و خودکار دوباره ارسال نمی‌شود.',
             ['job_id' => $jobId, 'items' => $items, 'code' => $code]
         );
     } catch (Throwable $t) {
@@ -2443,6 +2449,105 @@ function bulk_flush_deferred_settlement(PDO $db, array $deferred): void {
     }
 }
 
+/** How many times a provider batch's settlement transaction is tried when it hits a deadlock. */
+const BULK_SETTLE_ATTEMPTS = 5;
+
+/** Whether $t is a MySQL deadlock (1213) or lock wait timeout (1205): the transaction can simply be run again. */
+function db_is_retryable_lock_error(Throwable $t): bool {
+    for ($e = $t; $e !== null; $e = $e->getPrevious()) {
+        if ($e instanceof PDOException) {
+            $code = (int)($e->errorInfo[1] ?? 0);
+            if (in_array($code, [1213, 1205], true) || (string)$e->getCode() === '40001') {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * Serializes bulk settlement per account (the rows every batch of that account writes: its jobs'
+ * counters, reservations and wallet). Waits up to 30 s; returns the lock name, or null when it was
+ * not obtained — settlement then runs anyway and relies on the deadlock retry.
+ */
+function bulk_settlement_lock(PDO $db, int $userId): ?string {
+    $name = 'ellsms_bulk_settle_u' . $userId;
+    try {
+        $st = $db->prepare('SELECT GET_LOCK(?, 30)');
+        $st->execute([$name]);
+        return (int)$st->fetchColumn() === 1 ? $name : null;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function bulk_settlement_unlock(PDO $db, ?string $name): void {
+    if ($name === null) {
+        return;
+    }
+    try {
+        $db->prepare('SELECT RELEASE_LOCK(?)')->execute([$name]);
+    } catch (Throwable) {
+    }
+}
+
+/**
+ * Last resort when a provider batch cannot be settled at all: the provider HAS answered, so the rows
+ * it accepted are recorded as sent with their provider ids — never left for [SEND_UNCERTAIN] — and
+ * the rest as failed with the provider's code. No money moves here: the job's billing check flags
+ * the uncharged rows when the job finishes (app/BulkBilling.php), and an alert is raised now.
+ *
+ * @return int rows recorded as sent
+ */
+function bulk_record_accepted_unsettled(PDO $db, array $items, ?array $gatewayMeta, array $accepted, bool $ok): int {
+    $acceptedSet = $ok ? array_flip($accepted) : [];
+    $sent = 0;
+    $failed = 0;
+    for ($attempt = 1; $attempt <= BULK_SETTLE_ATTEMPTS; $attempt++) {
+        try {
+            [$sent, $failed] = db_transaction(static function (PDO $db) use ($items, $gatewayMeta, $acceptedSet): array {
+                $sent = 0;
+                $failed = 0;
+                foreach ($items as $item) {
+                    $destination = (string)$item['mobile'];
+                    if (isset($acceptedSet[$destination])) {
+                        $st = $db->prepare("UPDATE ellsms_bulk_items SET status='sent', error=NULL, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL,
+                                                   gateway_id = ?, provider_message_id = ?, route_id = ?, operator_id = ?, delivery_status = 'sent'
+                                            WHERE id = ? AND status = 'processing'");
+                        $st->execute([
+                            $gatewayMeta['gateway_ids'][$destination] ?? $gatewayMeta['gateway_id'] ?? null,
+                            $gatewayMeta['provider_message_ids'][$destination] ?? null,
+                            $gatewayMeta['route_ids'][$destination] ?? $gatewayMeta['route_id'] ?? null,
+                            $gatewayMeta['operators'][$destination] ?? null,
+                            $item['id'],
+                        ]);
+                        $sent += $st->rowCount();
+                    } else {
+                        $code = (string)($gatewayMeta['provider_error_codes'][$destination] ?? $gatewayMeta['error_class'] ?? 'rejected');
+                        $st = $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL
+                                            WHERE id = ? AND status = 'processing'");
+                        $st->execute(['[' . mb_substr($code, 0, 60) . '] تأمین‌کننده این گیرنده را نپذیرفت.', $item['id']]);
+                        $failed += $st->rowCount();
+                    }
+                }
+                $db->prepare('UPDATE ellsms_bulk_jobs SET sent_rows = sent_rows + ?, failed_rows = failed_rows + ? WHERE id = ?')
+                   ->execute([$sent, $failed, $items[0]['job_id']]);
+                return [$sent, $failed];
+            });
+            break;
+        } catch (Throwable $t) {
+            if (!db_is_retryable_lock_error($t) || $attempt === BULK_SETTLE_ATTEMPTS) {
+                throw $t;
+            }
+            usleep(random_int(20000, 100000) * $attempt);
+        }
+    }
+    Logger::error('bulk.settlement_failed', ['job_id' => $items[0]['job_id'] ?? null, 'sent_uncharged' => $sent, 'failed' => $failed]);
+    Metrics::increment('bulk.settlement_failed', count($items));
+    bulk_send_failure_alert('bulk_settlement_failed', (int)$items[0]['job_id'], $sent, 'SETTLEMENT');
+    return $sent;
+}
+
 /**
  * Send a set of claimed items that may legally share provider requests, and settle each one.
  *
@@ -2603,18 +2708,43 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
     // unsettled (the lease would expire and they would be re-sent). If the batched transaction fails
     // it is rolled back as a whole and the exact pre-existing per-item path runs instead. When a
     // caller already holds a transaction we cannot roll back independently, so we just use that path.
+    //
+    // Several workers settling batches of the same account at once deadlocked on the shared rows
+    // (job counters, reservation, wallet account) — production: six workers, 1,257 accepted rows of
+    // one job failed as [SEND_UNCERTAIN]. So settlement is serialized per account (a named lock; it
+    // takes milliseconds, the provider request seconds), a deadlock is retried, and if settling still
+    // fails the accepted rows are at least recorded as sent (bulk_record_accepted_unsettled()).
     if ($db->inTransaction()) {
         $sent = $finalizeAll(false);
     } else {
+        $settleLock = bulk_settlement_lock($db, (int)($items[0]['user_id'] ?? 0));
         try {
-            $sent = db_transaction(static fn(): int => $finalizeAll(true));
-        } catch (Throwable $t) {
-            Logger::warning('bulk.finalize.batched_transaction_failed', [
-                'job_id' => $items[0]['job_id'] ?? null,
-                'item_count' => count($items),
-                'exception' => $t,
-            ]);
-            $sent = $finalizeAll(false);
+            $sent = null;
+            $lastError = null;
+            for ($attempt = 1; $attempt <= BULK_SETTLE_ATTEMPTS && $sent === null; $attempt++) {
+                try {
+                    $sent = db_transaction(static fn(): int => $finalizeAll(true));
+                } catch (Throwable $t) {
+                    $lastError = $t;
+                    Logger::warning('bulk.finalize.batched_transaction_failed', [
+                        'job_id' => $items[0]['job_id'] ?? null, 'item_count' => count($items), 'attempt' => $attempt, 'exception' => $t,
+                    ]);
+                    if (!db_is_retryable_lock_error($t)) {
+                        break;
+                    }
+                    usleep(random_int(20000, 100000) * $attempt);
+                }
+            }
+            if ($sent === null) {
+                try {
+                    $sent = $finalizeAll(false);
+                } catch (Throwable $t) {
+                    Logger::error('bulk.finalize.failed', ['job_id' => $items[0]['job_id'] ?? null, 'item_count' => count($items), 'exception' => $t, 'first_error' => $lastError]);
+                    $sent = bulk_record_accepted_unsettled($db, $items, $gatewayMeta, $accepted, (bool)$ok);
+                }
+            }
+        } finally {
+            bulk_settlement_unlock($db, $settleLock);
         }
     }
 
