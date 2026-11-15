@@ -89,8 +89,11 @@ correct place for that invalidation to live.
 exactly-once, and Phase 9C narrows it rather than closing it.**
 
 If the provider accepts a batch and the worker dies before the per-row `UPDATE` commits, the lease
-expires and those rows are reclaimed and retried — up to `SMS_PROVIDER_BATCH_SIZE` messages may be
-sent twice.
+expires. Those rows used to be reclaimed and retried (up to `SMS_PROVIDER_BATCH_SIZE` messages sent
+twice); since the at-most-once change (`docs/job-queue-architecture.md` «No automatic resend for bulk
+items») they are failed as `[SEND_UNCERTAIN]` with an alert instead, and only an admin's deliberate
+«ارسال مجدد ناموفق‌ها» sends them again. The provider-side token below still matters for that manual
+resend.
 
 ### What Phase 9C.10 adds
 

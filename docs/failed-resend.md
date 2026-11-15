@@ -20,6 +20,11 @@ user stopped those on purpose):
 
 A row whose delivery is `delivered` is never resent.
 
+Rows failed with `[SEND_UNCERTAIN]` or a transport code (`[BackendTimeout]`, …) are included: the
+worker no longer resends them on its own (`docs/job-queue-architecture.md` «No automatic resend for
+bulk items»), because the provider may already have them. Check the provider's report before using
+this button for them.
+
 PishgamRayan's status codes other than `10` are «ارسال‌شده» (`sent`), not failures
 (`docs/sms-gateway-connectors.md` §PishgamRayan), so its undelivered messages are not resent; only its
 send errors are.

@@ -78,7 +78,7 @@ final class BulkSendNamingAndClaimTest extends IntegrationTestCase
         self::assertCount(1, $again, 'already-claimed rows are not claimed twice');
     }
 
-    public function testExpiredLeaseIsReclaimedPerJob(): void
+    public function testExpiredLeaseIsFailedPerJobNotReclaimed(): void
     {
         $userId = $this->makeUser();
         $job = $this->makeJob($userId);
@@ -88,6 +88,9 @@ final class BulkSendNamingAndClaimTest extends IntegrationTestCase
 
         self::assertSame(2, bulk_job_claimable_count(db(), $job, 10));
         self::assertSame(1, bulk_job_claimable_count(db(), $job, 1), 'the count stops at its cap');
-        self::assertCount(2, bulk_claim_items(db(), 'j.id = ?', [$job], 10));
+        self::assertSame([], bulk_claim_items(db(), 'j.id = ?', [$job], 10), 'an expired lease is never claimed for a second send');
+        $st = db()->prepare("SELECT COUNT(*) FROM ellsms_bulk_items WHERE job_id = ? AND status = 'failed' AND error LIKE ?");
+        $st->execute([$job, '[' . BULK_SEND_UNCERTAIN_CODE . ']%']);
+        self::assertSame(2, (int)$st->fetchColumn(), 'both rows are settled as SEND_UNCERTAIN');
     }
 }

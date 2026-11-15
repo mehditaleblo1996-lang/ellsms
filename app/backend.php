@@ -129,6 +129,10 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         // Recipient => the ellsms_provider_response_audit row holding the provider's exact answer to the
         // request that turned it down. Shown to admins only (sent_report_provider_response()).
         'provider_audit_ids'     => $result['provider_audit_ids'] ?? [],
+        // The failure's error code, written at the start of a failed bulk row's error text:
+        // the provider's own code per recipient where it gave one, else the classified error.
+        'provider_error_codes'   => $result['rejected'] ?? [],
+        'error_class'            => $result['provider_error_code'] ?? $result['error_class'] ?? null,
         'attempt_ids'            => [],
     ];
 
@@ -1025,7 +1029,7 @@ function run_due_schedules(): int {
             }
 
             if (!$ok) {
-                $reason = $retryable ? 'max_attempts_reached' : 'permanent';
+                $reason = $retryable ? 'transport_no_retry' : 'permanent';
                 Logger::warning('job.failed_permanent', [
                     'job_type' => 'schedule', 'schedule_id' => $s['id'], 'worker_id' => $workerId,
                     'attempt' => $attemptCount, 'reason' => $reason,
@@ -1360,7 +1364,7 @@ function autoreply_process_one(PDO $db, array $msg, int &$sent): void {
 
     $db->prepare("UPDATE ellsms_autoreply_log SET reply_content=?, ok=0, info=?, status='failed_permanent', claimed_by=NULL, lease_expires_at=NULL WHERE id=?")
        ->execute([$rendered, $info, $logId]);
-    $reason = $retryable ? 'max_attempts_reached' : 'permanent';
+    $reason = $retryable ? 'transport_no_retry' : 'permanent';
     Logger::warning('job.failed_permanent', ['job_type' => 'autoreply', 'inbound_message_id' => $msg['id'], 'worker_id' => $workerId, 'attempt' => $attemptCount, 'reason' => $reason]);
     Metrics::increment('queue.terminal_failed', 1, ['job_type' => 'autoreply', 'reason' => $reason]);
 }
@@ -1810,23 +1814,11 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
                 $remaining -= $duePending->rowCount();
             }
 
-            foreach ($jobIds as $jobId) {
-                if ($remaining <= 0) {
-                    break;
-                }
-                $expiredLease = $db->prepare(
-                    "UPDATE ellsms_bulk_items
-                     SET claimed_by=?, claimed_at=NOW(),
-                         lease_expires_at=DATE_ADD(NOW(), INTERVAL ? SECOND), attempt_count=attempt_count+1
-                     WHERE job_id = {$jobId}
-                       AND status='processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()
-                     ORDER BY id
-                     LIMIT {$remaining}"
-                );
-                $expiredLease->execute([$claimToken, $leaseSeconds]);
-                $remaining -= $expiredLease->rowCount();
-            }
+            // A row whose lease expired is NEVER claimed for sending again: its worker may already have
+            // handed it to the provider, and a second send is a duplicate SMS the provider bills twice.
+            // bulk_fail_expired_leases() below settles it as failed instead.
         });
+        bulk_fail_expired_leases($db, $jobIds);
     }
 
     $sel = $db->prepare(
@@ -1856,6 +1848,146 @@ function bulk_claim_items(PDO $db, string $jobFilterSql, array $jobFilterParams,
 }
 
 /**
+ * Bulk items are sent AT MOST ONCE (docs/job-queue-architecture.md «No automatic resend»). A provider
+ * that timed out, answered garbage or never answered may still have accepted the message — it bills
+ * the send and the recipient gets it — so sending the same row again produced duplicate SMS (and a
+ * provider total ~20% above the panel's own count). Every such outcome now fails the row with an
+ * error code and raises an alert; an admin resends deliberately with «ارسال مجدد ناموفق‌ها»
+ * (docs/failed-resend.md) after checking the provider's report.
+ *
+ * Error codes, at the start of the row's `error` text:
+ *   SEND_UNCERTAIN    the worker lost the row mid-send (lease expired, crash, exception after
+ *                     dispatch): the provider may or may not have it.
+ *   <error class>     the provider could not take it (BackendTimeout, BackendUnavailable, …) —
+ *                     BackendError's classes, or the provider's own code.
+ */
+const BULK_SEND_UNCERTAIN_CODE = 'SEND_UNCERTAIN';
+
+/** The `error` text of a row the worker lost mid-send. */
+function bulk_send_uncertain_error(): string {
+    return '[' . BULK_SEND_UNCERTAIN_CODE . '] نتیجه‌ی ارسال نامشخص است (پردازش این پیام نیمه‌کاره ماند). برای جلوگیری از پیامک تکراری دوباره ارسال نشد؛ پیش از ارسال مجدد گزارش تأمین‌کننده را بررسی کنید.';
+}
+
+/**
+ * Fails, as SEND_UNCERTAIN, the rows of $jobIds still 'processing' whose lease has expired, and
+ * raises the bulk_send_uncertain alert. Their worker died or overran the lease; they are never sent
+ * again. A worker that still holds such a row skips it (bulk_hold_claim()). Returns how many failed.
+ *
+ * @param list<int> $jobIds
+ */
+function bulk_fail_expired_leases(PDO $db, array $jobIds): int {
+    $failed = 0;
+    foreach ($jobIds as $jobId) {
+        $jobId = (int)$jobId;
+        $st = $db->prepare(
+            "UPDATE ellsms_bulk_items
+             SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL
+             WHERE job_id = {$jobId}
+               AND status='processing' AND lease_expires_at IS NOT NULL AND lease_expires_at < NOW()"
+        );
+        $st->execute([bulk_send_uncertain_error()]);
+        $n = $st->rowCount();
+        if ($n > 0) {
+            $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + ? WHERE id = ?')->execute([$n, $jobId]);
+            Logger::error('bulk.send_uncertain', ['job_id' => $jobId, 'items' => $n, 'reason' => 'lease_expired']);
+            Metrics::increment('bulk.send_uncertain', $n, ['reason' => 'lease_expired']);
+            bulk_send_failure_alert('bulk_send_uncertain', $jobId, $n, BULK_SEND_UNCERTAIN_CODE);
+            $failed += $n;
+        }
+    }
+    return $failed;
+}
+
+/**
+ * Right before a provider request: renews the lease of the rows this worker still holds and returns
+ * only those. A row whose lease ran out (and was failed or taken by someone else) is dropped, so a
+ * slow pass can never send a row a second time. Renewing per request also keeps a long pass (many
+ * small p2p requests) from outliving its lease halfway through.
+ *
+ * @param list<array<string,mixed>> $items claimed rows (each carries its claimed_by token)
+ * @return list<array<string,mixed>>
+ */
+function bulk_hold_claim(PDO $db, array $items): array {
+    $byToken = [];
+    $held = [];
+    foreach ($items as $item) {
+        if (!array_key_exists('claimed_by', $item)) {
+            $held[(int)$item['id']] = true; // not a claimed row (a direct caller): nothing to hold
+            continue;
+        }
+        $byToken[(string)$item['claimed_by']][] = (int)$item['id'];
+    }
+    foreach ($byToken as $token => $ids) {
+        if ($token === '') {
+            continue;
+        }
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $in = implode(',', $chunk);
+            $db->prepare("UPDATE ellsms_bulk_items SET lease_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
+                          WHERE id IN ({$in}) AND status = 'processing' AND claimed_by = ?")
+               ->execute([job_lease_seconds(), $token]);
+            $st = $db->prepare("SELECT id FROM ellsms_bulk_items WHERE id IN ({$in}) AND status = 'processing' AND claimed_by = ?");
+            $st->execute([$token]);
+            foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $id) {
+                $held[(int)$id] = true;
+            }
+        }
+    }
+    $kept = array_values(array_filter($items, static fn(array $i): bool => isset($held[(int)$i['id']])));
+    if (count($kept) < count($items)) {
+        Logger::warning('bulk.claim_lost', ['job_id' => $items[0]['job_id'] ?? null, 'dropped' => count($items) - count($kept)]);
+        Metrics::increment('bulk.claim_lost', count($items) - count($kept));
+    }
+    return $kept;
+}
+
+/**
+ * Fails, as SEND_UNCERTAIN, the rows of $items this worker still holds (a provider batch that threw
+ * after it may have been dispatched). Never left for a reclaim that would send them again.
+ *
+ * @param list<array<string,mixed>> $items
+ */
+function bulk_fail_items_uncertain(PDO $db, array $items): void {
+    $perJob = [];
+    foreach ($items as $item) {
+        $st = $db->prepare("UPDATE ellsms_bulk_items SET status='failed', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=NULL
+                            WHERE id = ? AND status = 'processing' AND claimed_by = ?");
+        $st->execute([bulk_send_uncertain_error(), (int)$item['id'], (string)($item['claimed_by'] ?? '')]);
+        if ($st->rowCount() > 0) {
+            $perJob[(int)$item['job_id']] = ($perJob[(int)$item['job_id']] ?? 0) + 1;
+        }
+    }
+    foreach ($perJob as $jobId => $n) {
+        $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + ? WHERE id = ?')->execute([$n, $jobId]);
+        Metrics::increment('bulk.send_uncertain', $n, ['reason' => 'batch_exception']);
+        bulk_send_failure_alert('bulk_send_uncertain', $jobId, $n, BULK_SEND_UNCERTAIN_CODE);
+    }
+}
+
+/**
+ * The alert behind a bulk send failure (app/Alerting/AlertManager.php, Telegram/email): one incident
+ * per kind — `bulk_send_failed` (the provider could not take a batch) or `bulk_send_uncertain`
+ * (SEND_UNCERTAIN) — refreshed by every new failure. Never throws: alerting must not break a send.
+ */
+function bulk_send_failure_alert(string $kind, int $jobId, int $items, string $code): void {
+    if (!class_exists('AlertManager')) {
+        return;
+    }
+    try {
+        $title = $kind === 'bulk_send_uncertain' ? 'ارسال انبوه با نتیجه‌ی نامشخص' : 'خطای تأمین‌کننده در ارسال انبوه';
+        \AlertManager::fire(
+            $kind,
+            \AlertManager::SEVERITY_WARNING,
+            $title,
+            'ارسال #' . $jobId . ': ' . $items . ' پیام با کد خطای ' . $code . ' ناموفق ثبت شد و خودکار دوباره ارسال نمی‌شود.',
+            ['job_id' => $jobId, 'items' => $items, 'code' => $code]
+        );
+    } catch (Throwable $t) {
+        Logger::warning('bulk.send_failure_alert_failed', ['job_id' => $jobId, 'exception' => $t]);
+    }
+}
+
+/**
  * Unthrottled-bulk-item claiming for one worker tick, split fairly across message classes
  * (issue #3) instead of one flat `ORDER BY id LIMIT worker_bulk_batch_size()` across every
  * processing job regardless of class. Without this, a single huge Advertising job created before
@@ -1878,7 +2010,9 @@ function bulk_claim_unthrottled_items_by_class(PDO $db, int $totalBudget): array
     // expired-lease row (still 'processing') measured zero depth, so allocate_priority_quota() gave
     // it a zero share and bulk_claim_items() for that class was never even called, leaving the row
     // stuck 'processing' forever -- a genuine silent-loss-adjacent bug (issue #6's own concern),
-    // caught by tests/Integration/BulkWorkerCrashRecoveryTest.php's reclaim test.
+    // caught by tests/Integration/BulkWorkerCrashRecoveryTest.php's reclaim test. An expired-lease
+    // row is no longer SENT again — bulk_claim_items() fails it as SEND_UNCERTAIN — but it still
+    // counts here so the claim for its job runs and settles it.
     //
     // Depth is counted per job and only up to $totalBudget: allocate_priority_quota() never grants
     // a class more than the tick's budget, so counting further is wasted work. The exact
@@ -2194,12 +2328,12 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
         $db->prepare('UPDATE ellsms_bulk_items SET provider_audit_id = ? WHERE id = ?')->execute([$auditId, $item['id']]);
     }
 
-    if ($retryable && $attemptCount < job_max_attempts()) {
-        $delay = job_retry_backoff_seconds($attemptCount);
-        $db->prepare("UPDATE ellsms_bulk_items SET status='pending', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE id=?")
-           ->execute(['در حال تلاش مجدد: ' . $info, $delay, $item['id']]);
-        Logger::warning('job.retry_scheduled', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'attempt' => $attemptCount, 'delay_seconds' => $delay]);
-        return false;
+    // No automatic retry, ever (see BULK_SEND_UNCERTAIN_CODE): a timeout or an unreadable answer may
+    // still have been accepted and billed by the provider, so the row fails with its error code and
+    // bulk_send_group() raises the alert. An admin resends deliberately.
+    $code = (string)($gatewayMeta['provider_error_codes'][$destination] ?? $gatewayMeta['error_class'] ?? '');
+    if ($code !== '' && !str_starts_with($info, '[')) {
+        $info = '[' . mb_substr($code, 0, 60) . '] ' . $info;
     }
 
     if ($deferred !== null) {
@@ -2209,7 +2343,7 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
            ->execute([$info, $item['id']]);
         $db->prepare('UPDATE ellsms_bulk_jobs SET failed_rows = failed_rows + 1 WHERE id=?')->execute([$item['job_id']]);
     }
-    $reason = $retryable ? 'max_attempts_reached' : 'permanent';
+    $reason = $retryable ? 'transport_no_retry' : 'permanent';
     Logger::warning('job.failed_permanent', [
         'job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId,
         'attempt' => $attemptCount, 'reason' => $reason,
@@ -2379,6 +2513,14 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
         }
     }
 
+    // At most once: send only rows this worker still holds, renewing their lease for this request.
+    $items = bulk_hold_claim($db, $items);
+    if ($items === []) {
+        return 0;
+    }
+    $destinations = array_values(array_map(static fn(array $i): string => (string)$i['mobile'], $items));
+    $content      = (string)$items[0]['content'];
+
     // Phase 9C: a group may now contain rows whose content genuinely differs (see bulk_group_key()) —
     // keyed by destination, not position, so it survives gateway_send()'s internal grouping/splitting
     // untouched. Built unconditionally and cheaply (it is only ever READ by gateway_send_context() —
@@ -2461,6 +2603,13 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
             ]);
             $sent = $finalizeAll(false);
         }
+    }
+
+    // The provider could not take the batch (timeout, unreachable, unreadable answer): those rows
+    // failed with their code instead of being retried — say so (Telegram/email alert).
+    if (!$ok && $retryable) {
+        Metrics::increment('bulk.send_failed_transport', count($items));
+        bulk_send_failure_alert('bulk_send_failed', (int)$items[0]['job_id'], count($items), (string)($gatewayMeta['error_class'] ?? 'transport'));
     }
 
     Metrics::increment($sent > 0 ? 'bulk.provider_batch.success' : 'bulk.provider_batch.failure', 1);
@@ -2570,13 +2719,18 @@ function bulk_send_claimed_items(PDO $db, array $items): int {
                 $sent += bulk_send_group($db, $chunk, $group['ctx']);
             } catch (Throwable $t) {
                 // One failed provider request costs its own chunk and nothing else: the remaining
-                // chunks still go out, and these rows keep their lease so they are reclaimed and
-                // retried rather than silently abandoned.
+                // chunks still go out. These rows may already be at the provider, so they are failed
+                // as SEND_UNCERTAIN (never resent automatically) rather than left for a reclaim.
                 Logger::error('bulk.batch.failed', [
                     'job_id'     => $chunk[0]['job_id'] ?? null,
                     'item_count' => count($chunk),
                     'exception'  => $t,
                 ]);
+                try {
+                    bulk_fail_items_uncertain($db, $chunk);
+                } catch (Throwable $t2) {
+                    Logger::error('bulk.batch.fail_uncertain_failed', ['job_id' => $chunk[0]['job_id'] ?? null, 'exception' => $t2]);
+                }
             }
         }
     }

@@ -134,8 +134,11 @@ Tests: `tests/Integration/BulkProviderBatchingTest.php` — 13 tests, 68 asserti
 
 ## Residual risks — stated, not papered over
 
-**At-least-once, not exactly-once.** If the provider accepts a batch and the worker dies before the
-per-row UPDATE commits, the lease expires and those rows are reclaimed and re-sent. This window
+**At-least-once, not exactly-once — superseded.** If the provider accepts a batch and the worker dies
+before the per-row UPDATE commits, the lease expires. Those rows were reclaimed and re-sent; they are
+now failed as `[SEND_UNCERTAIN]` with an alert and never re-sent automatically
+(`docs/job-queue-architecture.md` «No automatic resend for bulk items»). The rest of this paragraph
+describes the earlier behaviour. This window
 existed before Phase 9A and is **unchanged in kind** — but it is now **wider in blast radius**: a
 crash in that window previously risked re-sending one message, and can now risk re-sending up to
 `SMS_PROVIDER_BATCH_SIZE` of them.

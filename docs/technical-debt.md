@@ -485,8 +485,9 @@ session-local, not this register's or the repository's own historical phase numb
 
 - **At-least-once delivery is narrowed, not closed, and is provider-dependent.** If a provider
   accepts a batch and the worker dies before the per-row settlement UPDATE commits, the lease
-  expires and those rows are reclaimed and re-sent — up to `SMS_PROVIDER_BATCH_SIZE` messages may go
-  out twice. A generic, connector-driven per-message idempotency token (`idempotency_keys_array`,
+  expires. (Since 2026-11-15 bulk items are at most once: those rows are failed as
+  `[SEND_UNCERTAIN]` with an alert, never re-sent automatically — `docs/job-queue-architecture.md`.
+  What follows still applies to a resend an admin starts by hand.) A generic, connector-driven per-message idempotency token (`idempotency_keys_array`,
   deterministic per `bulk_item.id`, stable across a crash+reclaim) is available and wired wherever a
   connector's compiled parameters reference it. Whether it actually suppresses a duplicate SMS
   depends on the provider accepting a per-message idempotency field, honoring it, and remembering it

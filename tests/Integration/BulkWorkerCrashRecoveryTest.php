@@ -168,7 +168,7 @@ final class BulkWorkerCrashRecoveryTest extends TestCase
         $this->assertNotEmpty($captured, 'the provider should have actually received the request the crashed worker issued');
     }
 
-    public function testAfterLeaseExpiryAFreshWorkerCompletesTheCrashedItemExactlyOnce(): void
+    public function testAfterLeaseExpiryTheCrashedItemIsFailedAsUncertainNeverResent(): void
     {
         $worker = $this->spawnWorker(30);
         usleep(500000);
@@ -207,13 +207,13 @@ final class BulkWorkerCrashRecoveryTest extends TestCase
         proc_close($recovery);
 
         $item = $this->db->query("SELECT * FROM ellsms_bulk_items WHERE job_id = {$this->jobId}")->fetch();
-        $this->assertSame('sent', $item['status'], 'not silently lost: the crashed item must eventually complete via reclaim, never stay stuck forever');
-        $this->assertGreaterThanOrEqual(2, (int)$item['attempt_count'], 'attempt_count must show the reclaim actually happened (not the same attempt slipping through)');
+        // At most once: the crashed worker may already have handed the row to the provider, so the
+        // fresh worker never sends it again. It is settled as failed with SEND_UNCERTAIN (never stuck
+        // 'processing', never silently lost) and an admin resends it deliberately if needed.
+        $this->assertSame('failed', $item['status'], 'not stuck forever: the crashed item must be settled');
+        $this->assertStringStartsWith('[' . BULK_SEND_UNCERTAIN_CODE . ']', (string)$item['error']);
+        $this->assertSame(1, (int)$item['attempt_count'], 'the expired-lease row must not be claimed for a second send');
 
-        // Not silently duplicated: the reclaim IS a second real request to the provider (this
-        // architecture is at-least-once, documented in docs/job-queue-architecture.md), but it must
-        // be fully visible via attempt_count/captured requests, never hidden -- and never MORE than
-        // the two real attempts (crashed + reclaimed) this scenario actually made.
         $captured = $this->readCaptured();
         $destinationHits = 0;
         foreach ($captured as $entry) {
@@ -221,7 +221,6 @@ final class BulkWorkerCrashRecoveryTest extends TestCase
                 $destinationHits++;
             }
         }
-        $this->assertGreaterThanOrEqual(1, $destinationHits, 'the destination must have reached the provider at least once -- never silently lost');
-        $this->assertLessThanOrEqual(2, $destinationHits, 'exactly the crashed attempt plus the one real reclaim -- more would mean uncontrolled duplication');
+        $this->assertLessThanOrEqual(1, $destinationHits, 'only the crashed attempt may have reached the provider -- a second request would be a duplicate SMS');
     }
 }
