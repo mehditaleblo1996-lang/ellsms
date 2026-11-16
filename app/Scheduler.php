@@ -66,6 +66,14 @@ function scheduler_jobs(): array {
         // was stored, a bounded slice a minute; once caught up, only the rows added since the last run.
         'message-parts' => ['title' => 'ثبت تعداد پارت پیامک‌های قبلی', 'every' => 60,
             'steps' => [['message-parts-backfill.php']], 'timeout' => 600],
+        // The admin's daily Telegram report (app/DailyReport.php): yesterday's sends, money, errors,
+        // new customers and open incidents, once a day after DAILY_REPORT_AT; a failed send is retried
+        // at the next run.
+        'daily-report' => ['title' => 'گزارش روزانه‌ی تلگرام مدیر', 'every' => 600,
+            'steps' => [['daily-report.php']], 'timeout' => 600],
+        // Scheduled price changes (app/PriceChanges.php): applies every change whose time has come.
+        'price-changes' => ['title' => 'اعمال تغییرات زمان‌بندی‌شده‌ی تعرفه', 'every' => 60,
+            'steps' => [['price-changes.php']], 'timeout' => 300],
         'backup' => ['title' => 'بکاپ روزانه‌ی پایگاه داده', 'daily' => scheduler_backup_time(),
             'steps' => [['backup.php'], ['backup-prune.php'], ['backup-offsite.php']], 'timeout' => 4 * 3600],
         'usage-reconcile' => ['title' => 'تطبیق شمارنده‌های مصرف', 'daily' => '04:10',
@@ -80,6 +88,9 @@ function scheduler_jobs(): array {
         // that something besides ELLSMS still writes balances.
         'wallet-audit' => ['title' => 'مغایرت کیف پول با currentcredit', 'daily' => '05:00',
             'steps' => [['wallet-audit.php']], 'timeout' => 900],
+        // The last 30 days of sends the price-change preview prices (app/PriceChanges.php).
+        'price-usage-profile' => ['title' => 'به‌روزرسانی ترافیک ماه گذشته برای پیش‌نمایش تعرفه', 'daily' => '04:50',
+            'steps' => [['price-usage-profile.php']], 'timeout' => 1800],
     ];
     $disabled = array_filter(array_map('trim', explode(',', (string)env('SCHEDULER_DISABLED_JOBS', ''))));
     return array_diff_key($jobs, array_flip($disabled));

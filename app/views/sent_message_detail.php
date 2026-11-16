@@ -142,10 +142,32 @@ if (!$showDelivery) {
   </section>
   <?php endif; ?>
 
-  <section>
+  <?php
+    // «X پارت × قیمت = مبلغ، کسر شد / برگشت شد» (sent_report_cost_breakdown(): read from the stored charge,
+    // refund and frozen price — never re-priced against today's tariff).
+    $cost = $m['cost_breakdown'];
+    $costBadge = ['charged' => 'sent', 'refunded' => 'delivered', 'partly_refunded' => 'delivered', 'refund_pending' => 'pending',
+                  'not_charged' => 'cancelled', 'reserved' => 'pending'][$cost['state']] ?? 'unknown';
+    $rial = static fn(int $n): string => to_persian_digits(number_format($n)) . ' ریال';
+    $formula = sent_report_cost_formula($cost);
+  ?>
+  <section class="detail-cost">
     <h3>هزینه و پیگیری</h3>
+    <?php if ($formula !== ''): ?>
+      <p class="detail-cost-formula" style="font-size:1.05em;margin:4px 0 10px"><strong><?= e($formula) ?></strong>
+        <span class="badge badge-<?= e($costBadge) ?>"><?= e($cost['label']) ?></span></p>
+    <?php else: ?>
+      <p style="margin:4px 0 10px"><span class="badge badge-<?= e($costBadge) ?>"><?= e($cost['label']) ?></span></p>
+    <?php endif; ?>
+    <?php if ($cost['note'] !== ''): ?><p class="hint"><?= e($cost['note']) ?></p><?php endif; ?>
     <dl class="detail-grid">
-      <?= $field('هزینه‌ی کسرشده', $m['cost'] !== null ? to_persian_digits(number_format((int)$m['cost'])) . ' ریال' : '<span class="muted">ثبت نشده</span>') ?>
+      <?= $field('تعداد پارت', to_persian_digits((string)$cost['parts'])) ?>
+      <?= $field('قیمت هر پارت', $cost['unit_millicredits'] !== null ? to_persian_digits(report_format_millicredits((int)$cost['unit_millicredits'])) . ' ریال <span class="muted">(قیمت زمان ارسال)</span>' : '<span class="muted">ثبت نشده</span>') ?>
+      <?= $field('مبلغ کسرشده', $cost['charged'] !== null ? $rial((int)$cost['charged']) : ($cost['state'] === 'reserved' && $cost['formula_amount'] !== null ? $rial((int)$cost['formula_amount']) . ' <span class="muted">(رزرو)</span>' : '<span class="muted">ثبت نشده</span>')) ?>
+      <?php if ($cost['refunded'] > 0): ?>
+        <?= $field('مبلغ برگشتی', $rial((int)$cost['refunded']) . ($cost['refunded_at'] ? ' <span class="muted">(' . e(jdate_from_utc((string)$cost['refunded_at'])) . ')</span>' : '')) ?>
+        <?= $field('هزینه‌ی نهایی', $rial((int)$cost['net'])) ?>
+      <?php endif; ?>
       <?php if ($m['source'] === 'bulk'): ?>
         <?= $field('ارسال حجیم', '<a href="/messages/bulk-jobs?id=' . (int)$m['job_id'] . '">#' . to_persian_digits((string)(int)$m['job_id']) . ' ' . e((string)($m['job_title'] ?? '')) . '</a>') ?>
       <?php elseif ($m['source'] === 'attempt' && ($m['reference_type'] ?? '') === 'schedule'): ?>

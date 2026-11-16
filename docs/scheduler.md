@@ -17,12 +17,15 @@ before.
 | `voice-worker` | every minute | sends due scheduled voice messages, polls ZarinCall for answered / not answered calls and settles their cost (`docs/voice-messages.md`) |
 | `lba-worker` | every minute | polls LBA audiences the provider is still building, follows one-off LBA sends and charges / settles periodic ones (`docs/lba.md`) |
 | `shared-service` | every minute | sends approved and promotional-window messages of the shared sending service and expires held messages nobody reviewed (`docs/shared-service.md`) |
+| `daily-report` | every 10 min | sends yesterday's admin report to Telegram once `DAILY_REPORT_AT` (08:00 Tehran) has passed — sends, parts, money charged and refunded, errors, new customers, open alerts; a failed send is retried at the next run (`docs/daily-report.md`) |
+| `price-changes` | every minute | applies scheduled price-matrix changes whose time has come, each exactly once; one that no longer validates is marked failed (`docs/price-changes.md`); a no-op until `2026_11_20_price_changes.sql` is applied |
 | `ai-balance` | every 15 min | reads each AI provider's credit (OpenRouter's API, or the estimate from recorded top-ups minus spend), the days it lasts at the last 7 days' spend, and raises / resolves the `ai_balance:<code>` alert (`docs/ai-engines.md` §Provider balance and alerts); a no-op until `2026_11_09_ai_provider_balance.sql` is applied |
 | `backup` | daily `BACKUP_DAILY_AT` (03:30) | backup without message rows → retention prune → off-server copy (`docs/backup-and-disaster-recovery.md` §1, §17) |
 | `usage-reconcile` | daily 04:10 | rebuilds usage counters' `reserved` from the live reservations |
 | `idempotency-prune` | daily 04:20 | deletes completed Idempotency-Key records past their TTL |
 | `webhook-prune` | daily 04:30 | deletes finished webhook deliveries/events past retention (never dead letters) |
 | `db-cleanup` | daily 04:40 | deletes expired 2FA codes and stale rate-limit rows |
+| `price-usage-profile` | daily 04:50 | rebuilds the last 30 days of sends the price-change preview prices (`docs/price-changes.md`) |
 | `wallet-audit` | daily 05:00 | fails if `user_.currentcredit` no longer matches a wallet — i.e. something besides ELLSMS changed a balance |
 
 Times are server local time (Asia/Tehran in the image). The last start of every job is kept in

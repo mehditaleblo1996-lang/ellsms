@@ -68,12 +68,21 @@ Accounts not under a reseller. An account under a reseller pays the reseller's t
 profit is computed from tariffs; such accounts get no form, saving is refused and pricing ignores
 any row. A reseller itself may have own prices. A sub-organization pays its parent organization's.
 
+## Preview, scheduling and revert
+
+Neither table saves straight away: its button opens a **preview** of what the change does to the last
+30 days of real traffic (customers touched, monthly revenue shift), and the change is then applied now
+or at a chosen time; every applied change can be reverted in one click from «تاریخچه‌ی تغییرات تعرفه»
+under the table. See [`price-changes.md`](price-changes.md) (migration `2026_11_20_price_changes.sql`;
+without it the tables save directly).
+
 ## History
 
 Cells are effective-dated: saving closes the changed cells' current period and opens a new one at
 the same instant (UTC); unchanged cells are untouched. Pricing reads the period in effect at the
 pricing instant, so an import costed at analysis time and a retried send keep their price. Every
-save is audited (`gateway_prices.saved`).
+save is audited (`gateway_prices.saved`) and recorded as a price change (`ellsms_price_changes`, with
+the values it replaced, `docs/price-changes.md`).
 
 The per-operator account prices of the previous version (`ellsms_customer_operator_prices`) were
 copied into the matrix by the migration: each price on every active gateway, both encodings, the

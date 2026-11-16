@@ -6,6 +6,11 @@ with the balance before and after it, read from the wallet ledger (`ellsms_walle
 download of the filtered list. A platform admin sees every account, anyone else only their own.
 Code: `app/FinancialLog.php` (queries, labels), `public/financial-log.php` (page, CSV). No API route.
 
+The same ledger, one Jalali month at a time with opening and closing balances, totals by type,
+messages per operator and a PDF, is **«صورت‌حساب ماهانه»** (`/billing/statement`,
+[`statement.md`](statement.md)); each message's own charge and refund is in its detail drawer
+([`message-cost.md`](message-cost.md)).
+
 ## A bulk send is one row
 
 How a bulk send (p2p, smart, gradual, imports, regional, aimed — `ellsms_bulk_jobs`) is charged:
