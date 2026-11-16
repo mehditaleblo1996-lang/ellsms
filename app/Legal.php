@@ -73,16 +73,13 @@ const LEGAL_ENAMAD_CODE = '2UqX8SOQMWSOgUruuThqNA8IY4shqPhu';
 function legal_trust_badges_html(int $height): string {
     $style = 'display:block;width:auto;height:' . $height . 'px;max-width:150px;object-fit:contain';
 
-    $innerStyle = 'display:block;width:auto;height:' . max(1, $height - 12) . 'px;max-width:138px;object-fit:contain';
     $query = 'id=' . LEGAL_ENAMAD_ID . '&Code=' . LEGAL_ENAMAD_CODE;
     // Kept as close as possible to the snippet enamad.ir issues: no rel attribute (enamad.ir warns that
     // rel="noopener noreferrer" stops the seal from showing) and referrerpolicy="origin" on both tags.
-    // The seal image has a transparent background with dark-blue art and grey stars, which vanish on
-    // the dark landing footer, so it sits on a white card (like the footer logo).
     $enamad = '<a referrerpolicy="origin" target="_blank" href="' . e('https://trustseal.enamad.ir/?' . $query) . '"'
-            . ' style="display:block;line-height:0;background:#fff;border-radius:12px;padding:6px">'
+            . ' style="display:block;line-height:0">'
             . '<img referrerpolicy="origin" src="' . e('https://trustseal.enamad.ir/logo.aspx?' . $query) . '"'
-            . ' alt="نماد اعتماد الکترونیکی (اینماد)" style="cursor:pointer;' . $innerStyle . '" code="' . LEGAL_ENAMAD_CODE . '"></a>';
+            . ' alt="نماد اعتماد الکترونیکی (اینماد)" style="cursor:pointer;' . $style . '" code="' . LEGAL_ENAMAD_CODE . '"></a>';
     $samandehi = '<img src="/assets/img/footer-image-1.png" alt="نشان ملی ثبت رسانه‌های دیجیتال (ساماندهی)" loading="lazy" decoding="async" style="' . $style . '">';
 
     return $samandehi . $enamad . legal_ecunion_badge_html($height);
