@@ -286,7 +286,7 @@ function send_security_headers(array $extraImageOrigins = []): void {
         "Content-Security-Policy: default-src 'self'; " .
         "script-src 'self' 'unsafe-inline'; " .
         "style-src 'self' 'unsafe-inline'; " .
-        "img-src 'self' data:" . ($extraImageOrigins === [] ? '' : ' ' . implode(' ', $extraImageOrigins)) . "; " .
+        "img-src 'self' data: https://trustseal.enamad.ir" . ($extraImageOrigins === [] ? '' : ' ' . implode(' ', $extraImageOrigins)) . "; " .
         "font-src 'self'; " .
         "frame-src 'self' https://www.openstreetmap.org https://www.google.com https://maps.google.com; " .
         "object-src 'none'; " .
