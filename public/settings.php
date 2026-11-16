@@ -78,8 +78,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_setting('legal_company_name',  trim($_POST['legal_company_name'] ?? ''));
         set_setting('legal_registration_no', trim(from_persian_digits((string)($_POST['legal_registration_no'] ?? ''))));
         set_setting('legal_national_id',   trim(from_persian_digits((string)($_POST['legal_national_id'] ?? ''))));
-        set_setting('enamad_id',           trim(from_persian_digits((string)($_POST['enamad_id'] ?? ''))));
-        set_setting('enamad_code',         trim((string)($_POST['enamad_code'] ?? '')));
         $refundDays = (int) from_persian_digits((string)($_POST['legal_refund_processing_days'] ?? ''));
         set_setting('legal_refund_processing_days', $refundDays > 0 ? (string)$refundDays : '');
         set_setting('telegram_bot_token',  trim($_POST['telegram_bot_token'] ?? ''));
@@ -299,15 +297,6 @@ require __DIR__ . '/../app/views/header.php';
       </label>
       <label>شناسه ملی شرکت
         <input type="text" name="legal_national_id" maxlength="20" class="ltr" inputmode="numeric" value="<?= e(setting('legal_national_id', '')) ?>">
-      </label>
-    </div>
-    <div class="form-row">
-      <label>شناسه (id) نماد اعتماد الکترونیکی
-        <input type="text" name="enamad_id" maxlength="40" class="ltr" value="<?= e(setting('enamad_id', '')) ?>">
-        <span class="hint">از کد نمادی که enamad.ir داده است (<span class="ltr">?id=…&amp;Code=…</span>). با پر کردن هر دو فیلد، نماد فوتر به صفحه‌ی استعلام رسمی لینک می‌شود.</span>
-      </label>
-      <label>کد (Code) نماد اعتماد الکترونیکی
-        <input type="text" name="enamad_code" maxlength="80" class="ltr" value="<?= e(setting('enamad_code', '')) ?>">
       </label>
     </div>
     <div class="form-row">

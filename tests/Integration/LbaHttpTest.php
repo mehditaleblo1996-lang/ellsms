@@ -186,7 +186,7 @@ final class LbaHttpTest extends TestCase
         $this->assertStringContainsString('data-lba-map', $new['body']);
         $this->assertStringContainsString('گیلان', $new['body'], 'provinces from the gateway');
         $this->assertStringContainsString('Samsung', $new['body'], 'device brands from the gateway');
-        $this->assertMatchesRegularExpression("#Content-Security-Policy:[^\n]*img-src 'self' data: https://tile\\.openstreetmap\\.org;#i", $new['headers']);
+        $this->assertMatchesRegularExpression("#Content-Security-Policy:[^\n]*img-src 'self' data: https://trustseal\\.enamad\\.ir https://tile\\.openstreetmap\\.org;#i", $new['headers']);
 
         $create = $this->http('POST', '/lba.php', $sid, [
             '_csrf' => $this->csrf($new['body']), 'do' => 'request_create', 'line' => self::LINE, 'kind' => 'simple', 'title' => 'آزمایش HTTP',

@@ -56,28 +56,27 @@ function legal_identity_block(): string {
     return $html . '</dl>';
 }
 
+/** The site's eNamad trust seal (from the code enamad.ir issued for it). */
+const LEGAL_ENAMAD_ID = '8308816';
+const LEGAL_ENAMAD_CODE = '2UqX8SOQMWSOgUruuThqNA8IY4shqPhu';
+
 /**
- * The trust badges shown in both footers (ساماندهی، اینماد، اتحادیه کسب و کارهای مجازی). With an eNamad id and code entered in settings, the eNamad
- * badge is the official one: an image served by trustseal.enamad.ir inside a link to its public
- * verification page. Without them it stays the plain image that was there before — which proves
- * nothing to a visitor, so the real id/code should be entered (see the settings page).
+ * The trust badges shown in both footers (ساماندهی، اینماد، اتحادیه کسب و کارهای مجازی). The eNamad
+ * badge is the official seal issued by enamad.ir for this site: an image served by
+ * trustseal.enamad.ir inside a link to its public verification page (both with
+ * referrerpolicy="origin", which enamad.ir needs to match the seal to the domain). The image host is
+ * allowed in the Content-Security-Policy's img-src (send_security_headers() in app/bootstrap.php).
  *
  * @param int $height badge height in CSS pixels
  */
 function legal_trust_badges_html(int $height): string {
-    $enamadId = trim((string) setting('enamad_id', ''));
-    $enamadCode = trim((string) setting('enamad_code', ''));
     $style = 'display:block;width:auto;height:' . $height . 'px;max-width:150px;object-fit:contain';
 
-    if ($enamadId !== '' && $enamadCode !== '') {
-        $query = 'id=' . rawurlencode($enamadId) . '&Code=' . rawurlencode($enamadCode);
-        $enamad = '<a href="' . e('https://trustseal.enamad.ir/?' . $query) . '" target="_blank" rel="noopener" referrerpolicy="origin"'
-                . ' aria-label="نماد اعتماد الکترونیکی (اینماد) — استعلام در سایت enamad.ir، در پنجره‌ی جدید">'
-                . '<img src="' . e('https://trustseal.enamad.ir/logo.aspx?' . $query) . '" alt="نماد اعتماد الکترونیکی (اینماد)"'
-                . ' referrerpolicy="origin" loading="lazy" decoding="async" style="' . $style . '"></a>';
-    } else {
-        $enamad = '<img src="/assets/img/footer-image-2.png" alt="نماد اعتماد الکترونیکی (اینماد)" loading="lazy" decoding="async" style="' . $style . '">';
-    }
+    $query = 'id=' . LEGAL_ENAMAD_ID . '&Code=' . LEGAL_ENAMAD_CODE;
+    $enamad = '<a href="' . e('https://trustseal.enamad.ir/?' . $query) . '" target="_blank" rel="noopener" referrerpolicy="origin"'
+            . ' aria-label="نماد اعتماد الکترونیکی (اینماد) — استعلام در سایت enamad.ir، در پنجره‌ی جدید" style="display:block;line-height:0;cursor:pointer">'
+            . '<img src="' . e('https://trustseal.enamad.ir/logo.aspx?' . $query) . '" alt="نماد اعتماد الکترونیکی (اینماد)"'
+            . ' referrerpolicy="origin" code="' . LEGAL_ENAMAD_CODE . '" decoding="async" style="cursor:pointer;' . $style . '"></a>';
     $samandehi = '<img src="/assets/img/footer-image-1.png" alt="نشان ملی ثبت رسانه‌های دیجیتال (ساماندهی)" loading="lazy" decoding="async" style="' . $style . '">';
 
     return $samandehi . $enamad . legal_ecunion_badge_html($height);
