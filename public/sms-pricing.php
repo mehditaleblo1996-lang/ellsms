@@ -19,6 +19,7 @@
  * are never rendered, edited, or logged by this page (STEP 32).
  */
 require_once __DIR__ . '/../app/bootstrap.php';
+require_once __DIR__ . '/../app/PriceChanges.php';
 $me = require_admin();
 $pageTitle = 'تعرفه‌ی پیامک';
 $active = 'sms_pricing';
@@ -349,15 +350,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             /* ---------------- Legacy fallback switch (STEP 50) ---------------- */
             /* ---------------- Price matrix: gateway x operator x encoding (app/GatewayPrices.php) ---------------- */
-            case 'matrix_save': {
-                [$cells, $error] = gateway_prices_from_form((array)($_POST['price'] ?? []));
-                $cells = gateway_prices_drop_defaults($cells, gateway_prices_current(null), gateway_price_defaults(null));
-                $result = $error === null ? gateway_prices_save(null, $cells, (int)$me['id']) : ['ok' => false, 'reason' => $error];
-                flash($result['ok'] ? 'success' : 'error', $result['ok']
-                    ? 'تعرفه‌ی درگاه‌ها ذخیره شد' . ($result['changed'] > 0 ? ' (' . to_persian_digits((string)$result['changed']) . ' خانه تغییر کرد).' : '؛ تغییری نبود.')
-                    : gateway_price_error_message((string)$result['reason']));
+            // The matrix form previews its effect first (app/PriceChanges.php): nothing is saved until the
+            // admin confirms it, now or at a chosen time; an applied change can be reverted from its history.
+            case 'matrix_save':
+            case 'price_change_confirm':
+            case 'price_change_discard':
+            case 'price_change_cancel':
+            case 'price_change_revert':
+                price_change_handle_post((string)$do, 0, $me, 'matrix_save');
                 break;
-            }
 
             case 'fallback_toggle': {
                 $defaultMillis = sms_pricing_credits_to_millicredits((string)($_POST['default_price_rial'] ?? ''));
@@ -458,6 +459,8 @@ require __DIR__ . '/../app/views/header.php';
     برای هر درگاهی که در آن خانه قیمت خودش را ندارد (و درگاه‌هایی که بعداً اضافه شوند) حساب می‌شود. عدد خاکستری یعنی خانه قیمت ثبت‌شده ندارد و پیش‌فرضش
     حساب می‌شود (پیش‌فرض خود سطر پیش‌فرض، تعرفه‌ی مسیر در برگه‌ی «تعرفه‌ها» است)؛ هر خانه را که تغییر دهید ذخیره می‌شود و خالی‌کردن آن را به پیش‌فرض برمی‌گرداند.
     با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تعرفه‌ی اختصاصی هر مشتری در صفحه‌ی ویرایش کاربر است.
+    دکمه‌ی ذخیره ابتدا پیش‌نمایش اثر تغییر را نشان می‌دهد (چند مشتری و چقدر از درآمد ماهانه، بر اساس ارسال‌های ۳۰ روز گذشته)؛ پس از تأیید،
+    تغییر از همین حالا یا در تاریخ و ساعتی که انتخاب می‌کنید اعمال می‌شود و از «تاریخچه‌ی تغییرات تعرفه» با یک کلیک برمی‌گردد.
   </p>
   <?php
     $matrixGateways = gateway_price_matrix_gateways();
@@ -465,12 +468,17 @@ require __DIR__ . '/../app/views/header.php';
     $matrixValues = gateway_prices_current(null);
     $matrixDefaults = gateway_price_defaults(null);
     $matrixHidden = csrf_field() . '<input type="hidden" name="do" value="matrix_save"><input type="hidden" name="tab" value="matrix">';
-    $matrixSubmitLabel = 'ذخیره‌ی تعرفه‌ی درگاه‌ها';
+    $matrixSubmitLabel = price_changes_available() ? 'پیش‌نمایش اثر و ذخیره‌ی تعرفه‌ی درگاه‌ها' : 'ذخیره‌ی تعرفه‌ی درگاه‌ها';
     if (!gateway_prices_available()):
   ?>
     <div class="flash flash-error"><?= e(gateway_price_error_message('not_migrated')) ?></div>
   <?php else: require __DIR__ . '/../app/views/price_matrix.php'; endif; ?>
 </div>
+<?php if (gateway_prices_available()) {
+    $priceChangeSlot = 0;
+    $priceChangeHidden = csrf_field() . '<input type="hidden" name="tab" value="matrix">';
+    require __DIR__ . '/../app/views/price_changes.php';
+} ?>
 
 <?php elseif ($tab === 'operators'): ?>
 <div class="card">

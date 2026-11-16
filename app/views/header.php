@@ -33,6 +33,11 @@ if (ai_secretary_menu_visible($me)) {
     $nav = array_slice($nav, 0, (int)array_search('autoreply', array_keys($nav), true) + 1, true)
         + ['ai_secretary' => ['/ai-secretary.php', 'منشی هوشمند', '✦']] + $nav;
 }
+// «صورت‌حساب ماهانه» (public/statement.php) opens with the financial log's menu (app/MenuAccess.php).
+if ($me['role'] === 'admin' || menu_access_allows($me, 'financial_log')) {
+    $nav = array_slice($nav, 0, (int)array_search('financial_log', array_keys($nav), true) + 1, true)
+        + ['statement' => ['/statement.php', 'صورت‌حساب ماهانه', '🧮']] + $nav;
+}
 // The customer's own per-operator price list (public/my-tariff.php); admins set prices elsewhere.
 if ($me['role'] !== 'admin') {
     $nav['my_tariff'] = ['/my-tariff.php', 'تعرفه من', '💱'];

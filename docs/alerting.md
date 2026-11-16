@@ -87,6 +87,10 @@ fire count, an "acknowledge" button for open ones), recent resolved history, and
 change the three repeat intervals and the alert email recipient without a redeploy. Platform-admin
 only (`require_admin()`), same guard every other global-configuration page uses.
 
+**Daily report.** The same page has the «گزارش روزانه‌ی تلگرام» card: switch the admin's daily
+Telegram summary on or off, choose its chat, preview yesterday's report or send it now
+([`daily-report.md`](daily-report.md)). The report lists every open or acknowledged incident.
+
 ## Metrics
 
 `app/Observability/PrometheusExporter.php` exports, all with bounded labels only (severity: 3

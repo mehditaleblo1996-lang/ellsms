@@ -92,6 +92,12 @@ messages shows a separate «تعداد پارت» column next to each count — 
 and «گزارش تعداد پیام‌های ارسالی / دریافتی»; the pre-built report tables keep part totals too
 (`db/migrations/2026_11_11_report_parts.sql`). See [`docs/message-parts.md`](docs/message-parts.md).
 
+**What one message cost.** The detail drawer's «هزینه و پیگیری» spells out each message's charge —
+«۲ پارت × ۱,۱۲۴ ریال = ۲,۲۴۸ ریال» with «کسر شد» / «برگشت شد» / «کسر نشد» / «رزرو شده» — and the refund
+with its time, read from the stored charge (a bulk row's own ledger entry and frozen price, a direct
+send's `charged_credits` and price snapshot) and its `ellsms_delivery_refunds` row; never re-priced.
+No migration, no API route. See [`docs/message-cost.md`](docs/message-cost.md).
+
 ## Voice messages (ZarinCall)
 
 Customers can send voice files (uploaded WAV/MP3 or generated from Persian text) by phone call to a
@@ -296,8 +302,9 @@ Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: 
 
 | Where | What |
 |---|---|
-| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)), `PASSWORD_HASH_MODE` (`legacy` = the backend's SHA-256 in `user_.password`, the default; `argon2id` = Argon2id verifiers, one way) and `RATE_LIMIT_PASSWORD_CHECK_MAX` / `RATE_LIMIT_PASSWORD_CHECK_WINDOW_SECONDS` (attempts at the current password; see [`docs/password-security.md`](docs/password-security.md)), `FAILED_RESEND_MAX_ITEMS` (most failed rows one «ارسال مجدد ناموفق‌ها» click may queue, default 10000, see [`docs/failed-resend.md`](docs/failed-resend.md)) |
+| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)), `PASSWORD_HASH_MODE` (`legacy` = the backend's SHA-256 in `user_.password`, the default; `argon2id` = Argon2id verifiers, one way) and `RATE_LIMIT_PASSWORD_CHECK_MAX` / `RATE_LIMIT_PASSWORD_CHECK_WINDOW_SECONDS` (attempts at the current password; see [`docs/password-security.md`](docs/password-security.md)), `FAILED_RESEND_MAX_ITEMS` (most failed rows one «ارسال مجدد ناموفق‌ها» click may queue, default 10000, see [`docs/failed-resend.md`](docs/failed-resend.md)), `DAILY_REPORT_AT` / `DAILY_REPORT_ENABLED` (time of the admin's daily Telegram report, HH:MM Tehran, default 08:00, and its default on/off, see [`docs/daily-report.md`](docs/daily-report.md)) |
 | Panel → Settings (admin) | API base URL (overrides `.env`, stored in `ellsms_settings`), default sender line |
+| Panel → هشدارها (admin) | alert repeat intervals and e-mail; the daily Telegram report's on/off and chat (`daily_report_enabled`, `daily_report_telegram_chat_id`) |
 | Panel → Users | Grant/revoke panel access, admin flag, per-user sender line, credit (writes to the shared `user_.currentcredit`) |
 
 All sensitive/runtime configuration is read from environment variables (`.env`, wired into each
@@ -358,6 +365,39 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 ## Financial log (تاریخچه مالی)
 
 **«مالی» → «تاریخچه مالی»** (`/financial-log.php`) lists every increase and decrease of the balance with the balance before and after, from the wallet ledger; admins see every account. A **bulk send is one row** («هزینه‌ی ارسال گروهی» — the sum of its per-message charges, with the balance before and after the send); the per-message charges stay in the ledger. Every charged bulk send is checked when it finishes or is cancelled (sent = charged = frozen prices, reservation released); a mismatch is flagged on its row and job page (admins), sent to the admins as a panel notification and to the support Telegram group. No API route. Migration `db/migrations/2026_11_17_bulk_billing_issues.sql`. See [`docs/financial-log.md`](docs/financial-log.md).
+
+## Monthly statement (صورت‌حساب ماهانه)
+
+**«مالی» → «صورت‌حساب ماهانه»** (`/billing/statement`, `public/statement.php`): one Jalali month of an
+account — opening and closing balance, what came in and went out by type, SMS charges and refunds, a
+«جابه‌جایی رزرو» line for sends still running at the month's ends (so opening + in − out = closing is
+exact), messages and parts per operator, and each day's in and out — on the page, as a **PDF**
+(wkhtmltopdf, like the price quote) or as a printable page. Customers see their own; admins pick any
+account. Opens with the «تاریخچه مالی» menu. Read-only: no migration, no API route. See
+[`docs/statement.md`](docs/statement.md).
+
+## Price changes: preview, scheduling, one-click revert
+
+Saving the global «تعرفه‌ی درگاه‌ها» (Platform Admin → تعرفه‌ی پیامک) or an account's «تعرفه‌ی
+اختصاصی» (Users → user) first shows a **preview** priced against the last 30 days of real traffic
+through the send-time pricing engine: the cells that change, how many customers it touches, the
+monthly revenue shift (Rial and %), the most affected customers, and traffic that would lose its
+price. The admin then applies it **now or at a chosen Jalali date and time**; scheduled changes are
+applied within a minute by the `price-changes` scheduler job. «تاریخچه‌ی تغییرات تعرفه» lists every
+change with its estimate; a scheduled one can be cancelled and an applied one **reverted in one click**
+(only cells nobody changed since). Migration `db/migrations/2026_11_20_price_changes.sql`; scheduler jobs
+`price-changes` (every minute) and `price-usage-profile` (daily); no API route. See
+[`docs/price-changes.md`](docs/price-changes.md).
+
+## Daily Telegram report (گزارش روزانه‌ی مدیر)
+
+Every day after `DAILY_REPORT_AT` (08:00 Tehran) the scheduler job `daily-report` sends yesterday's
+summary to the admin's Telegram: messages and parts by state, money charged («مبلغ کسرشده») and
+refunded («مبلغ برگشتی») and credit bought, failed messages with their top error codes and failing
+scheduler jobs, new customers, and every open alert. Switch it off, pick its chat (default: the «تماس
+با ما» chat), preview it or send it now on **هشدارها** (`/admin/alerts`). A failed send is retried at
+the next run; each day is sent once. No migration, no API route. See
+[`docs/daily-report.md`](docs/daily-report.md).
 
 ## Buying credit — ZarinPal
 
@@ -657,10 +697,13 @@ updated in the same change** — see `CLAUDE.md`.
 **Pricing, wallet & billing**
 [sms-pricing](docs/sms-pricing.md) ·
 [gateway-price-matrix](docs/gateway-price-matrix.md) ·
+[price-changes](docs/price-changes.md) ·
 [cost-preview](docs/cost-preview.md) ·
 [rial-currency](docs/rial-currency.md) ·
 [wallet-architecture](docs/wallet-architecture.md) ·
 [financial-log](docs/financial-log.md) ·
+[statement](docs/statement.md) ·
+[message-cost](docs/message-cost.md) ·
 [delivery-based-billing](docs/delivery-based-billing.md) ·
 [delivery-states](docs/delivery-states.md) ·
 [ai-billing](docs/ai-billing.md) ·
@@ -695,6 +738,7 @@ updated in the same change** — see `CLAUDE.md`.
 [staging](docs/staging.md) ·
 [backup-and-disaster-recovery](docs/backup-and-disaster-recovery.md) ·
 [alerting](docs/alerting.md) ·
+[daily-report](docs/daily-report.md) ·
 [observability-and-performance](docs/observability-and-performance.md) ·
 [observability-cardinality](docs/observability-cardinality.md) ·
 [observability-dod-checklist](docs/observability-dod-checklist.md) ·

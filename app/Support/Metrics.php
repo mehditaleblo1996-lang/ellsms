@@ -34,7 +34,28 @@ final class Metrics
         return max(0.0, min(1.0, $rate));
     }
 
+    /** Depth of Metrics::muted() calls in progress: while above zero nothing is emitted. */
+    private static int $mutedDepth = 0;
+
+    /**
+     * Runs $work without emitting any metric. For what-if computations that call real code paths
+     * thousands of times without anything really happening — the price-change preview
+     * (app/PriceChanges.php) prices a month of traffic twice through the send-path pricing engine,
+     * whose per-message counters would otherwise report sends that never took place.
+     */
+    public static function muted(callable $work): mixed {
+        self::$mutedDepth++;
+        try {
+            return $work();
+        } finally {
+            self::$mutedDepth--;
+        }
+    }
+
     private static function shouldSample(): bool {
+        if (self::$mutedDepth > 0) {
+            return false;
+        }
         $rate = self::sampleRate();
         if ($rate >= 1.0) {
             return true;

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/backend.php'; // needed for backend_create_account()
+require_once __DIR__ . '/../app/PriceChanges.php';
 $me = require_admin();
 $pageTitle = 'کاربران';
 $active = 'users';
@@ -45,7 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save', 'vip_save', 'p2p_auto_send_save'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save',
+                               'price_change_confirm', 'price_change_discard', 'price_change_cancel', 'price_change_revert', 'delivery_billing_save', 'vip_save', 'p2p_auto_send_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -151,15 +153,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ], (int)$me['id']);
                 flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'نوع مشتری و نمایندگی ذخیره شد.' : customer_error_message((string)$result['reason']));
             }
-        } elseif ($do === 'operator_prices_save') {
+        } elseif (in_array($do, ['operator_prices_save', 'price_change_confirm', 'price_change_discard', 'price_change_cancel', 'price_change_revert'], true)) {
             // The account's own price matrix (app/GatewayPrices.php): gateway x operator x encoding.
-            // An empty cell falls back to the global matrix. Nothing is saved unless every cell parses.
-            [$cells, $error] = gateway_prices_from_form((array)($_POST['price'] ?? []));
-            $cells = gateway_prices_drop_defaults($cells, gateway_prices_current($id), gateway_price_defaults($id));
-            $result = $error === null ? gateway_prices_save($id, $cells, (int)$me['id']) : ['ok' => false, 'reason' => $error];
-            flash($result['ok'] ? 'success' : 'error', $result['ok']
-                ? 'تعرفه‌ی اختصاصی ذخیره شد. از همین لحظه برای ارسال‌های جدید اعمال می‌شود.'
-                : gateway_price_error_message((string)$result['reason']));
+            // An empty cell falls back to the global matrix. Nothing is saved unless every cell parses,
+            // and nothing before the admin has seen the preview of its effect and confirmed it, now or
+            // at a chosen time (app/PriceChanges.php).
+            price_change_handle_post((string)$do, $id, $me, 'operator_prices_save');
+            redirect('/users.php?edit=' . $id . '#operator-prices');
         } elseif ($do === 'delivery_billing_save') {
             // Delivery-based billing (app/DeliveryRefunds.php): admin-only per-user switch plus the
             // share of an undelivered message's price that goes back to the wallet.
@@ -846,7 +846,8 @@ if ($editOrganizationId > 0) {
       سطر «پیش‌فرض همه‌ی درگاه‌ها» قیمت این کاربر برای هر درگاهی است که در آن خانه قیمت جدا ندارد.
       عدد خاکستری قیمت پیش‌فرض همین کاربر است (تعرفه‌ی عمومی) و تا تغییرش ندهید ذخیره نمی‌شود؛ خالی‌کردن یک خانه آن را به پیش‌فرض برمی‌گرداند.
       تعرفه‌ی عمومی در «تعرفه‌ی پیامک ← تعرفه‌ی درگاه‌ها» است.
-      با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تغییرات از همین لحظه برای ارسال‌های جدید اعمال می‌شود.
+      با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. پیش از ذخیره، اثر تغییر بر ارسال‌های ماه گذشته‌ی این حساب
+      (و زیرمجموعه‌هایش) نشان داده می‌شود و می‌توانید آن را از همین حالا یا در زمانی دیگر اعمال کنید؛ هر تغییر اعمال‌شده با یک کلیک برمی‌گردد.
       <?php if ($editCustomerChildren): ?>زیرسازمان‌های این حساب هم با همین قیمت‌ها ارسال می‌کنند.<?php endif; ?>
     </p>
     <?php
@@ -855,8 +856,11 @@ if ($editOrganizationId > 0) {
       $matrixValues = gateway_prices_current((int)$editUser['id']);
       $matrixDefaults = gateway_price_defaults((int)$editUser['id']);
       $matrixHidden = csrf_field() . '<input type="hidden" name="do" value="operator_prices_save"><input type="hidden" name="id" value="' . (int)$editUser['id'] . '"><input type="hidden" name="back" value="1">';
-      $matrixSubmitLabel = 'ذخیره‌ی تعرفه‌ی اختصاصی';
+      $matrixSubmitLabel = price_changes_available() ? 'پیش‌نمایش اثر و ذخیره‌ی تعرفه‌ی اختصاصی' : 'ذخیره‌ی تعرفه‌ی اختصاصی';
       require __DIR__ . '/../app/views/price_matrix.php';
+      $priceChangeSlot = (int)$editUser['id'];
+      $priceChangeHidden = csrf_field() . '<input type="hidden" name="id" value="' . (int)$editUser['id'] . '"><input type="hidden" name="back" value="1">';
+      require __DIR__ . '/../app/views/price_changes.php';
     ?>
   <?php endif; ?>
 </div>

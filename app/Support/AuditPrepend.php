@@ -100,6 +100,8 @@ if (PHP_SAPI !== 'cli') {
                 '/invoices.php' => '/billing/invoices',
                 '/payment-receipt.php' => '/billing/receipt',
                 '/financial-log.php' => '/billing/history',
+                '/statement.php' => '/billing/statement',
+                '/my-tariff.php' => '/billing/my-tariff',
                 '/credit-status.php' => '/billing/credit/status',
                 '/api-keys.php' => '/developers/api-keys',
                 '/webhooks.php' => '/developers/webhooks',
