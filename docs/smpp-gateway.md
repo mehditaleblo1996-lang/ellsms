@@ -170,7 +170,10 @@ shows the gateway's own sessions and their last error; they retry on their own w
   | SMSC refused it (`command_status`) | **failed** with `[0x…]`, never retried |
   | HTTP timeout to the bridge, `submit_sm` without answer, session broken mid-write | **failed** with its code and the `bulk_send_failed` alert — the SMSC may have it, so it is never resent automatically |
 
-  Each failed recipient's error code is the SMSC's `command_status` (`0x0000000B`), else `smpp_<class>`,
+  Each failed recipient's error code is the SMSC's `command_status` with its Persian meaning
+  (`0x0000000A فرستنده نامعتبر`, `SMPP_COMMAND_STATUS_LABELS`), and its error text says what to do
+  (e.g. for `0x0A`: check «TON/NPI فرستنده», the line's format and that the line is on the account).
+  The session table's last error and the test-bind message carry the same meanings. Otherwise the code is `smpp_<class>`,
   `smpp_bridge_unreachable`, `smpp_gateway_not_running`, `smpp_bridge_timeout`, `smpp_bridge_http_<n>`,
   `smpp_budget` or `smpp_no_result`.
 - The **status-worker** runs `smpp_events_process_pass()`:

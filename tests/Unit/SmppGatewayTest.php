@@ -93,7 +93,12 @@ final class SmppGatewayTest extends TestCase
 
     public function testSubmitErrorCodes(): void
     {
-        $this->assertSame('0x0000000B', smpp_result_error_code(['command_status' => 11, 'error_class' => 'rejected']));
+        $this->assertSame('0x0000000B گیرنده نامعتبر', smpp_result_error_code(['command_status' => 11, 'error_class' => 'rejected']));
+        $this->assertSame('0x0000000A فرستنده نامعتبر', smpp_result_error_code(['command_status' => 10, 'error_class' => 'rejected']));
+        $this->assertSame('0x00000ABC', smpp_result_error_code(['command_status' => 0xABC]), 'an unknown code stays bare');
+        $this->assertStringContainsString('TON/NPI فرستنده', smpp_command_status_label(0x0A, true));
+        $this->assertSame('submit_sm rejected 0xa (فرستنده نامعتبر)', smpp_annotate_status_codes('submit_sm rejected 0xa'));
+        $this->assertSame('no code here', smpp_annotate_status_codes('no code here'));
         $this->assertSame('smpp_unavailable', smpp_result_error_code(['command_status' => null, 'error_class' => 'unavailable']));
         $this->assertSame('smpp_failed', smpp_result_error_code([]));
     }
