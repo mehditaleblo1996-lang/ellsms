@@ -176,15 +176,17 @@ final class AimedBulkHttpTest extends TestCase
         $csrf = $this->csrf($customer);
         $this->assertStringNotContainsString('تنظیمات ارسال با کد پستی', $this->request('GET', '/aimed-bulk.php', $customer)['body'], 'settings are admin-only');
         $created = $this->request('POST', '/aimed-bulk.php', $customer, [
-            '_csrf' => $csrf, 'action' => 'create', 'postal_code' => '98765', 'sim' => 'all',
+            '_csrf' => $csrf, 'action' => 'create', 'postal_code' => '98765', 'sim' => 'all', 'random' => '1',
             'originator' => '5000900913', 'content' => 'پیام آزمایشی', 'count' => '',
         ]);
         $this->assertSame(302, $created['code'], $created['body']);
 
-        $st = db()->prepare('SELECT id FROM ellsms_aimed_bulk_requests WHERE user_id = ?');
+        $st = db()->prepare('SELECT id, criteria_json FROM ellsms_aimed_bulk_requests WHERE user_id = ?');
         $st->execute([$this->customerId]);
-        $requestId = (int)$st->fetchColumn();
+        $stored = $st->fetch();
+        $requestId = (int)$stored['id'];
         $this->assertGreaterThan(0, $requestId, 'the request was stored');
+        $this->assertTrue(json_decode((string)$stored['criteria_json'], true)['random'] ?? null, '«انتخاب تصادفی شماره‌ها» reaches the request');
         for ($i = 0; $i < 10 && aimed_bulk_stage_pass()['batches'] > 0; $i++) {
         }
         $this->assertStringContainsString('منتظر تأیید', $this->request('GET', '/aimed-bulk.php', $customer)['body']);

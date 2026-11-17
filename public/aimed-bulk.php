@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit((int)$me['id'], 'aimed_bulk.settings', 'enabled=' . (!empty($_POST['aimed_bulk_enabled']) ? 1 : 0) . ' surcharge=' . aimed_bulk_surcharge_percent());
         flash('success', 'تنظیمات ارسال با کد پستی ذخیره شد.');
     } elseif ($action === 'count' || $action === 'create') {
-        $form = array_intersect_key($_POST, array_flip(['postal_code', 'province_code', 'city_code', 'prefix', 'sim', 'originator', 'content', 'count', 'title']));
+        $form = array_intersect_key($_POST, array_flip(['postal_code', 'province_code', 'city_code', 'prefix', 'sim', 'random', 'originator', 'content', 'count', 'title']));
         $_SESSION['aimed_bulk_form'] = $form;
         $c = aimed_bulk_criteria($form);
         if (!$c['ok']) {
@@ -145,7 +145,7 @@ require __DIR__ . '/../app/views/header.php';
 <?php if ($canSend): ?>
 <div class="card" style="margin-top:18px">
   <h2>درخواست جدید</h2>
-  <p class="hint">کد پستی را کامل یا فقط چند رقم اول آن را وارد کنید (مثلاً ۱۳۱ برای همه‌ی کدهای پستی که با ۱۳۱ شروع می‌شوند). فیلترهای دیگر اختیاری‌اند و با هم ترکیب می‌شوند.</p>
+  <p class="hint">کد پستی را کامل یا فقط چند رقم اول آن را وارد کنید (مثلاً ۱۳۱ برای همه‌ی کدهای پستی که با ۱۳۱ شروع می‌شوند). فیلترهای دیگر اختیاری‌اند و با هم ترکیب می‌شوند. با «سقف تعداد»، شماره‌ها به ترتیب از ابتدای بانک شماره برداشته می‌شوند؛ با «انتخاب تصادفی شماره‌ها» از کل محدوده به‌صورت تصادفی انتخاب می‌شوند.</p>
   <form method="post" id="ab-form">
     <?= csrf_field() ?>
     <div class="toolbar">
@@ -173,6 +173,7 @@ require __DIR__ . '/../app/views/header.php';
         <?php endif; ?>
       </label>
       <label>سقف تعداد (خالی = همه) <input type="number" min="0" name="count" class="ltr" value="<?= e($fv('count')) ?>"></label>
+      <label title="بدون این گزینه، شماره‌ها به ترتیب از ابتدای بانک شماره برداشته می‌شوند و درخواست بعدی با همین مشخصات همان شماره‌ها را می‌گیرد."><input type="checkbox" name="random" value="1"<?= $fv('random') !== '' ? ' checked' : '' ?>> انتخاب تصادفی شماره‌ها</label>
       <label style="flex:1 1 220px">عنوان (اختیاری) <input type="text" name="title" maxlength="160" style="width:100%" value="<?= e($fv('title')) ?>"></label>
     </div>
     <label style="display:block">متن پیام <textarea name="content" rows="4" style="width:100%"><?= e($fv('content')) ?></textarea></label>

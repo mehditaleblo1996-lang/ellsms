@@ -2,7 +2,9 @@
 
 Send one message to the subscribers in a **postal-code area**, a **province** or **city**, a
 **number prefix** and/or a **SIM type** (prepaid / postpaid). The filters combine: «postal code 131…,
-prepaid, 0912» is one target.
+prepaid, 0912» is one target. A count cap («سقف تعداد») takes that many of the matching numbers: from
+the start of the bank, or at random with «انتخاب تصادفی شماره‌ها» (see
+[Which numbers a capped request takes](#which-numbers-a-capped-request-takes)).
 
 The number bank is Vesal's `TBL_MOBILE`, copied into ELLSMS. This is the difference from
 [regional bulk](regional-bulk.md) (#43), which asks Vesal to send and never sees a number. Aimed bulk
@@ -104,7 +106,7 @@ Persian province and city names survive.
   - The area is **not** counted here: on a large bank that outlived the page's proxy timeout. The worker checks it in the next step.
 - **Staging (worker, `aimed_bulk_stage_pass()`):**
   - Without a count cap, the area is counted first, only up to the per-request limit. An empty area ends the request `failed` with «هیچ شماره‌ای با این مشخصات در بانک شماره نیست»; an area above the limit ends it `failed` with the advice to set a cap or narrow the area. No bulk job is created for either. With a cap, nothing is counted; the cap is the snapshot's size.
-  - The matching numbers are snapshotted once into `ellsms_aimed_bulk_targets`, in bank order, up to the count cap (or the limit).
+  - The matching numbers are snapshotted once into `ellsms_aimed_bulk_targets`, up to the count cap (or the limit): in bank order, or in random order with «انتخاب تصادفی شماره‌ها». The rows are staged in that order, and the bulk worker claims them for sending by row id (`bulk_claim_items()`), so the send follows it too.
   - Then they are processed 2,000 at a time:
     - The customer's own blacklist (`ellsms_blacklist`) is dropped.
     - Each number is priced through `sms_pricing_price_messages()`, the same tariff, operator and route rules as any other send, at one pricing instant for the whole request.
@@ -137,8 +139,7 @@ the background, on indexes that answer it without reading the table:
   «تعداد شماره‌های «…»: N». The customer may leave the page; the result is shown when they come back.
 - **Up to the limit only.** A count stops at the per-request limit plus one
   (`aimed_bulk_count($criteria, $upTo)`), and a larger area is shown as «بیش از N (حداکثر هر
-  درخواست)». A request can never target more than the limit, and a second request with the same
-  filters picks the same numbers, so counting further buys nothing.
+  درخواست)». A request can never target more than the limit, so counting further buys nothing.
 - **Time limit.** One count query may run `AIMED_BULK_COUNT_MAX_SECONDS` (60 s, MySQL
   `MAX_EXECUTION_TIME`). Past that it is stopped and the customer is asked to narrow the area. The
   same limit applies to the size check while staging, which then ends the request `failed`.
@@ -162,6 +163,22 @@ had only `uniq_mobile`, which holds no `blocklisted` column, so every matching n
 in the table. Mixing postal code with province or city still works, but only one index is used; the
 rest of the filter is then checked against the table rows.
 
+## Which numbers a capped request takes
+
+With a count cap smaller than the area, the snapshot takes:
+
+- **By default, the start of the bank:** `ORDER BY m.id`, the order the numbers were imported in
+  (a re-import keeps a number's place; new numbers go to the end). The same filters and cap pick the
+  **same numbers every time**, so a second request with them reaches the same people again.
+- **With «انتخاب تصادفی شماره‌ها»** (checkbox next to «سقف تعداد»): `ORDER BY RAND()`, a random draw
+  from the whole matching area, different for every request. It is stored in the request's
+  `criteria_json` as `"random": true` and shown in the list as «انتخاب تصادفی». It is not a filter:
+  the count and the size check do not change. Measured on the production bank, drawing 100,000 of a
+  0912 area at random took about as long as taking them in bank order (3.4 s against 3.2 s).
+
+Without a cap (the whole area, within the limit) both take the same numbers; random only changes the
+sending order.
+
 ## The numbers stay the platform's
 
 The bulk job carries `recipients_masked = 1`. For anyone but a platform admin:
@@ -181,8 +198,8 @@ usual.
 - `tests/Integration/AimedBulkTest.php` covers:
   - Import, in Vesal's layout: BOM, `;` delimiter, upsert on rerun, and city→province resolution through `PROVINCE_ID`.
   - Filter normalization and counts, the count bounded at the limit, and background counts: queued, counted by the worker pass, reused while fresh, recounted when stale, cleared by an import.
-  - Staging: a masked staged job, the surcharged price, the customer blacklist, the count cap, a 4,500-row request staged across passes without duplicates, and an empty or too-large area ending `failed` in staging.
+  - Staging: a masked staged job, the surcharged price, the customer blacklist, the count cap, «انتخاب تصادفی شماره‌ها» drawing different numbers of the area, a 4,500-row request staged across passes without duplicates, and an empty or too-large area ending `failed` in staging.
   - Confirmation, double confirmation, insufficient credit, cancellation and customer isolation.
   - Settlement of a sent row at its frozen price.
   - Masking in webhooks, exports and the dashboard.
-- `tests/Integration/AimedBulkHttpTest.php` runs the real pages: «شمارش» queued and polled (never counted in the request, and only visible to the session that asked), create, stage, confirm, and the job page masked for the customer but in full for the admin.
+- `tests/Integration/AimedBulkHttpTest.php` runs the real pages: «شمارش» queued and polled (never counted in the request, and only visible to the session that asked), create (with «انتخاب تصادفی شماره‌ها» reaching the request), stage, confirm, and the job page masked for the customer but in full for the admin.

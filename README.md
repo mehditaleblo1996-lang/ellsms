@@ -126,7 +126,8 @@ message sent is charged. See [`docs/lba.md`](docs/lba.md).
 
 Customers send one message to subscribers in ELLSMS's own number bank (Vesal's `TBL_MOBILE`, loaded by
 `cron/aimed-mobiles-import.php`), picked by postal code (or its first digits), province / city, number
-prefix and SIM type, on **/messages/aimed**. The bulk worker stages and prices the request at the normal
+prefix and SIM type, on **/messages/aimed**; with a count cap, «انتخاب تصادفی شماره‌ها» draws the numbers at
+random from the whole area instead of taking the start of the bank. The bulk worker stages and prices the request at the normal
 tariff plus an admin surcharge; the customer confirms it, and it goes out through ELLSMS's own lines,
 gateways and wallet. Customers only ever see the numbers masked (`0912***4567`). «شمارش شماره‌ها» runs in
 the background: the page queues the count, the `worker` counts it (only up to the per-request limit, on

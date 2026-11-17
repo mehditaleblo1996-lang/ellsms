@@ -170,6 +170,11 @@ final class AimedBulkTest extends IntegrationTestCase
         self::assertFalse(aimed_bulk_criteria(['sim' => 'prepaid'])['ok'], 'the whole bank is not a target');
         self::assertFalse(aimed_bulk_criteria(['postal_code' => '13'])['ok']);
         self::assertFalse(aimed_bulk_criteria(['prefix' => '021'])['ok']);
+        self::assertFalse($this->criteria(['postal_code' => '131'])['random'], 'bank order unless asked');
+        $random = $this->criteria(['postal_code' => '131', 'random' => '1']);
+        self::assertTrue($random['random']);
+        self::assertStringContainsString('انتخاب تصادفی', aimed_bulk_criteria_label($random));
+        self::assertSame(5, aimed_bulk_count($random), 'random picking is not a filter');
     }
 
     public function testCountsCombineFiltersAndSkipBlocklistedNumbers(): void
@@ -255,6 +260,24 @@ final class AimedBulkTest extends IntegrationTestCase
         self::assertSame(3, (int)$req['matched_rows']);
         self::assertSame(1, (int)$req['blacklisted_rows']);
         self::assertSame(['989120000001', '989120000003'], array_column($this->items((int)$req['bulk_job_id']), 'mobile'));
+    }
+
+    public function testRandomPickDrawsTheCapFromTheWholeAreaInsteadOfTheBankStart(): void
+    {
+        $area = ['989120000001', '989120000002', '989120000003', '989120000004', '989120000005'];
+        $picks = [];
+        for ($i = 0; $i < 25; $i++) {
+            $req = $this->createAndStage($this->criteria(['postal_code' => '131', 'random' => '1']), 3);
+            self::assertSame('priced', $req['status']);
+            $mobiles = array_column($this->items((int)$req['bulk_job_id']), 'mobile');
+            self::assertCount(3, array_unique($mobiles));
+            self::assertSame([], array_diff($mobiles, $area), 'only numbers of the area');
+            sort($mobiles);
+            $picks[implode(',', $mobiles)] = true;
+        }
+        // Bank order would give 0001-0003 every time; 25 random draws of 3 out of 5 all landing on one
+        // set has a probability of (1/10)^24.
+        self::assertGreaterThan(1, count($picks), 'random draws differ between requests');
     }
 
     public function testAServiceLineSkipsTheCustomerBlacklist(): void

@@ -160,6 +160,9 @@ function aimed_bulk_criteria(array $in): array {
         'city_code'     => max(0, (int)$digits('city_code')),
         'prefix'        => $prefix,
         'sim'           => $sim,
+        // «انتخاب تصادفی شماره‌ها»: which of the matching numbers a capped request takes. Not a filter:
+        // it changes neither the count nor aimed_bulk_where(), only the staging order.
+        'random'        => !empty($in['random']) && (string)$in['random'] !== '0',
     ];
     if ($postal === '' && $criteria['province_code'] === 0 && $criteria['city_code'] === 0 && $prefix === '') {
         return ['ok' => false, 'error' => 'دست‌کم یکی از کد پستی، استان، شهر یا پیش‌شماره را مشخص کنید.'];
@@ -336,6 +339,7 @@ function aimed_bulk_criteria_label(array $criteria): string {
     if (($criteria['prefix'] ?? '') !== '') $parts[] = 'پیش‌شماره 0' . substr((string)$criteria['prefix'], 2);
     if (($criteria['sim'] ?? 'all') === 'prepaid') $parts[] = 'اعتباری';
     if (($criteria['sim'] ?? 'all') === 'postpaid') $parts[] = 'دائمی';
+    if (!empty($criteria['random'])) $parts[] = 'انتخاب تصادفی';
     return implode('، ', $parts);
 }
 
@@ -509,7 +513,11 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
             $take = $limit;
         }
         $req['max_count'] = $take;
-        $jobId = db_transaction(function (PDO $db) use ($req, $where, $params, $id): int {
+        // Bank order (import order) by default: the same filters and cap pick the same numbers every
+        // time. «انتخاب تصادفی» draws them at random from the whole area instead; measured on the
+        // production bank, ORDER BY RAND() over a 0912 area cost about the same as ORDER BY m.id.
+        $order = !empty($criteria['random']) ? 'RAND()' : 'm.id';
+        $jobId = db_transaction(function (PDO $db) use ($req, $where, $params, $id, $order): int {
             $jobId = $req['bulk_job_id'] !== null ? (int)$req['bulk_job_id'] : 0;
             if ($jobId === 0) {
                 $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, organization_id, type, title, originator, status, total_rows, recipients_masked)
@@ -519,7 +527,7 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
             }
             $db->prepare('DELETE FROM ellsms_aimed_bulk_targets WHERE request_id = ?')->execute([$id]);
             $ins = $db->prepare("INSERT INTO ellsms_aimed_bulk_targets (request_id, mobile)
-                                 SELECT ?, m.mobile FROM ellsms_aimed_mobiles m WHERE {$where} ORDER BY m.id LIMIT " . max(1, (int)$req['max_count']));
+                                 SELECT ?, m.mobile FROM ellsms_aimed_mobiles m WHERE {$where} ORDER BY {$order} LIMIT " . max(1, (int)$req['max_count']));
             $ins->execute(array_merge([$id], $params));
             $db->prepare('UPDATE ellsms_aimed_bulk_requests SET bulk_job_id = ?, targets_ready = 1, matched_rows = ?, cursor_id = 0 WHERE id = ?')
                ->execute([$jobId, $ins->rowCount(), $id]);
