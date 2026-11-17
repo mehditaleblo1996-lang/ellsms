@@ -107,6 +107,30 @@ class BindTesterTest {
         }
     }
 
+    /** Holds the first connection silently and hangs up on every later one — a one-connection SMSC. */
+    private int oneConnectionServer() throws Exception {
+        ServerSocket ss = new ServerSocket(0);
+        closers.add(ss);
+        Thread.ofVirtual().start(() -> {
+            boolean first = true;
+            while (!ss.isClosed()) {
+                try {
+                    Socket s = ss.accept();
+                    if (first) {
+                        first = false;
+                        closers.add(s);
+                        Thread.ofVirtual().start(() -> { try { s.getInputStream().transferTo(java.io.OutputStream.nullOutputStream()); } catch (Exception ignored) { } });
+                    } else {
+                        s.close();
+                    }
+                } catch (Exception e) {
+                    return;
+                }
+            }
+        });
+        return ss.getLocalPort();
+    }
+
     private static int freePort() throws Exception {
         try (ServerSocket s = new ServerSocket(0)) {
             return s.getLocalPort();
@@ -128,6 +152,14 @@ class BindTesterTest {
         assertEquals("none", ((Map<?, ?>) r.get("enquire_link_probe")).get("answer"));
         assertEquals(false, r.get("tls_handshake"));
         assertEquals("silent", r.get("diagnosis"));
+    }
+
+    @Test
+    void anSmscThatHangsUpOnFurtherConnectionsIsNamed() throws Exception {
+        Map<String, Object> r = fast().run(cfg(oneConnectionServer(), "trx", "secret12"), List.of());
+        assertEquals("closed", ((Map<?, ?>) r.get("enquire_link_probe")).get("answer"));
+        assertNotNull(r.get("alt_bind_tx"), "a transmitter bind is tried too");
+        assertEquals("second_connection_closed", r.get("diagnosis"));
     }
 
     @Test

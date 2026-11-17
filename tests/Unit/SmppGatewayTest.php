@@ -73,6 +73,7 @@ final class SmppGatewayTest extends TestCase
         $base = ['ok' => false, 'host' => '192.168.111.80', 'port' => 40112, 'error' => 'Time out waiting for bind response'];
         $cases = [
             'silent' => 'whitelist',
+            'second_connection_closed' => 'HAProxy را ری‌استارت کنید',
             'session_limit' => 'درگاه کار می‌کند',
             'use_tx_rx' => 'Transmitter + Receiver جدا',
             'enable_tls' => 'اتصال TLS',

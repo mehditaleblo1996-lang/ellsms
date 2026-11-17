@@ -121,7 +121,10 @@ final class BindTester {
             out.put("diagnosis", "not_smpp_" + answer);
             return out;
         }
-        if (answer.equals("smpp")) {
+        boolean closed = answer.equals("closed");
+        if (answer.equals("smpp") || closed) {
+            // Something SMPP-like is there (it answers, or it hangs up on a PDU that is not a bind):
+            // see whether it takes a transmitter bind instead of a transceiver one.
             if (type == BindType.BIND_TRX) {
                 Attempt tx = bind(cfg, BindType.BIND_TX, iv, cfg.useTls(), altBindTimeoutMs);
                 out.put("alt_bind_tx", tx.toMap());
@@ -135,8 +138,10 @@ final class BindTester {
                     return out;
                 }
             }
-            out.put("diagnosis", "smsc_ignores_bind");
-            return out;
+            if (!closed) {
+                out.put("diagnosis", "smsc_ignores_bind");
+                return out;
+            }
         }
         if (!cfg.useTls()) {
             boolean tls = tlsHandshake(cfg.host(), cfg.port());
@@ -146,7 +151,7 @@ final class BindTester {
                 return out;
             }
         }
-        out.put("diagnosis", answer.equals("closed") ? "closed_by_peer" : "silent");
+        out.put("diagnosis", closed ? "second_connection_closed" : "silent");
         return out;
     }
 

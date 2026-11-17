@@ -68,6 +68,9 @@ The button opens one extra, throw-away session with the stored settings (`POST /
 
 1. TCP connect to host:port (5 s).
 2. bind as configured (15 s).
+   If none of the gateway's own sessions is bound, they are stopped during the test (they would only
+   hold the connection an SMSC with a one-session limit allows) and rebuilt right after it
+   (`gateway_sessions_paused`).
 3. Only when the bind got **no answer**: the gateway's own sessions; a bare `enquire_link` on a new
    connection (any SMPP server answers it, even before a bind); a TLS handshake when TLS is off and the
    port stayed silent; a `bind_transmitter` when a transceiver bind went unanswered on a port that
@@ -88,6 +91,7 @@ The button opens one extra, throw-away session with the stored settings (`POST /
 | `enable_tls` / `not_smpp_tls` | the port speaks TLS: turn on «اتصال TLS» |
 | `not_smpp_http` | an HTTP service answers on that port: wrong port |
 | `smsc_ignores_bind` | the port answers SMPP but not this bind: usually the source IP is not allowed for this account, or `system_id` / `system_type` is wrong |
+| `second_connection_closed` | the bind went unanswered and a second connection was hung up at once (a transmitter bind was tried too): usually a stale connection still held by the SMSC or a TCP proxy (HAProxy) on an account that allows one session, a source IP not yet applied, or `system_id` / `system_type` / version not what the operator expects |
 | `silent` | TCP connects but nothing answers at all (not bind, not `enquire_link`, not TLS): most often the source IP is not on the SMSC's allow list (some SMSCs drop such clients silently), else a wrong port, or a proxy / VPN in between that is not connected to the real SMSC |
 
 **Checks on the server** (the bridge connects from the Docker host, NATed to the host's address on the
