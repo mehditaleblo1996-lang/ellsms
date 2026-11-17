@@ -64,6 +64,32 @@ final class SmppGatewayTest extends TestCase
         $this->assertSame(3, smpp_send_parts(['message' => 'hi', 'messages' => ['989121234567' => str_repeat('س', 150)]]));
     }
 
+    public function testTheTestBindAnswerBecomesAdvice(): void
+    {
+        [$ok, $text] = smpp_test_bind_message(['ok' => true, 'bind_type' => 'BIND_TRX', 'elapsed_ms' => 42, 'smsc_system_id' => 'SMSC1']);
+        $this->assertTrue($ok);
+        $this->assertStringContainsString('SMSC1', $text);
+
+        $base = ['ok' => false, 'host' => '192.168.111.80', 'port' => 40112, 'error' => 'Time out waiting for bind response'];
+        $cases = [
+            'silent' => 'whitelist',
+            'session_limit' => 'درگاه کار می‌کند',
+            'use_tx_rx' => 'Transmitter + Receiver جدا',
+            'enable_tls' => 'اتصال TLS',
+            'invalid_password' => 'ESME_RINVPASWD',
+            'tcp_failed' => '192.168.111.80:40112',
+            'smsc_ignores_bind' => 'IP سرور را به اپراتور بدهید',
+            'something_new' => 'اتصال آزمایشی ناموفق بود',
+        ];
+        foreach ($cases as $diagnosis => $needle) {
+            [$ok, $text] = smpp_test_bind_message($base + ['diagnosis' => $diagnosis]);
+            $this->assertFalse($ok, $diagnosis);
+            $this->assertStringContainsString($needle, $text, $diagnosis);
+            $this->assertStringContainsString('جزئیات: Time out waiting for bind response', $text, $diagnosis);
+            $this->assertStringNotContainsString('<', $text, 'plain text: flash() escapes it');
+        }
+    }
+
     public function testSubmitErrorCodes(): void
     {
         $this->assertSame('0x0000000B', smpp_result_error_code(['command_status' => 11, 'error_class' => 'rejected']));
