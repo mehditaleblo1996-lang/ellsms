@@ -9,7 +9,8 @@ The number bank is Vesal's `TBL_MOBILE`, copied into ELLSMS. This is the differe
 sends through ELLSMS's own pipeline: its sender lines, gateways, bulk queue and wallet.
 
 Code: `app/AimedBulk.php`. Page: `/messages/aimed` (`public/aimed-bulk.php`). Import:
-`cron/aimed-mobiles-import.php`. Schema: `db/migrations/2026_10_17_aimed_bulk.sql`.
+`cron/aimed-mobiles-import.php`. Schema: `db/migrations/2026_10_17_aimed_bulk.sql` and
+`db/migrations/2026_11_22_aimed_bulk_background_count.sql` (covering indexes and background counts).
 
 ## What to bring from Vesal
 
@@ -53,7 +54,11 @@ Persian province and city names survive.
 
 ## Setup (platform admin)
 
-1. Apply the migration: `make db-migrations-apply`.
+1. Apply the migrations: `make db-migrations-apply`.
+   - `2026_11_22_aimed_bulk_background_count.sql` rebuilds the bank's indexes (see
+     [Counting and indexes](#counting-and-indexes)) in one in-place `ALTER`, without locking the
+     table. On a bank of tens of millions of numbers this takes minutes and needs free disk for the
+     new indexes while it runs (roughly 40 bytes per number per index).
 2. Load the bank. Put the files under the project directory so the container can see them.
    `storage/aimed-import/` is git-ignored for this. Then run:
 
@@ -67,6 +72,7 @@ Persian province and city names survive.
    `--batch=N` sets the rows per INSERT for the mobiles file (default 1000).
 
    - **Bank statistics:** after a real load the importer counts the bank and stores the figures, and `/messages/aimed` shows those instead of counting tens of millions of rows on every view. `--stats` alone recounts without loading anything.
+   - **Stored counts:** a real load also clears the stored «شمارش» results (`ellsms_aimed_counts`), so the next count reflects the new bank.
 
    - **Upsert:** every load is an upsert keyed by the number (or the province or city code). Running it again with a newer export refreshes the bank in place, including a number that became blocklisted.
    - **Missing numbers:** a number missing from a newer export is **not** removed.
@@ -82,9 +88,9 @@ Persian province and city names survive.
 
 | Step | Who | Status | Money |
 |---|---|---|---|
-| Pick filters, click «شمارش» | customer | — | — |
+| Pick filters, click «شمارش شماره‌ها» | customer | count queued; the worker counts it, the page shows the result | — |
 | «ثبت درخواست» | customer | `staging` | nothing |
-| Picks and prices the numbers | worker | `staging` → `priced` | nothing reserved |
+| Checks the area's size, picks and prices the numbers | worker | `staging` → `priced` (or `failed`, with the reason) | nothing reserved |
 | «تأیید و ارسال» | customer | `confirmed`, bulk job `staged` → `pending` | exact staged price reserved |
 | Sends it | normal bulk worker | bulk job `processing` → `done` | each sent row commits its own price |
 
@@ -94,9 +100,11 @@ Persian province and city names survive.
   - Impersonation rules allow the send.
   - The customer has a send line and may use the chosen one.
   - The content passes the prohibited-words policy.
-  - The target is not empty and not above the per-request limit.
+  - A count cap («سقف تعداد») above the per-request limit is refused.
+  - The area is **not** counted here: on a large bank that outlived the page's proxy timeout. The worker checks it in the next step.
 - **Staging (worker, `aimed_bulk_stage_pass()`):**
-  - The matching numbers are snapshotted once into `ellsms_aimed_bulk_targets`, in bank order, up to the count cap.
+  - Without a count cap, the area is counted first, only up to the per-request limit. An empty area ends the request `failed` with «هیچ شماره‌ای با این مشخصات در بانک شماره نیست»; an area above the limit ends it `failed` with the advice to set a cap or narrow the area. No bulk job is created for either. With a cap, nothing is counted; the cap is the snapshot's size.
+  - The matching numbers are snapshotted once into `ellsms_aimed_bulk_targets`, in bank order, up to the count cap (or the limit).
   - Then they are processed 2,000 at a time:
     - The customer's own blacklist (`ellsms_blacklist`) is dropped.
     - Each number is priced through `sms_pricing_price_messages()`, the same tariff, operator and route rules as any other send, at one pricing instant for the whole request.
@@ -111,6 +119,48 @@ Persian province and city names survive.
   - Platform-admin owners are not charged, the same as every other bulk job.
 - **Sending:** the job is an ordinary `p2p` bulk job. Throughput, provider batching, retries, line opt-outs (`لغو۱۱`), cancellation, reports and delivery polling all work as for any bulk job.
 - **Cancelling:** while `staging` or `priced`, the request is cancelled from `/messages/aimed`, and its staged rows are deleted. After confirmation it is cancelled like any bulk job, on its job page.
+
+## Counting and indexes
+
+«شمارش شماره‌ها» used to count inside the web request. On a bank of tens of millions, a broad filter
+such as prefix 0912 took longer than the proxy waits (Cloudflare error 524). Counting now runs in
+the background, on indexes that answer it without reading the table:
+
+- **The page only queues the count.** `aimed_bulk_count_request()` stores a row in
+  `ellsms_aimed_counts` (status `queued`) and the page returns at once. The id of the session's
+  last count is kept in the session, so a customer only ever sees the count they asked for.
+- **The worker counts it.** `aimed_bulk_count_pass()` in `cron/worker.php` (every loop; one indexed
+  `SELECT` when nothing is queued) claims queued counts under a lease, counts each one, and stores
+  the result (`done`) or the reason (`failed`).
+- **The page polls.** While a count is queued or running, the page asks
+  `/messages/aimed?action=count_status` every two seconds and shows the result in place:
+  «تعداد شماره‌های «…»: N». The customer may leave the page; the result is shown when they come back.
+- **Up to the limit only.** A count stops at the per-request limit plus one
+  (`aimed_bulk_count($criteria, $upTo)`), and a larger area is shown as «بیش از N (حداکثر هر
+  درخواست)». A request can never target more than the limit, and a second request with the same
+  filters picks the same numbers, so counting further buys nothing.
+- **Time limit.** One count query may run `AIMED_BULK_COUNT_MAX_SECONDS` (60 s, MySQL
+  `MAX_EXECUTION_TIME`). Past that it is stopped and the customer is asked to narrow the area. The
+  same limit applies to the size check while staging, which then ends the request `failed`.
+- **Reuse.** A finished count of the same filters (and the same limit) is shown again for an hour
+  (`AIMED_BULK_COUNT_REUSE_SECONDS`) instead of being recounted, whoever asks: the count is a fact
+  about the bank, not about the customer. A failed or older count is queued again. Every real
+  import clears the table.
+
+**Covering indexes** (`ellsms_aimed_mobiles`). Each index holds every column a filter can use, so a
+count or a target snapshot reads only the index, never the table rows:
+
+| Index | Columns | Serves |
+|---|---|---|
+| `idx_prefix` | `blocklisted, mobile, sim_type` | prefix, prefix + SIM type |
+| `idx_postal_cover` | `blocklisted, postal_code, sim_type, mobile` | postal code, + SIM type / prefix |
+| `idx_place_cover` | `blocklisted, province_code, city_code, sim_type, mobile` | province, province + city, + SIM type / prefix |
+| `idx_city_cover` | `blocklisted, city_code, sim_type, mobile` | city alone, + SIM type / prefix |
+
+They replace the earlier `idx_postal`, `idx_province` and `idx_city`. Before, a prefix-only filter
+had only `uniq_mobile`, which holds no `blocklisted` column, so every matching number cost a lookup
+in the table. Mixing postal code with province or city still works, but only one index is used; the
+rest of the filter is then checked against the table rows.
 
 ## The numbers stay the platform's
 
@@ -130,9 +180,9 @@ usual.
 
 - `tests/Integration/AimedBulkTest.php` covers:
   - Import, in Vesal's layout: BOM, `;` delimiter, upsert on rerun, and city→province resolution through `PROVINCE_ID`.
-  - Filter normalization and counts.
-  - Staging: a masked staged job, the surcharged price, the customer blacklist, the count cap, and a 4,500-row request staged across passes without duplicates.
+  - Filter normalization and counts, the count bounded at the limit, and background counts: queued, counted by the worker pass, reused while fresh, recounted when stale, cleared by an import.
+  - Staging: a masked staged job, the surcharged price, the customer blacklist, the count cap, a 4,500-row request staged across passes without duplicates, and an empty or too-large area ending `failed` in staging.
   - Confirmation, double confirmation, insufficient credit, cancellation and customer isolation.
   - Settlement of a sent row at its frozen price.
   - Masking in webhooks, exports and the dashboard.
-- `tests/Integration/AimedBulkHttpTest.php` runs the real pages: create, stage, confirm, and the job page masked for the customer but in full for the admin.
+- `tests/Integration/AimedBulkHttpTest.php` runs the real pages: «شمارش» queued and polled (never counted in the request, and only visible to the session that asked), create, stage, confirm, and the job page masked for the customer but in full for the admin.

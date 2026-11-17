@@ -45,6 +45,12 @@ an hour (`docs/ai-secretary.md`); the `worker` container's auto-reply pass enque
 `ai-worker` pass also turns Telegram messages the `tg-worker` stored into jobs, sends «پیام اول»
 campaigns (`docs/ai-outreach.md`) and marks finished campaigns done.
 
+The `worker` container also runs the aimed-bulk passes on every loop (`docs/aimed-bulk.md`):
+`aimed_bulk_count_pass()` counts the «شمارش شماره‌ها» requests the `/messages/aimed` page queued (up
+to five per loop, each at most 60 s, up to the per-request limit), and `aimed_bulk_stage_pass()`
+checks each new request's size, then stages and prices it a few batches at a time. Both are one
+indexed `SELECT` when idle.
+
 The `report-summary-worker` container (`cron/report-summary-worker.php`) also builds, every pass, the
 daily summary behind the operator report and the status report (`ellsms_operator_report_daily`,
 `operator_report_worker_pass()`): today and yesterday every `OPERATOR_REPORT_FRESH_SECONDS` (300), the
