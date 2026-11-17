@@ -166,21 +166,22 @@ final class OperatorReportHttpTest extends TestCase
         $body = $r['body'];
         $n = static fn(int $v): string => self::n($v);
 
-        // Status table total: queued 1, sent 2, total 8 (9 parts), delivered 4, received 6 (7 parts), undelivered 1, expired 0, rejected 1,
-        // blacklist 0, invalid sender 0, cancelled 1, unknown 0.
+        // Status table total: queued 1, sent 2, total 8 (9 parts), delivered 4, received 6 (7 parts), undelivered 1 (1 part), expired 0,
+        // rejected 1, blacklist 0, invalid sender 0, cancelled 1, unknown 0.
+        $this->assertStringContainsString('<th title="تعداد پارت پیامک‌های «تحویل داده‌نشده»">پارت تحویل داده‌نشده</th>', $body);
         $this->assertStringContainsString(
             '<tr class="op-total"><td>جمع کل</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(2) . '</td><td class="num op-key">' . $n(8)
             . '</td><td class="num op-key">' . $n(9) . '</td><td class="num">' . $n(4) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num op-key">' . $n(7)
-            . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0)
+            . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0)
             . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0)
             . '</td><td class="num">' . $n(1) . '</td><td class="num">' . $n(0) . '</td></tr>',
             $body
         );
-        // MCI's row: 1 queued, 2 sent, 6 total (7 parts), 4 delivered, 6 received (7 parts), nothing failed, 1 cancelled.
+        // MCI's row: 1 queued, 2 sent, 6 total (7 parts), 4 delivered, 6 received (7 parts), nothing failed (0 undelivered parts), 1 cancelled.
         $this->assertStringContainsString(
             '<td class="num">' . $n(1) . '</td><td class="num">' . $n(2) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num op-key">' . $n(7)
             . '</td><td class="num">' . $n(4) . '</td><td class="num op-key">' . $n(6) . '</td><td class="num op-key">' . $n(7)
-            . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0)
+            . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0)
             . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(0) . '</td><td class="num">' . $n(1) . '</td>',
             $body
         );

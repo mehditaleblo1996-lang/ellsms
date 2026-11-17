@@ -60,7 +60,8 @@ if (lazy_part_begin('report')) {
     }
     $statusTotal = operator_report_statuses($statusByOp);
     $derivedTotal = operator_report_derive($statusTotal);
-    $derivedPartsTotal = operator_report_derive(operator_report_statuses($statusPartsByOp));
+    $statusPartsTotal = operator_report_statuses($statusPartsByOp);
+    $derivedPartsTotal = operator_report_derive($statusPartsTotal);
     $grandTotal = $derivedTotal['total_sent'];
     $opColor = [];
     foreach (array_values($operators) as $i => $op) $opColor[$op] = OPERATOR_REPORT_PALETTE[$i % count(OPERATOR_REPORT_PALETTE)];
@@ -140,7 +141,14 @@ if (lazy_part_begin('report')) {
     ?>
 <div class="card op-report-card">
   <h2><?= e($statusTitle) ?></h2>
-  <?php if ($admin): ?>
+  <?php if ($admin):
+      // The status columns after the derived ones; «تحویل داده‌نشده» has its SMS parts beside it.
+      $tailHead = '';
+      foreach (OPERATOR_REPORT_TAIL_STATUSES as $st) {
+          $tailHead .= '<th>' . e(OPERATOR_REPORT_STATUSES[$st]) . '</th>';
+          if ($st === 'undelivered') $tailHead .= '<th title="تعداد پارت پیامک‌های «تحویل داده‌نشده»">پارت تحویل داده‌نشده</th>';
+      }
+  ?>
   <?php if ($withData): ?>
   <div class="op-donut-grid">
     <?php foreach ($withData as $op): ?>
@@ -160,11 +168,11 @@ if (lazy_part_begin('report')) {
       <th title="فقط پیام‌هایی که تحویلشان تأیید شده"><?= e(OPERATOR_REPORT_STATUSES['delivered']) ?></th>
       <th class="op-key" title="تحویل‌شده + ارسال‌شده‌ی بدون گزارش">مجموع تحویل گرفته‌شده</th>
       <th class="op-key" title="تعداد پارت پیامک‌های «مجموع تحویل گرفته‌شده»">پارت تحویل گرفته‌شده</th>
-      <?php foreach (OPERATOR_REPORT_TAIL_STATUSES as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
+      <?= $tailHead ?>
     </tr>
     <?php
-    // $d / $pd: the two key totals in messages and in SMS parts.
-    $statusRow = static function (string $label, array $s, array $d, array $pd, bool $total = false): string {
+    // $d / $pd: the two key totals in messages and in SMS parts; $sp: the per-status SMS parts («پارت تحویل داده‌نشده»).
+    $statusRow = static function (string $label, array $s, array $d, array $sp, array $pd, bool $total = false): string {
         $cells = '<td class="num">' . operator_report_num($s['queued']) . '</td>'
             . '<td class="num">' . operator_report_num($s['sent']) . '</td>'
             . '<td class="num op-key">' . operator_report_num($d['total_sent']) . '</td>'
@@ -172,14 +180,17 @@ if (lazy_part_begin('report')) {
             . '<td class="num">' . operator_report_num($s['delivered']) . '</td>'
             . '<td class="num op-key">' . operator_report_num($d['received']) . '</td>'
             . '<td class="num op-key">' . operator_report_num($pd['received']) . '</td>';
-        foreach (OPERATOR_REPORT_TAIL_STATUSES as $st) $cells .= '<td class="num">' . operator_report_num($s[$st]) . '</td>';
+        foreach (OPERATOR_REPORT_TAIL_STATUSES as $st) {
+            $cells .= '<td class="num">' . operator_report_num($s[$st]) . '</td>';
+            if ($st === 'undelivered') $cells .= '<td class="num">' . operator_report_num((int)($sp['undelivered'] ?? 0)) . '</td>';
+        }
         return '<tr' . ($total ? ' class="op-total"' : '') . '><td>' . $label . '</td>' . $cells . '</tr>';
     };
-    foreach ($operators as $op) echo $statusRow($opCell($op), $statusByOp[$op], $derivedByOp[$op], $derivedPartsByOp[$op]);
-    echo $statusRow('جمع کل', $statusTotal, $derivedTotal, $derivedPartsTotal, true);
+    foreach ($operators as $op) echo $statusRow($opCell($op), $statusByOp[$op], $derivedByOp[$op], $statusPartsByOp[$op], $derivedPartsByOp[$op]);
+    echo $statusRow('جمع کل', $statusTotal, $derivedTotal, $statusPartsTotal, $derivedPartsTotal, true);
     ?>
   </table></div>
-  <p class="hint op-note"><span class="op-key-chip"></span> ستون‌های رنگی همان ستون‌هایی‌اند که مشتری در پنل خود می‌بیند: «مجموع ارسال‌شده» همه‌ی پیام‌های رفته به اپراتور است و «مجموع تحویل گرفته‌شده» تحویل‌شده‌ها به‌علاوه‌ی ارسال‌شده‌هایی که هنوز گزارش تحویل ندارند؛ ستون «پارت» کنار هر کدام، تعداد پارت پیامک‌های همان ستون است. ستون «ارسال‌شده» فقط پیام‌هایی را نشان می‌دهد که در وضعیت ارسال مانده‌اند و «تحویل گرفته‌شده» فقط تحویل‌های تأییدشده را. «لیست سیاه»: پاسخ لیست سیاه مخابرات و گیرندگانی که با ۱۱ لغو عضویت کرده‌اند؛ «فرستنده نامعتبر»: رد به‌دلیل شماره‌ی فرستنده (جزئیات در «گزارش وضعیت‌ها»).</p>
+  <p class="hint op-note"><span class="op-key-chip"></span> ستون‌های رنگی همان ستون‌هایی‌اند که مشتری در پنل خود می‌بیند: «مجموع ارسال‌شده» همه‌ی پیام‌های رفته به اپراتور است و «مجموع تحویل گرفته‌شده» تحویل‌شده‌ها به‌علاوه‌ی ارسال‌شده‌هایی که هنوز گزارش تحویل ندارند؛ ستون «پارت» کنار هر کدام (و «پارت تحویل داده‌نشده» کنار «تحویل داده‌نشده»)، تعداد پارت پیامک‌های همان ستون است. ستون «ارسال‌شده» فقط پیام‌هایی را نشان می‌دهد که در وضعیت ارسال مانده‌اند و «تحویل گرفته‌شده» فقط تحویل‌های تأییدشده را. «لیست سیاه»: پاسخ لیست سیاه مخابرات و گیرندگانی که با ۱۱ لغو عضویت کرده‌اند؛ «فرستنده نامعتبر»: رد به‌دلیل شماره‌ی فرستنده (جزئیات در «گزارش وضعیت‌ها»).</p>
 
   <?php if ($view === 'all' && $withData): ?>
   <h3 class="op-sub">جزئیات هر اپراتور به تفکیک زبان پیام</h3>
@@ -190,12 +201,12 @@ if (lazy_part_begin('report')) {
       <tr>
         <th>زبان پیام</th><th><?= e(OPERATOR_REPORT_STATUSES['queued']) ?></th><th><?= e(OPERATOR_REPORT_STATUSES['sent']) ?></th><th class="op-key">مجموع ارسال‌شده</th><th class="op-key">پارت ارسال‌شده</th>
         <th><?= e(OPERATOR_REPORT_STATUSES['delivered']) ?></th><th class="op-key">مجموع تحویل گرفته‌شده</th><th class="op-key">پارت تحویل گرفته‌شده</th>
-        <?php foreach (OPERATOR_REPORT_TAIL_STATUSES as $st): ?><th><?= e(OPERATOR_REPORT_STATUSES[$st]) ?></th><?php endforeach; ?>
+        <?= $tailHead ?>
       </tr>
       <?php foreach (array_keys(OPERATOR_REPORT_ENCODINGS) as $enc):
           if (!isset($counts[$op][$enc])) continue;
           $s = array_merge(array_fill_keys(array_keys(OPERATOR_REPORT_STATUSES), 0), $counts[$op][$enc]);
-          echo $statusRow(e(OPERATOR_REPORT_ENCODINGS[$enc]), $s, operator_report_derive($s), operator_report_derive($partsMap[$op][$enc] ?? []));
+          echo $statusRow(e(OPERATOR_REPORT_ENCODINGS[$enc]), $s, operator_report_derive($s), $partsMap[$op][$enc] ?? [], operator_report_derive($partsMap[$op][$enc] ?? []));
       endforeach; ?>
     </table></div>
   </details>

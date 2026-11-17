@@ -37,7 +37,8 @@ if (isset($_GET['export'])) {
     $out = fopen('php://output', 'w');
     fputs($out, "\xEF\xBB\xBF");
     fputcsv($out, ['شناسه','فرستنده','گیرنده','متن پیام','زمان دریافت']);
-    foreach ($exportRows as $r) fputcsv($out, $r);
+    // The text and the sender come from whoever sent the SMS: never let them run as a formula.
+    foreach ($exportRows as $r) fputcsv($out, csv_safe_row($r));
     exit;
 }
 

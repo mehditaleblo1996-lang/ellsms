@@ -78,6 +78,17 @@ and password in the panel, then assign it to a route or lines. «اتصال آز
 TLS, transceiver not supported) and says what to change. No API route or setting changes. See
 [`docs/smpp-gateway.md`](docs/smpp-gateway.md).
 
+## Dashboard (داشبورد)
+
+The home page (`/index.php`) shows shortcuts, today's cards, a 7-day stacked chart and the latest
+messages and bulk sends, read from ELLSMS's own send records (`app/Dashboard.php`). Today's cards are
+«کل پیامک‌های امروز» and what became of them — «ارسال‌شده امروز» (accepted by the operator, not reported
+delivered), «تحویل‌شده امروز», «ناموفق امروز» (refused at send time) — which add up to the total, plus
+«در صف ارسال»; customers without
+delivery reports see «کل»، «ارسال‌شده»، «ناموفق» and «در صف ارسال». Bold numbers are SMS parts, the small
+line messages, with a comparison against yesterday up to the same time. No API route. See
+[`docs/dashboard.md`](docs/dashboard.md).
+
 ## Message reports (لیست پیام‌های ارسالی / دریافتی)
 
 «لیست پیام‌های ارسالی» (`/messages/reports`, also `/reports.php`) lists every sent message — direct, API,
@@ -98,6 +109,12 @@ messages shows a separate «تعداد پارت» column next to each count — 
 «گزارش ارسال حجیم» and each bulk send's page, the delivery history, «گزارش اپراتورها» (all three views)
 and «گزارش تعداد پیام‌های ارسالی / دریافتی»; the pre-built report tables keep part totals too
 (`db/migrations/2026_11_11_report_parts.sql`). See [`docs/message-parts.md`](docs/message-parts.md).
+
+**What one message cost.** The detail drawer's «هزینه و پیگیری» spells out each message's charge —
+«۲ پارت × ۱,۱۲۴ ریال = ۲,۲۴۸ ریال» with «کسر شد» / «برگشت شد» / «کسر نشد» / «رزرو شده» — and the refund
+with its time, read from the stored charge (a bulk row's own ledger entry and frozen price, a direct
+send's `charged_credits` and price snapshot) and its `ellsms_delivery_refunds` row; never re-priced.
+No migration, no API route. See [`docs/message-cost.md`](docs/message-cost.md).
 
 ## Voice messages (ZarinCall)
 
@@ -219,8 +236,9 @@ customer writes, and the answer is sent from the same line.
   - Long documents (txt/docx/pdf) become searchable.
   - AI providers can be reached through a proxy or the relay kit in `ops/ai-relay/`.
   - Anthropic prompt caching.
-- **Public showcase**: the landing page advertises the secretary with banner slide 6, a feature tile
-  and a seven-step slider at `/landing.php#ai-secretary` ([`docs/landing.md`](docs/landing.md)).
+- **Public showcase**: the landing page advertises the secretary with banner slide 7 and an FAQ
+  entry, both linking to the guide section `/guide.php#guide-ai-secretary`
+  ([`docs/landing.md`](docs/landing.md)).
 
 Migrations: `2026_11_03_ai_engines.sql`, `2026_11_04_ai_secretary.sql`, `2026_11_05_ai_pricing.sql`,
 `2026_11_06_ai_datasets.sql`, `2026_11_07_ai_phase5.sql`, `2026_11_08_ai_gapgpt.sql`,
@@ -286,7 +304,9 @@ never see it; every change is audited. No public API route. Migration
 
 ## Login model
 
-ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. Improving it needs a coordinated change on both sides.
+ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. `PASSWORD_HASH_MODE=argon2id` replaces it with Argon2id without anyone changing their password, once nothing but ELLSMS signs users in with that column (one way — see below).
+
+**Passwords** (`app/PasswordSecurity.php`, [`docs/password-security.md`](docs/password-security.md)): a new password needs 8–128 characters, a letter and a digit, and must differ from the username; the rules are listed under the field and ticked off while the user types (`public/assets/js/password-policy.js`), on «تغییر رمز عبور» (`/account/profile`), `/register`, and every create/reset form of admins, resellers and parent accounts. Existing passwords keep working. Changing a password signs the account's other sessions out (`ellsms_meta.password_version`, `db/migrations/2026_11_15_password_version.sql`), and proving the current password is limited to `RATE_LIMIT_PASSWORD_CHECK_MAX` attempts per window. `make password-migrate` converts stored passwords to Argon2id in `argon2id` mode.
 
 An account only gets into the ELLSMS panel once an admin **grants access** or **creates it** (Users page). Creating a new account calls the backend's own `POST /api/users/` endpoint (the same one that already existed for this purpose) rather than ELLSMS writing directly into `user_` — that endpoint already knows the exact required columns and applies the backend's own password hashing and uniqueness rules, so ELLSMS doesn't have to guess at any of it. A domain (multi-tenant scope) must already exist on the backend side; ELLSMS lets you pick one but doesn't create domains.
 
@@ -315,8 +335,9 @@ Open **http://localhost:8080/bootstrap-admin.php** — this is a one-time page: 
 
 | Where | What |
 |---|---|
-| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)), `FAILED_RESEND_MAX_ITEMS` (most failed rows one «ارسال مجدد ناموفق‌ها» click may queue, default 10000, see [`docs/failed-resend.md`](docs/failed-resend.md)) |
+| `.env` | `APP_ENV` (production forcibly disables debug output regardless of `APP_DEBUG`), `APP_DEBUG`, `APP_URL` (canonical base URL, used as a safer fallback than the request's Host header for deriving callback URLs), `APP_VERSION` (build identifier shown in logs, `/health`, and the panel footer — falls back to the baked-in `ELLSMS_VERSION` constant), `WORKER_POLL_INTERVAL_SECONDS` (worker container tick rate, default 8), `WORKER_JOB_LEASE_SECONDS`/`JOB_MAX_ATTEMPTS`/`JOB_RETRY_BASE_SECONDS`/`JOB_RETRY_MAX_SECONDS` (Phase 4 job-queue claim lease and retry policy — see `docs/job-queue-architecture.md`), `BACKEND_NETWORK`, `BACKEND_DB_*` (must match the backend's own DB config), `API_BASE_URL` default (legacy transport), `SMS_GATEWAY_TRANSPORT` / `SMS_LEGACY_BACKEND_ENABLED` / `SMS_GATEWAY_MASTER_KEY` / `BULK_WORKER_REPLICAS` (see [Sending transports](#sending-transports-gateway-vs-legacy-backend-api)), `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PROXY` / `TELEGRAM_SESSION_KEY` (Telegram user-account service, see [`docs/telegram-user-service.md`](docs/telegram-user-service.md)), `AI_MASTER_KEY` (vault of AI provider API keys; empty = derived from `SMS_GATEWAY_MASTER_KEY`, see [`docs/ai-engines.md`](docs/ai-engines.md)), `AI_WORKER_PROCESSES` (parallel answerers in the `ai-worker` container, default 2, see [`docs/ai-secretary.md`](docs/ai-secretary.md)), `PASSWORD_HASH_MODE` (`legacy` = the backend's SHA-256 in `user_.password`, the default; `argon2id` = Argon2id verifiers, one way) and `RATE_LIMIT_PASSWORD_CHECK_MAX` / `RATE_LIMIT_PASSWORD_CHECK_WINDOW_SECONDS` (attempts at the current password; see [`docs/password-security.md`](docs/password-security.md)), `FAILED_RESEND_MAX_ITEMS` (most failed rows one «ارسال مجدد ناموفق‌ها» click may queue, default 10000, see [`docs/failed-resend.md`](docs/failed-resend.md)), `DAILY_REPORT_AT` / `DAILY_REPORT_ENABLED` (time of the admin's daily Telegram report, HH:MM Tehran, default 08:00, and its default on/off, see [`docs/daily-report.md`](docs/daily-report.md)) |
 | Panel → Settings (admin) | API base URL (overrides `.env`, stored in `ellsms_settings`), default sender line |
+| Panel → هشدارها (admin) | alert repeat intervals and e-mail; the daily Telegram report's on/off and chat (`daily_report_enabled`, `daily_report_telegram_chat_id`) |
 | Panel → Users | Grant/revoke panel access, admin flag, per-user sender line, credit (writes to the shared `user_.currentcredit`) |
 
 All sensitive/runtime configuration is read from environment variables (`.env`, wired into each
@@ -378,6 +399,39 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 
 **«مالی» → «تاریخچه مالی»** (`/financial-log.php`) lists every increase and decrease of the balance with the balance before and after, from the wallet ledger; admins see every account. A **bulk send is one row** («هزینه‌ی ارسال گروهی» — the sum of its per-message charges, with the balance before and after the send); the per-message charges stay in the ledger. Every charged bulk send is checked when it finishes or is cancelled (sent = charged = frozen prices, reservation released); a mismatch is flagged on its row and job page (admins), sent to the admins as a panel notification and to the support Telegram group. No API route. Migration `db/migrations/2026_11_17_bulk_billing_issues.sql`. See [`docs/financial-log.md`](docs/financial-log.md).
 
+## Monthly statement (صورت‌حساب ماهانه)
+
+**«مالی» → «صورت‌حساب ماهانه»** (`/billing/statement`, `public/statement.php`): one Jalali month of an
+account — opening and closing balance, what came in and went out by type, SMS charges and refunds, a
+«جابه‌جایی رزرو» line for sends still running at the month's ends (so opening + in − out = closing is
+exact), messages and parts per operator, and each day's in and out — on the page, as a **PDF**
+(wkhtmltopdf, like the price quote) or as a printable page. Customers see their own; admins pick any
+account. Opens with the «تاریخچه مالی» menu. Read-only: no migration, no API route. See
+[`docs/statement.md`](docs/statement.md).
+
+## Price changes: preview, scheduling, one-click revert
+
+Saving the global «تعرفه‌ی درگاه‌ها» (Platform Admin → تعرفه‌ی پیامک) or an account's «تعرفه‌ی
+اختصاصی» (Users → user) first shows a **preview** priced against the last 30 days of real traffic
+through the send-time pricing engine: the cells that change, how many customers it touches, the
+monthly revenue shift (Rial and %), the most affected customers, and traffic that would lose its
+price. The admin then applies it **now or at a chosen Jalali date and time**; scheduled changes are
+applied within a minute by the `price-changes` scheduler job. «تاریخچه‌ی تغییرات تعرفه» lists every
+change with its estimate; a scheduled one can be cancelled and an applied one **reverted in one click**
+(only cells nobody changed since). Migration `db/migrations/2026_11_20_price_changes.sql`; scheduler jobs
+`price-changes` (every minute) and `price-usage-profile` (daily); no API route. See
+[`docs/price-changes.md`](docs/price-changes.md).
+
+## Daily Telegram report (گزارش روزانه‌ی مدیر)
+
+Every day after `DAILY_REPORT_AT` (08:00 Tehran) the scheduler job `daily-report` sends yesterday's
+summary to the admin's Telegram: messages and parts by state, money charged («مبلغ کسرشده») and
+refunded («مبلغ برگشتی») and credit bought, failed messages with their top error codes and failing
+scheduler jobs, new customers, and every open alert. Switch it off, pick its chat (default: the «تماس
+با ما» chat), preview it or send it now on **هشدارها** (`/admin/alerts`). A failed send is retried at
+the next run; each day is sent once. No migration, no API route. See
+[`docs/daily-report.md`](docs/daily-report.md).
+
 ## Buying credit — ZarinPal
 
 Any logged-in user can buy credit from `/buy-credit.php` — pick a preset package or a custom amount, pay through ZarinPal, and credit lands on `user_.currentcredit` automatically once the payment is confirmed. Built against ZarinPal's real v4 REST API (endpoints and request/response shapes verified against their own sample code and official docs, not reconstructed from memory) — `app/zarinpal.php` handles the request/verify calls, `public/zarinpal-callback.php` is where ZarinPal redirects the user back to.
@@ -426,14 +480,17 @@ A P2P file larger than `SMS_SYNC_MAX_RECIPIENTS` rows waits at «منتظر تأ
 
 The panel now has a real mobile navigation drawer instead of stacking the entire sidebar above page content — as the nav grew past a dozen links, that stacking became genuinely unusable on a phone. Below 900px a hamburger button in the topbar slides the sidebar in from the right with a dismissible backdrop (tap outside, press Escape, or tap any link to close); above that it's the normal fixed sidebar. Other changes: form inputs are 16px to stop iOS Safari's auto-zoom-on-focus, buttons and nav items get larger touch targets on small screens, tables and cards tighten their padding progressively at 900px and 480px breakpoints, and every page (not just login) now has the same subtle brand-color background wash instead of a flat canvas. All of this lives in `public/assets/css/style.css` plus a small vanilla-JS toggle in `app/views/footer.php` — no framework, no build step.
 
-## Public marketing site — landing, تماس با ما, راهنمای استفاده
+## Public marketing site — landing, درباره ما, تماس با ما, راهنمای استفاده
 
 `/index.php` (the site root) now shows `/landing.php` to anyone not logged in instead of bouncing straight to `/login.php` — the dashboard behavior for logged-in users is unchanged. Login is still reachable from the landing page's own CTA. Everything under this section is public, unauthenticated, and shares one chrome (`app/views/public_header.php` / `public_footer.php`) separate from the logged-in app shell in `app/views/header.php`.
 
-- **Top banner** — six animated slides (bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») spanning the full page width directly under the nav. They are fixed HTML/CSS/SVG in `landing.php` (no video, no library): auto-advance, pause on hover/focus/off-screen, a «توقف اسلایدها» button, keyboard and swipe, and a still first slide for reduced motion. Admin slides from Settings → اسلایدر صفحه‌ی اصلی (`/slides.php`) are not shown on the landing page. See [`docs/landing.md`](docs/landing.md).
-- **«منشی هوشمند» on the landing page** — a full-width «منشی هوشمند با هوش مصنوعی» tile in the features grid, a nav link, an FAQ entry, and a seven-step showcase slider at `/landing.php#ai-secretary` (answering, setup, message flow, data tables, hand-off, «پیام اول», guards and cost), each step with an animated CSS/SVG scene. Styles in `public/assets/css/landing-ai.css`, loaded only on that page through the public header's `$extraStyles`. See [`docs/landing.md`](docs/landing.md).
-- **بسته‌های پیامک / pricing cards** (`/pricing.php` to manage, shown on `/landing.php#pricing`) — a separate marketing-only table (`ellsms_pricing_packages`: name, credit amount, price in Rial, feature bullets, a "پیشنهاد ویژه" badge). Deliberately independent from the real purchase in `buy-credit.php` (one Rial paid before VAT = one Rial of credit) — this is just what's advertised.
+- **Top banner** — seven animated slides (slide 1 «یک مجموعه، پنج خدمت»: a warp-in opening, then the five product lines as glossy planets on a tilted 3D orbit around the DATIS energy core; each product in turn comes to the front with a burst and a holographic card of its services, a copy panel follows it, chips jump to a product, mouse parallax; then bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») spanning the full page width directly under the nav. They are fixed HTML/CSS/SVG in `landing.php` (no video, no library): auto-advance, pause on hover/focus/off-screen, a «توقف اسلایدها» button, keyboard and swipe, and a still first slide for reduced motion. Admin slides from Settings → اسلایدر صفحه‌ی اصلی (`/slides.php`) are not shown on the landing page. See [`docs/landing.md`](docs/landing.md).
+- **«محصولات و خدمات» on the landing page** (`/landing.php#products`, nav link «محصولات») — the company's five product lines, each with a full description, four sub-services and an animated SVG scene: سامانه پیامکی و بازاریابی; خدمات ابری و زیرساختی (VPS، هاست و دامنه، فضای ذخیره‌سازی ابری); هوش مصنوعی و اتوماسیون (تولید محتوا با AI، اتوماسیون فرآیندها); خدمات فناوری اطلاعات (پشتیبانی شبکه، نصب سرور، پشتیبانی نرم‌افزار، مشاوره‌ی امنیت); تلفن و ارتباطات سازمانی (VoIP). Non-SMS lines link to «تماس با ما». Styles in `public/assets/css/landing-products.css`, scenes in `app/views/landing_product_scenes/`. No migration. See [`docs/landing.md`](docs/landing.md#products).
+- **«مشتریان و همکاران»** — a `#customers` section on the landing page — one rail of monochrome logos that turn to full colour on hover/focus (speeds up with page scroll, glides to a stop on hover, drag/fling, larger tiles in the middle; `public/assets/js/landing-customers.js`, still list for reduced motion) — with a tile for each customer: the banks اقتصاد نوین, سرمایه, کارآفرین, سینا, ملی, پارسیان, گردشگری, the ministries آموزش و پرورش and ارتباطات و فناوری اطلاعات, and تپسی, اسنپ, دیجی‌کالا, دیوار, جابینجا. Logos live in `public/assets/img/customers/<slug>.(svg|webp|png|jpg)`; a customer with no file shows a monogram (grey, coloured on hover). See [`docs/landing.md`](docs/landing.md#مشتریان-و-همکاران-customers).
+- **«منشی هوشمند» on the landing page** — banner slide 7 (a chat in which the secretary answers a customer) and an FAQ entry, both linking to `/guide.php#guide-ai-secretary`. Styles in `public/assets/css/landing-ai.css`, loaded only on that page through the public header's `$extraStyles`. The landing page no longer has the features grid, the seven-step showcase, the comparison, pricing, «سه قدم» and use-case sections. See [`docs/landing.md`](docs/landing.md).
+- **بسته‌های پیامک / pricing cards** (`/pricing.php` to manage; not shown anywhere at the moment, since the landing page's pricing section was removed) — a separate marketing-only table (`ellsms_pricing_packages`: name, credit amount, price in Rial, feature bullets, a "پیشنهاد ویژه" badge). Deliberately independent from the real purchase in `buy-credit.php` (one Rial paid before VAT = one Rial of credit) — this is just what's advertised.
 - **راهنمای استفاده** — a public FAQ/guide page (`/guide.php`, plain `<details>`/`<summary>` accordion, no JS needed) backed by admin-editable articles (`/guide-admin.php`, `ellsms_guide_articles`). Body text is plain, rendered with `nl2br()` — no markdown parser, consistent with this project having no `vendor/` directory anywhere else.
+- **درباره ما** (`/about`, `public/about.php`) — the company page: intro with an animated hub of the five service areas around the brand mark, «از پیامک، تا سبد کامل خدمات فناوری», the five service areas (پیامک، خدمات ابری، هوش مصنوعی، فناوری اطلاعات، تلفن و ارتباطات سازمانی), the trust of large organizations, mission and vision, and the core values, each with animated CSS/SVG icons and a sticky section bar. It is in the site nav as «درباره ما» with an icon submenu of those sections, and in both footers. Fixed HTML, no table or setting; styles in `public/assets/css/about.css`. See [`docs/about.md`](docs/about.md).
 - **تماس با ما** (`/contact.php`) — shows an address/phone block from Settings → تماس با ما (hidden entirely if never configured) plus a ticket form. Submitting the form doesn't write to a table — `app/telegram.php` relays it as a plain chat message to a Telegram bot via the official `sendMessage` endpoint, using a Bot Token + Chat ID configured the same `.env`-with-Settings-override pattern as ZarinPal (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`). Create the bot with `@BotFather`.
 
 ## Legacy-style URL send API
@@ -445,6 +502,14 @@ The response is JSON: `{"status":"ok","reference_id":123456789,"error_code":null
 `reference_id` is a random 9-digit token, deliberately **not** the real `outbound_message.id` — handing back a raw sequential id would let a caller estimate the total number of messages the whole system has ever sent. The actual row id is still recorded in `ellsms_audit_log` alongside the token (action `api.url_send`), so support can trace a reported reference back to the real message if needed.
 
 The `.html` extension is intentional, matching that same convention, not a typo — `public/sms/url_send.html` is real PHP, executed via an `AddHandler application/x-httpd-php .html` override that `docker/Dockerfile` scopes to just the `public/sms/` directory. **Because credentials travel as request parameters, always call this over HTTPS** (put the panel behind a TLS-terminating reverse proxy, per Production notes below) — anything else exposes the account password in transit and in plain server access logs.
+
+## CSV exports
+
+Every CSV the panel writes («صندوق دریافت», «لیست پیام‌های ارسالی», «گزارش مالی», count reports,
+Telegram results, «شماره‌ها», reseller «مشتریان») passes each row through `csv_safe_row()`
+(`app/bootstrap.php`): a cell starting with `=`, `+`, `-` or `@` gets a leading apostrophe so a
+spreadsheet shows it as text instead of running it as a formula — an inbound SMS such as
+`=HYPERLINK(…)` cannot run in the customer's Excel. See [`docs/csv-exports.md`](docs/csv-exports.md).
 
 ## Public API & webhooks
 
@@ -666,10 +731,13 @@ updated in the same change** — see `CLAUDE.md`.
 **Pricing, wallet & billing**
 [sms-pricing](docs/sms-pricing.md) ·
 [gateway-price-matrix](docs/gateway-price-matrix.md) ·
+[price-changes](docs/price-changes.md) ·
 [cost-preview](docs/cost-preview.md) ·
 [rial-currency](docs/rial-currency.md) ·
 [wallet-architecture](docs/wallet-architecture.md) ·
 [financial-log](docs/financial-log.md) ·
+[statement](docs/statement.md) ·
+[message-cost](docs/message-cost.md) ·
 [delivery-based-billing](docs/delivery-based-billing.md) ·
 [delivery-states](docs/delivery-states.md) ·
 [ai-billing](docs/ai-billing.md) ·
@@ -687,7 +755,8 @@ updated in the same change** — see `CLAUDE.md`.
 [registration](docs/registration.md) ·
 [profile-kyc](docs/profile-kyc.md) ·
 [admin-impersonation](docs/admin-impersonation.md) ·
-[landing](docs/landing.md)
+[landing](docs/landing.md) ·
+[about](docs/about.md)
 
 **API & integrations**
 [public-api](docs/public-api.md) ·
@@ -704,6 +773,7 @@ updated in the same change** — see `CLAUDE.md`.
 [staging](docs/staging.md) ·
 [backup-and-disaster-recovery](docs/backup-and-disaster-recovery.md) ·
 [alerting](docs/alerting.md) ·
+[daily-report](docs/daily-report.md) ·
 [observability-and-performance](docs/observability-and-performance.md) ·
 [observability-cardinality](docs/observability-cardinality.md) ·
 [observability-dod-checklist](docs/observability-dod-checklist.md) ·
@@ -715,9 +785,12 @@ updated in the same change** — see `CLAUDE.md`.
 [sms-load-testing](docs/sms-load-testing.md) ·
 [capacity-load-test-2026-08-31](docs/capacity-load-test-2026-08-31.md) ·
 [security-review](docs/security-review.md) ·
+[password-security](docs/password-security.md) ·
+[csv-exports](docs/csv-exports.md) ·
 [technical-debt](docs/technical-debt.md)
 
 **Panel reports**
+[dashboard](docs/dashboard.md) ·
 [status-report](docs/status-report.md) ·
 [reporting-scalability](docs/reporting-scalability.md) ·
 [daily-metadata-aggregation](docs/daily-metadata-aggregation.md)

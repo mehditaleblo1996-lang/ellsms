@@ -6,6 +6,11 @@ if (current_user()) redirect('/dashboard');
 if (!ellsms_has_admin()) redirect('/admin/bootstrap');
 
 $error = null;
+// A session ended for a reason the user should know (the password was changed elsewhere).
+$notice = null;
+foreach (flashes() as $flashItem) {
+    if (in_array($flashItem['type'], ['info', 'success'], true)) $notice = (string)$flashItem['msg'];
+}
 // On a reseller's own host (app/ResellerPanel.php) the page carries the reseller's brand and, by
 // default, signs in only the reseller, its staff and its own customers.
 $brand = current_brand();
@@ -124,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <p class="auth-lede"><?= $hostBrand !== null && $brand['login_note'] !== '' ? e($brand['login_note']) : 'برای مدیریت ارسال‌ها، گزارش تحویل و اعتبار حساب وارد شوید.' ?></p>
 
         <?php if ($error): ?><div class="auth-error" role="alert"><?= e($error) ?></div><?php endif; ?>
+        <?php if ($notice && !$error): ?><div class="auth-error auth-notice" role="status"><?= e($notice) ?></div><?php endif; ?>
 
         <form method="post" class="auth-form">
           <?= csrf_field() ?>

@@ -6,7 +6,7 @@ use PHPUnit\Framework\TestCase;
 
 require_once dirname(__DIR__, 2) . '/app/Dashboard.php';
 
-/** The pure parts of the dashboard: the change against yesterday, the delivery rate and the chart scale. */
+/** The pure parts of the dashboard: the today totals, the change against yesterday, the delivery rate and the chart scale. */
 final class DashboardHelpersTest extends TestCase
 {
     public function testChangePercentAgainstYesterday(): void
@@ -15,6 +15,23 @@ final class DashboardHelpersTest extends TestCase
         self::assertSame(-50, dashboard_change_percent(50, 100));
         self::assertSame(0, dashboard_change_percent(7, 7));
         self::assertNull(dashboard_change_percent(30, 0), 'nothing yesterday: no percentage to show');
+    }
+
+    public function testTotalsMakeTheTodayCardsAddUp(): void
+    {
+        // 10 accepted (6 delivered, 1 expired, 3 still waiting) + 2 refused at send time.
+        $c = dashboard_with_totals(['sent' => 10, 'delivered' => 6, 'failed' => 3, 'send_failed' => 2,
+                                    'sent_parts' => 14, 'delivered_parts' => 8, 'failed_parts' => 4, 'send_failed_parts' => 2]);
+        self::assertSame(12, $c['total'], 'every message tried: accepted + refused');
+        self::assertSame(4, $c['not_delivered'], '«ارسال‌شده»: accepted, not reported delivered — the 3 waiting and the expired one');
+        self::assertSame($c['total'], $c['not_delivered'] + $c['delivered'] + $c['send_failed']);
+        self::assertSame(16, $c['total_parts']);
+        self::assertSame(6, $c['not_delivered_parts']);
+        self::assertSame($c['total_parts'], $c['not_delivered_parts'] + $c['delivered_parts'] + $c['send_failed_parts']);
+
+        $plain = dashboard_with_totals(['sent' => 1, 'delivered' => 2, 'failed' => 0, 'send_failed' => 0]);
+        self::assertSame(0, $plain['not_delivered'], 'never negative');
+        self::assertArrayNotHasKey('total_parts', $plain, 'no parts asked, none derived');
     }
 
     public function testDeliveryRateIsBoundedAndNeedsSends(): void

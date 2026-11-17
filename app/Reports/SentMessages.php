@@ -718,7 +718,159 @@ function sent_report_find(string $ref, ?array $scope, bool $hide, bool $isAdmin)
         $row['provider_response'] = sent_report_provider_response((int)($row['provider_audit_id'] ?? 0));
     }
     $row['dlr_forward'] = $source === 'legacy' ? null : sent_report_dlr_forward(($source === 'bulk' ? 'bulk_item:' : 'attempt:') . $id);
+    $row['cost_breakdown'] = sent_report_cost_breakdown($row);
     return $row;
+}
+
+/* ==========================================================================
+   What one message cost («X پارت × قیمت = مبلغ، کسر شد / برگشت شد»)
+   ========================================================================== */
+
+/**
+ * The facts behind one message's charge, read from the records that hold them (never re-priced):
+ *
+ *   bulk     unit price frozen on the row at acceptance (unit_price_millicredits); the charge is the
+ *            row's own ledger entry (idempotency key commit:bulk_item:{id}) — no entry, no charge;
+ *   attempt  unit price from the send's price snapshot (the group of this recipient's operator and
+ *            route); the charge is charged_credits (written with the send), else — for a send to a
+ *            single recipient — the snapshot's committed cost;
+ *   legacy   the backend's table has no per-message charge.
+ *
+ * A refund is the row's ellsms_delivery_refunds entry (app/DeliveryRefunds.php). Returns
+ * sent_report_cost_state()'s result.
+ */
+function sent_report_cost_breakdown(array $m): array {
+    $source = (string)$m['source'];
+    $parts = (int)($m['parts'] ?? 0);
+    $unit = null;
+    $charged = null;
+    $known = $source !== 'legacy';
+    $db = db();
+    if ($source === 'bulk') {
+        $unit = isset($m['unit_price_millicredits']) ? (int)$m['unit_price_millicredits'] : null;
+        if (($m['status'] ?? '') === 'sent') {
+            try {
+                $st = $db->prepare("SELECT amount FROM ellsms_wallet_transactions WHERE idempotency_key = ? AND type = 'sms_debit'");
+                $st->execute(['commit:bulk_item:' . (int)$m['id']]);
+                $amount = $st->fetchColumn();
+                $charged = $amount !== false ? abs((int)$amount) : 0;
+            } catch (PDOException) {
+                $known = false;
+            }
+        }
+    } elseif ($source === 'attempt') {
+        $groups = sms_price_snapshot_for((string)($m['reference_type'] ?? ''), (string)($m['reference_id'] ?? ''));
+        $group = sent_report_snapshot_group($groups, isset($m['operator_id']) ? (int)$m['operator_id'] : null, isset($m['route_id']) ? (int)$m['route_id'] : null);
+        $unit = $group !== null ? (int)$group['unit_price_millicredits'] : null;
+        if (($m['status'] ?? '') === 'accepted') {
+            if (isset($m['charged_credits'])) {
+                $charged = (int)$m['charged_credits'];
+            } elseif (count($groups) === 1 && (int)$groups[0]['recipient_count'] === 1 && ($groups[0]['status'] ?? '') === 'settled') {
+                $charged = (int)$groups[0]['committed_cost_credits'];
+            } elseif ($groups !== [] && array_sum(array_map(static fn(array $g): int => (int)$g['committed_cost_credits'], $groups)) === 0
+                      && ($groups[0]['status'] ?? '') === 'settled') {
+                $charged = 0; // a settled send that committed nothing (an admin's own send)
+            } else {
+                $known = false;
+            }
+        }
+    }
+
+    $refund = null;
+    if ($source !== 'legacy' && delivery_billing_available()) {
+        try {
+            $st = $db->prepare('SELECT refund_amount, refund_percent, created_at FROM ellsms_delivery_refunds WHERE source = ? AND source_id = ?');
+            $st->execute([$source === 'bulk' ? 'bulk_item' : 'attempt', (int)$m['id']]);
+            $refund = $st->fetch() ?: null;
+        } catch (PDOException) {
+            $refund = null;
+        }
+    }
+    // A failed / rejected / expired report on a message sent after «failed messages are free» is
+    // refunded by the status path or the delivery-refunds sweep within minutes.
+    $delivery = (string)($m['delivery_status'] ?? '');
+    $sentAt = (string)($source === 'bulk' ? ($m['created_at'] ?? '') : ($m['attempted_at'] ?? ''));
+    $refundDue = sent_report_show_delivery() && in_array($delivery, DELIVERY_REFUND_STATES, true)
+        && delivery_failed_is_free(delivery_failed_free_since(), $sentAt);
+
+    return sent_report_cost_state($source, (string)($m['status'] ?? ''), $parts, $unit, $known ? $charged : null,
+        $refund !== null ? (int)$refund['refund_amount'] : 0, $refund !== null ? (int)$refund['refund_percent'] : null,
+        $refund !== null ? (string)$refund['created_at'] : null, $refundDue);
+}
+
+/**
+ * Pure: the snapshot group a recipient was priced in — the one of its operator (and route, when both
+ * are known); the only group when there is just one; else null.
+ */
+function sent_report_snapshot_group(array $groups, ?int $operatorId, ?int $routeId): ?array {
+    foreach ($groups as $g) {
+        $sameOperator = ($g['operator_id'] === null ? null : (int)$g['operator_id']) === $operatorId;
+        $sameRoute = $routeId === null || $g['route_id'] === null || (int)$g['route_id'] === $routeId;
+        if ($sameOperator && $sameRoute) {
+            return $g;
+        }
+    }
+    return count($groups) === 1 ? $groups[0] : null;
+}
+
+/**
+ * Pure: what the customer reads about one message's cost.
+ *
+ *   $status    the row's own status (bulk: pending|processing|sent|failed|cancelled; attempt: accepted|failed)
+ *   $charged   what the ledger took for it, 0 for nothing, null when it cannot be told
+ *   $refunded  what came back (ellsms_delivery_refunds), with its percentage and time
+ *   $refundDue its refund is about to happen (failed report, failed messages are free)
+ *
+ * 'state': charged | refunded | partly_refunded | refund_pending | not_charged | reserved | unknown.
+ * 'formula_amount' is parts × unit price rounded up (how a send is priced, docs/sms-pricing.md §2).
+ *
+ * @return array{parts:int, unit_millicredits:?int, formula_amount:?int, charged:?int, refunded:int, refund_percent:?int,
+ *               refunded_at:?string, net:?int, state:string, label:string, note:string}
+ */
+function sent_report_cost_state(string $source, string $status, int $parts, ?int $unit, ?int $charged, int $refunded = 0,
+                                ?int $refundPercent = null, ?string $refundedAt = null, bool $refundDue = false): array {
+    $formula = $unit !== null && $parts > 0 ? sms_pricing_cost_for_segments($parts, $unit) : null;
+    $out = ['parts' => $parts, 'unit_millicredits' => $unit, 'formula_amount' => $formula, 'charged' => $charged, 'refunded' => $refunded,
+            'refund_percent' => $refundPercent, 'refunded_at' => $refundedAt, 'net' => $charged !== null ? max(0, $charged - $refunded) : null,
+            'state' => 'unknown', 'label' => 'نامشخص', 'note' => ''];
+    if ($source === 'legacy') {
+        return ['note' => 'هزینه‌ی هر پیام ارسال‌شده از این مسیر جداگانه ثبت نمی‌شود؛ مجموع آن در «تاریخچه مالی» است.'] + $out;
+    }
+    if ($source === 'bulk' && in_array($status, ['pending', 'processing'], true)) {
+        return ['state' => 'reserved', 'label' => 'رزرو شده', 'note' => 'مبلغ این پیام از اعتبار رزرو شده و پس از ارسال کسر می‌شود.'] + $out;
+    }
+    if ($status === 'cancelled') {
+        return ['state' => 'not_charged', 'label' => 'کسر نشد', 'charged' => 0, 'net' => 0, 'note' => 'ارسال لغو شد و مبلغ رزروشده به اعتبار برگشت.'] + $out;
+    }
+    if ($status === 'failed') {
+        return ['state' => 'not_charged', 'label' => 'کسر نشد', 'charged' => 0, 'net' => 0, 'note' => 'پیام به سرویس‌دهنده تحویل نشد و هزینه‌ای ندارد.'] + $out;
+    }
+    if ($charged === null) {
+        return ['note' => 'مبلغ کسرشده‌ی این پیام جداگانه ثبت نشده است؛ مجموع ارسال در «تاریخچه مالی» است.'] + $out;
+    }
+    if ($charged === 0) {
+        return ['state' => 'not_charged', 'label' => 'بدون هزینه', 'note' => 'برای این پیام مبلغی کسر نشده است.'] + $out;
+    }
+    if ($refunded > 0 && $refunded >= $charged) {
+        return ['state' => 'refunded', 'label' => 'برگشت شد', 'note' => 'تمام مبلغ این پیام به اعتبار برگشت داده شد.'] + $out;
+    }
+    if ($refunded > 0) {
+        return ['state' => 'partly_refunded', 'label' => 'بخشی برگشت شد',
+                'note' => ($refundPercent !== null ? to_persian_digits((string)$refundPercent) . '٪ ' : 'بخشی ') . 'از مبلغ این پیام به اعتبار برگشت داده شد.'] + $out;
+    }
+    if ($refundDue) {
+        return ['state' => 'refund_pending', 'label' => 'کسر شد — در صف برگشت', 'note' => 'پیام تحویل نشد؛ مبلغ آن تا چند دقیقه‌ی دیگر به اعتبار برمی‌گردد.'] + $out;
+    }
+    return ['state' => 'charged', 'label' => 'کسر شد'] + $out;
+}
+
+/** Pure: «۲ پارت × ۱,۲۰۰ ریال = ۲,۴۰۰ ریال», or '' when the unit price is not known. */
+function sent_report_cost_formula(array $cost): string {
+    if ($cost['unit_millicredits'] === null || $cost['formula_amount'] === null) {
+        return '';
+    }
+    return to_persian_digits((string)$cost['parts']) . ' پارت × ' . to_persian_digits(report_format_millicredits((int)$cost['unit_millicredits']))
+        . ' ریال = ' . to_persian_digits(number_format((int)$cost['formula_amount'])) . ' ریال';
 }
 
 /**

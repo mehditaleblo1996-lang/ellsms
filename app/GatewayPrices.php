@@ -161,21 +161,75 @@ function gateway_prices_at(?int $userId, string $atUtc): array {
     if (!gateway_prices_available()) {
         return [];
     }
-    try {
-        $st = db()->prepare('SELECT id, gateway_slot, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
-                             WHERE user_slot = ? AND effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)
-                             ORDER BY effective_from, id');
-        $st->execute([$userId ?? 0, $atUtc, $atUtc]);
-    } catch (PDOException $e) {
-        Logger::warning('gateway_prices.lookup_failed', ['user_id' => $userId, 'exception' => $e]);
-        return [];
+    // Inside gateway_prices_with_override() the same few matrices are read thousands of times at one
+    // instant, so each read is kept for the length of that call.
+    $memoKey = ($userId ?? 0) . '@' . $atUtc;
+    $inScope = is_array($GLOBALS['__ellsms_gateway_price_override'] ?? null);
+    if ($inScope && isset($GLOBALS['__ellsms_gateway_price_memo'][$memoKey])) {
+        $out = $GLOBALS['__ellsms_gateway_price_memo'][$memoKey];
+    } else {
+        try {
+            $st = db()->prepare('SELECT id, gateway_slot, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
+                                 WHERE user_slot = ? AND effective_from <= ? AND (effective_to IS NULL OR effective_to > ?)
+                                 ORDER BY effective_from, id');
+            $st->execute([$userId ?? 0, $atUtc, $atUtc]);
+        } catch (PDOException $e) {
+            Logger::warning('gateway_prices.lookup_failed', ['user_id' => $userId, 'exception' => $e]);
+            return [];
+        }
+        $out = [];
+        foreach ($st as $row) {
+            $out[gateway_price_key((int)$row['gateway_slot'], (string)$row['column_key'], (string)$row['encoding'])] =
+                ['id' => (int)$row['id'], 'millicredits' => (int)$row['price_per_segment_millicredits']];
+        }
+        if ($inScope) {
+            $GLOBALS['__ellsms_gateway_price_memo'][$memoKey] = $out;
+        }
     }
-    $out = [];
-    foreach ($st as $row) {
-        $out[gateway_price_key((int)$row['gateway_slot'], (string)$row['column_key'], (string)$row['encoding'])] =
-            ['id' => (int)$row['id'], 'millicredits' => (int)$row['price_per_segment_millicredits']];
+    // A price-change preview (app/PriceChanges.php) prices "as if" proposed cells were saved.
+    $override = gateway_prices_override()[$userId ?? 0] ?? null;
+    if ($override !== null) {
+        foreach ($override as $key => $millis) {
+            if ($millis === null) {
+                unset($out[$key]);
+            } else {
+                $out[$key] = ['id' => 0, 'millicredits' => (int)$millis];
+            }
+        }
     }
     return $out;
+}
+
+/**
+ * Runs $fn with gateway_prices_at() answering as if $overrides were saved: user slot (0 = global) =>
+ * [gateway_price_key() => millicredits, or null for a cleared cell]. Only reads are affected and only
+ * inside this call — the price-change preview (app/PriceChanges.php) prices real traffic through the
+ * real engine with the proposed cells this way. Nothing is written.
+ */
+function gateway_prices_with_override(array $overrides, callable $fn): mixed {
+    $previous = $GLOBALS['__ellsms_gateway_price_override'] ?? null;
+    $previousMemo = $GLOBALS['__ellsms_gateway_price_memo'] ?? null;
+    $GLOBALS['__ellsms_gateway_price_override'] = $overrides;
+    // A nested call keeps reading what the outer one already read (same rows, other overrides).
+    if (!is_array($previousMemo)) {
+        $GLOBALS['__ellsms_gateway_price_memo'] = [];
+    }
+    try {
+        return $fn();
+    } finally {
+        $GLOBALS['__ellsms_gateway_price_override'] = $previous;
+        // The memo holds stored rows only (never an override), so a nested call's reads stay valid for
+        // the outer one; the outermost call drops it.
+        if ($previous === null) {
+            $GLOBALS['__ellsms_gateway_price_memo'] = null;
+        }
+    }
+}
+
+/** The overrides gateway_prices_with_override() is granting (user slot => cells), or []. */
+function gateway_prices_override(): array {
+    $override = $GLOBALS['__ellsms_gateway_price_override'] ?? null;
+    return is_array($override) ? $override : [];
 }
 
 /**
@@ -307,16 +361,16 @@ function gateway_prices_drop_defaults(array $cells, array $current, array $defau
 }
 
 /**
- * Saves a whole matrix from now on. $cells maps gateway_price_key() => millicredits, or null for an
- * empty cell; cells not listed are left as they are. Only cells whose value changed get a new period.
- * Returns ['ok' => bool, 'reason' => ?string, 'changed' => int].
+ * Why $cells (gateway_price_key() => millicredits | null) cannot be saved into $userId's matrix (null =
+ * the global one), or null when they can: not_migrated, not_eligible, invalid_cell (a gateway or
+ * operator that is no longer active, or a malformed key), invalid_price (not a positive integer).
  */
-function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
+function gateway_prices_validate(?int $userId, array $cells): ?string {
     if (!gateway_prices_available()) {
-        return ['ok' => false, 'reason' => 'not_migrated', 'changed' => 0];
+        return 'not_migrated';
     }
     if ($userId !== null && !customer_prices_eligible($userId)) {
-        return ['ok' => false, 'reason' => 'not_eligible', 'changed' => 0];
+        return 'not_eligible';
     }
     $gateways = array_flip(array_map(static fn(array $g): int => (int)$g['id'], gateway_price_matrix_gateways()));
     $gateways[GATEWAY_PRICE_ALL] = true;
@@ -326,16 +380,33 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
     $columns = array_flip(array_column(gateway_price_matrix_columns(), 'key'));
     foreach ($cells as $key => $millis) {
         [$gatewayId, $column, $encoding] = array_pad(explode('|', (string)$key), 3, '');
-        if (!isset($gateways[(int)$gatewayId], $columns[$column]) || !array_key_exists($encoding, GATEWAY_PRICE_ENCODINGS)) {
-            return ['ok' => false, 'reason' => 'invalid_cell', 'changed' => 0];
+        if (!ctype_digit($gatewayId) || !isset($gateways[(int)$gatewayId], $columns[$column]) || !array_key_exists($encoding, GATEWAY_PRICE_ENCODINGS)) {
+            return 'invalid_cell';
         }
         if ($millis !== null && (!is_int($millis) || $millis <= 0)) {
-            return ['ok' => false, 'reason' => 'invalid_price', 'changed' => 0];
+            return 'invalid_price';
         }
+    }
+    return null;
+}
+
+/**
+ * Saves a whole matrix from now on. $cells maps gateway_price_key() => millicredits, or null for an
+ * empty cell; cells not listed are left as they are. Only cells whose value changed get a new period.
+ * Returns ['ok' => bool, 'reason' => ?string, 'changed' => int, 'before' => [...], 'after' => [...]]:
+ * 'before' / 'after' hold, for every changed cell only, its value before and after the save (null =
+ * no own price) — what a price-change record (app/PriceChanges.php) keeps to revert it.
+ */
+function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
+    $invalid = gateway_prices_validate($userId, $cells);
+    if ($invalid !== null) {
+        return ['ok' => false, 'reason' => $invalid, 'changed' => 0, 'before' => [], 'after' => []];
     }
 
     $slot = $userId ?? 0;
-    $changed = db_transaction(function (PDO $db) use ($userId, $slot, $cells, $actorId): int {
+    $before = [];
+    $after = [];
+    $changed = db_transaction(function (PDO $db) use ($userId, $slot, $cells, $actorId, &$before, &$after): int {
         $open = $db->prepare('SELECT gateway_slot, column_key, encoding, price_per_segment_millicredits FROM ellsms_gateway_prices
                               WHERE user_slot = ? AND effective_to IS NULL FOR UPDATE');
         $open->execute([$slot]);
@@ -364,6 +435,8 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
             if (($current[$key] ?? null) === $millis) {
                 continue;
             }
+            $before[(string)$key] = $current[$key] ?? null;
+            $after[(string)$key] = $millis;
             [$gatewayId, $column, $encoding] = explode('|', (string)$key);
             $close->execute([$now, $slot, (int)$gatewayId, $column, $encoding]);
             if ($millis !== null) {
@@ -378,7 +451,7 @@ function gateway_prices_save(?int $userId, array $cells, int $actorId): array {
         sms_pricing_cache_reset();
         audit($actorId, 'gateway_prices.saved', ($userId === null ? 'global' : "#{$userId}") . " cells={$changed}");
     }
-    return ['ok' => true, 'reason' => null, 'changed' => $changed];
+    return ['ok' => true, 'reason' => null, 'changed' => $changed, 'before' => $before, 'after' => $after];
 }
 
 /**

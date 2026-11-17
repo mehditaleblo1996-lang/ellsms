@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../app/backend.php'; // needed for backend_create_account()
+require_once __DIR__ . '/../app/PriceChanges.php';
 $me = require_admin();
 $pageTitle = 'کاربران';
 $active = 'users';
@@ -45,7 +46,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $n = db()->exec('UPDATE ellsms_meta SET twofa_enabled = 1 WHERE panel_access = 1');
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
-    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save', 'delivery_billing_save', 'vip_save', 'p2p_auto_send_save'], true)) {
+    } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save',
+                               'price_change_confirm', 'price_change_discard', 'price_change_cancel', 'price_change_revert', 'delivery_billing_save', 'vip_save', 'p2p_auto_send_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -108,11 +110,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Logger::info('user.credit_adjusted', ['actor_id' => $me['id'], 'target_id' => $id, 'amount' => $amount, 'reason' => $reason]);
             flash('success', 'اعتبار به میزان ' . to_persian_digits(number_format($amount)) . ' ریال تغییر کرد.');
         } elseif ($do === 'password') {
-            $p = $_POST['password'] ?? '';
-            if (strlen($p) < 6) {
-                flash('error', 'رمز عبور باید حداقل ۶ نویسه باشد.');
+            $p = (string)($_POST['password'] ?? '');
+            $targetUsername = (string)(backend_find_user_login_state_by_id($id)['username'] ?? '');
+            if (($policyError = password_policy_error($p, $targetUsername)) !== null) {
+                flash('error', $policyError);
             } else {
-                backend_update_user_password($id, backend_hash_password($p));
+                // Also signs that account out everywhere (app/PasswordSecurity.php).
+                account_password_set($id, $p);
                 audit((int)$me['id'], 'user.password_reset', "#{$id}");
                 Logger::info('user.password_reset', ['actor_id' => $me['id'], 'target_id' => $id]);
                 flash('success', 'رمز عبور تغییر کرد. توجه: این رمز همه‌جا برای این حساب استفاده می‌شود، نه فقط در داتیس رایان گستر ایرانیان.');
@@ -149,15 +153,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ], (int)$me['id']);
                 flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'نوع مشتری و نمایندگی ذخیره شد.' : customer_error_message((string)$result['reason']));
             }
-        } elseif ($do === 'operator_prices_save') {
+        } elseif (in_array($do, ['operator_prices_save', 'price_change_confirm', 'price_change_discard', 'price_change_cancel', 'price_change_revert'], true)) {
             // The account's own price matrix (app/GatewayPrices.php): gateway x operator x encoding.
-            // An empty cell falls back to the global matrix. Nothing is saved unless every cell parses.
-            [$cells, $error] = gateway_prices_from_form((array)($_POST['price'] ?? []));
-            $cells = gateway_prices_drop_defaults($cells, gateway_prices_current($id), gateway_price_defaults($id));
-            $result = $error === null ? gateway_prices_save($id, $cells, (int)$me['id']) : ['ok' => false, 'reason' => $error];
-            flash($result['ok'] ? 'success' : 'error', $result['ok']
-                ? 'تعرفه‌ی اختصاصی ذخیره شد. از همین لحظه برای ارسال‌های جدید اعمال می‌شود.'
-                : gateway_price_error_message((string)$result['reason']));
+            // An empty cell falls back to the global matrix. Nothing is saved unless every cell parses,
+            // and nothing before the admin has seen the preview of its effect and confirmed it, now or
+            // at a chosen time (app/PriceChanges.php).
+            price_change_handle_post((string)$do, $id, $me, 'operator_prices_save');
+            redirect('/users.php?edit=' . $id . '#operator-prices');
         } elseif ($do === 'delivery_billing_save') {
             // Delivery-based billing (app/DeliveryRefunds.php): admin-only per-user switch plus the
             // share of an undelivered message's price that goes back to the wallet.
@@ -214,9 +216,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $gender     = $identity['user']['gender'] === 'female' ? 'FEMALE' : 'MALE';
         $identityError = profile_identity_validate($identity, true);
 
-        if ($username === '' || strlen($password) < 6 || $firstName === '' || $lastName === ''
+        if ($username === '' || $firstName === '' || $lastName === ''
             || $email === '' || !$mobile || !$domainId) {
             flash('error', 'همه‌ی فیلدهای ستاره‌دار را به‌درستی پر کنید.');
+        } elseif (($policyError = password_policy_error((string)$password, $username)) !== null) {
+            flash('error', $policyError);
         } elseif ($identityError !== null) {
             flash('error', profile_error_message($identityError));
         } else {
@@ -662,7 +666,8 @@ require __DIR__ . '/../app/views/header.php';
       <input type="hidden" name="do" value="password">
       <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
       <input type="hidden" name="back" value="1">
-      <label>رمز عبور جدید <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      <label>رمز عبور جدید <input type="password" name="password" autocomplete="new-password" required<?= password_policy_input_attrs() ?>></label>
+      <?= password_policy_hint_html(false) ?>
       <div class="form-actions"><button class="btn btn-primary btn-sm">تغییر رمز عبور</button></div>
     </form>
   </div>
@@ -841,7 +846,8 @@ if ($editOrganizationId > 0) {
       سطر «پیش‌فرض همه‌ی درگاه‌ها» قیمت این کاربر برای هر درگاهی است که در آن خانه قیمت جدا ندارد.
       عدد خاکستری قیمت پیش‌فرض همین کاربر است (تعرفه‌ی عمومی) و تا تغییرش ندهید ذخیره نمی‌شود؛ خالی‌کردن یک خانه آن را به پیش‌فرض برمی‌گرداند.
       تعرفه‌ی عمومی در «تعرفه‌ی پیامک ← تعرفه‌ی درگاه‌ها» است.
-      با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. تغییرات از همین لحظه برای ارسال‌های جدید اعمال می‌شود.
+      با دکمه‌ی ↓ مقدار ردیف بالا در همه‌ی درگاه‌های آن ستون نوشته می‌شود. پیش از ذخیره، اثر تغییر بر ارسال‌های ماه گذشته‌ی این حساب
+      (و زیرمجموعه‌هایش) نشان داده می‌شود و می‌توانید آن را از همین حالا یا در زمانی دیگر اعمال کنید؛ هر تغییر اعمال‌شده با یک کلیک برمی‌گردد.
       <?php if ($editCustomerChildren): ?>زیرسازمان‌های این حساب هم با همین قیمت‌ها ارسال می‌کنند.<?php endif; ?>
     </p>
     <?php
@@ -850,8 +856,11 @@ if ($editOrganizationId > 0) {
       $matrixValues = gateway_prices_current((int)$editUser['id']);
       $matrixDefaults = gateway_price_defaults((int)$editUser['id']);
       $matrixHidden = csrf_field() . '<input type="hidden" name="do" value="operator_prices_save"><input type="hidden" name="id" value="' . (int)$editUser['id'] . '"><input type="hidden" name="back" value="1">';
-      $matrixSubmitLabel = 'ذخیره‌ی تعرفه‌ی اختصاصی';
+      $matrixSubmitLabel = price_changes_available() ? 'پیش‌نمایش اثر و ذخیره‌ی تعرفه‌ی اختصاصی' : 'ذخیره‌ی تعرفه‌ی اختصاصی';
       require __DIR__ . '/../app/views/price_matrix.php';
+      $priceChangeSlot = (int)$editUser['id'];
+      $priceChangeHidden = csrf_field() . '<input type="hidden" name="id" value="' . (int)$editUser['id'] . '"><input type="hidden" name="back" value="1">';
+      require __DIR__ . '/../app/views/price_changes.php';
     ?>
   <?php endif; ?>
 </div>
@@ -1114,7 +1123,8 @@ if ($editOrganizationId > 0) {
       <h3 class="subsection-title">اطلاعات ورود</h3>
       <div class="form-grid cols-4">
         <label>نام کاربری <span class="req">*</span> <input type="text" name="username" class="ltr" autocomplete="off" required></label>
-        <label>رمز عبور <span class="req">*</span> <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+        <label>رمز عبور <span class="req">*</span> <input type="password" name="password" autocomplete="new-password" required<?= password_policy_input_attrs('', 'username') ?>>
+          <?= password_policy_hint_html() ?></label>
       </div>
     </div>
     <div class="form-section">

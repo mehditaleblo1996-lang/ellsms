@@ -64,7 +64,7 @@ if (isset($_GET['id'])) {
         fputcsv($out, ['phone', 'has_telegram', 'status_fa', 'username', 'name', 'checked_at'], ',', '"', '');
         foreach ($st as $row) {
             $has = $row['status'] === 'found' ? 'yes' : ($row['status'] === 'not_found' ? 'no' : '');
-            fputcsv($out, [$row['phone'], $has, tg_status_label((string)$row['status']), $row['tg_username'], $row['tg_name'], $row['checked_at']], ',', '"', '');
+            fputcsv($out, csv_safe_row([$row['phone'], $has, tg_status_label((string)$row['status']), $row['tg_username'], $row['tg_name'], $row['checked_at']]), ',', '"', '');
         }
         exit;
     }

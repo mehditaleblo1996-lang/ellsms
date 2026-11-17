@@ -88,5 +88,5 @@ DSN status, are listed on **/integrations.php**.
 | `WEBENGAGE_DSN_MAX_WAIT_HOURS` | 24 | Wait for a delivery report before reporting `sms_sent` |
 | `WEBENGAGE_MESSAGE_RETENTION_DAYS` | 90 | `make webhook-prune` removes finished message rows older than this |
 
-A custom DSN URL passes the same SSRF check as webhook endpoints (HTTPS, public address), at save time
+A custom DSN URL passes the same SSRF check as webhook endpoints (HTTPS, public address; the call is pinned to the checked address and a blocked internal target is logged as `security.webhook.ssrf_blocked` — see `docs/webhooks.md`), at save time
 and before every call.

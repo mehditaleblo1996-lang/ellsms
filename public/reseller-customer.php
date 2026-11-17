@@ -76,10 +76,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($result['ok'] ? 'info' : 'error', $result['ok'] ? ($do === 'suspend' ? 'حساب مشتری غیرفعال شد.' : 'حساب مشتری فعال شد.') : customer_error_message((string)$result['reason']));
     } elseif ($do === 'password') {
         $password = (string)($_POST['password'] ?? '');
-        if (strlen($password) < 6) {
-            flash('error', 'رمز عبور باید حداقل ۶ نویسه باشد.');
+        if (($policyError = password_policy_error($password, (string)(backend_find_user_login_state_by_id($childId)['username'] ?? ''))) !== null) {
+            flash('error', $policyError);
         } else {
-            backend_update_user_password($childId, backend_hash_password($password));
+            account_password_set($childId, $password);
             audit($actorId, 'customer.child_password_reset', "#{$childId} reseller=#{$resellerId}");
             flash('success', 'رمز عبور مشتری تغییر کرد.');
         }
@@ -341,7 +341,8 @@ require __DIR__ . '/../app/views/reseller_header.php';
       <?= csrf_field() ?>
       <input type="hidden" name="do" value="password">
       <input type="hidden" name="id" value="<?= $childId ?>">
-      <label>رمز عبور جدید <input type="password" name="password" minlength="6" autocomplete="new-password" required></label>
+      <label>رمز عبور جدید <input type="password" name="password" autocomplete="new-password" required<?= password_policy_input_attrs() ?>></label>
+      <?= password_policy_hint_html(false) ?>
       <div class="form-actions"><button class="btn btn-primary btn-sm">تغییر رمز عبور</button></div>
     </form>
   </div>

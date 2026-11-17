@@ -236,6 +236,17 @@
 .panel .stat-delta.is-bad { color: var(--err); background: var(--err-bg); }
 .panel .stat-accent .stat-foot, .panel .stat-accent .stat-rate strong { color: #fff; }
 .panel .stat-accent .stat-delta { color: #fff; background: rgb(255 255 255 / 18%); }
+/* Today's cards: «کل پیامک‌های امروز» first, then its parts. Four cards sit in one row; with delivery
+   reports there are five (.has-5): the total stands tall beside a 2×2 of the others, and on narrow
+   screens it takes a row of its own above them. */
+.panel .dash-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.panel .dash-stats.has-5 { grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr)); }
+.panel .dash-stats.has-5 > .stat-accent { grid-row: span 2; display: flex; flex-direction: column; justify-content: center; }
+.panel .dash-stats.has-5 > .stat-accent .stat-value { font-size: clamp(32px, 3vw, 44px); }
+@media (max-width: 980px) {
+  .panel .dash-stats, .panel .dash-stats.has-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .panel .dash-stats.has-5 > .stat-accent { grid-column: 1 / -1; grid-row: auto; }
+}
 
 .panel .dash-chart-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; }
 .panel .dash-chart-head h2 { margin: 0; }

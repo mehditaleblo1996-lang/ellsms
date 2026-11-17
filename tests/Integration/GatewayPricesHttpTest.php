@@ -77,6 +77,7 @@ final class GatewayPricesHttpTest extends TestCase
             $db->prepare('DELETE FROM ellsms_sms_gateways WHERE id = ?')->execute([$this->gatewayId]);
         }
         foreach ($this->createdUserIds as $id) {
+            $db->prepare('DELETE FROM ellsms_price_changes WHERE created_by = ? OR user_slot = ?')->execute([$id, $id]);
             $db->prepare('DELETE FROM ellsms_gateway_prices WHERE user_id = ?')->execute([$id]);
             $db->prepare('DELETE FROM ellsms_customer_accounts WHERE user_id = ?')->execute([$id]);
             $db->prepare('DELETE FROM ellsms_organization_memberships WHERE user_id = ?')->execute([$id]);
@@ -151,6 +152,19 @@ final class GatewayPricesHttpTest extends TestCase
         return $this->request('POST', parse_url($page, PHP_URL_PATH), $session, ['_csrf' => $csrf] + $fields);
     }
 
+    /**
+     * The matrix form first opens a preview of the change (app/PriceChanges.php); nothing is saved until
+     * the preview is confirmed. Confirms the preview now showing on $page and returns that page's body.
+     */
+    private function confirmPreview(string $session, string $page, array $fields): string
+    {
+        $shown = $this->request('GET', $page, $session);
+        $this->assertStringContainsString('پیش‌نمایش اثر تغییر تعرفه', $shown['body']);
+        $this->assertSame(1, preg_match('/name="token" value="([0-9a-f]+)"/', $shown['body'], $m), 'the preview carries its token');
+        $this->post($session, $page, ['do' => 'price_change_confirm', 'token' => $m[1], 'when' => 'now'] + $fields);
+        return $shown['body'];
+    }
+
     public function testTheGlobalTableSavesAndClearsCells(): void
     {
         $session = $this->sessionFor($this->adminId);
@@ -165,6 +179,10 @@ final class GatewayPricesHttpTest extends TestCase
         $saved = $this->post($session, '/sms-pricing.php?tab=matrix', ['do' => 'matrix_save', 'tab' => 'matrix',
             'price' => [$this->gatewayId => [$mci => ['fa' => '۱٬۱۲۴', 'en' => '2248'], 'intl' => ['fa' => '18000', 'en' => '']]]]);
         $this->assertSame(302, $saved['code']);
+        $this->assertArrayNotHasKey(\gateway_price_key($this->gatewayId, $mci, 'fa'), \gateway_prices_current(null), 'nothing is saved before the preview is confirmed');
+        $preview = $this->confirmPreview($session, '/sms-pricing.php?tab=matrix', ['tab' => 'matrix']);
+        $this->assertStringContainsString('خانه‌های تغییرکرده', $preview);
+        $this->assertStringContainsString('مشتری‌های تحت تأثیر', $preview);
         $current = \gateway_prices_current(null);
         $this->assertSame(1124000, $current[\gateway_price_key($this->gatewayId, $mci, 'fa')] ?? null);
         $this->assertSame(2248000, $current[\gateway_price_key($this->gatewayId, $mci, 'en')] ?? null);
@@ -173,6 +191,14 @@ final class GatewayPricesHttpTest extends TestCase
 
         $page = $this->request('GET', '/sms-pricing.php?tab=matrix', $session);
         $this->assertMatchesRegularExpression('/name="price\[' . $this->gatewayId . '\]\[' . $mci . '\]\[fa\]"[^>]*value="1124"/', $page['body']);
+        $this->assertStringContainsString('تاریخچه‌ی تغییرات تعرفه', $page['body']);
+        $this->assertStringNotContainsString('پیش‌نمایش اثر تغییر تعرفه', $page['body'], 'a confirmed preview is gone');
+
+        // One click puts the previous prices back.
+        $change = (int)db()->query('SELECT MAX(id) FROM ellsms_price_changes WHERE user_slot = 0')->fetchColumn();
+        $this->assertMatchesRegularExpression('/name="change_id" value="' . $change . '"/', $page['body']);
+        $this->post($session, '/sms-pricing.php?tab=matrix', ['do' => 'price_change_revert', 'tab' => 'matrix', 'change_id' => $change]);
+        $this->assertArrayNotHasKey(\gateway_price_key($this->gatewayId, $mci, 'fa'), \gateway_prices_current(null));
     }
 
     public function testAnAccountTableShowsTheGlobalValueAndSavesItsOwn(): void
@@ -195,6 +221,8 @@ final class GatewayPricesHttpTest extends TestCase
 
         $this->post($session, '/users.php?edit=' . $customer, ['do' => 'operator_prices_save', 'id' => $customer, 'back' => '1',
             'price' => [$this->gatewayId => [$mci => ['fa' => '900', 'en' => '']]]]);
+        $this->assertSame([], \gateway_prices_current($customer), 'previewed, not saved yet');
+        $this->confirmPreview($session, '/users.php?edit=' . $customer, ['id' => $customer, 'back' => '1']);
         $this->assertSame([\gateway_price_key($this->gatewayId, $mci, 'fa') => 900000], \gateway_prices_current($customer));
 
         // A bad value anywhere saves nothing.

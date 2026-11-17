@@ -10,7 +10,8 @@ migration files**, not be silently folded into the base schema or auto-applied a
 
 | File | Adds | Why |
 |---|---|---|
-| `2026_07_27_password_verifiers.sql` | `ellsms_password_verifiers` (new table) | Opt-in supporting infrastructure for a *future*, backend-coordinated password hashing migration — does **not** change how login is authorized today. See `docs/security-review.md` finding 4. |
+| `2026_07_27_password_verifiers.sql` | `ellsms_password_verifiers` (new table) | Holds the Argon2id verifiers. With `PASSWORD_HASH_MODE=legacy` (default) nothing reads it to grant access; with `argon2id` it is what sign-in checks. See `docs/password-security.md`. |
+| `2026_11_15_password_version.sql` | `ellsms_meta.password_version` (new column, default 0) | Signs an account's other sessions out when its password changes. Applying it signs nobody out. See `docs/password-security.md`. |
 | `2026_07_27_2fa_hardening.sql` | `ellsms_2fa_codes.code_hash`/`.attempts`/`.superseded_at`; drops the old plaintext `code` column | Stops storing 2FA codes in plaintext, adds a durable per-challenge attempt counter, lets a resend invalidate prior codes. See `docs/security-review.md` finding 7. |
 | `2026_07_27_rate_limits.sql` | `ellsms_rate_limits` (new table) | Backing store for `app/rate_limit.php`'s login/2FA/API rate limiting. See `docs/security-review.md` finding 3. |
 | `2026_07_28_wallet_ledger.sql` | `ellsms_wallet_accounts`, `ellsms_wallet_transactions`, `ellsms_wallet_reservations` (new tables) | Phase 3 wallet ledger/reservation model — see `docs/wallet-architecture.md`. After applying, run `make wallet-backfill` (separate, explicit step — never automatic) before relying on wallet-gated flows in production. |

@@ -716,8 +716,11 @@ function reseller_staff_create(int $resellerId, array $input, array $permissions
     $email     = trim((string)($input['email'] ?? ''));
     $mobile    = normalize_msisdn((string)($input['mobile'] ?? ''));
     $nationalId = trim(from_persian_digits((string)($input['national_id'] ?? '')));
-    if ($username === '' || strlen($password) < 8 || $firstName === '' || $lastName === '' || $email === '' || !$mobile || strlen($nationalId) !== 10) {
+    if ($username === '' || $firstName === '' || $lastName === '' || $email === '' || !$mobile || strlen($nationalId) !== 10) {
         return ['ok' => false, 'reason' => 'staff_fields'];
+    }
+    if (password_policy_problems($password, $username) !== []) {
+        return ['ok' => false, 'reason' => 'weak_password'];
     }
     $domainId = backend_user_domain_id($resellerId) ?? (int)(backend_list_domains()[0]['id'] ?? 0);
     if ($domainId <= 0) return ['ok' => false, 'reason' => 'no_domain'];
@@ -991,7 +994,8 @@ function reseller_error_message(string $reason): string {
         'logo_too_large'       => 'حجم لوگو حداکثر ۵۱۲ کیلوبایت است.',
         'logo_type'            => 'لوگو باید تصویر PNG، JPEG یا WebP باشد.',
         'storage'              => 'ذخیره‌ی فایل روی سرور ممکن نشد.',
-        'staff_fields'         => 'همه‌ی فیلدها را پر کنید (رمز عبور حداقل ۸ نویسه و کد ملی ۱۰ رقم).',
+        'staff_fields'         => 'همه‌ی فیلدها را پر کنید (کد ملی ۱۰ رقم).',
+        'weak_password'        => 'رمز عبور پذیرفته نشد: حداقل ۸ نویسه، دست‌کم یک حرف و یک عدد، و متفاوت با نام کاربری.',
         'staff_not_found'      => 'کارمند پیدا نشد.',
         'no_domain'            => 'دامنه‌ای برای ساخت حساب پیدا نشد؛ با پشتیبانی تماس بگیرید.',
         'backend_failed'       => 'ساخت حساب در سامانه‌ی مرکزی ناموفق بود.',
