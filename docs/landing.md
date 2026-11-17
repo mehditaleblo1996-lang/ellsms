@@ -6,7 +6,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | File | What |
 |---|---|
 | `public/landing.php` | The page: banner, hero, sections, and the small inline scripts that drive the sliders |
-| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav, footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page. The footer's trust badges (ساماندهی، اینماد and the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
+| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد and the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
 | `public/assets/css/style.css` | Base styles of the public pages, the banner, the bento grid and the other sections |
 | `public/assets/css/landing-ai.css` | Everything for «منشی هوشمند» on this page: banner slide 6, the feature tile and the seven-step showcase. Loaded only by `landing.php`. |
 | `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
@@ -30,7 +30,8 @@ are not shown on this page.
 | `#how` | Three steps to the first send |
 | `#use-cases`, `#trust`, `#faq` | Use cases, trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 
-The nav has a «منشی هوشمند» link to `/landing.php#ai-secretary`.
+The nav has a «منشی هوشمند» link to `/landing.php#ai-secretary`, and a «درباره ما» item whose submenu
+links to the parts of the company page `/about` ([about.md](about.md)).
 
 ## Top banner
 

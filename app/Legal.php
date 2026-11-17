@@ -110,12 +110,13 @@ function legal_ecunion_badge_html(int $height): string {
          . '</g></svg></a>';
 }
 
-/** Links to the legal pages, for both footers. */
+/** Links to the legal pages, «درباره ما» and «تماس با ما», for both footers. */
 function legal_footer_links_html(): string {
     return '<nav class="legal-links" aria-label="اطلاعات حقوقی">'
          . '<a href="/terms">قوانین و مقررات</a>'
          . '<a href="/privacy">حریم خصوصی</a>'
          . '<a href="/refund">انصراف و بازگشت وجه</a>'
+         . '<a href="/about">درباره ما</a>'
          . '<a href="/contact">تماس با ما</a>'
          . '</nav>';
 }

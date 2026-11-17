@@ -425,7 +425,7 @@ A P2P file larger than `SMS_SYNC_MAX_RECIPIENTS` rows waits at «منتظر تأ
 
 The panel now has a real mobile navigation drawer instead of stacking the entire sidebar above page content — as the nav grew past a dozen links, that stacking became genuinely unusable on a phone. Below 900px a hamburger button in the topbar slides the sidebar in from the right with a dismissible backdrop (tap outside, press Escape, or tap any link to close); above that it's the normal fixed sidebar. Other changes: form inputs are 16px to stop iOS Safari's auto-zoom-on-focus, buttons and nav items get larger touch targets on small screens, tables and cards tighten their padding progressively at 900px and 480px breakpoints, and every page (not just login) now has the same subtle brand-color background wash instead of a flat canvas. All of this lives in `public/assets/css/style.css` plus a small vanilla-JS toggle in `app/views/footer.php` — no framework, no build step.
 
-## Public marketing site — landing, تماس با ما, راهنمای استفاده
+## Public marketing site — landing, درباره ما, تماس با ما, راهنمای استفاده
 
 `/index.php` (the site root) now shows `/landing.php` to anyone not logged in instead of bouncing straight to `/login.php` — the dashboard behavior for logged-in users is unchanged. Login is still reachable from the landing page's own CTA. Everything under this section is public, unauthenticated, and shares one chrome (`app/views/public_header.php` / `public_footer.php`) separate from the logged-in app shell in `app/views/header.php`.
 
@@ -433,6 +433,7 @@ The panel now has a real mobile navigation drawer instead of stacking the entire
 - **«منشی هوشمند» on the landing page** — a full-width «منشی هوشمند با هوش مصنوعی» tile in the features grid, a nav link, an FAQ entry, and a seven-step showcase slider at `/landing.php#ai-secretary` (answering, setup, message flow, data tables, hand-off, «پیام اول», guards and cost), each step with an animated CSS/SVG scene. Styles in `public/assets/css/landing-ai.css`, loaded only on that page through the public header's `$extraStyles`. See [`docs/landing.md`](docs/landing.md).
 - **بسته‌های پیامک / pricing cards** (`/pricing.php` to manage, shown on `/landing.php#pricing`) — a separate marketing-only table (`ellsms_pricing_packages`: name, credit amount, price in Rial, feature bullets, a "پیشنهاد ویژه" badge). Deliberately independent from the real purchase in `buy-credit.php` (one Rial paid before VAT = one Rial of credit) — this is just what's advertised.
 - **راهنمای استفاده** — a public FAQ/guide page (`/guide.php`, plain `<details>`/`<summary>` accordion, no JS needed) backed by admin-editable articles (`/guide-admin.php`, `ellsms_guide_articles`). Body text is plain, rendered with `nl2br()` — no markdown parser, consistent with this project having no `vendor/` directory anywhere else.
+- **درباره ما** (`/about`, `public/about.php`) — the company page: intro with an animated hub of the five service areas around the brand mark, «از پیامک، تا سبد کامل خدمات فناوری», the five service areas (پیامک، خدمات ابری، هوش مصنوعی، فناوری اطلاعات، تلفن و ارتباطات سازمانی), the trust of large organizations, mission and vision, and the core values, each with animated CSS/SVG icons and a sticky section bar. It is in the site nav as «درباره ما» with an icon submenu of those sections, and in both footers. Fixed HTML, no table or setting; styles in `public/assets/css/about.css`. See [`docs/about.md`](docs/about.md).
 - **تماس با ما** (`/contact.php`) — shows an address/phone block from Settings → تماس با ما (hidden entirely if never configured) plus a ticket form. Submitting the form doesn't write to a table — `app/telegram.php` relays it as a plain chat message to a Telegram bot via the official `sendMessage` endpoint, using a Bot Token + Chat ID configured the same `.env`-with-Settings-override pattern as ZarinPal (`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`). Create the bot with `@BotFather`.
 
 ## Legacy-style URL send API
@@ -686,7 +687,8 @@ updated in the same change** — see `CLAUDE.md`.
 [registration](docs/registration.md) ·
 [profile-kyc](docs/profile-kyc.md) ·
 [admin-impersonation](docs/admin-impersonation.md) ·
-[landing](docs/landing.md)
+[landing](docs/landing.md) ·
+[about](docs/about.md)
 
 **API & integrations**
 [public-api](docs/public-api.md) ·
