@@ -122,6 +122,19 @@ affected. The provider is PishgamRayan's smart SMS web service. Customers use **
 of every kind the provider offers, gray lists, clubs, one-off and periodic sends, and statistics. Every
 message sent is charged. See [`docs/lba.md`](docs/lba.md).
 
+## Aimed bulk — send by postal code (ارسال با کد پستی)
+
+Customers send one message to subscribers in ELLSMS's own number bank (Vesal's `TBL_MOBILE`, loaded by
+`cron/aimed-mobiles-import.php`), picked by postal code (or its first digits), province / city, number
+prefix and SIM type, on **/messages/aimed**. The bulk worker stages and prices the request at the normal
+tariff plus an admin surcharge; the customer confirms it, and it goes out through ELLSMS's own lines,
+gateways and wallet. Customers only ever see the numbers masked (`0912***4567`). «شمارش شماره‌ها» runs in
+the background: the page queues the count, the `worker` counts it (only up to the per-request limit, on
+covering indexes) and the page shows the result when it is ready, so a large area never times the page
+out. Migrations `db/migrations/2026_10_17_aimed_bulk.sql` and
+`db/migrations/2026_11_22_aimed_bulk_background_count.sql`. No API route. See
+[`docs/aimed-bulk.md`](docs/aimed-bulk.md).
+
 ## WebEngage (SMS service provider)
 
 ELLSMS can be added in WebEngage as a custom SMS Service Provider, so WebEngage campaigns send their
