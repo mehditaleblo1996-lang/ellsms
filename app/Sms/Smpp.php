@@ -18,6 +18,8 @@
 declare(strict_types=1);
 
 const SMPP_BRIDGE_MAX_RECIPIENTS = 500;
+/** A bridge request is not started with less time than this left in the send's budget. */
+const SMPP_MIN_REQUEST_MS = 15000;
 
 function smpp_bridge_url(): string {
     return rtrim((string)(env('SMPP_BRIDGE_URL', 'http://smpp-bridge:8090') ?? 'http://smpp-bridge:8090'), '/');
@@ -28,7 +30,10 @@ function smpp_bridge_url(): string {
  * fixed base URL from the environment — never an admin-supplied address — so it deliberately does not
  * go through gateway_endpoint_allowed()'s public-address rules.
  *
- * @return array{ok: bool, http: int, data: mixed, error: ?string, timed_out: bool}
+ * not_sent: the request never reached the bridge (it is down or restarting: connection refused, name
+ * not resolved), so nothing can have been submitted to the SMSC.
+ *
+ * @return array{ok: bool, http: int, data: mixed, error: ?string, timed_out: bool, not_sent: bool}
  */
 function smpp_bridge_request(string $method, string $path, ?array $body = null, int $timeoutMs = 60000): array {
     $ch = curl_init(smpp_bridge_url() . $path);
@@ -48,11 +53,60 @@ function smpp_bridge_request(string $method, string $path, ?array $body = null, 
     $error = curl_error($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     if ($raw === false) {
-        return ['ok' => false, 'http' => 0, 'data' => null, 'error' => 'smpp-bridge unreachable: ' . $error, 'timed_out' => $errno === CURLE_OPERATION_TIMEDOUT];
+        return ['ok' => false, 'http' => 0, 'data' => null, 'error' => 'smpp-bridge unreachable: ' . $error, 'timed_out' => $errno === CURLE_OPERATION_TIMEDOUT,
+                'not_sent' => in_array($errno, [CURLE_COULDNT_RESOLVE_PROXY, CURLE_COULDNT_RESOLVE_HOST, CURLE_COULDNT_CONNECT], true)];
     }
     $data = json_decode((string)$raw, true);
     $ok = $http >= 200 && $http < 300 && is_array($data);
-    return ['ok' => $ok, 'http' => $http, 'data' => $data, 'error' => $ok ? null : (is_array($data) ? (string)($data['detail'] ?? $data['error'] ?? 'error') : 'invalid response'), 'timed_out' => false];
+    return ['ok' => $ok, 'http' => $http, 'data' => $data, 'error' => $ok ? null : (is_array($data) ? (string)($data['detail'] ?? $data['error'] ?? 'error') : 'invalid response'), 'timed_out' => false, 'not_sent' => false];
+}
+
+/**
+ * How long one send may spend in the bridge in total (all its requests). A bulk batch's lease is
+ * renewed right before the send (bulk_hold_claim()); a send that outlived it would see its rows failed
+ * as [SEND_UNCERTAIN] by another worker while the bridge was still submitting them, so the budget stays
+ * 30 s inside the lease.
+ */
+function smpp_send_budget_ms(): int {
+    $lease = function_exists('job_lease_seconds') ? job_lease_seconds() : 300;
+    return max(30, $lease - 30) * 1000;
+}
+
+/**
+ * The HTTP timeout for one bridge request: the time its messages need at the gateway's TPS (each part
+ * takes a token, and other workers share the same TPS), three times over plus 30 s, at least 60 s,
+ * never beyond what is left of the send's budget.
+ */
+function smpp_submit_timeout_ms(int $recipients, int $parts, int $tps, int $budgetLeftMs): int {
+    $needMs = (int)ceil(max(1, $recipients) * max(1, $parts) * 1000 / max(1, $tps));
+    return max(1000, min($budgetLeftMs, max(60000, 30000 + 3 * $needMs)));
+}
+
+/**
+ * The deadline the bridge is given: after it no new message is started (those come back not_sent), so
+ * the bridge answers — with the id of every message it did submit — before PHP's own timeout. The
+ * margin covers the messages still in flight: one submit_sm_resp wait plus 15 s.
+ */
+function smpp_submit_deadline_ms(int $timeoutMs, int $submitTimeoutMs): int {
+    return max(5000, $timeoutMs - max(1000, $submitTimeoutMs) - 5000 - 15000);
+}
+
+/** The most parts any of the send's texts needs — the bridge spends one TPS token per part. */
+function smpp_send_parts(array $input): int {
+    $parts = sms_parts((string)($input['message'] ?? ''));
+    foreach ((array)($input['messages'] ?? []) as $text) {
+        $parts = max($parts, sms_parts((string)$text));
+    }
+    return max(1, $parts);
+}
+
+/** The per-recipient error code a failed SMPP submit is recorded with (command_status, else the class). */
+function smpp_result_error_code(array $result): string {
+    $status = $result['command_status'] ?? null;
+    if (is_int($status) || (is_string($status) && ctype_digit($status))) {
+        return sprintf('0x%08X', (int)$status);
+    }
+    return (string)($result['error_class'] ?? '') !== '' ? 'smpp_' . (string)$result['error_class'] : 'smpp_failed';
 }
 
 /** The live view of every gateway/session the bridge runs (null when unreachable). */
@@ -118,63 +172,107 @@ function smpp_gateway_compile(array $gateway): ?array {
     ];
 }
 
-/** gateway_send() for an SMPP gateway — same input, same result shape. */
+/**
+ * gateway_send() for an SMPP gateway — same input, same result shape.
+ *
+ * Besides the shared shape it fills, like the HTTP path:
+ *   rejected              recipient => error code (the SMSC's command_status as 0x…, else smpp_<class>)
+ *   not_sent              true when NO recipient reached the SMSC and every one may safely be tried again
+ *                         (bridge down, gateway not running, no bound session, throttled, deadline)
+ *   not_sent_destinations recipient => true for each one that never reached the SMSC and may be retried,
+ *                         even when others were accepted — the bulk worker re-queues exactly those
+ *                         (bulk_finalize_item()), never an accepted or uncertain one.
+ */
 function smpp_gateway_send(array $connector, array $input, ?int $routeId, ?int $operatorId = null): array {
     $destinations = array_values(array_map('strval', $input['recipients'] ?? []));
     if ($destinations === []) return gateway_send_failure('no destinations', BackendError::REJECTED);
     if (empty($connector['send_enabled'])) {
         $off = gateway_send_failure('ارسال این درگاه خاموش است.', BackendError::UNAVAILABLE);
         $off['retryable'] = true;
+        $off['not_sent'] = true;
         return $off;
     }
 
     $carried = [];
     $operators = [];
+    $rejected = [];
     foreach ($destinations as $destination) {
         $operator = $operatorId !== null ? ['operator_id' => $operatorId] : gateway_resolve_recipient_operator($destination);
-        if (!gateway_supports_operator($connector, $operator['operator_id'])) continue;
+        if (!gateway_supports_operator($connector, $operator['operator_id'])) {
+            $rejected[$destination] = 'operator_not_carried';
+            continue;
+        }
         $carried[] = $destination;
         $operators[$destination] = $operator['operator_id'];
     }
     if ($carried === []) return gateway_send_failure('gateway does not carry this operator', BackendError::REJECTED);
 
     $perRecipient = is_array($input['messages'] ?? null) ? $input['messages'] : null;
+    $tps = max(1, (int)($connector['smpp']['tps'] ?? 50));
+    $submitTimeoutMs = (int)($connector['smpp']['submit_timeout_ms'] ?? 10000);
+    $parts = smpp_send_parts($input);
+    $budgetEnd = microtime(true) + smpp_send_budget_ms() / 1000;
     $sent = [];
     $messageIds = [];
+    $notSent = [];
     $lastError = null;
     $lastClass = null;
     $lastHttp = 0;
     $retryable = false;
     $groups = 0;
+    $markNotSent = static function (array $recipients, string $error, string $code, bool $retry) use (&$rejected, &$notSent, &$lastError, &$lastClass, &$retryable): void {
+        foreach ($recipients as $to) {
+            $rejected[$to] = $code;
+            if ($retry) $notSent[$to] = true;
+        }
+        $lastError = $error;
+        $lastClass = BackendError::UNAVAILABLE;
+        $retryable = $retryable || $retry;
+    };
     foreach (array_chunk($carried, SMPP_BRIDGE_MAX_RECIPIENTS) as $chunk) {
         $groups++;
+        $budgetLeftMs = (int)floor(($budgetEnd - microtime(true)) * 1000);
+        if ($budgetLeftMs < SMPP_MIN_REQUEST_MS) {
+            // No time left in this send for another request: these were never submitted.
+            $markNotSent($chunk, 'زمان این ارسال تمام شد؛ پیام‌ها به اپراتور فرستاده نشدند.', 'smpp_budget', true);
+            continue;
+        }
+        $timeoutMs = smpp_submit_timeout_ms(count($chunk), $parts, $tps, $budgetLeftMs);
         $body = [
             'gateway_id' => (int)$connector['gateway_id'],
             'sender' => (string)($input['sender'] ?? ''),
             'recipients' => $chunk,
             'message' => (string)($input['message'] ?? ''),
+            'deadline_ms' => smpp_submit_deadline_ms($timeoutMs, $submitTimeoutMs),
         ];
         if ($perRecipient !== null) {
             $body['messages'] = array_intersect_key($perRecipient, array_flip($chunk));
         }
         $started = microtime(true);
-        // Generous timeout: the bridge answers once every recipient's submit_sm_resp is in, paced by TPS.
-        $timeoutMs = 30000 + (int)ceil(count($chunk) * 1000 / max(1, (int)($connector['smpp']['tps'] ?? 50))) * 2;
-        $r = smpp_bridge_request('POST', '/v1/submit', $body, min(600000, $timeoutMs));
+        $r = smpp_bridge_request('POST', '/v1/submit', $body, $timeoutMs);
         $elapsed = (int)round((microtime(true) - $started) * 1000);
         $lastHttp = $r['http'];
         $tags = ['gateway' => $connector['gateway_code'], 'connector' => 'smpp'];
         if (!$r['ok']) {
+            Logger::error('gateway.smpp.submit_failed', ['gateway_id' => $connector['gateway_id'], 'http' => $r['http'], 'error' => $r['error'], 'elapsed_ms' => $elapsed, 'not_sent' => !empty($r['not_sent'])]);
+            if (!empty($r['not_sent']) || $r['http'] === 503) {
+                // The bridge was not reached, or it does not run this gateway (yet): nothing was submitted.
+                $markNotSent($chunk, (string)$r['error'], $r['http'] === 503 ? 'smpp_gateway_not_running' : 'smpp_bridge_unreachable', true);
+                Metrics::increment('gateway_send_failure', 1, $tags + ['error_class' => BackendError::UNAVAILABLE]);
+                continue;
+            }
             $lastError = (string)$r['error'];
             $lastClass = $r['timed_out'] ? BackendError::TIMEOUT : ($r['http'] === 401 ? BackendError::UNAUTHORIZED : ($r['http'] === 400 ? BackendError::REJECTED : BackendError::UNAVAILABLE));
-            $retryable = $retryable || BackendError::isRetryable($lastClass) || $r['http'] === 503;
-            Logger::error('gateway.smpp.submit_failed', ['gateway_id' => $connector['gateway_id'], 'http' => $r['http'], 'error' => $lastError, 'elapsed_ms' => $elapsed]);
+            $retryable = $retryable || BackendError::isRetryable($lastClass);
+            foreach ($chunk as $to) $rejected[$to] = $r['timed_out'] ? 'smpp_bridge_timeout' : 'smpp_bridge_http_' . $r['http'];
             Metrics::increment('gateway_send_failure', 1, $tags + ['error_class' => $lastClass]);
             continue;
         }
+        $answered = [];
         foreach ((array)($r['data']['results'] ?? []) as $result) {
             $to = (string)($result['recipient'] ?? '');
             if (!in_array($to, $chunk, true)) continue;
+            $answered[$to] = true;
             if (!empty($result['ok']) && ($id = gateway_provider_message_id_normalize($result['message_id'] ?? null)) !== null) {
                 $sent[] = $to;
                 $messageIds[$to] = $id;
@@ -186,9 +284,18 @@ function smpp_gateway_send(array $connector, array $input, ?int $routeId, ?int $
                 'unavailable' => BackendError::UNAVAILABLE,
                 default => BackendError::REJECTED,
             };
+            $rejected[$to] = smpp_result_error_code($result);
+            if (!empty($result['not_sent']) && $lastClass === BackendError::UNAVAILABLE) {
+                // Never reached the SMSC (no session, throttled, deadline): safe to send again later.
+                $notSent[$to] = true;
+            }
             $retryable = $retryable || BackendError::isRetryable($lastClass);
         }
-        Logger::info('gateway.request_completed', ['gateway_id' => $connector['gateway_id'], 'config_version' => $connector['config_version'], 'connector' => 'smpp', 'recipients' => count($chunk), 'accepted' => count($sent), 'elapsed_ms' => $elapsed]);
+        foreach ($chunk as $to) {
+            // A recipient the bridge did not answer for is uncertain, never assumed unsent.
+            if (!isset($answered[$to])) $rejected[$to] = 'smpp_no_result';
+        }
+        Logger::info('gateway.request_completed', ['gateway_id' => $connector['gateway_id'], 'config_version' => $connector['config_version'], 'connector' => 'smpp', 'recipients' => count($chunk), 'accepted' => count($sent), 'not_sent' => count($notSent), 'elapsed_ms' => $elapsed, 'timeout_ms' => $timeoutMs]);
         Metrics::timing('gateway_request', $elapsed, $tags + ['result' => $sent !== [] ? 'success' : 'failed']);
         Metrics::increment('gateway_send_total', 1, $tags);
     }
@@ -196,12 +303,17 @@ function smpp_gateway_send(array $connector, array $input, ?int $routeId, ?int $
         $lastError = 'gateway rejected every destination';
         $lastClass = BackendError::REJECTED;
     }
+    foreach ($sent as $to) unset($rejected[$to]);
+    $lastCode = $sent === [] && $rejected !== [] ? (string)end($rejected) : null;
     return [
-        'ok' => $sent !== [], 'sent' => $sent, 'message_ids' => $messageIds,
+        'ok' => $sent !== [], 'sent' => $sent, 'message_ids' => $messageIds, 'rejected' => $rejected,
         'error' => $sent === [] ? $lastError : null, 'error_class' => $sent === [] ? $lastClass : null,
-        'http' => $lastHttp, 'retryable' => $sent === [] ? $retryable : false, 'groups' => $groups, 'operators' => $operators,
+        'http' => $lastHttp, 'retryable' => $sent === [] ? $retryable : false,
+        'not_sent' => $sent === [] && count($notSent) === count($carried),
+        'not_sent_destinations' => $notSent,
+        'groups' => $groups, 'operators' => $operators,
         'normalized_outcome' => $sent !== [] ? PROVIDER_RESPONSE_SUCCESS : PROVIDER_RESPONSE_FAILED,
-        'provider_error_code' => null, 'provider_error_detail' => $sent === [] ? $lastError : null,
+        'provider_error_code' => $lastCode, 'provider_error_detail' => $sent === [] ? $lastError : null,
     ];
 }
 
@@ -209,17 +321,94 @@ function smpp_gateway_send(array $connector, array $input, ?int $routeId, ?int $
    Receipts and received messages (ellsms_smpp_events)
    ========================================================================== */
 
-/** SMPP receipt "stat" → the canonical delivery state shared with polled HTTP gateways. */
-function smpp_dlr_canonical(?string $stat): string {
-    return match (strtoupper(trim((string)$stat))) {
-        'DELIVRD', 'DELIVERED' => 'delivered',
-        'UNDELIV', 'UNDELIVERABLE', 'DELETED' => 'failed',
-        'EXPIRED' => 'expired',
-        'REJECTD', 'REJECTED' => 'rejected',
-        'ACCEPTD', 'ACCEPTED' => 'accepted',
-        'ENROUTE' => 'sent',
-        default => 'unknown',
-    };
+/**
+ * Receipt `stat` → ELLSMS delivery state when the gateway's «نگاشت وضعیت رسید تحویل» is empty
+ * (2026_11_20_smpp_status_mapping.sql). UNDELIV / EXPIRED are the SMSC's final "did not reach the
+ * handset": `undelivered`, which stays charged — the operator bills them. REJECTD / DELETED are refunded
+ * (`rejected` / `failed`, docs/delivery-states.md).
+ */
+const SMPP_DLR_DEFAULT_MAPPING = [
+    'DELIVRD' => 'delivered', 'UNDELIV' => 'undelivered', 'EXPIRED' => 'undelivered', 'REJECTD' => 'rejected',
+    'DELETED' => 'failed', 'ACCEPTD' => 'accepted', 'ENROUTE' => 'sent', 'UNKNOWN' => 'unknown',
+];
+
+/** Long spellings some SMSCs use for the standard receipt states. */
+const SMPP_DLR_STAT_ALIASES = ['DELIVERED' => 'DELIVRD', 'UNDELIVERABLE' => 'UNDELIV', 'REJECTED' => 'REJECTD', 'ACCEPTED' => 'ACCEPTD'];
+
+/** Persian meanings of the receipt states, shown to admins next to the raw code («کد سرویس‌دهنده»). */
+const SMPP_DLR_STAT_LABELS = [
+    'DELIVRD' => 'رسیده به گوشی', 'UNDELIV' => 'نرسیده به گوشی', 'EXPIRED' => 'منقضی شد (نرسیده به گوشی)',
+    'REJECTD' => 'رد شده توسط اپراتور', 'DELETED' => 'حذف‌شده در اپراتور', 'ACCEPTD' => 'پذیرفته‌شده', 'ENROUTE' => 'در مسیر',
+    'UNKNOWN' => 'نامشخص',
+];
+
+function smpp_dlr_stat_normalize(?string $stat): string {
+    $stat = strtoupper(trim((string)$stat));
+    return SMPP_DLR_STAT_ALIASES[$stat] ?? $stat;
+}
+
+/**
+ * The gateway's effective receipt mapping: the built-in default with the admin's entries on top.
+ *
+ * @return array<string, string> STAT => delivery state
+ */
+function smpp_dlr_mapping(?string $json): array {
+    $map = SMPP_DLR_DEFAULT_MAPPING;
+    $custom = $json !== null && trim($json) !== '' ? json_decode($json, true) : null;
+    if (is_array($custom)) {
+        foreach ($custom as $stat => $state) {
+            if (is_string($state) && in_array($state, GATEWAY_DELIVERY_STATES, true)) {
+                $map[smpp_dlr_stat_normalize((string)$stat)] = $state;
+            }
+        }
+    }
+    return $map;
+}
+
+/**
+ * SMPP receipt "stat" → the delivery state shared with polled HTTP gateways. A stat neither the
+ * mapping nor the standard list knows stays `unknown` (not final, charged) and is logged: an SMSC's own
+ * token is never guessed to be a failure or a delivery.
+ */
+function smpp_dlr_canonical(?string $stat, ?array $mapping = null): string {
+    $token = smpp_dlr_stat_normalize($stat);
+    if ($token === '') return 'unknown';
+    $mapping ??= SMPP_DLR_DEFAULT_MAPPING;
+    if (isset($mapping[$token])) return $mapping[$token];
+    Logger::warning('gateway.smpp.unmapped_stat', ['stat' => mb_substr($token, 0, 20)]);
+    Metrics::increment('gateway_status_unmapped_token', 1, ['connector' => 'smpp']);
+    return 'unknown';
+}
+
+/**
+ * Validates the «نگاشت وضعیت رسید تحویل» field: a JSON object {"STAT": "state"}. Returns [error, json]
+ * where json is null when the field is empty or equal to the default (so the gateway keeps following
+ * the default), else the normalized object.
+ *
+ * @return array{0: ?string, 1: ?string}
+ */
+function smpp_dlr_mapping_validate(string $raw): array {
+    $raw = trim($raw);
+    if ($raw === '') return [null, null];
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded) || ($decoded !== [] && array_is_list($decoded))) {
+        return ['نگاشت وضعیت رسید باید یک شیء JSON مثل {"UNDELIV": "undelivered"} باشد.', null];
+    }
+    $map = [];
+    foreach ($decoded as $stat => $state) {
+        $stat = smpp_dlr_stat_normalize((string)$stat);
+        if (preg_match('/^[A-Z0-9_]{1,20}$/', $stat) !== 1) {
+            return ['کد وضعیت «' . mb_substr((string)$stat, 0, 30) . '» معتبر نیست (حروف لاتین، حداکثر ۲۰ نویسه).', null];
+        }
+        if (!is_string($state) || !in_array($state, GATEWAY_DELIVERY_STATES, true)) {
+            return ['وضعیت «' . mb_substr(is_scalar($state) ? (string)$state : '?', 0, 30) . '» برای ' . $stat . ' معتبر نیست. مجاز: ' . implode('، ', GATEWAY_DELIVERY_STATES) . '.', null];
+        }
+        $map[$stat] = $state;
+    }
+    $effective = SMPP_DLR_DEFAULT_MAPPING;
+    foreach ($map as $stat => $state) $effective[$stat] = $state;
+    if ($effective === SMPP_DLR_DEFAULT_MAPPING) return [null, null];
+    return [null, json_encode($map, JSON_UNESCAPED_UNICODE)];
 }
 
 /**
@@ -305,7 +494,7 @@ function smpp_events_process_pass(int $limit = 500): array {
     } catch (PDOException) {
         return $stats; // 2026_10_06_smpp_gateway.sql not applied yet
     }
-    $formats = [];
+    $receiptSettings = [];
     foreach ($events as $event) {
         // Claim: two status-workers never apply the same event.
         $claim = $db->prepare("UPDATE ellsms_smpp_events SET processed_at = NOW(), result = 'processing' WHERE id = ? AND processed_at IS NULL");
@@ -327,8 +516,12 @@ function smpp_events_process_pass(int $limit = 500): array {
                     Metrics::increment('gateway.inbound.stored', 1, ['gateway' => 'smpp:' . $gatewayId]);
                 }
             } else {
-                $formats[$gatewayId] ??= (string)(smpp_connector_row($gatewayId)['dlr_id_format'] ?? 'auto');
-                $result = smpp_apply_receipt($gatewayId, (string)$event['message_id'], (string)$event['dlr_stat'], $event['done_at'], $formats[$gatewayId]);
+                if (!isset($receiptSettings[$gatewayId])) {
+                    $row = smpp_connector_row($gatewayId);
+                    $receiptSettings[$gatewayId] = [(string)($row['dlr_id_format'] ?? 'auto'), smpp_dlr_mapping($row['status_mapping_json'] ?? null)];
+                }
+                [$format, $mapping] = $receiptSettings[$gatewayId];
+                $result = smpp_apply_receipt($gatewayId, (string)$event['message_id'], (string)$event['dlr_stat'], $event['done_at'], $format, $mapping);
                 if ($result === 'unmatched' && (int)$event['attempts'] < 20) {
                     $db->prepare('UPDATE ellsms_smpp_events SET processed_at = NULL, result = NULL, attempts = attempts + 1 WHERE id = ?')->execute([$event['id']]);
                     $stats['retry']++;
@@ -347,7 +540,7 @@ function smpp_events_process_pass(int $limit = 500): array {
 }
 
 /** @return 'updated'|'unchanged'|'unmatched' */
-function smpp_apply_receipt(int $gatewayId, string $messageId, string $stat, ?string $doneAt, string $format = 'auto'): string {
+function smpp_apply_receipt(int $gatewayId, string $messageId, string $stat, ?string $doneAt, string $format = 'auto', ?array $mapping = null): string {
     $ids = smpp_message_id_variants($messageId, $format);
     if ($ids === []) return 'unmatched';
     $placeholders = implode(',', array_fill(0, count($ids), '?'));
@@ -359,11 +552,11 @@ function smpp_apply_receipt(int $gatewayId, string $messageId, string $stat, ?st
     $st->execute(array_merge([$gatewayId], $ids));
     foreach ($st->fetchAll() as $r) $rows[] = ['attempt', (int)$r['id'], $r['delivery_status']];
     if ($rows === []) return 'unmatched';
-    $next = smpp_dlr_canonical($stat);
+    $next = smpp_dlr_canonical($stat, $mapping);
     $deliveredAt = $next === 'delivered' ? ($doneAt ?: date('Y-m-d H:i:s')) : null;
     $changed = false;
     foreach ($rows as [$source, $rowId, $current]) {
-        $changed = gateway_status_record($source, $rowId, $current !== null ? (string)$current : null, $next, $deliveredAt, $stat) || $changed;
+        $changed = gateway_status_record($source, $rowId, $current !== null ? (string)$current : null, $next, $deliveredAt, smpp_dlr_stat_normalize($stat)) || $changed;
     }
     return $changed ? 'updated' : 'unchanged';
 }
@@ -380,6 +573,7 @@ function smpp_connector_defaults(): array {
         'reconnect_delay_s' => 5, 'submit_timeout_ms' => 10000, 'source_ton' => 5, 'source_npi' => 0, 'dest_ton' => 1,
         'dest_npi' => 1, 'data_coding' => 'auto', 'long_message' => 'udh', 'registered_delivery' => 1,
         'validity_minutes' => 0, 'destination_format' => 'international', 'dlr_id_format' => 'auto', 'receive_enabled' => 1,
+        'status_mapping_json' => null,
     ];
 }
 
@@ -434,6 +628,8 @@ function smpp_connector_validate(array $in): array {
     $row['use_tls'] = empty($in['use_tls']) ? 0 : 1;
     $row['registered_delivery'] = empty($in['registered_delivery']) ? 0 : 1;
     $row['receive_enabled'] = empty($in['receive_enabled']) ? 0 : 1;
+    [$mappingError, $row['status_mapping_json']] = smpp_dlr_mapping_validate((string)($in['status_mapping_json'] ?? ''));
+    if ($mappingError !== null) $errors['status_mapping_json'] = $mappingError;
     $password = (string)($in['password'] ?? '');
     if (strlen($password) > 8) $errors['password'] = 'رمز SMPP حداکثر ۸ نویسه است (محدودیت پروتکل).';
     return [$errors, $row];
@@ -466,7 +662,7 @@ function smpp_event_stats(int $gatewayId): array {
             "SELECT
                 SUM(event_type = 'dlr') AS dlr,
                 SUM(event_type = 'dlr' AND dlr_stat = 'DELIVRD') AS dlr_delivered,
-                SUM(event_type = 'dlr' AND dlr_stat IN ('UNDELIV','EXPIRED','REJECTD','DELETED')) AS dlr_failed,
+                SUM(event_type = 'dlr' AND dlr_stat IN ('UNDELIV','UNDELIVERABLE','EXPIRED','REJECTD','REJECTED','DELETED')) AS dlr_failed,
                 SUM(event_type = 'dlr' AND result = 'unmatched') AS dlr_unmatched,
                 SUM(event_type = 'mo') AS mo,
                 SUM(processed_at IS NULL) AS pending

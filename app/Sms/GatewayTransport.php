@@ -573,7 +573,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         $groupResults[] = ['destinations' => $group['destinations'], 'result' => $result];
     }
 
-    $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = []; $rejected = []; $auditIds = [];
+    $sent = []; $messageIds = []; $operators = []; $routeIds = []; $gatewayIds = []; $rejected = []; $auditIds = []; $notSentDestinations = [];
     $anyOk = false; $lastError = null; $lastErrorClass = null; $lastHttp = 0; $retryable = false; $allNotSent = true;
     $lastGatewayId = null; $lastRouteId = null; $lastConfigVersion = null; $lastOutcome = PROVIDER_RESPONSE_FAILED; $lastProviderErrorCode = null; $lastProviderErrorDetail = null;
     foreach ($groupResults as $g) {
@@ -584,6 +584,9 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         foreach ($result['operators'] as $destination => $operatorId) { $operators[$destination] = $operatorId; }
         foreach (($result['rejected'] ?? []) as $destination => $code) { $rejected[$destination] = $code; }
         foreach (($result['provider_audit_ids'] ?? []) as $destination => $auditId) { $auditIds[$destination] = $auditId; }
+        foreach (($result['not_sent_destinations'] ?? []) as $destination => $flag) { if ($flag) $notSentDestinations[$destination] = true; }
+        // A group whose request never reached its provider at all: each of its recipients is retry-safe.
+        if (!$result['ok'] && !empty($result['not_sent']) && !empty($result['retryable'])) { foreach ($g['destinations'] as $destination) { $notSentDestinations[$destination] = true; } }
         foreach ($g['destinations'] as $destination) { $routeIds[$destination] = $result['route_id']; $gatewayIds[$destination] = $result['gateway_id']; }
         $lastGatewayId = $result['gateway_id']; $lastRouteId = $result['route_id']; $lastConfigVersion = $result['gateway_config_version'];
         $lastOutcome = (string)($result['normalized_outcome'] ?? $lastOutcome);
@@ -597,7 +600,7 @@ function gateway_send_for_dispatch(array $user,string $originator,array $destina
         'ok' => $anyOk, 'sent' => $sent, 'message_ids' => $messageIds, 'operators' => $operators, 'rejected' => $rejected, 'provider_audit_ids' => $auditIds,
         'route_ids' => $routeIds, 'gateway_ids' => $gatewayIds,
         'error' => $anyOk ? null : $lastError, 'error_class' => $anyOk ? null : $lastErrorClass,
-        'http' => $lastHttp, 'retryable' => $anyOk ? false : $retryable, 'not_sent' => !$anyOk && $allNotSent, 'groups' => count($groupResults),
+        'http' => $lastHttp, 'retryable' => $anyOk ? false : $retryable, 'not_sent' => !$anyOk && $allNotSent, 'not_sent_destinations' => $notSentDestinations, 'groups' => count($groupResults),
         'gateway_id' => $lastGatewayId, 'gateway_config_version' => $lastConfigVersion, 'route_id' => $lastRouteId,
         'normalized_outcome' => $anyOk ? PROVIDER_RESPONSE_SUCCESS : $lastOutcome,
         'provider_error_code' => $anyOk ? null : $lastProviderErrorCode,

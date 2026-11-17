@@ -77,6 +77,12 @@ each message once. Now (`app/backend.php`):
   documents exactly this), or the line's pinned gateway is unavailable (no request made). The
   transport marks such a result `not_sent`; only then does the row go back to `pending` with the usual
   backoff (`JOB_MAX_ATTEMPTS`, `JOB_RETRY_BASE_SECONDS`), and no alert is raised.
+- **The same, for one recipient of a request others went out in.** A result may also carry
+  `not_sent_destinations` (recipient => true): recipients the provider never received although their
+  neighbours were accepted. Only these rows go back to `pending`; the accepted ones are settled and the
+  rest fail as above. SMPP fills it (`docs/smpp-gateway.md`: a session lost mid-batch, the SMSC
+  throttling, the request's deadline, the bridge down, the gateway not running yet), and a multi-route
+  send fills it for a route group whose request never reached its provider while another group's did.
 - **An expired lease is never reclaimed for sending.** `bulk_claim_items()` only claims `pending`
   rows; `bulk_fail_expired_leases()` fails the job's `processing` rows whose lease ran out.
 - **A worker only sends rows it still holds.** `bulk_hold_claim()` runs right before every provider

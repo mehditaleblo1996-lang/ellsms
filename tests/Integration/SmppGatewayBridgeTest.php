@@ -29,8 +29,35 @@ final class SmppGatewayBridgeTest extends TestCase
             $this->markTestSkipped('ELLSMS_TEST_SMPP_BRIDGE_URL not set — start smpp-bridge with SMPP_SIMULATOR_PORT');
         }
         putenv('SMPP_BRIDGE_URL=' . $url);
+        self::restoreBridgeCredentials($this);
         IntegrationTestCase::ensureSchemaLoaded();
         gateway_cache_reset();
+    }
+
+    /**
+     * The bridge was started with the master key and token from this process's original environment;
+     * other test classes putenv() their own key (or clear it) in tearDown, so restore them here.
+     */
+    public static function restoreBridgeCredentials(\PHPUnit\Framework\TestCase $test): void
+    {
+        foreach (['SMS_GATEWAY_MASTER_KEY', 'SMPP_BRIDGE_TOKEN'] as $name) {
+            $value = (string)($_SERVER[$name] ?? $_ENV[$name] ?? getenv($name) ?: '');
+            if ($value === '') {
+                $test->markTestSkipped($name . ' not set — use the value the bridge was started with');
+            }
+            putenv($name . '=' . $value);
+        }
+        gateway_secret_key_reset();
+    }
+
+    /** How many receipts for these provider ids the bridge has stored for the gateway. */
+    public static function receiptsStored(int $gatewayId, array $messageIds): int
+    {
+        if ($messageIds === []) return 0;
+        $st = db()->prepare("SELECT COUNT(*) FROM ellsms_smpp_events WHERE gateway_id = ? AND event_type = 'dlr' AND message_id IN ("
+            . implode(',', array_fill(0, count($messageIds), '?')) . ')');
+        $st->execute(array_merge([$gatewayId], array_map('strval', $messageIds)));
+        return (int)$st->fetchColumn();
     }
 
     protected function tearDown(): void
@@ -100,14 +127,16 @@ final class SmppGatewayBridgeTest extends TestCase
             $this->cleanup[] = ['DELETE FROM ellsms_message_attempts WHERE id = ?', [$attemptIds[$dest]]];
         }
 
-        $this->waitFor(fn(): bool => (int)$db->query("SELECT COUNT(*) FROM ellsms_smpp_events WHERE gateway_id = {$id} AND event_type = 'dlr'")->fetchColumn() >= 2, 10000, 'two receipts from the simulator');
+        // Waits for the receipts of THESE messages: a receipt still on its way from an earlier test's
+        // send can reach this gateway's session too (the simulator delivers to any bound session).
+        $this->waitFor(fn(): bool => self::receiptsStored($id, array_values($result['message_ids'])) >= 2, 10000, 'two receipts from the simulator');
         $stats = smpp_events_process_pass();
         $this->assertGreaterThanOrEqual(2, $stats['updated']);
         $state = $db->prepare('SELECT delivery_status FROM ellsms_message_attempts WHERE id = ?');
         $state->execute([$attemptIds['989121234567']]);
         $this->assertSame('delivered', $state->fetchColumn());
         $state->execute([$attemptIds['989120000000']]);
-        $this->assertSame('failed', $state->fetchColumn());
+        $this->assertSame('undelivered', $state->fetchColumn(), 'UNDELIV: final and charged (2026_11_20_smpp_status_mapping.sql)');
 
         // An MO from the SMSC ends up in the inbound store (inbox, auto-reply, remote DB all read it).
         $mo = smpp_bridge_request('POST', '/v1/simulator/mo', ['from' => '989125556666', 'to' => '30001234', 'text' => 'پاسخ ' . $code], 5000);

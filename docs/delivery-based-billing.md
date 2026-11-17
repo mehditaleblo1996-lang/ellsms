@@ -56,6 +56,11 @@ page `message-detail.php` redirects such a customer to the report.
 refunded**. Refunds already made for messages that the old mapping called `failed` are not reversed
 when `cron/gateway-status-reopen.php` reopens them, even if they are delivered later.
 
+**SMPP gateways.** Their receipts map `UNDELIV` and `EXPIRED` to `undelivered` by default
+(`db/migrations/2026_11_20_smpp_status_mapping.sql`, `docs/smpp-gateway.md`), so those messages stay
+charged; `REJECTD` (`rejected`) and `DELETED` (`failed`) are refunded. An admin can change the map per
+gateway.
+
 **Which percentage applies.** The period in force when the message was **sent** decides. That covers
 the bulk item's `created_at` (when the job accepted it) or the attempt's `attempted_at`. Delivery
 reports can arrive minutes or hours later, so:

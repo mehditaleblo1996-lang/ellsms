@@ -11,6 +11,9 @@ foreach ((array)($smppLive['gateways'] ?? []) as $g) {
     if ((int)($g['gateway_id'] ?? 0) === (int)$gatewayId) $liveGateway = $g;
 }
 $sel = static fn(string $field, string $value): string => (string)($smppRow[$field] ?? '') === $value ? ' selected' : '';
+// The effective receipt mapping (default + this gateway's own entries), shown in full so the admin edits
+// what is actually applied. Saving it unchanged keeps following the default.
+$smppMappingJson = json_encode(smpp_dlr_mapping($smppRow['status_mapping_json'] ?? null), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
 ?>
 <div class="card">
   <h2>وضعیت اتصال SMPP</h2>
@@ -50,7 +53,7 @@ $sel = static fn(string $field, string $value): string => (string)($smppRow[$fie
   </table>
   </div>
   <p class="muted">شمارنده‌ها از آخرین راه‌اندازی هر نشست است. ۲۴ ساعت اخیر:
-    رسید تحویل <?= $fa($smppEvents['dlr'] ?? 0) ?> (تحویل‌شده <?= $fa($smppEvents['dlr_delivered'] ?? 0) ?>، ناموفق <?= $fa($smppEvents['dlr_failed'] ?? 0) ?>، بدون پیام متناظر <?= $fa($smppEvents['dlr_unmatched'] ?? 0) ?>)
+    رسید تحویل <?= $fa($smppEvents['dlr'] ?? 0) ?> (تحویل‌شده <?= $fa($smppEvents['dlr_delivered'] ?? 0) ?>، نرسیده/رد شده <?= $fa($smppEvents['dlr_failed'] ?? 0) ?>، بدون پیام متناظر <?= $fa($smppEvents['dlr_unmatched'] ?? 0) ?>)
     · پیام دریافتی <?= $fa($smppEvents['mo'] ?? 0) ?> · در صف پردازش <?= $fa($smppEvents['pending'] ?? 0) ?></p>
   <div class="toolbar">
     <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="do" value="smpp_test"><input type="hidden" name="gateway_id" value="<?= (int)$gatewayId ?>"><input type="hidden" name="tab" value="connector">
@@ -123,6 +126,13 @@ $sel = static fn(string $field, string $value): string => (string)($smppRow[$fie
           <option value="dec_to_hex"<?= $sel('dlr_id_format', 'dec_to_hex') ?>>رسید دهدهی، ارسال هگز</option>
         </select></label>
     </div>
+    <label style="display:block">نگاشت وضعیت رسید تحویل (JSON)
+      <textarea name="status_mapping_json" class="ltr" rows="10" style="width:100%;font-family:monospace"><?= e((string)$smppMappingJson) ?></textarea>
+      <span class="hint">کلید: مقدار <span class="ltr">stat</span> در رسید اپراتور؛ مقدار: وضعیت در سامانه.
+        <span class="ltr">undelivered</span> = «تحویل داده‌نشده»، پایانی و <strong>هزینه کسر می‌شود</strong>؛
+        <span class="ltr">failed / rejected / expired</span> = ناموفق، پایانی و <strong>هزینه به مشتری برمی‌گردد</strong>؛
+        <span class="ltr">delivered</span> = رسیده به گوشی؛ <span class="ltr">accepted / sent / unknown</span> = هنوز نهایی نیست.
+        پیش‌فرض: <span class="ltr">UNDELIV</span> و <span class="ltr">EXPIRED</span> = undelivered، <span class="ltr">REJECTD</span> = rejected. برای بازگشت به پیش‌فرض خالی بگذارید.</span></label>
     <div class="toolbar">
       <label><input type="checkbox" name="use_tls" value="1"<?= (int)$smppRow['use_tls'] ? ' checked' : '' ?>> اتصال TLS</label>
       <label><input type="checkbox" name="registered_delivery" value="1"<?= (int)$smppRow['registered_delivery'] ? ' checked' : '' ?>> درخواست رسید تحویل</label>
