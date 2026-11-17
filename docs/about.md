@@ -2,8 +2,9 @@
 
 The public page that introduces the company (داتیس رایان گستر ایرانیان): who it is, its five service
 areas, the trust of large organizations, mission, vision and core values. It is part of the public
-marketing site and shares its dark glass theme and chrome with the landing page
-([landing.md](landing.md)).
+marketing site and shares its white / charcoal / turquoise theme and chrome with the landing page
+([landing.md](landing.md#colours-public-site-and-sign-in-pages)). The hero, section bar, statement and
+mission/vision cards are charcoal bands; the rest of the page is white.
 
 | File | What |
 |---|---|

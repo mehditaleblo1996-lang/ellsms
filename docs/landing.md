@@ -21,6 +21,34 @@ The SMS packages managed at `/pricing.php` (`ellsms_pricing_packages`) are not s
 since the pricing section was removed. Admin-managed slides from «اسلایدر صفحه‌ی اصلی» (`/slides.php`)
 are not shown on this page.
 
+## Colours (public site and sign-in pages)
+
+The public pages (landing, «درباره ما», «تماس با ما», «راهنما», the legal pages) and the sign-in pages
+(login, «ثبت‌نام», «تأیید دومرحله‌ای», «خروج») use a **white / charcoal / turquoise** palette in a
+60 / 30 / 10 split. The logged-in panel keeps its own indigo colours: every value below is scoped to
+`.lp-body`, `.auth` or `.login-body`, never to `:root`.
+
+| Token | Value | Use |
+|---|---|---|
+| `--canvas` / `--card` | `#f7f8f8` / `#ffffff` | Page background and cards (the 60%) |
+| `--charcoal` / `--charcoal-deep` | `#25292d` / `#1b1e21` | Text, and the dark bands: nav, top banner, «آماده‌اید شروع کنید؟» CTA, footer, the product scene panels, the about hero, section bar, statement and mission/vision cards (the 30%) |
+| `--t-500` | `#12a4a6` | Brand turquoise: accents, large shapes, buttons on charcoal (with charcoal text, 4.8:1) |
+| `--t-ink` | `#0b7a7c` | Turquoise that carries white text (buttons, links on white; 5.1:1). Buttons are flat, not gradients. |
+| `--t-300` / `--t-50` | `#5fd4d6` / `#e8f6f6` | Turquoise on charcoal / pale turquoise tint |
+
+- **Where:** the `.lp-body` token block in `public/assets/css/style.css`; the charcoal bands
+  re-declare `--ink`, `--muted`, `--line`, `--card` light-on-dark in the rule just below it (add
+  `.lp-dark` to any element to make it a charcoal band). The sign-in page's own tokens are the
+  `.auth` block of `public/assets/css/login.css` (slider: `.ls` in `login-slider.css`); the pages
+  around sign-in get theirs from `.login-body` in `style.css`.
+- **Product lines** in `#products` are all turquoise except «تلفن و ارتباطات سازمانی», which keeps its
+  amber (`--pa` readable tone, `--pb` bright tone in `landing-products.css`).
+- **Images:** `public/assets/img/landing/hero-scene.*` and `banner-phone.*` were recoloured from blue
+  to turquoise/charcoal (hue shift), so they match the palette.
+- **Reseller hosts:** `brand_color_style()` (`app/ResellerPanel.php`) also sets `--login-brand`, so a
+  reseller's own host shows its colour on the sign-in page instead of the turquoise.
+- Animations are unchanged; only their colours follow the palette. No migration or setting.
+
 ## Sections, top to bottom
 
 | Anchor | Section |
@@ -53,8 +81,8 @@ One tile per customer from the `$customers` list at the top of `landing.php`: th
 
 The logo is the first of `public/assets/img/customers/<slug>.svg`, `.webp`, `.png`, `.jpg` that exists,
 shown **monochrome** by default: the inline SVG filter `#lp-logo-mono` (in the section markup) paints
-every pixel white and turns its darkness into opacity, so the file's white square disappears and the
-logo stays as a light mark on the dark page (opacity .7; .85 on touch screens, which have no hover).
+every pixel charcoal and turns its darkness into opacity, so the file's white square disappears and the
+logo stays as a grey mark on the white page (opacity .7; .85 on touch screens, which have no hover).
 On hover or keyboard focus the tile lifts and the logo shows in its own colours on a white plate, with
 the name brightening. With no file the tile shows a monogram badge instead (grey by default, filled with
 the customer's `color` on hover), so a missing logo never breaks the layout. The logo files themselves

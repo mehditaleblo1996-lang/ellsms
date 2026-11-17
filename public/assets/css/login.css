@@ -2,32 +2,34 @@
    The feature slider in the card's end half has its own stylesheet, login-slider.css. */
 
 .auth {
-  --a-ink:    #10131c;
-  --a-soft:   #454b5a;
-  --a-faint:  #4d5363;
-  --a-brand:  #4a32e8;
-  --a-brand-hover: #3e28d0;
+  --a-ink:    #25292d;
+  --a-soft:   #444c53;
+  --a-faint:  #4b555b;
+  /* Turquoise on the platform's own host; a reseller's host sets --login-brand to its own colour
+     (brand_color_style() in app/ResellerPanel.php). #0b7a7c carries white text at 5.1:1. */
+  --a-brand:  var(--login-brand, #0b7a7c);
+  --a-brand-hover: color-mix(in srgb, var(--a-brand) 82%, #000);
   --a-err:    #a3182b;
   --a-err-bg: rgba(255, 226, 230, .75);
 
   --a-glass:        #fff;
   --a-glass-strong: rgba(255, 255, 255, .72);
-  --a-glass-edge:   #e5e9f2;
+  --a-glass-edge:   #e7e9eb;
   --a-field:        rgba(255, 255, 255, .78);
-  --a-field-edge:   rgba(16, 19, 28, .12);
+  --a-field-edge:   rgba(37, 41, 45, .14);
   --a-field-hover:  rgba(255, 255, 255, .9);
   --a-field-focus:  #fff;
   --a-solid:        #fff;
-  --a-tint:         rgba(16, 19, 28, .07);
-  --a-shadow:       24, 35, 69;
+  --a-tint:         rgba(37, 41, 45, .07);
+  --a-shadow:       37, 41, 45;
   /* Quiet brand tints keep text readable and avoid continuous large repaints. */
-  --a-base:  #f5f7fb;
-  --a-blob1: rgba(74, 50, 232, .09);
-  --a-blob2: rgba(46, 99, 246, .07);
+  --a-base:  #f7f8f8;
+  --a-blob1: rgba(18, 164, 166, .12);
+  --a-blob2: rgba(37, 41, 45, .06);
   --a-blob3: transparent;
   --a-blob4: transparent;
-  --a-on-night:      #0b1023;
-  --a-on-night-soft: #59647c;
+  --a-on-night:      #25292d;
+  --a-on-night-soft: #5a666e;
 
   --a-font: 'Vazirmatn', Tahoma, sans-serif;
   --a-fs-xs:   13px;

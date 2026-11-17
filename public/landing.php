@@ -794,11 +794,11 @@ require __DIR__ . '/../app/views/public_header.php';
           </li>
     <?php };
     ?>
-    <!-- Monochrome logos: every pixel becomes white, its darkness becomes opacity (1.3 × (1 − luminance)),
+    <!-- Monochrome logos: every pixel becomes charcoal (#25292d), its darkness becomes opacity (1.3 × (1 − luminance)),
          so a logo's white square vanishes and the mark stays. Used by .lp-bank-logo img in style.css. -->
     <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
       <filter id="lp-logo-mono" x="0" y="0" width="1" height="1" color-interpolation-filters="sRGB">
-        <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  -0.2764 -0.9298 -0.0939 0 1.3"/>
+        <feColorMatrix type="matrix" values="0 0 0 0 .145  0 0 0 0 .161  0 0 0 0 .176  -0.2764 -0.9298 -0.0939 0 1.3"/>
         <feComposite in2="SourceAlpha" operator="in"/>
       </filter>
     </svg>
