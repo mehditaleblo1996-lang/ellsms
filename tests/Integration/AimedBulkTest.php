@@ -181,6 +181,41 @@ final class AimedBulkTest extends IntegrationTestCase
         self::assertSame(4, aimed_bulk_count($this->criteria(['postal_code' => '131', 'sim' => 'prepaid'])));
         self::assertSame(3, aimed_bulk_count($this->criteria(['province_code' => '1', 'prefix' => '0935'])));
         self::assertSame(0, aimed_bulk_count($this->criteria(['postal_code' => '131', 'prefix' => '0914'])));
+        self::assertSame(4, aimed_bulk_count($this->criteria(['postal_code' => '131']), 3), 'counting stops one past the limit: "more than 3"');
+        self::assertSame(5, aimed_bulk_count($this->criteria(['postal_code' => '131']), 10));
+    }
+
+    public function testCountsAreQueuedForTheWorkerAndReused(): void
+    {
+        db()->exec('DELETE FROM ellsms_aimed_counts');
+        set_setting('aimed_bulk_max_recipients', '4');
+        $criteria = $this->criteria(['postal_code' => '131']);
+
+        $queued = aimed_bulk_count_request($criteria);
+        self::assertSame('queued', $queued['status'], 'the page only queues the count');
+        self::assertNull($queued['matched']);
+        self::assertSame($queued['id'], aimed_bulk_count_request($criteria)['id'], 'a second click while queued reuses it');
+
+        self::assertSame(['counted' => 1, 'failed' => 0], aimed_bulk_count_pass());
+        $done = aimed_bulk_count_get($queued['id']);
+        self::assertSame(['done', 5, true], [$done['status'], $done['matched'], $done['capped']], 'five numbers, four allowed per request');
+        self::assertStringContainsString('بیش از', aimed_bulk_count_message($done));
+
+        $again = aimed_bulk_count_request($criteria);
+        self::assertSame(['done', $queued['id']], [$again['status'], $again['id']], 'a fresh result is shown again, not recounted');
+        self::assertSame(['counted' => 0, 'failed' => 0], aimed_bulk_count_pass());
+
+        $city = aimed_bulk_count_request($this->criteria(['city_code' => '102']));
+        aimed_bulk_count_pass();
+        $city = aimed_bulk_count_get($city['id']);
+        self::assertSame(['done', 3, false], [$city['status'], $city['matched'], $city['capped']]);
+        self::assertStringContainsString('۳', aimed_bulk_count_message($city));
+
+        db()->prepare('UPDATE ellsms_aimed_counts SET counted_at = DATE_SUB(NOW(), INTERVAL 2 HOUR) WHERE id = ?')->execute([$queued['id']]);
+        self::assertSame('queued', aimed_bulk_count_request($criteria)['status'], 'a stale result is counted again');
+
+        aimed_bulk_counts_clear();
+        self::assertNull(aimed_bulk_count_get($queued['id']), 'an import forgets stored counts');
     }
 
     // ------------------------------------------------------------------ staging and price
@@ -257,12 +292,39 @@ final class AimedBulkTest extends IntegrationTestCase
         self::assertCount(4500, array_unique($mobiles));
     }
 
-    public function testRequestsAboveTheLimitAreRefusedUnlessCapped(): void
+    public function testRequestsAboveTheLimitFailInStagingUnlessCapped(): void
     {
         set_setting('aimed_bulk_max_recipients', '4');
-        $refused = aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '131']), $this->line, 'سلام');
-        self::assertFalse($refused['ok']);
-        self::assertTrue(aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '131']), $this->line, 'سلام', 4)['ok']);
+        $r = aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '131']), $this->line, 'سلام');
+        self::assertTrue($r['ok'], 'creating never counts the area: the worker checks its size');
+        $this->stageAll();
+        $req = $this->request((int)$r['id']);
+        self::assertSame('failed', $req['status']);
+        self::assertStringContainsString('بیش از', (string)$req['error']);
+        self::assertNull($req['bulk_job_id'], 'no bulk job is made for a refused area');
+
+        self::assertFalse(aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '131']), $this->line, 'سلام', 5)['ok'], 'a cap above the limit is refused at once');
+        $capped = $this->createAndStage($this->criteria(['postal_code' => '131']), 4);
+        self::assertSame(['priced', 4], [$capped['status'], (int)$capped['staged_rows']]);
+    }
+
+    public function testAnAreaWithoutNumbersFailsInStaging(): void
+    {
+        $r = aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '999']), $this->line, 'سلام');
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        $this->stageAll();
+        $req = $this->request((int)$r['id']);
+        self::assertSame('failed', $req['status']);
+        self::assertStringContainsString('هیچ شماره‌ای', (string)$req['error']);
+
+        // With a cap the area is not counted first: the empty snapshot ends it the same way.
+        $capped = aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '999']), $this->line, 'سلام', 10);
+        self::assertTrue($capped['ok'], $capped['error'] ?? '');
+        $this->stageAll();
+        $req = $this->request((int)$capped['id']);
+        self::assertSame('failed', $req['status']);
+        self::assertStringContainsString('هیچ شماره‌ای', (string)$req['error']);
+        self::assertSame('cancelled', $this->job((int)$req['bulk_job_id'])['status']);
     }
 
     // ------------------------------------------------------------------ confirm / cancel
@@ -353,7 +415,6 @@ final class AimedBulkTest extends IntegrationTestCase
         set_setting('kyc_gate.aimed_bulk', '0');
 
         self::assertFalse(aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '131']), '3000123', 'سلام')['ok'], 'a line the customer may not use');
-        self::assertFalse(aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '999']), $this->line, 'سلام')['ok'], 'no numbers');
     }
 
     // ------------------------------------------------------------------ masking

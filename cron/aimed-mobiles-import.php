@@ -62,6 +62,8 @@ foreach ($files as $kind => $path) {
     Logger::info('aimed_bulk.import', ['kind' => $kind, 'dry_run' => $dryRun] + $stats);
 }
 if (!$dryRun) {
+    // Stored «شمارش» results describe the bank as it was: forget them so the next count is fresh.
+    if ($files !== []) aimed_bulk_counts_clear();
     $bank = aimed_bulk_bank_stats_refresh();
     printf("bank now holds %s numbers (%s sendable), %s provinces, %s cities\n",
         number_format($bank['total']), number_format($bank['sendable']), number_format($bank['provinces']), number_format($bank['cities']));

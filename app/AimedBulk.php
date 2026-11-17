@@ -7,11 +7,17 @@
  * (app/RegionalBulk.php, which asks Vesal to send), these messages go out through ELLSMS's own bulk
  * queue, sender lines, gateways and wallet:
  *
- *   1. aimed_bulk_create()      — local checks, then a request row in status 'staging'.
- *   2. aimed_bulk_stage_pass()  — the worker picks the numbers (ellsms_aimed_bulk_targets), drops the
+ *   0. aimed_bulk_count_request() / aimed_bulk_count_pass() — «شمارش شماره‌ها»: the page queues a
+ *                                 count and returns at once, the worker counts (up to the per-request
+ *                                 limit) and the page polls for the result. Never counted in a web
+ *                                 request: on a bank of tens of millions that outlived the proxy timeout.
+ *   1. aimed_bulk_create()      — local checks, then a request row in status 'staging'. No count here
+ *                                 either; the area's size is checked by the worker in step 2.
+ *   2. aimed_bulk_stage_pass()  — the worker checks the area fits the per-request limit, picks the
+ *                                 numbers (ellsms_aimed_bulk_targets), drops the
  *                                 customer's own blacklist, prices them through the normal tariff
  *                                 plus the aimed surcharge, and writes them into a 'staged' bulk job.
- *                                 Status becomes 'priced'. Nothing is reserved yet.
+ *                                 Status becomes 'priced' (or 'failed' with the reason). Nothing is reserved yet.
  *   3. aimed_bulk_confirm()     — reserves quota and the exact staged price, promotes the bulk job to
  *                                 'pending'; the normal bulk worker sends it and settles every row at
  *                                 its frozen price.
@@ -29,6 +35,13 @@ declare(strict_types=1);
 const AIMED_BULK_SIM_TYPES = ['all', 'prepaid', 'postpaid'];
 const AIMED_BULK_STAGE_BATCH = 2000;
 const AIMED_BULK_LEASE_SECONDS = 300;
+/** A finished count of the same criteria is shown again for this long instead of recounting. */
+const AIMED_BULK_COUNT_REUSE_SECONDS = 3600;
+/** One count query may run this long (MAX_EXECUTION_TIME) before it is stopped and reported as too broad. */
+const AIMED_BULK_COUNT_MAX_SECONDS = 60;
+/** MySQL's error number for a SELECT stopped by MAX_EXECUTION_TIME. */
+const AIMED_BULK_ER_QUERY_TIMEOUT = 3024;
+const AIMED_BULK_COUNT_TOO_BROAD = 'شمارش این مشخصات بیش از حد طول کشید؛ منطقه را کوچک‌تر کنید (مثلاً کد پستی، استان یا شهر را هم مشخص کنید).';
 
 function aimed_bulk_enabled(): bool {
     return (string)setting_fresh('aimed_bulk_enabled', '0') === '1';
@@ -166,12 +179,152 @@ function aimed_bulk_where(array $criteria): array {
     return [implode(' AND ', $where), $params];
 }
 
-/** Numbers in the bank matching the criteria (blocklisted ones excluded). */
-function aimed_bulk_count(array $criteria): int {
+/**
+ * Numbers in the bank matching the criteria (blocklisted ones excluded). With $upTo, counting stops
+ * at $upTo + 1, so a result above $upTo means "more than $upTo": a request can never target more than
+ * aimed_bulk_max_recipients() numbers, so counting a 0912 area to its last million buys nothing.
+ *
+ * Slow on a large bank even on the covering indexes: only the worker calls it (aimed_bulk_count_pass(),
+ * aimed_bulk_stage_request()), never a web request. Stopped after AIMED_BULK_COUNT_MAX_SECONDS with a
+ * PDOException whose errorInfo[1] is AIMED_BULK_ER_QUERY_TIMEOUT.
+ */
+function aimed_bulk_count(array $criteria, ?int $upTo = null): int {
     [$where, $params] = aimed_bulk_where($criteria);
-    $st = db()->prepare("SELECT COUNT(*) FROM ellsms_aimed_mobiles m WHERE {$where}");
+    $hint = '/*+ MAX_EXECUTION_TIME(' . (AIMED_BULK_COUNT_MAX_SECONDS * 1000) . ') */';
+    $sql = $upTo === null
+        ? "SELECT {$hint} COUNT(*) FROM ellsms_aimed_mobiles m WHERE {$where}"
+        : "SELECT {$hint} COUNT(*) FROM (SELECT 1 FROM ellsms_aimed_mobiles m WHERE {$where} LIMIT " . (max(0, $upTo) + 1) . ') t';
+    $st = db()->prepare($sql);
     $st->execute($params);
     return (int)$st->fetchColumn();
+}
+
+function aimed_bulk_is_count_timeout(Throwable $e): bool {
+    return $e instanceof PDOException && (int)($e->errorInfo[1] ?? 0) === AIMED_BULK_ER_QUERY_TIMEOUT;
+}
+
+/**
+ * «شمارش شماره‌ها»: queues a background count of $criteria (up to the per-request limit) and returns
+ * its state. A finished count of the same criteria from the last AIMED_BULK_COUNT_REUSE_SECONDS, or
+ * one already queued or running, is returned as is: clicking again, or another customer asking about
+ * the same area, costs nothing. The count is a property of the bank, not of the customer.
+ *
+ * @return array{id:int, status:string, matched:?int, cap:int, capped:bool, error:?string, criteria:array}
+ */
+function aimed_bulk_count_request(array $criteria): array {
+    $cap = aimed_bulk_max_recipients();
+    $key = array_intersect_key($criteria, array_flip(['postal_code', 'province_code', 'city_code', 'prefix', 'sim']));
+    ksort($key);
+    $json = (string)json_encode($key, JSON_UNESCAPED_UNICODE);
+    $hash = hash('sha256', $cap . '|' . $json);
+    $db = db();
+    $load = $db->prepare('SELECT c.*, (c.counted_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)) AS fresh FROM ellsms_aimed_counts c WHERE c.criteria_hash = ?');
+    $load->execute([AIMED_BULK_COUNT_REUSE_SECONDS, $hash]);
+    $row = $load->fetch();
+    if ($row === false) {
+        // INSERT IGNORE: two clicks at once queue one count.
+        $db->prepare('INSERT IGNORE INTO ellsms_aimed_counts (criteria_hash, criteria_json, cap) VALUES (?,?,?)')->execute([$hash, $json, $cap]);
+    } elseif ($row['status'] === 'failed' || ($row['status'] === 'done' && !(int)$row['fresh'])) {
+        $db->prepare("UPDATE ellsms_aimed_counts SET status = 'queued', matched = NULL, error = NULL, counted_at = NULL, requested_at = NOW()
+                      WHERE id = ? AND status IN ('done','failed')")->execute([(int)$row['id']]);
+    } else {
+        return aimed_bulk_count_view($row);
+    }
+    $load->execute([AIMED_BULK_COUNT_REUSE_SECONDS, $hash]);
+    $row = $load->fetch();
+    if ($row === false) throw new RuntimeException('aimed bulk count row vanished'); // cleared by an import in between
+    return aimed_bulk_count_view($row);
+}
+
+/** One count row by id (the page keeps the id of the customer's last count in the session), or null. */
+function aimed_bulk_count_get(int $id): ?array {
+    if ($id <= 0) return null;
+    try {
+        $st = db()->prepare('SELECT * FROM ellsms_aimed_counts WHERE id = ?');
+        $st->execute([$id]);
+        $row = $st->fetch();
+    } catch (PDOException) {
+        return null; // migration not applied yet
+    }
+    return $row ? aimed_bulk_count_view($row) : null;
+}
+
+/** @return array{id:int, status:string, matched:?int, cap:int, capped:bool, error:?string, criteria:array} */
+function aimed_bulk_count_view(array $row): array {
+    $matched = $row['matched'] !== null ? (int)$row['matched'] : null;
+    return [
+        'id'       => (int)$row['id'],
+        'status'   => (string)$row['status'],
+        'matched'  => $matched,
+        'cap'      => (int)$row['cap'],
+        'capped'   => $matched !== null && $matched > (int)$row['cap'],
+        'error'    => $row['error'] !== null ? (string)$row['error'] : null,
+        'criteria' => json_decode((string)$row['criteria_json'], true) ?: [],
+    ];
+}
+
+/** The Persian line the page shows for a count's state. */
+function aimed_bulk_count_message(array $count): string {
+    $label = aimed_bulk_criteria_label($count['criteria']);
+    return match ($count['status']) {
+        'done' => $count['capped']
+            ? 'تعداد شماره‌های «' . $label . '»: بیش از ' . to_persian_digits(number_format($count['cap']))
+              . ' (حداکثر هر درخواست). برای ثبت درخواست، سقف تعداد را مشخص کنید یا منطقه را کوچک‌تر کنید.'
+            : 'تعداد شماره‌های «' . $label . '»: ' . to_persian_digits(number_format((int)$count['matched'])),
+        'failed' => (string)($count['error'] ?? 'شمارش ناموفق بود؛ دوباره تلاش کنید.'),
+        default  => 'در حال شمارش شماره‌های «' . $label . '» در پس‌زمینه… نتیجه همین‌جا نمایش داده می‌شود؛ می‌توانید صفحه را ترک کنید.',
+    };
+}
+
+/**
+ * Worker pass: runs queued counts, oldest first, at most $max per call. A count whose worker died is
+ * picked up again once its lease ends. Cheap when idle (one indexed SELECT).
+ *
+ * @return array{counted:int, failed:int}
+ */
+function aimed_bulk_count_pass(int $max = 5): array {
+    $stats = ['counted' => 0, 'failed' => 0];
+    $db = db();
+    for ($i = 0; $i < $max; $i++) {
+        try {
+            $id = $db->query("SELECT id FROM ellsms_aimed_counts
+                              WHERE status = 'queued' OR (status = 'counting' AND lease_expires_at < NOW())
+                              ORDER BY id LIMIT 1")->fetchColumn();
+        } catch (PDOException) {
+            return $stats; // migration not applied yet
+        }
+        if ($id === false) break;
+        $token = worker_id() . ':' . bin2hex(random_bytes(4));
+        $claim = $db->prepare("UPDATE ellsms_aimed_counts SET status = 'counting', claimed_by = ?, lease_expires_at = DATE_ADD(NOW(), INTERVAL ? SECOND)
+                               WHERE id = ? AND (status = 'queued' OR (status = 'counting' AND lease_expires_at < NOW()))");
+        $claim->execute([$token, AIMED_BULK_COUNT_MAX_SECONDS * 2, (int)$id]);
+        if ($claim->rowCount() !== 1) continue;
+        $row = aimed_bulk_count_get((int)$id);
+        if ($row === null) continue;
+        try {
+            $matched = aimed_bulk_count($row['criteria'], $row['cap']);
+            $db->prepare("UPDATE ellsms_aimed_counts SET status = 'done', matched = ?, error = NULL, counted_at = NOW(), claimed_by = NULL, lease_expires_at = NULL
+                          WHERE id = ? AND claimed_by = ?")->execute([$matched, (int)$id, $token]);
+            $stats['counted']++;
+        } catch (PDOException $e) {
+            $timedOut = aimed_bulk_is_count_timeout($e);
+            if (!$timedOut) Logger::error('aimed_bulk.count_failed', ['id' => (int)$id, 'exception' => $e]);
+            $db->prepare("UPDATE ellsms_aimed_counts SET status = 'failed', error = ?, claimed_by = NULL, lease_expires_at = NULL
+                          WHERE id = ? AND claimed_by = ?")
+               ->execute([$timedOut ? AIMED_BULK_COUNT_TOO_BROAD : 'شمارش ناموفق بود؛ دوباره تلاش کنید.', (int)$id, $token]);
+            $stats['failed']++;
+        }
+    }
+    return $stats;
+}
+
+/** Forgets every stored count: called by the importer after a load changes the bank. */
+function aimed_bulk_counts_clear(): void {
+    try {
+        db()->exec('DELETE FROM ellsms_aimed_counts');
+    } catch (PDOException) {
+        // migration not applied yet: nothing stored
+    }
 }
 
 /** A one-line Persian description of a criteria set, for lists. */
@@ -256,13 +409,13 @@ function aimed_bulk_create(array $user, array $criteria, string $originator, str
         return ['ok' => false, 'error' => CONTENT_POLICY_ERROR];
     }
 
-    $available = aimed_bulk_count($criteria);
-    if ($available === 0) return ['ok' => false, 'error' => 'هیچ شماره‌ای با این مشخصات در بانک شماره نیست.'];
-    $target = ($maxCount !== null && $maxCount > 0) ? min($maxCount, $available) : $available;
+    // The area is NOT counted here: on a bank of tens of millions that outlived the page's proxy
+    // timeout. The worker counts it while staging (aimed_bulk_stage_request()) and ends the request
+    // 'failed', with the reason, when it is empty or above the limit without a cap.
+    $cap = ($maxCount !== null && $maxCount > 0) ? $maxCount : null;
     $limit = aimed_bulk_max_recipients();
-    if ($target > $limit) {
-        return ['ok' => false, 'error' => 'این مشخصات ' . to_persian_digits(number_format($available)) . ' شماره دارد؛ هر درخواست حداکثر '
-            . to_persian_digits(number_format($limit)) . ' شماره می‌تواند داشته باشد. تعداد را مشخص کنید یا منطقه را کوچک‌تر کنید.'];
+    if ($cap !== null && $cap > $limit) {
+        return ['ok' => false, 'error' => 'سقف تعداد بیشتر از حد مجاز است: هر درخواست حداکثر ' . to_persian_digits(number_format($limit)) . ' شماره می‌تواند داشته باشد.'];
     }
 
     $title = trim($title) !== '' ? mb_substr(trim($title), 0, 160) : bulk_default_send_title((int)$user['id'], 'ارسال با کد پستی');
@@ -271,9 +424,9 @@ function aimed_bulk_create(array $user, array $criteria, string $originator, str
                     (organization_id, user_id, criteria_json, originator, content, title, max_count, surcharge_percent, pricing_at, status)
                   VALUES (?,?,?,?,?,?,?,?,?,\'staging\')')
        ->execute([$orgId ?: null, (int)$user['id'], json_encode($criteria, JSON_UNESCAPED_UNICODE), $originator, $content, $title,
-                  $target, $isAdmin ? 0 : aimed_bulk_surcharge_percent(), sms_pricing_now()]);
+                  $cap, $isAdmin ? 0 : aimed_bulk_surcharge_percent(), sms_pricing_now()]);
     $id = (int)$db->lastInsertId();
-    audit((int)$user['id'], 'aimed_bulk.created', "#{$id} target={$target} " . aimed_bulk_criteria_label($criteria));
+    audit((int)$user['id'], 'aimed_bulk.created', "#{$id} cap=" . ($cap ?? 'none') . ' ' . aimed_bulk_criteria_label($criteria));
     return ['ok' => true, 'id' => $id];
 }
 
@@ -332,6 +485,30 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
     if ($req['bulk_job_id'] === null || !(int)$req['targets_ready']) {
         $criteria = json_decode((string)$req['criteria_json'], true) ?: [];
         [$where, $params] = aimed_bulk_where($criteria);
+        // max_count is the customer's cap (never above the limit; aimed_bulk_create() refuses that).
+        // Without one, the whole area must fit the limit: counted here, only up to the limit.
+        $limit = aimed_bulk_max_recipients();
+        $take = (int)($req['max_count'] ?? 0);
+        if ($take <= 0 || $take > $limit) {
+            try {
+                $available = aimed_bulk_count($criteria, $limit);
+            } catch (PDOException $e) {
+                if (!aimed_bulk_is_count_timeout($e)) throw $e; // transient: retried on the next pass
+                aimed_bulk_fail_staging($id, $token, AIMED_BULK_COUNT_TOO_BROAD);
+                return ['batches' => 0, 'priced' => false];
+            }
+            if ($available === 0) {
+                aimed_bulk_fail_staging($id, $token, 'هیچ شماره‌ای با این مشخصات در بانک شماره نیست.');
+                return ['batches' => 0, 'priced' => false];
+            }
+            if ($available > $limit) {
+                aimed_bulk_fail_staging($id, $token, 'این مشخصات بیش از ' . to_persian_digits(number_format($limit))
+                    . ' شماره دارد و هر درخواست حداکثر همین تعداد را می‌پذیرد. سقف تعداد را مشخص کنید یا منطقه را کوچک‌تر کنید.');
+                return ['batches' => 0, 'priced' => false];
+            }
+            $take = $limit;
+        }
+        $req['max_count'] = $take;
         $jobId = db_transaction(function (PDO $db) use ($req, $where, $params, $id): int {
             $jobId = $req['bulk_job_id'] !== null ? (int)$req['bulk_job_id'] : 0;
             if ($jobId === 0) {
@@ -417,16 +594,39 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
     return ['batches' => $batches, 'priced' => false];
 }
 
+/** Ends a claimed request that cannot be staged ('failed', with the reason shown in the list). */
+function aimed_bulk_fail_staging(int $id, string $token, string $error): void {
+    $db = db();
+    $st = $db->prepare("UPDATE ellsms_aimed_bulk_requests SET status = 'failed', error = ?, finished_at = NOW()
+                        WHERE id = ? AND status = 'staging' AND claimed_by = ?");
+    $st->execute([mb_substr($error, 0, 500), $id, $token]);
+    if ($st->rowCount() !== 1) return;
+    $job = $db->prepare('SELECT bulk_job_id FROM ellsms_aimed_bulk_requests WHERE id = ?');
+    $job->execute([$id]);
+    $jobId = (int)$job->fetchColumn();
+    if ($jobId > 0) {
+        $db->prepare("UPDATE ellsms_bulk_jobs SET status = 'cancelled' WHERE id = ? AND status = 'staged'")->execute([$jobId]);
+        $db->prepare("DELETE FROM ellsms_bulk_items WHERE job_id = ? AND status = 'pending'")->execute([$jobId]);
+    }
+    $db->prepare('DELETE FROM ellsms_aimed_bulk_targets WHERE request_id = ?')->execute([$id]);
+    Logger::info('aimed_bulk.stage_refused', ['id' => $id, 'error' => $error]);
+}
+
 function aimed_bulk_finish_staging(int $id, int $jobId): void {
     $db = db();
     $sum = $db->prepare('SELECT COUNT(*) AS cnt, COALESCE(SUM(price_cost_credits),0) AS cost FROM ellsms_bulk_items WHERE job_id = ?');
     $sum->execute([$jobId]);
     $totals = $sum->fetch();
     $rows = (int)$totals['cnt'];
-    db_transaction(function (PDO $db) use ($id, $jobId, $rows, $totals): void {
+    $matched = $db->prepare('SELECT matched_rows FROM ellsms_aimed_bulk_requests WHERE id = ?');
+    $matched->execute([$id]);
+    $noneMatched = (int)$matched->fetchColumn() === 0;
+    db_transaction(function (PDO $db) use ($id, $jobId, $rows, $totals, $noneMatched): void {
         if ($rows === 0) {
             $done = $db->prepare("UPDATE ellsms_aimed_bulk_requests SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ? AND status = 'staging'");
-            $done->execute(['هیچ شماره‌ی قابل‌ارسالی باقی نماند (همه در لیست سیاه بودند یا قیمت نداشتند).', $id]);
+            $done->execute([$noneMatched
+                ? 'هیچ شماره‌ای با این مشخصات در بانک شماره نیست.'
+                : 'هیچ شماره‌ی قابل‌ارسالی باقی نماند (همه در لیست سیاه بودند یا قیمت نداشتند).', $id]);
             if ($done->rowCount() === 1) {
                 $db->prepare("UPDATE ellsms_bulk_jobs SET status = 'cancelled' WHERE id = ? AND status = 'staged'")->execute([$jobId]);
             }

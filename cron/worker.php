@@ -180,6 +180,16 @@ do {
             }
         }
 
+        // Aimed bulk «شمارش شماره‌ها» (app/AimedBulk.php): the page queues a count and polls for it;
+        // counted here, up to the per-request limit, on covering indexes. Cheap when nothing is queued.
+        try {
+            $abc = Metrics::time('worker.pass.aimed_bulk_count', fn() => aimed_bulk_count_pass());
+            $workProcessed += $abc['counted'] + $abc['failed'];
+        } catch (Throwable $t) {
+            Logger::error('worker.aimed_bulk_count.failed', ['exception' => $t]);
+            Metrics::increment('worker.pass.failed', 1, ['pass' => 'aimed_bulk_count']);
+        }
+
         // Aimed bulk (app/AimedBulk.php): stage and price requests from the subscriber bank, a few
         // batches per loop so a large request never holds up the rest of this loop.
         try {

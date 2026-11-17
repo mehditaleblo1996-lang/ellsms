@@ -46,6 +46,7 @@ final class AimedBulkHttpTest extends TestCase
         wallet_credit($this->customerId, 1000000, 'purchase', 'test', 'seed:' . $this->customerId, 'seed:' . $this->customerId);
         $ins = $db->prepare("INSERT INTO ellsms_aimed_mobiles (mobile, postal_code, province_code, city_code, sim_type, blocklisted) VALUES (?, '9876500000', 1, 101, 'prepaid', 0)");
         foreach ($this->mobiles as $m) $ins->execute([$m]);
+        $db->exec('DELETE FROM ellsms_aimed_counts'); // no stored result from an earlier run
 
         $this->sessionDir = sys_get_temp_dir() . '/ellsms_aimed_sess_' . bin2hex(random_bytes(6));
         mkdir($this->sessionDir, 0700, true);
@@ -83,6 +84,7 @@ final class AimedBulkHttpTest extends TestCase
         }
         $db->prepare('DELETE FROM ellsms_aimed_bulk_requests WHERE user_id = ?')->execute([$this->customerId]);
         $db->prepare('DELETE FROM ellsms_aimed_mobiles WHERE mobile IN (?,?,?)')->execute($this->mobiles);
+        $db->exec('DELETE FROM ellsms_aimed_counts');
         $db->prepare('DELETE FROM ellsms_usage_reservations WHERE organization_id = ?')->execute([$this->orgId]);
         $db->prepare('DELETE FROM ellsms_organization_memberships WHERE organization_id = ?')->execute([$this->orgId]);
         $db->prepare('DELETE FROM ellsms_wallet_accounts WHERE organization_id = ?')->execute([$this->orgId]);
@@ -137,6 +139,29 @@ final class AimedBulkHttpTest extends TestCase
         $page = $this->request('GET', '/aimed-bulk.php', $sid);
         $this->assertSame(200, $page['code'], $page['body']);
         return preg_match('/name="_csrf" value="([^"]+)"/', $page['body'], $m) === 1 ? $m[1] : '';
+    }
+
+    public function testCountingIsQueuedForTheWorkerAndPolledNotDoneInTheRequest(): void
+    {
+        $customer = $this->sessionFor($this->customerId, $this->orgId);
+        $csrf = $this->csrf($customer);
+        $counted = $this->request('POST', '/aimed-bulk.php', $customer, [
+            '_csrf' => $csrf, 'action' => 'count', 'postal_code' => '98765', 'sim' => 'all',
+            'originator' => '5000900913', 'content' => '', 'count' => '',
+        ]);
+        $this->assertSame(302, $counted['code'], $counted['body']);
+        $this->assertStringContainsString('در حال شمارش', $this->request('GET', '/aimed-bulk.php', $customer)['body'], 'the page shows the count as running');
+        $status = json_decode($this->request('GET', '/aimed-bulk.php?action=count_status', $customer)['body'], true);
+        $this->assertSame([true, true], [$status['ok'] ?? null, $status['pending'] ?? null]);
+
+        aimed_bulk_count_pass();
+        $status = json_decode($this->request('GET', '/aimed-bulk.php?action=count_status', $customer)['body'], true);
+        $this->assertSame([true, false, 'done'], [$status['ok'] ?? null, $status['pending'] ?? null, $status['status'] ?? null]);
+        $this->assertStringContainsString('۳', (string)$status['message']);
+
+        $other = $this->sessionFor($this->adminId);
+        $this->assertSame(['ok' => false], json_decode($this->request('GET', '/aimed-bulk.php?action=count_status', $other)['body'], true),
+            'a session only sees the count it queued');
     }
 
     public function testACustomerCreatesAndConfirmsAndSeesOnlyMaskedNumbers(): void

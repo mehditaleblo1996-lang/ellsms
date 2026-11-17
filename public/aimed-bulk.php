@@ -20,6 +20,21 @@ if (($_GET['action'] ?? '') === 'cities') {
     exit;
 }
 
+// The state of this session's last «شمارش» (JSON), polled by the page while the worker counts. Only
+// the count this session queued: its id lives in the session, never in the URL.
+if (($_GET['action'] ?? '') === 'count_status') {
+    header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store');
+    $count = aimed_bulk_count_get((int)($_SESSION['aimed_bulk_count_id'] ?? 0));
+    echo json_encode($count === null ? ['ok' => false] : [
+        'ok'      => true,
+        'status'  => $count['status'],
+        'pending' => in_array($count['status'], ['queued', 'counting'], true),
+        'message' => aimed_bulk_count_message($count),
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $form = $_SESSION['aimed_bulk_form'] ?? [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -38,13 +53,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!$c['ok']) {
             flash('error', $c['error']);
         } elseif ($action === 'count') {
-            flash('success', 'تعداد شماره‌های این مشخصات: ' . to_persian_digits(number_format(aimed_bulk_count($c['criteria']))));
+            // Queued for the worker, never counted in this request (a large area outlived the proxy
+            // timeout). The page shows the result when it is ready; see the count_status action above.
+            try {
+                $_SESSION['aimed_bulk_count_id'] = aimed_bulk_count_request($c['criteria'])['id'];
+            } catch (PDOException) {
+                flash('error', 'جدول شمارش هنوز ساخته نشده است؛ مدیر سامانه باید مایگریشن‌ها را اجرا کند.');
+            }
         } else {
             $count = (int)from_persian_digits((string)($form['count'] ?? '0'));
             $r = aimed_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), (string)($form['content'] ?? ''), $count > 0 ? $count : null, (string)($form['title'] ?? ''));
             if ($r['ok']) {
-                unset($_SESSION['aimed_bulk_form']);
-                flash('success', 'درخواست ثبت شد و در حال آماده‌سازی و قیمت‌گذاری است. پس از آماده شدن، آن را در فهرست زیر تأیید کنید.');
+                unset($_SESSION['aimed_bulk_form'], $_SESSION['aimed_bulk_count_id']);
+                flash('success', 'درخواست ثبت شد. شماره‌ها در پس‌زمینه شمرده، آماده و قیمت‌گذاری می‌شوند؛ پس از آماده شدن، آن را در فهرست زیر تأیید کنید.');
             } else {
                 flash('error', $r['error']);
             }
@@ -65,6 +86,8 @@ $provinces = $canSend ? aimed_bulk_provinces() : [];
 $originators = sendable_originators($me);
 $rows = aimed_bulk_list($me);
 $anyStaging = (bool)array_filter($rows, static fn(array $r): bool => $r['status'] === 'staging');
+$lastCount = aimed_bulk_count_get((int)($_SESSION['aimed_bulk_count_id'] ?? 0));
+$countPending = $lastCount !== null && in_array($lastCount['status'], ['queued', 'counting'], true);
 
 $bank = null;
 if (is_admin()) {
@@ -156,8 +179,31 @@ require __DIR__ . '/../app/views/header.php';
     <button class="btn" name="action" value="count">شمارش شماره‌ها</button>
     <button class="btn btn-primary" name="action" value="create">ثبت درخواست و قیمت‌گذاری</button>
   </form>
+  <?php if ($lastCount !== null): ?>
+  <p id="ab-count" class="alert <?= $countPending ? 'alert-info' : ($lastCount['status'] === 'failed' ? 'alert-error' : 'alert-success') ?>"
+     data-pending="<?= $countPending ? '1' : '0' ?>" style="margin-top:12px"><?= e(aimed_bulk_count_message($lastCount)) ?></p>
+  <?php endif; ?>
 </div>
 <script>
+// «شمارش شماره‌ها» runs in the worker: poll its state and show the result in place.
+(function () {
+  var box = document.getElementById('ab-count');
+  if (!box || box.getAttribute('data-pending') !== '1') return;
+  var tries = 0;
+  function poll() {
+    fetch('/messages/aimed?action=count_status', {credentials: 'same-origin', cache: 'no-store'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) return;
+        box.textContent = d.message;
+        if (d.pending) { if (++tries < 900) setTimeout(poll, 2000); return; }
+        box.className = 'alert ' + (d.status === 'failed' ? 'alert-error' : 'alert-success');
+        box.setAttribute('data-pending', '0');
+      })
+      .catch(function () { if (++tries < 900) setTimeout(poll, 5000); });
+  }
+  setTimeout(poll, 1500);
+})();
 (function () {
   var province = document.getElementById('ab-province'), city = document.getElementById('ab-city');
   function loadCities() {
@@ -199,7 +245,9 @@ require __DIR__ . '/../app/views/header.php';
         <td><?= e(aimed_bulk_criteria_label($criteria)) ?><?php if ((string)$r['title'] !== ''): ?><br><span class="muted"><?= e((string)$r['title']) ?></span><?php endif; ?></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'], 0, 50, '…')) ?></td>
         <td class="num"><?= $r['status'] === 'staging'
-            ? to_persian_digits(number_format((int)$r['staged_rows'])) . ' / ' . to_persian_digits(number_format((int)($r['matched_rows'] ?: $r['max_count'])))
+            ? (!(int)$r['targets_ready']
+                ? 'در حال شمارش…'
+                : to_persian_digits(number_format((int)$r['staged_rows'])) . ' / ' . to_persian_digits(number_format((int)$r['matched_rows'])))
             : to_persian_digits(number_format((int)$r['staged_rows'])) ?>
           <?php if ((int)$r['blacklisted_rows'] > 0 || (int)$r['unpriced_rows'] > 0): ?>
             <br><span class="muted"><?= (int)$r['blacklisted_rows'] > 0 ? to_persian_digits(number_format((int)$r['blacklisted_rows'])) . ' لیست سیاه' : '' ?>
@@ -210,7 +258,7 @@ require __DIR__ . '/../app/views/header.php';
         <td class="num"><?= $r['status'] === 'confirmed' && $r['job_total_rows'] !== null
             ? to_persian_digits(number_format((int)$r['job_sent_rows']) . ' / ' . number_format((int)$r['job_total_rows']))
             : '—' ?></td>
-        <td><?= e($status) ?><?php if ($r['status'] === 'failed' && $r['error']): ?> <span class="muted"><?= e(mb_strimwidth((string)$r['error'], 0, 80, '…')) ?></span><?php endif; ?></td>
+        <td><?= e($status) ?><?php if ($r['status'] === 'failed' && $r['error']): ?> <span class="muted"><?= e(mb_strimwidth((string)$r['error'], 0, 160, '…')) ?></span><?php endif; ?></td>
         <td style="white-space:nowrap">
           <?php if (in_array($r['status'], ['staging', 'priced'], true)): ?>
             <form method="post" style="display:inline"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
