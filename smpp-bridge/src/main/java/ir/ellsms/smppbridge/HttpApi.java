@@ -4,14 +4,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import org.jsmpp.bean.BindType;
-import org.jsmpp.bean.InterfaceVersion;
-import org.jsmpp.bean.NumberingPlanIndicator;
-import org.jsmpp.bean.TypeOfNumber;
-import org.jsmpp.session.BindParameter;
-import org.jsmpp.session.SMPPSession;
-import org.jsmpp.session.connection.socket.NoTrustSSLSocketConnectionFactory;
-import org.jsmpp.session.connection.socket.SocketConnectionFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -207,37 +199,27 @@ public final class HttpApi {
         send(ex, 200, Map.of("ok", true, "bound_senders", runtime.boundSenders(), "results", results));
     }
 
-    /** A separate, short-lived session: proves host, port, credentials and bind type without touching live sessions. */
+    /**
+     * A separate, short-lived session: proves host, port, credentials and bind type without touching
+     * live sessions, and diagnoses a failure (BindTester).
+     */
     private Map<String, Object> testBind(int gatewayId) throws Exception {
         GatewayConfig cfg = store.loadGateways().stream().filter(c -> c.gatewayId() == gatewayId).findFirst().orElse(null);
         Map<String, Object> out = new LinkedHashMap<>();
         if (cfg == null) {
             out.put("ok", false);
+            out.put("diagnosis", "not_configured");
             out.put("error", "gateway is not an active SMPP gateway (or its SMPP settings are missing)");
             return out;
         }
         if (cfg.passwordError() != null) {
             out.put("ok", false);
+            out.put("diagnosis", "no_password");
             out.put("error", cfg.passwordError());
             return out;
         }
-        BindType type = switch (cfg.bindMode()) { case "tx", "tx_rx" -> BindType.BIND_TX; default -> BindType.BIND_TRX; };
-        long started = System.currentTimeMillis();
-        SMPPSession s = new SMPPSession(cfg.useTls() ? new NoTrustSSLSocketConnectionFactory() : SocketConnectionFactory.getInstance());
-        try {
-            String systemId = s.connectAndBind(cfg.host(), cfg.port(), new BindParameter(type, cfg.systemId(), cfg.password(), cfg.systemType(),
-                TypeOfNumber.UNKNOWN, NumberingPlanIndicator.UNKNOWN, null, "5.0".equals(cfg.interfaceVersion()) ? InterfaceVersion.IF_50 : InterfaceVersion.IF_34), 15_000);
-            out.put("ok", true);
-            out.put("smsc_system_id", systemId);
-        } catch (Exception e) {
-            out.put("ok", false);
-            out.put("error", e.getMessage());
-        } finally {
-            try { s.unbindAndClose(); } catch (Exception ignored) { /* best effort */ }
-        }
-        out.put("elapsed_ms", System.currentTimeMillis() - started);
-        out.put("bind_type", type.name());
-        return out;
+        GatewayRuntime rt = manager.get(gatewayId);
+        return new BindTester().run(cfg, rt == null ? List.of() : rt.snapshots());
     }
 
     private boolean authorized(HttpExchange ex) {

@@ -109,6 +109,43 @@ function smpp_result_error_code(array $result): string {
     return (string)($result['error_class'] ?? '') !== '' ? 'smpp_' . (string)$result['error_class'] : 'smpp_failed';
 }
 
+/**
+ * The panel's message for one «اتصال آزمایشی» answer: [ok, Persian text]. The bridge diagnoses a
+ * failed bind (smpp-bridge BindTester: TCP, own sessions, enquire_link probe, TLS, transmitter bind);
+ * this says what to change. Technical detail is appended for the admin.
+ *
+ * @return array{0: bool, 1: string}
+ */
+function smpp_test_bind_message(array $d): array {
+    $fa = static fn(int|string $n): string => to_persian_digits((string)$n);
+    $where = (string)($d['host'] ?? '') . ':' . (int)($d['port'] ?? 0);
+    if (!empty($d['ok'])) {
+        return [true, 'اتصال آزمایشی موفق بود (' . (string)($d['bind_type'] ?? '') . '، ' . $fa((int)($d['elapsed_ms'] ?? 0)) . ' میلی‌ثانیه؛ SMSC: ' . (string)($d['smsc_system_id'] ?? '') . ').'];
+    }
+    $code = (string)($d['command_status'] ?? '');
+    $text = match ((string)($d['diagnosis'] ?? '')) {
+        'no_password' => 'رمز SMPP ذخیره نشده است: system_id و رمز را در «تنظیمات SMPP» وارد و ذخیره کنید.',
+        'not_configured' => 'سرویس SMPP این درگاه را اجرا نمی‌کند: درگاه باید فعال باشد و آدرس سرور داشته باشد.',
+        'tcp_refused' => 'اتصال TCP به ' . $where . ' رد شد: روی این پورت سرویسی گوش نمی‌دهد. آدرس و پورت را با اپراتور چک کنید.',
+        'tcp_failed' => 'اتصال TCP به ' . $where . ' برقرار نشد: سرور شما (کانتینر smpp-bridge) به این آدرس راه ندارد. مسیر شبکه، VPN یا فایروال را بررسی کنید.',
+        'invalid_password' => 'SMSC رمز را رد کرد (ESME_RINVPASWD): رمز را دوباره وارد کنید (حداکثر ۸ نویسه).',
+        'invalid_system_id' => 'SMSC این system_id را نمی‌شناسد (ESME_RINVSYSID).',
+        'already_bound' => 'SMSC می‌گوید این حساب قبلاً متصل است (ESME_RALYBND): اپراتور تعداد نشست را محدود کرده یا نشست دیگری با همین حساب (مثلاً از سرور دیگری) باز است.',
+        'bind_failed' => 'SMSC اتصال را رد کرد (ESME_RBINDFAIL): معمولاً یعنی IP سرور شما برای این حساب مجاز نیست یا حساب غیرفعال است. با اپراتور هماهنگ کنید.',
+        'bind_rejected' => 'SMSC اتصال را با کد ' . $code . ' رد کرد.',
+        'closed_by_peer' => 'SMSC اتصال را بلافاصله بست: معمولاً یعنی IP سرور شما در SMSC مجاز (whitelist) نشده یا تعداد نشست‌های حساب پر است.',
+        'session_limit' => 'نشست اصلی این درگاه همین الان متصل است، پس آدرس، system_id و رمز درست است و درگاه کار می‌کند. SMSC به نشست آزمایشیِ اضافه جواب نداد چون احتمالاً فقط ' . $fa((int)($d['gateway_sessions_bound'] ?? 1)) . ' نشست اجازه می‌دهد.',
+        'use_tx_rx' => 'SMSC به اتصال Transceiver جواب نمی‌دهد ولی با Transmitter وصل شد: «نوع اتصال» را «Transmitter + Receiver جدا» بگذارید و ذخیره کنید.',
+        'enable_tls', 'not_smpp_tls' => 'این پورت با TLS کار می‌کند: گزینه‌ی «اتصال TLS» را روشن کنید و ذخیره کنید.',
+        'not_smpp_http' => 'روی این پورت یک سرویس HTTP است، نه SMPP: پورت اشتباه است.',
+        'smsc_ignores_bind' => 'SMSC روی این پورت فعال است و به پیام SMPP جواب می‌دهد، ولی به درخواست اتصال (bind) با این system_id جواب نداد. معمولاً یعنی IP سرور شما برای این حساب مجاز نشده یا system_id / system_type اشتباه است. IP سرور را به اپراتور بدهید.',
+        'silent' => 'اتصال TCP به ' . $where . ' برقرار می‌شود ولی هیچ پاسخ SMPP نمی‌آید (نه به bind، نه به enquire_link؛ TLS هم نیست). رایج‌ترین دلیل‌ها: ۱) IP سرور شما در SMSC مجاز (whitelist) نشده؛ بعضی SMSCها بی‌صدا رد می‌کنند. IP خروجی سرور را به اپراتور بدهید. ۲) پورت اشتباه است. ۳) یک پراکسی یا VPN وسط راه هست که به SMSC اصلی وصل نیست.',
+        default => 'اتصال آزمایشی ناموفق بود.',
+    };
+    $detail = trim((string)($d['error'] ?? ''));
+    return [false, 'اتصال آزمایشی ناموفق: ' . $text . ($detail !== '' ? ' — جزئیات: ' . mb_strimwidth($detail, 0, 200, '…') : '')];
+}
+
 /** The live view of every gateway/session the bridge runs (null when unreachable). */
 function smpp_bridge_status(): ?array {
     $r = smpp_bridge_request('GET', '/v1/status', null, 5000);

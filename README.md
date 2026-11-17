@@ -73,7 +73,9 @@ price matrix like any gateway. A message the SMSC never received (bridge down, g
 session dropped mid-batch, SMSC throttling, request deadline) goes back to pending and is sent later;
 one the SMSC may have taken is never resent. `db/migrations/2026_11_21_smpp_gateway_192_168_111_80.sql`
 creates the gateway **`smpp_192_168_111_80`** (SMSC `192.168.111.80:40112`); enter its `system_id`
-and password in the panel, then assign it to a route or lines. No API route or setting changes. See
+and password in the panel, then assign it to a route or lines. «اتصال آزمایشی» diagnoses a failed bind
+(port closed, no network path, wrong credentials, source IP not allowed / SMSC silent, session limit,
+TLS, transceiver not supported) and says what to change. No API route or setting changes. See
 [`docs/smpp-gateway.md`](docs/smpp-gateway.md).
 
 ## Message reports (لیست پیام‌های ارسالی / دریافتی)

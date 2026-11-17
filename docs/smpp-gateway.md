@@ -51,11 +51,56 @@ enters `system_id` and the password on its «تنظیمات SMPP», the panel (a
    TPS, sessions and TON/NPI to the operator's specification → «ذخیره‌ی تنظیمات SMPP».
 2. «اتصال آزمایشی». The bridge container must reach `192.168.111.80:40112` (a private address: the
    Docker host needs a route to it; the bridge is not subject to the public-address rule of HTTP gateways).
+   A failure is diagnosed (see «اتصال آزمایشی» and its diagnosis below). "Time out waiting for bind
+   response" means TCP connected but the SMSC did not answer the bind — most often the server's address
+   is not on the SMSC's allow list.
 3. Assign it to a route or to a line (numbers page), send a test message and watch its receipt in the
    session table and on «لیست پیام‌های ارسالی».
 
 To remove it, archive it in the panel; the migration does not recreate an archived gateway (it checks
 the code, whatever the status).
+
+## «اتصال آزمایشی» and its diagnosis
+
+The button opens one extra, throw-away session with the stored settings (`POST /v1/gateways/{id}/test`,
+`smpp-bridge` `BindTester`). When the bind fails it finds out why, and the panel says what to change
+(`smpp_test_bind_message()` in `app/Sms/Smpp.php`). Steps, each bounded (worst case about 25 s):
+
+1. TCP connect to host:port (5 s).
+2. bind as configured (15 s).
+3. Only when the bind got **no answer**: the gateway's own sessions; a bare `enquire_link` on a new
+   connection (any SMPP server answers it, even before a bind); a TLS handshake when TLS is off and the
+   port stayed silent; a `bind_transmitter` when a transceiver bind went unanswered on a port that
+   speaks SMPP.
+
+| `diagnosis` | Meaning / what to do |
+|---|---|
+| `ok` | bound; the SMSC's `system_id` is shown |
+| `no_password` | no password stored yet: enter `system_id` and password |
+| `tcp_refused` | nothing listens on that port: check host and port with the operator |
+| `tcp_failed` | no TCP path from the `smpp-bridge` container (routing, VPN, firewall) |
+| `invalid_password` / `invalid_system_id` | the SMSC refused the credentials (`0x0E` / `0x0F`) |
+| `already_bound` | `ESME_RALYBND`: session limit reached, or the account is bound from elsewhere |
+| `bind_failed` / `bind_rejected` | `ESME_RBINDFAIL` (often: source IP not allowed, account disabled) / another `command_status` |
+| `closed_by_peer` | the SMSC closed the connection at once: usually the source IP is not allowed or the sessions are full |
+| `session_limit` | the gateway's own session IS bound — the settings work; the SMSC just does not answer an extra session |
+| `use_tx_rx` | no answer to `bind_transceiver`, but `bind_transmitter` binds: set «نوع اتصال» to TX + RX |
+| `enable_tls` / `not_smpp_tls` | the port speaks TLS: turn on «اتصال TLS» |
+| `not_smpp_http` | an HTTP service answers on that port: wrong port |
+| `smsc_ignores_bind` | the port answers SMPP but not this bind: usually the source IP is not allowed for this account, or `system_id` / `system_type` is wrong |
+| `silent` | TCP connects but nothing answers at all (not bind, not `enquire_link`, not TLS): most often the source IP is not on the SMSC's allow list (some SMSCs drop such clients silently), else a wrong port, or a proxy / VPN in between that is not connected to the real SMSC |
+
+**Checks on the server** (the bridge connects from the Docker host, NATed to the host's address on the
+route to the SMSC — that is the address the operator must allow):
+
+```bash
+ip route get 192.168.111.80
+docker exec ellsms-smpp-bridge bash -c 'timeout 5 bash -c "</dev/tcp/192.168.111.80/40112" && echo TCP-OK'
+docker compose logs --tail=50 smpp-bridge
+```
+
+The first prints the source address (`src …`) the SMSC sees. The session table on the gateway page
+shows the gateway's own sessions and their last error; they retry on their own with a growing delay.
 
 ## What the bridge does
 
@@ -94,7 +139,8 @@ the code, whatever the status).
   - Concatenated parts (8- or 16-bit UDH, or SAR) are reassembled. After 3 minutes whatever arrived is stored.
 - **API.**
   - Internal only, on the Docker network, not published; every call except `/health` needs the token.
-  - Endpoints: `/v1/submit`, `/v1/status`, `/v1/reload`, `/v1/gateways/{id}/reconnect`, `/v1/gateways/{id}/test`.
+  - Endpoints: `/v1/submit`, `/v1/status`, `/v1/reload`, `/v1/gateways/{id}/reconnect`, `/v1/gateways/{id}/test`
+    (test bind plus diagnosis; answers `diagnosis`, `tcp`, `enquire_link_probe`, `tls_handshake`, `alt_bind_tx`).
 
 ## PHP side (app/Sms/Smpp.php)
 
@@ -194,7 +240,9 @@ The raw `stat` is kept in `provider_status` and shown to admins with its meaning
   reached the SMSC (gateway not running, bridge down) back to pending and sent once it answers.
   Same environment as above.
 - `tests/Unit/SmppGatewayTest.php`: receipt mapping and its validation, id variants, settings
-  validation, timeout/deadline budget, error codes.
+  validation, timeout/deadline budget, error codes, the test-bind advice text.
+- `smpp-bridge` `BindTesterTest` (no database): refused port, silent port, session limit, an SMSC
+  without transceiver support, the simulator's good and wrong password.
 
 Running the bridge for these tests without Docker: `cd smpp-bridge && mvn -DskipTests package`, then
 `BACKEND_DB_HOST=127.0.0.1 BACKEND_DB_NAME=ellsms_test BACKEND_DB_USER=… BACKEND_DB_PASS=…

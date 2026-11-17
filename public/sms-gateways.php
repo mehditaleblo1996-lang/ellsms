@@ -360,13 +360,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             case 'smpp_test': {
                 $id = (int)$_POST['gateway_id'];
-                $r = smpp_bridge_request('POST', '/v1/gateways/' . $id . '/test', [], 30000);
+                // The bridge diagnoses a failed bind (TCP, own sessions, SMPP probe, TLS, transmitter
+                // bind), which takes up to ~50 s on a silent SMSC.
+                $r = smpp_bridge_request('POST', '/v1/gateways/' . $id . '/test', [], 75000);
                 if (!$r['ok']) {
                     flash('error', 'سرویس SMPP پاسخ نداد: ' . $r['error']);
-                } elseif (!empty($r['data']['ok'])) {
-                    flash('success', 'اتصال آزمایشی موفق بود (' . (string)($r['data']['bind_type'] ?? '') . '، ' . (int)($r['data']['elapsed_ms'] ?? 0) . ' میلی‌ثانیه؛ SMSC: ' . (string)($r['data']['smsc_system_id'] ?? '') . ').');
                 } else {
-                    flash('error', 'اتصال آزمایشی ناموفق: ' . (string)($r['data']['error'] ?? 'نامشخص'));
+                    [$ok, $text] = smpp_test_bind_message((array)$r['data']);
+                    flash($ok ? 'success' : 'error', $text);
                 }
                 break;
             }
