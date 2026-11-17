@@ -6,7 +6,7 @@ host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 | File | What |
 |---|---|
 | `public/landing.php` | The page: banner, hero, sections, and the small inline scripts that drive the sliders |
-| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav, footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page. The footer's trust badges (ساماندهی، اینماد and the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
+| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد and the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
 | `public/assets/css/style.css` | Base styles of the public pages, the banner and the other sections |
 | `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat of banner slide 7 (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
 | `public/assets/css/landing-products.css` | Banner slide 1 «یک مجموعه، پنج خدمت» (`.lp-suite-*`) and the «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
@@ -33,7 +33,8 @@ are not shown on this page.
 
 The nav button reads «ورود به پنل پیامک» (the site sells more than the SMS panel; «بازگشت به داشبورد»
 when logged in; the same label is used by the hero and the SMS product row). The nav links are «محصولات»
-(`/landing.php#products`), «سوالات» (`/landing.php#faq`), «راهنمای استفاده» and «تماس با ما».
+(`/landing.php#products`), «سوالات» (`/landing.php#faq`), «راهنمای استفاده», «درباره ما» (`/about`,
+with a submenu of that page's sections, see [about.md](about.md)) and «تماس با ما».
 
 The sections «از فایل مخاطبین تا گوشی مشتری» (`#flow`), «هر روش ارسالی که نیاز دارید» (`#features`),
 the «منشی هوشمند» seven-step showcase (`#ai-secretary`), «چرا به‌جای ارسال دستی؟» (`#compare`),

@@ -135,6 +135,39 @@
 })();
 
 (function () {
+  // «درباره ما» submenu. On a wide screen with a mouse it opens on hover; anywhere, the chevron
+  // button toggles it (aria-expanded). Escape closes it and returns focus to the button (and stops
+  // there, so a second Escape is what closes the phone menu); a click or focus outside closes it.
+  var wide = window.matchMedia ? window.matchMedia('(hover: hover) and (min-width: 981px)') : { matches: false };
+  document.querySelectorAll('[data-lp-drop]').forEach(function (drop) {
+    var btn = drop.querySelector('.lp-nav-drop-btn');
+    if (!btn) return;
+    var timer = null;
+    function set(open) {
+      clearTimeout(timer);
+      drop.classList.toggle('is-open', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    function isOpen() { return drop.classList.contains('is-open'); }
+    btn.addEventListener('click', function (e) { e.stopPropagation(); set(!isOpen()); });
+    drop.addEventListener('mouseenter', function () { if (wide.matches) set(true); });
+    drop.addEventListener('mouseleave', function () {
+      if (!wide.matches) return;
+      clearTimeout(timer);
+      timer = setTimeout(function () { set(false); }, 200);
+    });
+    drop.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && isOpen()) { e.stopPropagation(); set(false); btn.focus(); }
+    });
+    drop.addEventListener('focusout', function (e) {
+      if (wide.matches && isOpen() && !drop.contains(e.relatedTarget)) set(false);
+    });
+    document.addEventListener('click', function (e) { if (isOpen() && !drop.contains(e.target)) set(false); });
+    drop.querySelectorAll('.lp-nav-menu a').forEach(function (a) { a.addEventListener('click', function () { set(false); }); });
+  });
+})();
+
+(function () {
   var nav = document.querySelector('.lp-nav');
   if (!nav) return;
   var update = function () { nav.classList.toggle('is-scrolled', window.scrollY > 8); };

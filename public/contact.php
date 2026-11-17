@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = 'تماس با ما';
+$lpNavCurrent = 'contact';
 $metaDescription = 'راه‌های تماس با داتیس رایان گستر ایرانیان و فرم ارسال تیکت پشتیبانی.';
 $addresses = contact_lines('contact_address');
 $phones    = contact_lines('contact_phone');

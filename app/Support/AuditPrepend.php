@@ -69,6 +69,7 @@ if (PHP_SAPI !== 'cli') {
                 '/pricing.php' => '/pricing',
                 '/guide.php' => '/guide',
                 '/contact.php' => '/contact',
+                '/about.php' => '/about',
                 '/terms.php' => '/terms',
                 '/privacy.php' => '/privacy',
                 '/refund.php' => '/refund',
