@@ -42,6 +42,7 @@ require_once __DIR__ . '/../../app/Api/Handlers/WebEngage.php';
 require_once __DIR__ . '/../../app/Api/Handlers/SharedOtp.php';
 require_once __DIR__ . '/../../app/Api/Handlers/SharedService.php';
 require_once __DIR__ . '/../../app/Api/Handlers/Telegram.php';
+require_once __DIR__ . '/../../app/Api/Handlers/AimedBulk.php';
 
 Logger::setCliMirror(false); // pure JSON stdout even if this ever runs under `php -S` for testing (Phase 11 precedent)
 
@@ -120,6 +121,14 @@ $router->map('POST',  '/api/v1/telegram/messages',            'api_handle_telegr
 $router->map('GET',   '/api/v1/telegram/messages/{id}',       'api_handle_telegram_message_get', ApiScopes::TELEGRAM_READ);
 $router->map('POST',  '/api/v1/telegram/lookups',             'api_handle_telegram_lookup_create', ApiScopes::TELEGRAM_SEND);
 $router->map('GET',   '/api/v1/telegram/lookups/{id}',        'api_handle_telegram_lookup_get', ApiScopes::TELEGRAM_READ);
+// Aimed bulk «ارسال با کد پستی» from the platform's number bank (app/Api/Handlers/AimedBulk.php, docs/aimed-bulk.md).
+$router->map('GET',   '/api/v1/aimed/provinces',                'api_handle_aimed_provinces', ApiScopes::AIMED_READ);
+$router->map('GET',   '/api/v1/aimed/provinces/{code}/cities',  'api_handle_aimed_cities', ApiScopes::AIMED_READ);
+$router->map('POST',  '/api/v1/aimed/count',                    'api_handle_aimed_count', ApiScopes::AIMED_READ);
+$router->map('POST',  '/api/v1/aimed/requests',                 'api_handle_aimed_requests_create', ApiScopes::AIMED_SEND);
+$router->map('GET',   '/api/v1/aimed/requests/{id}',            'api_handle_aimed_requests_get', ApiScopes::AIMED_READ);
+$router->map('POST',  '/api/v1/aimed/requests/{id}/confirm',    'api_handle_aimed_requests_confirm', ApiScopes::AIMED_SEND);
+$router->map('POST',  '/api/v1/aimed/requests/{id}/cancel',     'api_handle_aimed_requests_cancel', ApiScopes::AIMED_SEND);
 // WebEngage SMS service provider endpoint (app/Api/Handlers/WebEngage.php, docs/webengage.md).
 $router->map('POST',  WEBENGAGE_API_PATH,                    'api_handle_webengage_sms', ApiScopes::MESSAGES_SEND);
 

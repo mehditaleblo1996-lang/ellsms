@@ -33,6 +33,15 @@
 declare(strict_types=1);
 
 const AIMED_BULK_SIM_TYPES = ['all', 'prepaid', 'postpaid'];
+/**
+ * «نحوه‌ی انتخاب شماره‌ها»: which of the matching numbers a request takes.
+ *   bank    from the start of the bank (import order, ORDER BY m.id): the same filters and cap pick
+ *           the same numbers every time
+ *   random  a random draw from the whole area (ORDER BY RAND())
+ *   range   rows range_from..range_to of the area in bank order (OFFSET range_from - 1); the cap is
+ *           the range's length
+ */
+const AIMED_BULK_PICKS = ['bank', 'random', 'range'];
 const AIMED_BULK_STAGE_BATCH = 2000;
 const AIMED_BULK_LEASE_SECONDS = 300;
 /** A finished count of the same criteria is shown again for this long instead of recounting. */
@@ -154,20 +163,46 @@ function aimed_bulk_criteria(array $in): array {
     $sim = (string)($in['sim'] ?? 'all');
     if (!in_array($sim, AIMED_BULK_SIM_TYPES, true)) $sim = 'all';
 
+    // «نحوه‌ی انتخاب شماره‌ها». The older «انتخاب تصادفی شماره‌ها» checkbox (random=1) still means 'random'.
+    $pick = (string)($in['pick'] ?? '');
+    if ($pick === '') $pick = !empty($in['random']) && (string)$in['random'] !== '0' ? 'random' : 'bank';
+    if (!in_array($pick, AIMED_BULK_PICKS, true)) {
+        return ['ok' => false, 'error' => 'نحوه‌ی انتخاب شماره‌ها نامعتبر است (bank، random یا range).'];
+    }
+    $rangeFrom = $rangeTo = 0;
+    if ($pick === 'range') {
+        $from = $digits('range_from');
+        $to = $digits('range_to');
+        if ($from === '' || $to === '' || strlen($from) > 9 || strlen($to) > 9 || (int)$from < 1 || (int)$to < (int)$from) {
+            return ['ok' => false, 'error' => 'بازه نامعتبر است: «از ردیف» و «تا ردیف» را وارد کنید (مثلاً ۱۰۰۰۱ تا ۲۰۰۰۰) و «تا» از «از» کمتر نباشد.'];
+        }
+        $rangeFrom = (int)$from;
+        $rangeTo = (int)$to;
+    }
+
     $criteria = [
         'postal_code'   => $postal,
         'province_code' => max(0, (int)$digits('province_code')),
         'city_code'     => max(0, (int)$digits('city_code')),
         'prefix'        => $prefix,
         'sim'           => $sim,
-        // «انتخاب تصادفی شماره‌ها»: which of the matching numbers a capped request takes. Not a filter:
-        // it changes neither the count nor aimed_bulk_where(), only the staging order.
-        'random'        => !empty($in['random']) && (string)$in['random'] !== '0',
+        // How the matching numbers are picked. Not filters: they change neither the count nor
+        // aimed_bulk_where(), only which rows of the area the snapshot takes (aimed_bulk_stage_request()).
+        'pick'          => $pick,
+        'range_from'    => $rangeFrom,
+        'range_to'      => $rangeTo,
     ];
     if ($postal === '' && $criteria['province_code'] === 0 && $criteria['city_code'] === 0 && $prefix === '') {
         return ['ok' => false, 'error' => 'دست‌کم یکی از کد پستی، استان، شهر یا پیش‌شماره را مشخص کنید.'];
     }
     return ['ok' => true, 'criteria' => $criteria];
+}
+
+/** The pick mode of a stored criteria set; requests made with the older checkbox carry random=true. */
+function aimed_bulk_pick(array $criteria): string {
+    $pick = (string)($criteria['pick'] ?? '');
+    if (in_array($pick, AIMED_BULK_PICKS, true)) return $pick;
+    return !empty($criteria['random']) ? 'random' : 'bank';
 }
 
 /** @return array{0:string,1:list<string|int>} WHERE fragment over alias m, and its parameters */
@@ -339,7 +374,12 @@ function aimed_bulk_criteria_label(array $criteria): string {
     if (($criteria['prefix'] ?? '') !== '') $parts[] = 'پیش‌شماره 0' . substr((string)$criteria['prefix'], 2);
     if (($criteria['sim'] ?? 'all') === 'prepaid') $parts[] = 'اعتباری';
     if (($criteria['sim'] ?? 'all') === 'postpaid') $parts[] = 'دائمی';
-    if (!empty($criteria['random'])) $parts[] = 'انتخاب تصادفی';
+    $pick = aimed_bulk_pick($criteria);
+    if ($pick === 'random') $parts[] = 'انتخاب تصادفی';
+    if ($pick === 'range') {
+        $parts[] = 'ردیف ' . to_persian_digits(number_format((int)($criteria['range_from'] ?? 0)))
+            . ' تا ' . to_persian_digits(number_format((int)($criteria['range_to'] ?? 0)));
+    }
     return implode('، ', $parts);
 }
 
@@ -386,6 +426,54 @@ function aimed_bulk_list(array $user, int $limit = 100): array {
 }
 
 /**
+ * A request as the public API shows it (app/Api/Handlers/AimedBulk.php). Ids are strings, money is
+ * Rial. The numbers themselves are never part of it: they are the platform's bank, and the bulk job's
+ * state route (GET /api/v1/bulk-jobs/{id}/state) shows them masked.
+ */
+function aimed_bulk_request_public(array $r): array {
+    $criteria = json_decode((string)$r['criteria_json'], true) ?: [];
+    $pick = aimed_bulk_pick($criteria);
+    $job = null;
+    if ($r['bulk_job_id'] !== null && in_array((string)$r['status'], ['confirmed'], true)) {
+        $st = db()->prepare('SELECT status, total_rows, sent_rows, failed_rows FROM ellsms_bulk_jobs WHERE id = ?');
+        $st->execute([(int)$r['bulk_job_id']]);
+        $j = $st->fetch();
+        if ($j) $job = ['status' => (string)$j['status'], 'total' => (int)$j['total_rows'], 'sent' => (int)$j['sent_rows'], 'failed' => (int)$j['failed_rows']];
+    }
+    $time = static fn($v): ?string => $v === null ? null : date('c', strtotime((string)$v));
+    return [
+        'id'            => (string)$r['id'],
+        'status'        => (string)$r['status'],
+        'filters'       => [
+            'postal_code'   => (string)($criteria['postal_code'] ?? ''),
+            'province_code' => (int)($criteria['province_code'] ?? 0) ?: null,
+            'city_code'     => (int)($criteria['city_code'] ?? 0) ?: null,
+            'prefix'        => ($criteria['prefix'] ?? '') !== '' ? '0' . substr((string)$criteria['prefix'], 2) : '',
+            'sim'           => (string)($criteria['sim'] ?? 'all'),
+        ],
+        'pick'          => $pick,
+        'range_from'    => $pick === 'range' ? (int)$criteria['range_from'] : null,
+        'range_to'      => $pick === 'range' ? (int)$criteria['range_to'] : null,
+        'count'         => $r['max_count'] !== null ? (int)$r['max_count'] : null,
+        'originator'    => (string)$r['originator'],
+        'text'          => (string)$r['content'],
+        'title'         => (string)$r['title'],
+        'matched'       => (int)$r['matched_rows'],
+        'staged'        => (int)$r['staged_rows'],
+        'blacklisted'   => (int)$r['blacklisted_rows'],
+        'unpriced'      => (int)$r['unpriced_rows'],
+        'surcharge_percent' => (float)$r['surcharge_percent'],
+        'total_cost'    => in_array((string)$r['status'], ['priced', 'confirmed'], true) ? (int)$r['total_cost'] : null,
+        'bulk_job_id'   => $r['bulk_job_id'] !== null && (string)$r['status'] === 'confirmed' ? (string)$r['bulk_job_id'] : null,
+        'job'           => $job,
+        'error'         => $r['error'] !== null ? (string)$r['error'] : null,
+        'created_at'    => $time($r['created_at']),
+        'priced_at'     => $time($r['priced_at']),
+        'confirmed_at'  => $time($r['confirmed_at']),
+    ];
+}
+
+/**
  * Validates the request and queues it for staging. Nothing is priced or reserved here.
  *
  * @return array{ok:bool, id?:int, error?:string}
@@ -418,7 +506,13 @@ function aimed_bulk_create(array $user, array $criteria, string $originator, str
     // 'failed', with the reason, when it is empty or above the limit without a cap.
     $cap = ($maxCount !== null && $maxCount > 0) ? $maxCount : null;
     $limit = aimed_bulk_max_recipients();
-    if ($cap !== null && $cap > $limit) {
+    if (aimed_bulk_pick($criteria) === 'range') {
+        // A range is its own cap: rows range_from..range_to; «سقف تعداد» is ignored.
+        $cap = (int)$criteria['range_to'] - (int)$criteria['range_from'] + 1;
+        if ($cap > $limit) {
+            return ['ok' => false, 'error' => 'طول بازه بیشتر از حد مجاز است: هر درخواست حداکثر ' . to_persian_digits(number_format($limit)) . ' شماره می‌تواند داشته باشد.'];
+        }
+    } elseif ($cap !== null && $cap > $limit) {
         return ['ok' => false, 'error' => 'سقف تعداد بیشتر از حد مجاز است: هر درخواست حداکثر ' . to_persian_digits(number_format($limit)) . ' شماره می‌تواند داشته باشد.'];
     }
 
@@ -516,8 +610,11 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
         // Bank order (import order) by default: the same filters and cap pick the same numbers every
         // time. «انتخاب تصادفی» draws them at random from the whole area instead; measured on the
         // production bank, ORDER BY RAND() over a 0912 area cost about the same as ORDER BY m.id.
-        $order = !empty($criteria['random']) ? 'RAND()' : 'm.id';
-        $jobId = db_transaction(function (PDO $db) use ($req, $where, $params, $id, $order): int {
+        $pick = aimed_bulk_pick($criteria);
+        $order = $pick === 'random' ? 'RAND()' : 'm.id';
+        // «بازه»: rows range_from..range_to of the area in bank order. max_count is the range's length.
+        $offset = $pick === 'range' ? max(0, (int)($criteria['range_from'] ?? 1) - 1) : 0;
+        $jobId = db_transaction(function (PDO $db) use ($req, $where, $params, $id, $order, $offset): int {
             $jobId = $req['bulk_job_id'] !== null ? (int)$req['bulk_job_id'] : 0;
             if ($jobId === 0) {
                 $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, organization_id, type, title, originator, status, total_rows, recipients_masked)
@@ -527,7 +624,7 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
             }
             $db->prepare('DELETE FROM ellsms_aimed_bulk_targets WHERE request_id = ?')->execute([$id]);
             $ins = $db->prepare("INSERT INTO ellsms_aimed_bulk_targets (request_id, mobile)
-                                 SELECT ?, m.mobile FROM ellsms_aimed_mobiles m WHERE {$where} ORDER BY {$order} LIMIT " . max(1, (int)$req['max_count']));
+                                 SELECT ?, m.mobile FROM ellsms_aimed_mobiles m WHERE {$where} ORDER BY {$order} LIMIT " . max(1, (int)$req['max_count']) . ($offset > 0 ? ' OFFSET ' . $offset : ''));
             $ins->execute(array_merge([$id], $params));
             $db->prepare('UPDATE ellsms_aimed_bulk_requests SET bulk_job_id = ?, targets_ready = 1, matched_rows = ?, cursor_id = 0 WHERE id = ?')
                ->execute([$jobId, $ins->rowCount(), $id]);
@@ -626,14 +723,16 @@ function aimed_bulk_finish_staging(int $id, int $jobId): void {
     $sum->execute([$jobId]);
     $totals = $sum->fetch();
     $rows = (int)$totals['cnt'];
-    $matched = $db->prepare('SELECT matched_rows FROM ellsms_aimed_bulk_requests WHERE id = ?');
+    $matched = $db->prepare('SELECT matched_rows, criteria_json FROM ellsms_aimed_bulk_requests WHERE id = ?');
     $matched->execute([$id]);
-    $noneMatched = (int)$matched->fetchColumn() === 0;
-    db_transaction(function (PDO $db) use ($id, $jobId, $rows, $totals, $noneMatched): void {
+    $state = $matched->fetch() ?: ['matched_rows' => 0, 'criteria_json' => '{}'];
+    $noneMatched = (int)$state['matched_rows'] === 0;
+    $inRange = aimed_bulk_pick(json_decode((string)$state['criteria_json'], true) ?: []) === 'range';
+    db_transaction(function (PDO $db) use ($id, $jobId, $rows, $totals, $noneMatched, $inRange): void {
         if ($rows === 0) {
             $done = $db->prepare("UPDATE ellsms_aimed_bulk_requests SET status = 'failed', error = ?, finished_at = NOW() WHERE id = ? AND status = 'staging'");
             $done->execute([$noneMatched
-                ? 'هیچ شماره‌ای با این مشخصات در بانک شماره نیست.'
+                ? ($inRange ? 'هیچ شماره‌ای در این بازه نیست (شروع بازه از تعداد شماره‌های این مشخصات بیشتر است).' : 'هیچ شماره‌ای با این مشخصات در بانک شماره نیست.')
                 : 'هیچ شماره‌ی قابل‌ارسالی باقی نماند (همه در لیست سیاه بودند یا قیمت نداشتند).', $id]);
             if ($done->rowCount() === 1) {
                 $db->prepare("UPDATE ellsms_bulk_jobs SET status = 'cancelled' WHERE id = ? AND status = 'staged'")->execute([$jobId]);

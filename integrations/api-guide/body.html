@@ -61,6 +61,7 @@ Content-Type: application/json
   <tr><td><span class="c">webhooks:read</span> / <span class="c">webhooks:write</span></td><td>مدیریت وبهوک‌ها</td></tr>
   <tr><td><span class="c">shared:send</span></td><td>ارسال با خط اشتراکی و پیگیری آن (بخش ۹)</td></tr>
   <tr><td><span class="c">telegram:send</span> / <span class="c">telegram:read</span></td><td>ارسال و بررسی شماره با اکانت تلگرام خودتان / خواندن وضعیت‌ها (بخش ۹)</td></tr>
+  <tr><td><span class="c">aimed:send</span> / <span class="c">aimed:read</span></td><td>ارسال با کد پستی: ثبت، تأیید و لغو درخواست / استان‌ها، شمارش و وضعیت درخواست (بخش ۹)</td></tr>
 </table>
 
 <h3>محدودیت آی‌پی (اختیاری)</h3>
@@ -437,6 +438,12 @@ curl "https://datisrayan.com/api/v1/bulk-jobs/91/state?state=delivered" \
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/telegram/messages/{id}</span></td><td><span class="c">telegram:read</span></td><td>وضعیت یک پیام تلگرام.</td></tr>
   <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/telegram/lookups</span></td><td><span class="c">telegram:send</span></td><td>بررسی اینکه کدام شماره‌ها تلگرام دارند.</td></tr>
   <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/telegram/lookups/{id}</span></td><td><span class="c">telegram:read</span></td><td>نتیجه‌ی بررسی شماره‌ها.</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/aimed/provinces</span></td><td><span class="c">aimed:read</span></td><td>کد و نام استان‌ها برای ارسال با کد پستی (و <span class="c">/aimed/provinces/{code}/cities</span> برای شهرها).</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/aimed/count</span></td><td><span class="c">aimed:read</span></td><td>شمارش شماره‌های یک محدوده (پایین).</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/aimed/requests</span></td><td><span class="c">aimed:send</span></td><td>ثبت درخواست ارسال با کد پستی (پایین).</td></tr>
+  <tr><td class="ltr"><span class="m get">GET</span> <span class="c">/aimed/requests/{id}</span></td><td><span class="c">aimed:read</span></td><td>وضعیت، تعداد و هزینه‌ی درخواست.</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/aimed/requests/{id}/confirm</span></td><td><span class="c">aimed:send</span></td><td>تأیید و ارسال (هزینه در این لحظه رزرو می‌شود).</td></tr>
+  <tr><td class="ltr"><span class="m post">POST</span> <span class="c">/aimed/requests/{id}/cancel</span></td><td><span class="c">aimed:send</span></td><td>لغو پیش از تأیید.</td></tr>
 </table>
 
 <h3>ارسال با خط اشتراکی</h3>
@@ -483,6 +490,35 @@ curl -X POST https://datisrayan.com/api/v1/telegram/messages \
 </pre></div>
 <p>وضعیت‌ها: <span class="c">queued</span>، <span class="c">sending</span>، <span class="c">sent</span>، <span class="c">read</span> (خوانده شد)، <span class="c">failed</span> (با <span class="c">error_code</span> مثل <span class="c">not_on_telegram</span>، <span class="c">privacy_restricted</span>، <span class="c">account_limited</span>). کد خطای <span class="c">402</span> یعنی اعتبار کافی نیست و <span class="c">409</span> یعنی اکانت تلگرام فعالی ندارید.</p>
 <p class="note">اگر کد تایید ناموفق شد یا در زمان مورد نظر شما <span class="c">sent</span> نشد، آن را با پیامک بفرستید. ارسال انبوه یا تبلیغاتی از اکانت شخصی ممکن است باعث مسدود شدن آن اکانت از طرف تلگرام شود. هزینه فقط بابت پیام‌های ارسال‌شده کم می‌شود.</p>
+
+<h3>ارسال با کد پستی (بانک شماره‌ی سامانه)</h3>
+<p>یک پیام برای مشترکان یک محدوده از بانک شماره‌ی سامانه: بر اساس کد پستی (یا چند رقم اول آن)، استان، شهر، پیش‌شماره و نوع سیم‌کارت. شماره‌ها متعلق به سامانه‌اند و در هیچ پاسخی نمی‌آیند؛ در وضعیت تحویل به شکل ماسک‌شده (<span class="c">0912***4567</span>) دیده می‌شوند. سرویس باید فعال باشد و معمولاً احراز هویت (KYC) لازم است. روند: ثبت درخواست ← آماده‌سازی و قیمت‌گذاری در پس‌زمینه (وضعیت <span class="c">staging</span> سپس <span class="c">priced</span>) ← تأیید. پیش از تأیید هیچ هزینه‌ای رزرو نمی‌شود.</p>
+<table class="t">
+  <tr><th style="width:24%">فیلد</th><th style="width:13%">وضعیت</th><th>توضیح</th></tr>
+  <tr><td><span class="c">postal_code</span>، <span class="c">province_code</span>، <span class="c">city_code</span>، <span class="c">prefix</span></td><td class="req">دست‌کم یکی</td><td>کد پستی ۳ تا ۱۰ رقمی (ابتدای کد)، کد استان و شهر (از <span class="c">GET /aimed/provinces</span>) و پیش‌شماره مثل <span class="c">"0912"</span>.</td></tr>
+  <tr><td><span class="c">sim</span></td><td class="opt">اختیاری</td><td><span class="c">all</span> (پیش‌فرض)، <span class="c">prepaid</span> یا <span class="c">postpaid</span>.</td></tr>
+  <tr><td><span class="c">pick</span></td><td class="opt">اختیاری</td><td>نحوه‌ی انتخاب: <span class="c">bank</span> (پیش‌فرض؛ از ابتدای بانک، با همان فیلترها و همان سقف هر بار همان شماره‌ها)، <span class="c">random</span> (تصادفی از کل محدوده) یا <span class="c">range</span> (بازه).</td></tr>
+  <tr><td><span class="c">range_from</span>، <span class="c">range_to</span></td><td class="opt">برای range</td><td>ردیف‌های نتیجه به ترتیب بانک؛ مثلاً بار اول <span class="c">1</span> تا <span class="c">10000</span> و بار بعد <span class="c">10001</span> تا <span class="c">20000</span>. طول بازه همان سقف تعداد است.</td></tr>
+  <tr><td><span class="c">count</span></td><td class="opt">اختیاری</td><td>سقف تعداد برای <span class="c">bank</span> و <span class="c">random</span>؛ نفرستید تا کل محدوده (تا حداکثر هر درخواست) ارسال شود.</td></tr>
+  <tr><td><span class="c">originator</span></td><td class="req">اجباری</td><td>خط ارسالی که مجاز به استفاده از آن هستید.</td></tr>
+  <tr><td><span class="c">text</span></td><td class="req">اجباری</td><td>متن پیام.</td></tr>
+  <tr><td><span class="c">title</span>، <span class="c">client_message_id</span></td><td class="opt">اختیاری</td><td>عنوان، و جلوگیری از ثبت تکراری مثل بخش ۸.</td></tr>
+</table>
+<div class="code"><div class="lbl">REQUEST</div><pre>
+curl -X POST https://datisrayan.com/api/v1/aimed/requests \
+  -H "Authorization: Bearer $DATIS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "prefix": "0912", "postal_code": "131", "pick": "range", "range_from": 1, "range_to": 10000,
+        "originator": "3000123456", "text": "تخفیف ویژه‌ی این هفته" }'
+</pre></div>
+<div class="code"><div class="lbl">202 · سپس GET /AIMED/REQUESTS/{ID}</div><pre>
+{ "data": { "id": "512", "status": "priced", "pick": "range", "range_from": 1, "range_to": 10000,
+            "count": 10000, "matched": 10000, "staged": 9874, "blacklisted": 126,
+            "total_cost": 12342500, "bulk_job_id": null, "error": null } }
+</pre></div>
+<p>وضعیت را با <span class="c">GET /aimed/requests/{id}</span> بپرسید تا <span class="c">priced</span> شود (هزینه در <span class="c">total_cost</span>، ریال) یا <span class="c">failed</span> (دلیل در <span class="c">error</span>؛ مثلاً محدوده خالی است، بدون سقف از حداکثر هر درخواست بزرگ‌تر است، یا شروع بازه بعد از آخرین شماره است). سپس <span class="c">POST /aimed/requests/{id}/confirm</span> هزینه را رزرو و ارسال را شروع می‌کند و <span class="c">bulk_job_id</span> برمی‌گردد؛ وضعیت تحویل هر گیرنده را با <span class="c">GET /bulk-jobs/{bulk_job_id}/state</span> (دسترسی <span class="c">bulk:read</span>، شماره‌ها ماسک‌شده) بخوانید.</p>
+<p><b>شمارش:</b> <span class="c">POST /aimed/count</span> با همان فیلترها، شمارش را در پس‌زمینه شروع می‌کند و تا آماده شدن پاسخ <span class="c">202</span> با <span class="c">"status": "counting"</span> می‌دهد؛ همان درخواست را چند ثانیه بعد دوباره بفرستید تا <span class="c">200</span> با <span class="c">matched</span> بیاید. اگر <span class="c">more_than_limit</span> برابر <span class="c">true</span> باشد، محدوده از حداکثر هر درخواست (<span class="c">limit</span>) بزرگ‌تر است.</p>
+<p class="note">در حالت <span class="c">range</span> ردیف‌ها بر اساس همه‌ی فیلترها شمرده می‌شوند؛ برای بازه‌های پشت‌سرهم فیلترها را عوض نکنید. اگر بانک شماره بین دو درخواست به‌روزرسانی شود، ممکن است چند ردیف جابه‌جا شوند. کد <span class="c">409</span> یعنی درخواست در وضعیت مناسب برای تأیید یا لغو نیست و <span class="c">422</span> یعنی اعتبار، سهمیه یا ورودی مشکل دارد.</p>
 
 <h3>نمونه: موجودی اعتبار</h3>
 <div class="code"><div class="lbl">GET /BALANCE · 200</div><pre>

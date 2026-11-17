@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit((int)$me['id'], 'aimed_bulk.settings', 'enabled=' . (!empty($_POST['aimed_bulk_enabled']) ? 1 : 0) . ' surcharge=' . aimed_bulk_surcharge_percent());
         flash('success', 'تنظیمات ارسال با کد پستی ذخیره شد.');
     } elseif ($action === 'count' || $action === 'create') {
-        $form = array_intersect_key($_POST, array_flip(['postal_code', 'province_code', 'city_code', 'prefix', 'sim', 'random', 'originator', 'content', 'count', 'title']));
+        $form = array_intersect_key($_POST, array_flip(['postal_code', 'province_code', 'city_code', 'prefix', 'sim', 'pick', 'range_from', 'range_to', 'originator', 'content', 'count', 'title']));
         $_SESSION['aimed_bulk_form'] = $form;
         $c = aimed_bulk_criteria($form);
         if (!$c['ok']) {
@@ -145,7 +145,7 @@ require __DIR__ . '/../app/views/header.php';
 <?php if ($canSend): ?>
 <div class="card" style="margin-top:18px">
   <h2>درخواست جدید</h2>
-  <p class="hint">کد پستی را کامل یا فقط چند رقم اول آن را وارد کنید (مثلاً ۱۳۱ برای همه‌ی کدهای پستی که با ۱۳۱ شروع می‌شوند). فیلترهای دیگر اختیاری‌اند و با هم ترکیب می‌شوند. با «سقف تعداد»، شماره‌ها به ترتیب از ابتدای بانک شماره برداشته می‌شوند؛ با «انتخاب تصادفی شماره‌ها» از کل محدوده به‌صورت تصادفی انتخاب می‌شوند.</p>
+  <p class="hint">کد پستی را کامل یا فقط چند رقم اول آن را وارد کنید (مثلاً ۱۳۱ برای همه‌ی کدهای پستی که با ۱۳۱ شروع می‌شوند). فیلترهای دیگر اختیاری‌اند و با هم ترکیب می‌شوند. «نحوه‌ی انتخاب شماره‌ها»: «از ابتدای بانک» شماره‌ها را به ترتیب از اول برمی‌دارد (درخواست بعدی با همین مشخصات همان شماره‌ها را می‌گیرد)، «تصادفی» از کل محدوده به‌صورت تصادفی انتخاب می‌کند، و «بازه» ردیف‌های مشخصی از نتیجه را برمی‌دارد؛ مثلاً بار اول ۱ تا ۱۰۰۰۰ و بار بعد ۱۰۰۰۱ تا ۲۰۰۰۰.</p>
   <form method="post" id="ab-form">
     <?= csrf_field() ?>
     <div class="toolbar">
@@ -172,8 +172,14 @@ require __DIR__ . '/../app/views/header.php';
           <select name="originator"><?php foreach ($originators as $o): ?><option value="<?= e($o) ?>"<?= $fv('originator') === $o ? ' selected' : '' ?>><?= e($o) ?></option><?php endforeach; ?></select>
         <?php endif; ?>
       </label>
-      <label>سقف تعداد (خالی = همه) <input type="number" min="0" name="count" class="ltr" value="<?= e($fv('count')) ?>"></label>
-      <label title="بدون این گزینه، شماره‌ها به ترتیب از ابتدای بانک شماره برداشته می‌شوند و درخواست بعدی با همین مشخصات همان شماره‌ها را می‌گیرد."><input type="checkbox" name="random" value="1"<?= $fv('random') !== '' ? ' checked' : '' ?>> انتخاب تصادفی شماره‌ها</label>
+      <label>نحوه‌ی انتخاب شماره‌ها
+        <select name="pick" id="ab-pick">
+          <?php foreach (['bank' => 'از ابتدای بانک', 'random' => 'تصادفی', 'range' => 'بازه (از ردیف … تا ردیف …)'] as $k => $label): ?><option value="<?= $k ?>"<?= $fv('pick', 'bank') === $k ? ' selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
+        </select>
+      </label>
+      <label class="ab-not-range">سقف تعداد (خالی = همه) <input type="number" min="0" name="count" id="ab-count-cap" class="ltr" value="<?= e($fv('count')) ?>"></label>
+      <label class="ab-range">از ردیف <input type="number" min="1" name="range_from" class="ltr" placeholder="10001" value="<?= e($fv('range_from')) ?>"></label>
+      <label class="ab-range">تا ردیف <input type="number" min="1" name="range_to" class="ltr" placeholder="20000" value="<?= e($fv('range_to')) ?>"></label>
       <label style="flex:1 1 220px">عنوان (اختیاری) <input type="text" name="title" maxlength="160" style="width:100%" value="<?= e($fv('title')) ?>"></label>
     </div>
     <label style="display:block">متن پیام <textarea name="content" rows="4" style="width:100%"><?= e($fv('content')) ?></textarea></label>
@@ -186,6 +192,18 @@ require __DIR__ . '/../app/views/header.php';
   <?php endif; ?>
 </div>
 <script>
+// «بازه» has its own from/to fields and no «سقف تعداد» (the range's length is the cap).
+(function () {
+  var pick = document.getElementById('ab-pick');
+  if (!pick) return;
+  function sync() {
+    var range = pick.value === 'range';
+    document.querySelectorAll('.ab-range').forEach(function (el) { el.style.display = range ? '' : 'none'; });
+    document.querySelectorAll('.ab-not-range').forEach(function (el) { el.style.display = range ? 'none' : ''; });
+  }
+  pick.addEventListener('change', sync);
+  sync();
+})();
 // «شمارش شماره‌ها» runs in the worker: poll its state and show the result in place.
 (function () {
   var box = document.getElementById('ab-count');

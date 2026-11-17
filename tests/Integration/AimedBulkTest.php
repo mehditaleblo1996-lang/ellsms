@@ -170,11 +170,22 @@ final class AimedBulkTest extends IntegrationTestCase
         self::assertFalse(aimed_bulk_criteria(['sim' => 'prepaid'])['ok'], 'the whole bank is not a target');
         self::assertFalse(aimed_bulk_criteria(['postal_code' => '13'])['ok']);
         self::assertFalse(aimed_bulk_criteria(['prefix' => '021'])['ok']);
-        self::assertFalse($this->criteria(['postal_code' => '131'])['random'], 'bank order unless asked');
-        $random = $this->criteria(['postal_code' => '131', 'random' => '1']);
-        self::assertTrue($random['random']);
+        self::assertSame('bank', $this->criteria(['postal_code' => '131'])['pick'], 'bank order unless asked');
+        $random = $this->criteria(['postal_code' => '131', 'pick' => 'random']);
+        self::assertSame('random', $random['pick']);
+        self::assertSame('random', $this->criteria(['postal_code' => '131', 'random' => '1'])['pick'], 'the older checkbox still means random');
+        self::assertSame('random', aimed_bulk_pick(['random' => true]), 'requests stored by the checkbox read as random');
         self::assertStringContainsString('انتخاب تصادفی', aimed_bulk_criteria_label($random));
         self::assertSame(5, aimed_bulk_count($random), 'random picking is not a filter');
+
+        $range = $this->criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '۲', 'range_to' => '3']);
+        self::assertSame(['range', 2, 3], [$range['pick'], $range['range_from'], $range['range_to']]);
+        self::assertStringContainsString('ردیف ۲ تا ۳', aimed_bulk_criteria_label($range));
+        self::assertSame(5, aimed_bulk_count($range), 'a range is not a filter either');
+        self::assertFalse(aimed_bulk_criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '5', 'range_to' => '4'])['ok'], 'to before from');
+        self::assertFalse(aimed_bulk_criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '0', 'range_to' => '4'])['ok'], 'rows start at 1');
+        self::assertFalse(aimed_bulk_criteria(['postal_code' => '131', 'pick' => 'range', 'range_to' => '4'])['ok'], 'from is required');
+        self::assertFalse(aimed_bulk_criteria(['postal_code' => '131', 'pick' => 'sideways'])['ok']);
     }
 
     public function testCountsCombineFiltersAndSkipBlocklistedNumbers(): void
@@ -267,7 +278,7 @@ final class AimedBulkTest extends IntegrationTestCase
         $area = ['989120000001', '989120000002', '989120000003', '989120000004', '989120000005'];
         $picks = [];
         for ($i = 0; $i < 25; $i++) {
-            $req = $this->createAndStage($this->criteria(['postal_code' => '131', 'random' => '1']), 3);
+            $req = $this->createAndStage($this->criteria(['postal_code' => '131', 'pick' => 'random']), 3);
             self::assertSame('priced', $req['status']);
             $mobiles = array_column($this->items((int)$req['bulk_job_id']), 'mobile');
             self::assertCount(3, array_unique($mobiles));
@@ -278,6 +289,31 @@ final class AimedBulkTest extends IntegrationTestCase
         // Bank order would give 0001-0003 every time; 25 random draws of 3 out of 5 all landing on one
         // set has a probability of (1/10)^24.
         self::assertGreaterThan(1, count($picks), 'random draws differ between requests');
+    }
+
+    public function testRangePicksThoseRowsOfTheAreaInBankOrder(): void
+    {
+        // postal 131: five sendable numbers, 0001..0005 in bank order.
+        $first = $this->createAndStage($this->criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '1', 'range_to' => '2']));
+        self::assertSame(['priced', 2], [$first['status'], (int)$first['max_count']], 'the range is the cap');
+        self::assertSame(['989120000001', '989120000002'], array_column($this->items((int)$first['bulk_job_id']), 'mobile'));
+
+        $next = $this->createAndStage($this->criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '3', 'range_to' => '4']), 99);
+        self::assertSame(['989120000003', '989120000004'], array_column($this->items((int)$next['bulk_job_id']), 'mobile'), 'the next range continues; «سقف تعداد» is ignored');
+
+        $tail = $this->createAndStage($this->criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '4', 'range_to' => '10']));
+        self::assertSame(['989120000004', '989120000005'], array_column($this->items((int)$tail['bulk_job_id']), 'mobile'), 'a range past the end sends what there is');
+
+        $r = aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '6', 'range_to' => '9']), $this->line, 'سلام');
+        self::assertTrue($r['ok'], $r['error'] ?? '');
+        $this->stageAll();
+        $req = $this->request((int)$r['id']);
+        self::assertSame('failed', $req['status']);
+        self::assertStringContainsString('هیچ شماره‌ای در این بازه نیست', (string)$req['error']);
+
+        set_setting('aimed_bulk_max_recipients', '3');
+        $tooLong = aimed_bulk_create($this->user(), $this->criteria(['postal_code' => '131', 'pick' => 'range', 'range_from' => '1', 'range_to' => '4']), $this->line, 'سلام');
+        self::assertFalse($tooLong['ok'], 'a range longer than the per-request limit is refused at once');
     }
 
     public function testAServiceLineSkipsTheCustomerBlacklist(): void

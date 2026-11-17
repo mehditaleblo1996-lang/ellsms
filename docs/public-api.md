@@ -85,6 +85,8 @@ create a key at all** — these are two separate, deliberately independent layer
 | `voice:send` | `POST /voice/messages`, `POST /voice/messages/{id}/cancel`, `POST /voice/otp`, `POST /voice/tts` |
 | `voice:read` | `GET /voice/files`, `GET /voice/messages/{id}` |
 | `otp:send` | `POST /otp`, `GET /otp/templates`, `GET /otp/{id}`, `GET /otp/{id}/state` |
+| `aimed:send` | `POST /aimed/requests`, `POST /aimed/requests/{id}/confirm`, `POST /aimed/requests/{id}/cancel` |
+| `aimed:read` | `GET /aimed/provinces`, `GET /aimed/provinces/{code}/cities`, `POST /aimed/count`, `GET /aimed/requests/{id}` |
 
 An unrecognized scope string is rejected outright at key-creation time — never silently dropped, and
 never accepted as a partial match. A request against an endpoint the key wasn't granted returns
@@ -595,6 +597,43 @@ the `telegram.message.sent` / `.read` / `.failed` webhooks. Full behaviour: `doc
 
 An OTP that fails (any `error_code`, e.g. `account_limited`, `not_on_telegram`) or is not `sent` within
 your timeout should be sent by SMS instead.
+
+### Aimed bulk «ارسال با کد پستی» — scopes `aimed:send` / `aimed:read`
+One message to subscribers of the platform's own number bank, picked by postal code, province / city,
+number prefix and SIM type. Same flow as the panel's /messages/aimed: create → the worker stages and
+prices it → confirm. Nothing is reserved before confirm. Available while the admin has the service
+switched on (otherwise `503`); the KYC gate `aimed_bulk` applies. The numbers are the platform's and
+never appear in these routes; after confirm, `GET /bulk-jobs/{bulk_job_id}/state` (`bulk:read`) gives
+each recipient's delivery state with the number masked (`0912***4567`). Full behaviour:
+`docs/aimed-bulk.md`.
+
+Filters (in the bodies below): `postal_code` (3–10 digits, a prefix), `province_code`, `city_code`
+(codes from the two list routes), `prefix` (`"0912"`), `sim` (`all`|`prepaid`|`postpaid`). At least one
+of postal code, province, city or prefix. Pick mode `pick`: `bank` (default — from the start of the bank;
+the same filters and `count` give the same numbers every time), `random` (a random draw from the whole
+area) or `range` with `range_from` / `range_to` (rows of the area in bank order, e.g. `1`–`10000` and
+next time `10001`–`20000`; the range's length is the cap and `count` is ignored; a range past the end
+sends what there is, a range that starts past it ends `failed`).
+
+- `GET /aimed/provinces` — `[{"code", "name"}]`; `GET /aimed/provinces/{code}/cities` — the same for its cities
+- `POST /aimed/count` — the filters → `202 {"status": "counting", …}` while the count runs in the
+  background; send the same body again until `200 {"status": "done", "matched": n, "more_than_limit": bool, "limit"}`
+  (`matched` stops at the per-request `limit`; `more_than_limit: true` means the area is larger).
+  `"status": "failed"` with `error` when the area is too broad to count within 60 s. A finished count
+  is reused for an hour.
+- `POST /aimed/requests` — the filters, `pick` (+ `range_from`/`range_to`), `count` (optional cap for
+  `bank`/`random`), `originator` (a line the key's owner may use), `text`, `title`, `client_message_id`
+  → `202` with the request (`status: "staging"`). `422` for invalid filters, a cap or range longer than
+  the per-request limit, a line that may not be used, prohibited content or the KYC gate.
+- `GET /aimed/requests/{id}` — `{"id", "status": staging|priced|confirmed|failed|cancelled, "filters", "pick",
+  "range_from", "range_to", "count", "originator", "text", "title", "matched", "staged", "blacklisted",
+  "unpriced", "surcharge_percent", "total_cost" (Rial, once priced), "bulk_job_id" and "job" {status,
+  total, sent, failed} (once confirmed), "error" (why it failed), "created_at", "priced_at", "confirmed_at"}`.
+  Poll until `priced` (or `failed`): an area without a cap that is larger than the limit, or empty, fails here.
+- `POST /aimed/requests/{id}/confirm` — reserves `total_cost` and sends → `200` with the request;
+  `409` unless `priced`, `422` for insufficient credit or plan quota (nothing stays reserved).
+- `POST /aimed/requests/{id}/cancel` — while `staging` or `priced` → `200`; `409` otherwise (a
+  confirmed request is cancelled as its bulk job).
 
 ### WebEngage — scope `messages:send`
 `POST /webengage/sms` is the SMS Service Provider endpoint WebEngage calls. It accepts WebEngage's own

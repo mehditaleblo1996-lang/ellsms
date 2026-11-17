@@ -45,6 +45,56 @@ components:
       schema: { type: string }
 
   schemas:
+    AimedPlace:
+      type: object
+      properties:
+        code: { type: integer }
+        name: { type: string }
+    AimedFilters:
+      type: object
+      description: "At least one of postal_code, province_code, city_code or prefix."
+      properties:
+        postal_code: { type: string, description: "3–10 digits; a prefix of the postal code (131 = every code starting 131)" }
+        province_code: { type: integer }
+        city_code: { type: integer }
+        prefix: { type: string, example: "0912" }
+        sim: { type: string, enum: [all, prepaid, postpaid], default: all }
+        pick: { type: string, enum: [bank, random, range], default: bank, description: "bank: from the start of the bank (same numbers every time); random: a random draw from the area; range: rows range_from..range_to of the area in bank order (the range is the cap)" }
+        range_from: { type: integer, minimum: 1, description: "pick range only" }
+        range_to: { type: integer, minimum: 1, description: "pick range only; ≥ range_from" }
+    AimedCount:
+      type: object
+      properties:
+        status: { type: string, enum: [counting, done, failed] }
+        matched: { type: integer, nullable: true, description: "numbers in the area, at most `limit`" }
+        more_than_limit: { type: boolean, nullable: true }
+        limit: { type: integer, description: "the per-request limit" }
+        error: { type: string, nullable: true }
+    AimedRequest:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [staging, priced, confirmed, failed, cancelled] }
+        filters: { type: object }
+        pick: { type: string, enum: [bank, random, range] }
+        range_from: { type: integer, nullable: true }
+        range_to: { type: integer, nullable: true }
+        count: { type: integer, nullable: true, description: "the cap (for a range, its length)" }
+        originator: { type: string }
+        text: { type: string }
+        title: { type: string }
+        matched: { type: integer }
+        staged: { type: integer }
+        blacklisted: { type: integer }
+        unpriced: { type: integer }
+        surcharge_percent: { type: number }
+        total_cost: { type: integer, nullable: true, description: "Rial, once priced" }
+        bulk_job_id: { type: string, nullable: true, description: "once confirmed: follow it with GET /bulk-jobs/{id}/state (numbers masked)" }
+        job: { type: object, nullable: true, properties: { status: { type: string }, total: { type: integer }, sent: { type: integer }, failed: { type: integer } } }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        priced_at: { type: string, format: date-time, nullable: true }
+        confirmed_at: { type: string, format: date-time, nullable: true }
     OtpTemplate:
       type: object
       properties:
@@ -703,6 +753,93 @@ paths:
         "422": { $ref: '#/components/responses/ValidationFailed' }
         "429": { description: The same number was called too recently }
         "502": { description: ZarinCall refused the call }
+
+  /aimed/provinces:
+    get:
+      summary: Province codes and names of the aimed-bulk number bank (scope aimed:read) — see docs/aimed-bulk.md
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AimedPlace' } } } } } } }
+        "503": { description: Aimed bulk is not enabled on this deployment }
+
+  /aimed/provinces/{code}/cities:
+    get:
+      summary: City codes and names of one province (scope aimed:read)
+      parameters: [{ name: code, in: path, required: true, schema: { type: integer } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/AimedPlace' } } } } } } }
+        "503": { description: Aimed bulk is not enabled on this deployment }
+
+  /aimed/count:
+    post:
+      summary: Queue (or read) the background count of a filter set (scope aimed:read)
+      description: >
+        Counting runs in the background. While it is queued or running the answer is 202 with
+        status "counting"; send the same body again until it is 200. `matched` stops at the
+        per-request `limit`; `more_than_limit` is true when the area is larger. A finished count of
+        the same filters is reused for an hour.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AimedFilters' } } }
+      responses:
+        "200": { description: Counted (or failed — too broad to count within 60 s), content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/AimedCount' } } } } } }
+        "202": { description: Still counting, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/AimedCount' } } } } } }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+        "503": { description: Aimed bulk is not enabled on this deployment }
+
+  /aimed/requests:
+    post:
+      summary: Create an aimed-bulk request; the worker stages and prices it (scope aimed:send)
+      description: >
+        Nothing is reserved until confirm. Poll GET /aimed/requests/{id} until status is "priced"
+        (or "failed", with the reason in `error`), then POST /aimed/requests/{id}/confirm.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/AimedFilters'
+                - type: object
+                  required: [originator, text]
+                  properties:
+                    count: { type: integer, minimum: 1, description: "pick bank/random: how many of the area; absent = the whole area (must fit the per-request limit)" }
+                    originator: { type: string, description: "a sender line the key's owner may use" }
+                    text: { type: string }
+                    title: { type: string, maxLength: 160 }
+                    client_message_id: { type: string }
+      responses:
+        "202": { description: Accepted (status staging), content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/AimedRequest' } } } } } }
+        "403": { description: Organization suspended }
+        "409": { $ref: '#/components/responses/IdempotencyConflict' }
+        "422": { $ref: '#/components/responses/ValidationFailed' }
+        "503": { description: Aimed bulk is not enabled on this deployment }
+
+  /aimed/requests/{id}:
+    get:
+      summary: An aimed-bulk request's state, size and price (scope aimed:read)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: OK, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/AimedRequest' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+
+  /aimed/requests/{id}/confirm:
+    post:
+      summary: Reserve the staged price and send (scope aimed:send)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Confirmed, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/AimedRequest' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { description: Not in status priced }
+        "422": { description: Insufficient credit or plan quota — nothing stays reserved }
+
+  /aimed/requests/{id}/cancel:
+    post:
+      summary: Cancel a request before confirmation (scope aimed:send)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Cancelled, content: { application/json: { schema: { type: object, properties: { data: { $ref: '#/components/schemas/AimedRequest' } } } } } }
+        "404": { $ref: '#/components/responses/NotFound' }
+        "409": { description: Not in status staging or priced (a confirmed request is cancelled as its bulk job) }
 
   /otp:
     post:
