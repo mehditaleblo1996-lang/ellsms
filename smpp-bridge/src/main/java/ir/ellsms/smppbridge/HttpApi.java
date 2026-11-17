@@ -219,7 +219,22 @@ public final class HttpApi {
             return out;
         }
         GatewayRuntime rt = manager.get(gatewayId);
-        return new BindTester().run(cfg, rt == null ? List.of() : rt.snapshots());
+        List<SessionWorker.Snapshot> live = rt == null ? List.of() : rt.snapshots();
+        boolean anyBound = live.stream().anyMatch(s -> "BOUND".equals(s.state()));
+        // None of the gateway's own sessions is bound: they are only retrying, and on an SMSC that
+        // allows one connection they would hold it. Stop them for the test, rebuild them afterwards.
+        boolean paused = rt != null && !anyBound;
+        if (paused) {
+            manager.pause(gatewayId);
+            Thread.sleep(1000);
+        }
+        try {
+            Map<String, Object> result = new BindTester().run(cfg, anyBound ? live : List.of());
+            result.put("gateway_sessions_paused", paused);
+            return result;
+        } finally {
+            if (paused) manager.reload();
+        }
     }
 
     private boolean authorized(HttpExchange ex) {

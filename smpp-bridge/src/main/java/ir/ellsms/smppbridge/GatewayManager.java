@@ -70,6 +70,17 @@ public final class GatewayManager {
         }
     }
 
+    /**
+     * Stops a gateway's sessions until the next {@link #reload()} rebuilds them — used by the test bind,
+     * so an SMSC that allows one connection is not already occupied by the gateway's own (unbound,
+     * retrying) session.
+     */
+    public synchronized void pause(int gatewayId) {
+        GatewayRuntime rt = runtimes.remove(gatewayId);
+        signatures.remove(gatewayId);
+        if (rt != null) rt.stop();
+    }
+
     public GatewayRuntime get(int gatewayId) {
         return runtimes.get(gatewayId);
     }
