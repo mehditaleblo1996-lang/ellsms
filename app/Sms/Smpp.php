@@ -100,11 +100,77 @@ function smpp_send_parts(array $input): int {
     return max(1, $parts);
 }
 
+/**
+ * SMPP 3.4 command_status → [short Persian label, what to do]. Shown wherever an SMSC's refusal appears:
+ * the row's error code (`0x0000000A فرستنده نامعتبر`), its error text, the test-bind message and the
+ * session table's last error.
+ */
+const SMPP_COMMAND_STATUS_LABELS = [
+    0x01 => ['طول پیام نامعتبر', 'اپراتور طول پیام را نپذیرفت.'],
+    0x02 => ['طول فرمان نامعتبر', 'اپراتور فرمان SMPP را نامعتبر دانست.'],
+    0x03 => ['فرمان نامعتبر', 'اپراتور این فرمان SMPP را پشتیبانی نمی‌کند.'],
+    0x04 => ['وضعیت اتصال نامعتبر', 'نوع اتصال (bind) اجازه‌ی این کار را نمی‌دهد؛ «نوع اتصال» را بررسی کنید.'],
+    0x05 => ['حساب از قبل متصل است', 'حساب قبلاً متصل است یا تعداد نشست‌های مجاز پر است.'],
+    0x06 => ['اولویت نامعتبر', 'اپراتور پرچم اولویت پیام را نپذیرفت.'],
+    0x07 => ['پرچم تحویل نامعتبر', 'اپراتور درخواست رسید تحویل را نپذیرفت؛ «درخواست رسید تحویل» را بررسی کنید.'],
+    0x08 => ['خطای سیستمی اپراتور', 'خطای داخلی سامانه‌ی اپراتور؛ بعداً دوباره تلاش کنید یا به اپراتور اطلاع دهید.'],
+    0x0A => ['فرستنده نامعتبر', 'اپراتور شماره‌ی فرستنده را نپذیرفت: «TON/NPI فرستنده» در تنظیمات SMPP، قالب شماره‌ی خط (با یا بدون 98) و ثبت این خط روی حساب نزد اپراتور را بررسی کنید.'],
+    0x0B => ['گیرنده نامعتبر', 'اپراتور شماره‌ی گیرنده را نپذیرفت: شماره، «قالب شماره گیرنده» و «TON/NPI گیرنده» را بررسی کنید.'],
+    0x0C => ['شناسه‌ی پیام نامعتبر', 'اپراتور شناسه‌ی پیام را نامعتبر دانست.'],
+    0x0D => ['اتصال رد شد', 'اپراتور اتصال را رد کرد؛ معمولاً IP مجاز نیست یا حساب غیرفعال است.'],
+    0x0E => ['رمز نامعتبر', 'رمز SMPP اشتباه است.'],
+    0x0F => ['system_id نامعتبر', 'system_id اشتباه است.'],
+    0x11 => ['لغو ناموفق', 'لغو پیام ناموفق بود.'],
+    0x14 => ['صف اپراتور پر است', 'صف پیام اپراتور پر است؛ کمی بعد دوباره ارسال می‌شود.'],
+    0x15 => ['نوع سرویس نامعتبر', 'service_type نامعتبر است.'],
+    0x33 => ['تعداد گیرنده نامعتبر', 'اپراتور تعداد گیرنده‌ها را نپذیرفت.'],
+    0x34 => ['نام فهرست توزیع نامعتبر', 'اپراتور فهرست توزیع را نپذیرفت.'],
+    0x40 => ['پرچم مقصد نامعتبر', 'اپراتور نوع مقصد را نپذیرفت.'],
+    0x45 => ['ارسال ناموفق', 'اپراتور ثبت پیام را رد کرد (ESME_RSUBMITFAIL)؛ معمولاً اعتبار حساب، مجوز خط یا محتوای پیام. با اپراتور بررسی کنید.'],
+    0x48 => ['TON فرستنده نامعتبر', 'عدد اول «TON/NPI فرستنده» را مطابق مستند اپراتور تغییر دهید.'],
+    0x49 => ['NPI فرستنده نامعتبر', 'عدد دوم «TON/NPI فرستنده» را مطابق مستند اپراتور تغییر دهید.'],
+    0x50 => ['TON گیرنده نامعتبر', 'عدد اول «TON/NPI گیرنده» را مطابق مستند اپراتور تغییر دهید.'],
+    0x51 => ['NPI گیرنده نامعتبر', 'عدد دوم «TON/NPI گیرنده» را مطابق مستند اپراتور تغییر دهید.'],
+    0x53 => ['system_type نامعتبر', 'system_type را مطابق مستند اپراتور وارد کنید.'],
+    0x54 => ['پرچم جایگزینی نامعتبر', 'اپراتور پرچم جایگزینی پیام را نپذیرفت.'],
+    0x55 => ['تعداد پیام نامعتبر', 'اپراتور تعداد پیام‌ها را نپذیرفت.'],
+    0x58 => ['محدودیت سرعت', 'از سقف سرعت اپراتور بیشتر ارسال شده؛ «سقف سرعت (TPS)» را کم کنید.'],
+    0x61 => ['زمان‌بندی نامعتبر', 'زمان ارسال برنامه‌ریزی‌شده را اپراتور نپذیرفت.'],
+    0x62 => ['مدت اعتبار نامعتبر', '«اعتبار پیام» را صفر بگذارید یا مطابق مستند اپراتور تنظیم کنید.'],
+    0x63 => ['پیام پیش‌فرض نامعتبر', 'اپراتور شناسه‌ی پیام پیش‌فرض را نپذیرفت.'],
+    0x64 => ['رد موقت اپراتور', 'اپراتور پیام را موقتاً رد کرد؛ بعداً دوباره تلاش کنید.'],
+    0x65 => ['رد دائمی اپراتور', 'اپراتور پیام را برای همیشه رد کرد (مثلاً مسدودی یا محتوای غیرمجاز).'],
+    0x66 => ['رد اپراتور', 'اپراتور پیام را رد کرد.'],
+    0x67 => ['استعلام ناموفق', 'استعلام وضعیت پیام ناموفق بود.'],
+    0xC0 => ['بخش اختیاری نامعتبر', 'اپراتور یکی از پارامترهای اختیاری (TLV) را نپذیرفت؛ «پیام چندبخشی» را UDH بگذارید.'],
+    0xC1 => ['پارامتر اختیاری غیرمجاز', 'اپراتور یک پارامتر اختیاری (TLV) را نمی‌پذیرد؛ «پیام چندبخشی» را UDH بگذارید.'],
+    0xC2 => ['طول پارامتر نامعتبر', 'طول یکی از پارامترهای اختیاری نامعتبر است.'],
+    0xC3 => ['پارامتر لازم وجود ندارد', 'اپراتور یک پارامتر لازم را نیافت؛ مستند اپراتور را بررسی کنید.'],
+    0xC4 => ['مقدار پارامتر نامعتبر', 'مقدار یکی از پارامترها نامعتبر است.'],
+    0xFE => ['تحویل ناموفق', 'اپراتور نتوانست پیام را تحویل دهد.'],
+    0xFF => ['خطای نامشخص اپراتور', 'اپراتور خطای نامشخص برگرداند.'],
+];
+
+/** "فرستنده نامعتبر" (short) or the full advice for an SMPP command_status; '' when unknown. */
+function smpp_command_status_label(int $status, bool $advice = false): string {
+    $label = SMPP_COMMAND_STATUS_LABELS[$status] ?? null;
+    return $label === null ? '' : $label[$advice ? 1 : 0];
+}
+
+/** Appends the Persian meaning to every SMPP status code (0x0000000A, 0xa) found in a text. */
+function smpp_annotate_status_codes(string $text): string {
+    return (string)preg_replace_callback('/\b0x([0-9a-fA-F]{1,8})\b/', static function (array $m): string {
+        $label = smpp_command_status_label((int)hexdec($m[1]));
+        return $label === '' ? $m[0] : $m[0] . ' (' . $label . ')';
+    }, $text);
+}
+
 /** The per-recipient error code a failed SMPP submit is recorded with (command_status, else the class). */
 function smpp_result_error_code(array $result): string {
     $status = $result['command_status'] ?? null;
     if (is_int($status) || (is_string($status) && ctype_digit($status))) {
-        return sprintf('0x%08X', (int)$status);
+        $label = smpp_command_status_label((int)$status);
+        return sprintf('0x%08X', (int)$status) . ($label !== '' ? ' ' . $label : '');
     }
     return (string)($result['error_class'] ?? '') !== '' ? 'smpp_' . (string)$result['error_class'] : 'smpp_failed';
 }
@@ -132,7 +198,7 @@ function smpp_test_bind_message(array $d): array {
         'invalid_system_id' => 'SMSC این system_id را نمی‌شناسد (ESME_RINVSYSID).',
         'already_bound' => 'SMSC می‌گوید این حساب قبلاً متصل است (ESME_RALYBND): اپراتور تعداد نشست را محدود کرده یا نشست دیگری با همین حساب (مثلاً از سرور دیگری) باز است.',
         'bind_failed' => 'SMSC اتصال را رد کرد (ESME_RBINDFAIL): معمولاً یعنی IP سرور شما برای این حساب مجاز نیست یا حساب غیرفعال است. با اپراتور هماهنگ کنید.',
-        'bind_rejected' => 'SMSC اتصال را با کد ' . $code . ' رد کرد.',
+        'bind_rejected' => 'SMSC اتصال را با کد ' . $code . ' رد کرد' . ($code !== '' && smpp_command_status_label((int)hexdec(substr($code, 2))) !== '' ? ': ' . smpp_command_status_label((int)hexdec(substr($code, 2)), true) : '.'),
         'closed_by_peer' => 'SMSC اتصال را بلافاصله بست: معمولاً یعنی IP سرور شما در SMSC مجاز (whitelist) نشده یا تعداد نشست‌های حساب پر است.',
         'session_limit' => 'نشست اصلی این درگاه همین الان متصل است، پس آدرس، system_id و رمز درست است و درگاه کار می‌کند. SMSC به نشست آزمایشیِ اضافه جواب نداد چون احتمالاً فقط ' . $fa((int)($d['gateway_sessions_bound'] ?? 1)) . ' نشست اجازه می‌دهد.',
         'use_tx_rx' => 'SMSC به اتصال Transceiver جواب نمی‌دهد ولی با Transmitter وصل شد: «نوع اتصال» را «Transmitter + Receiver جدا» بگذارید و ذخیره کنید.',
@@ -317,6 +383,11 @@ function smpp_gateway_send(array $connector, array $input, ?int $routeId, ?int $
                 continue;
             }
             $lastError = (string)($result['error'] ?? 'SMPP submit failed');
+            $status = $result['command_status'] ?? null;
+            if (is_int($status) && smpp_command_status_label($status) !== '') {
+                // The text admins and the send report show: what the SMSC said, in Persian, and what to do.
+                $lastError = sprintf('اپراتور پیام را رد کرد (0x%08X): ', $status) . smpp_command_status_label($status, true);
+            }
             $lastClass = match ((string)($result['error_class'] ?? '')) {
                 'timeout' => BackendError::TIMEOUT,
                 'unavailable' => BackendError::UNAVAILABLE,

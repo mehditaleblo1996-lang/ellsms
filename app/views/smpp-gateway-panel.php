@@ -45,7 +45,7 @@ $smppMappingJson = json_encode(smpp_dlr_mapping($smppRow['status_mapping_json'] 
         <td class="num"><?= $fa($s['mo_received']) ?></td>
         <td class="num"><?= $fa($s['in_flight']) ?></td>
         <td class="num"><?= $fa($s['reconnects']) ?></td>
-        <td class="ltr muted"><?= e(mb_strimwidth((string)($s['last_error'] ?? ''), 0, 90, '…')) ?><?= $s['last_error_at'] ? ' — ' . jdate((string)$s['last_error_at']) : '' ?></td>
+        <td class="ltr muted"><?= e(mb_strimwidth(smpp_annotate_status_codes((string)($s['last_error'] ?? '')), 0, 120, '…')) ?><?= $s['last_error_at'] ? ' — ' . jdate((string)$s['last_error_at']) : '' ?></td>
       </tr>
     <?php endforeach; ?>
     <?php if ($smppSessions === []): ?><tr><td colspan="10" class="muted">هنوز نشستی گزارش نشده است.</td></tr><?php endif; ?>

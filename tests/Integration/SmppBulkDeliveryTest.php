@@ -189,7 +189,7 @@ final class SmppBulkDeliveryTest extends IntegrationTestCase
             $this->assertNotEmpty($items[$suffix]['provider_message_id']);
         }
         $this->assertSame('failed', $items['7777']['status'], 'the SMSC refused it: a definite failure, never retried');
-        $this->assertStringStartsWith('[0x0000000B]', (string)$items['7777']['error'], 'the SMSC\'s command_status is the error code');
+        $this->assertStringStartsWith('[0x0000000B گیرنده نامعتبر]', (string)$items['7777']['error'], 'the SMSC\'s command_status, with its meaning, is the error code');
         $this->assertSame(4 * 170, $this->chargedFor($jobId), 'charged only for what the SMSC accepted');
 
         $this->waitFor(fn(): bool => $this->receiptsFor($jobId) >= 4, 15000, 'four receipts');
