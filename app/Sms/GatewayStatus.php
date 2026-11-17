@@ -702,15 +702,24 @@ function gateway_provider_status_label(?int $gatewayId, ?string $token): string 
         return '';
     }
     static $codes = null;
-    if ($codes === null) {
+    static $smpp = [];
+    // Re-read when the gateway is not known yet: one created after the first lookup in this process.
+    if ($codes === null || ((int)$gatewayId > 0 && !isset($codes[(int)$gatewayId]))) {
         $codes = [];
+        $smpp = [];
         try {
             foreach (db()->query('SELECT id, code FROM ellsms_sms_gateways') as $g) {
                 $codes[(int)$g['id']] = (string)$g['code'];
             }
+            foreach (db()->query("SELECT id FROM ellsms_sms_gateways WHERE protocol = 'smpp'") as $g) {
+                $smpp[(int)$g['id']] = true;
+            }
         } catch (Throwable) {
         }
     }
-    $meaning = GATEWAY_PROVIDER_STATUS_LABELS[$codes[(int)$gatewayId] ?? ''][$token] ?? null;
+    // SMPP gateways report the standard receipt states (DELIVRD, UNDELIV, …), whoever the operator is.
+    $meaning = isset($smpp[(int)$gatewayId])
+        ? (SMPP_DLR_STAT_LABELS[strtoupper($token)] ?? null)
+        : (GATEWAY_PROVIDER_STATUS_LABELS[$codes[(int)$gatewayId] ?? ''][$token] ?? null);
     return $meaning !== null ? $token . ' — ' . $meaning : $token;
 }

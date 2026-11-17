@@ -47,6 +47,11 @@ import java.util.regex.Pattern;
  * command_status. A recipient whose FIRST part was accepted is reported as sent (later parts are
  * retried, never the whole message, so the handset is never sent the beginning twice).
  *
+ * not_sent: a recipient whose first part never reached the SMSC (no bound session, rate/window wait
+ * ran out, the request's deadline passed, sending disabled) or that the SMSC refused outright is
+ * reported with notSent = true — trying it again cannot duplicate a message. A submit_sm that went out
+ * and got no answer, or a broken session mid-write, is NOT: the SMSC may have taken it.
+ *
  * Deliver: a receipt is stored as a 'dlr' event, a user message as an 'mo' event (concatenated parts
  * are reassembled first). The event is written BEFORE deliver_sm_resp is returned; if the database is
  * down the bridge answers ESME_RSYSERR and the SMSC delivers it again later — nothing is lost.
@@ -125,10 +130,19 @@ public final class GatewayRuntime implements MessageReceiverListener {
     /* ======================= submit ======================= */
 
     public record Result(String recipient, boolean ok, String messageId, List<String> partIds, int parts,
-                         String error, String errorClass, Integer commandStatus) {}
+                         String error, String errorClass, Integer commandStatus, boolean notSent) {}
 
     public Result submit(String sender, String recipient, String text) {
-        if (!cfg.sendEnabled()) return fail(recipient, 0, "sending is disabled for this gateway", "unavailable", null);
+        return submit(sender, recipient, text, 0L);
+    }
+
+    /**
+     * @param deadlineMs epoch millis after which no NEW message is started (its first part is not
+     *                   submitted; it is answered notSent). 0 = no deadline. Parts after the first are
+     *                   always sent, so a message the SMSC started receiving is completed.
+     */
+    public Result submit(String sender, String recipient, String text, long deadlineMs) {
+        if (!cfg.sendEnabled()) return fail(recipient, 0, "sending is disabled for this gateway", "unavailable", null, true);
         Codec.Encoded enc = Codec.encode(text, cfg.dataCoding());
         boolean payload = "payload".equals(cfg.longMessage());
         List<byte[]> chunks = payload ? List.of(enc.bytes()) : Codec.split(enc);
@@ -155,9 +169,10 @@ public final class GatewayRuntime implements MessageReceiverListener {
             } else {
                 shortMessage = chunk;
             }
-            Attempt a = submitPart(sender, destination, shortMessage, enc.dataCoding(), esm, tlvs.toArray(new OptionalParameter[0]));
+            Attempt a = submitPart(sender, destination, shortMessage, enc.dataCoding(), esm, tlvs.toArray(new OptionalParameter[0]),
+                ids.isEmpty() ? deadlineMs : 0L);
             if (!a.ok()) {
-                if (ids.isEmpty()) return fail(recipient, total, a.error(), a.errorClass(), a.commandStatus());
+                if (ids.isEmpty()) return fail(recipient, total, a.error(), a.errorClass(), a.commandStatus(), a.notSent());
                 // The beginning is already on its way to the handset: report sent, keep going with the rest.
                 LOG.warn("gateway {} part {}/{} to {} failed after first part was accepted: {}", cfg.code(), i + 1, total, recipient, a.error());
                 continue;
@@ -166,22 +181,35 @@ public final class GatewayRuntime implements MessageReceiverListener {
         }
         String first = ids.get(0);
         for (int i = 1; i < ids.size(); i++) partIds.put(ids.get(i), new PartRef(first, System.currentTimeMillis()));
-        return new Result(recipient, true, first, ids, total, ids.size() < total ? "partially submitted" : null, null, null);
+        return new Result(recipient, true, first, ids, total, ids.size() < total ? "partially submitted" : null, null, null, false);
     }
 
-    private record Attempt(boolean ok, String messageId, String error, String errorClass, Integer commandStatus) {}
+    /** notSent: this part never reached the SMSC, or the SMSC refused it — a retry cannot duplicate it. */
+    private record Attempt(boolean ok, String messageId, String error, String errorClass, Integer commandStatus, boolean notSent) {}
 
-    private Attempt submitPart(String sender, String destination, byte[] shortMessage, byte dataCoding, byte esm, OptionalParameter[] tlvs) {
-        long timeout = cfg.submitTimeoutMs() + 5_000L;
+    private static Attempt notSent(String error) {
+        return new Attempt(false, null, error, "unavailable", null, true);
+    }
+
+    private Attempt submitPart(String sender, String destination, byte[] shortMessage, byte dataCoding, byte esm, OptionalParameter[] tlvs, long deadlineMs) {
         for (int attempt = 1; attempt <= 4; attempt++) {
+            long timeout = cfg.submitTimeoutMs() + 5_000L;
+            if (deadlineMs > 0) {
+                // A message not started by the request's deadline is handed back unsent, so PHP always
+                // gets its answer before its own HTTP timeout (which would leave sent messages unrecorded).
+                long left = deadlineMs - System.currentTimeMillis();
+                if (left <= 0) return notSent("request deadline reached before this message was submitted");
+                timeout = Math.min(timeout, left);
+            }
             SessionWorker w = pickSender();
-            if (w == null) return new Attempt(false, null, "no bound SMPP session", "unavailable", null);
+            if (w == null) return notSent("no bound SMPP session");
             try {
-                if (!limiter.acquire(timeout)) return new Attempt(false, null, "rate limit wait timed out", "unavailable", null);
-                if (!w.acquireWindow(timeout)) return new Attempt(false, null, "window full (no submit_sm_resp in time)", "timeout", null);
+                if (!limiter.acquire(timeout)) return notSent(deadlineMs > 0 && System.currentTimeMillis() + 50 >= deadlineMs
+                    ? "request deadline reached before this message was submitted" : "rate limit wait timed out");
+                if (!w.acquireWindow(timeout)) return notSent("window full (no submit_sm_resp in time)");
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return new Attempt(false, null, "interrupted", "unavailable", null);
+                return notSent("interrupted");
             }
             SMPPSession s = w.session();
             try {
@@ -194,7 +222,7 @@ public final class GatewayRuntime implements MessageReceiverListener {
                     new RegisteredDelivery((byte) cfg.registeredDelivery()), (byte) 0, new RawDataCoding(dataCoding), (byte) 0,
                     shortMessage, tlvs);
                 w.submitOk.incrementAndGet();
-                return new Attempt(true, r.getMessageId(), null, null, null);
+                return new Attempt(true, r.getMessageId(), null, null, null, false);
             } catch (NegativeResponseException e) {
                 int status = e.getCommandStatus();
                 if (status == ESME_RTHROTTLED || status == ESME_RMSGQFUL) {
@@ -202,27 +230,29 @@ public final class GatewayRuntime implements MessageReceiverListener {
                     limiter.pause(500L * attempt);
                     if (attempt < 4) continue;
                     w.submitFailed.incrementAndGet();
-                    return new Attempt(false, null, "SMSC throttled (0x" + Integer.toHexString(status) + ")", "unavailable", status);
+                    return new Attempt(false, null, "SMSC throttled (0x" + Integer.toHexString(status) + ")", "unavailable", status, true);
                 }
                 w.submitFailed.incrementAndGet();
                 w.recordError("submit_sm rejected 0x" + Integer.toHexString(status));
-                return new Attempt(false, null, "SMSC rejected the message (command_status 0x" + Integer.toHexString(status) + ")", classify(status), status);
+                // A negative submit_sm_resp is the SMSC's definite "not accepted": nothing went out.
+                return new Attempt(false, null, "SMSC rejected the message (command_status 0x" + Integer.toHexString(status) + ")", classify(status), status, true);
             } catch (ResponseTimeoutException e) {
+                // The submit_sm went out and no answer came: the SMSC may have accepted it.
                 w.submitFailed.incrementAndGet();
                 w.recordError("submit_sm timeout");
-                return new Attempt(false, null, "no submit_sm_resp within " + cfg.submitTimeoutMs() + " ms", "timeout", null);
+                return new Attempt(false, null, "no submit_sm_resp within " + cfg.submitTimeoutMs() + " ms", "timeout", null, false);
             } catch (Exception e) {
                 // I/O or state error: the session is broken; let the worker reconnect and try another one.
                 w.submitFailed.incrementAndGet();
                 w.recordError("submit_sm failed: " + e.getMessage());
                 w.reconnect();
                 if (attempt < 4) continue;
-                return new Attempt(false, null, "SMPP session error: " + e.getMessage(), "unavailable", null);
+                return new Attempt(false, null, "SMPP session error: " + e.getMessage(), "unavailable", null, false);
             } finally {
                 w.releaseWindow();
             }
         }
-        return new Attempt(false, null, "no bound SMPP session", "unavailable", null);
+        return notSent("no bound SMPP session");
     }
 
     /** Destination/source problems are the message's fault; everything else may succeed on retry. */
@@ -257,8 +287,8 @@ public final class GatewayRuntime implements MessageReceiverListener {
         };
     }
 
-    private static Result fail(String recipient, int parts, String error, String errorClass, Integer status) {
-        return new Result(recipient, false, null, List.of(), parts, error, errorClass, status);
+    static Result fail(String recipient, int parts, String error, String errorClass, Integer status, boolean notSent) {
+        return new Result(recipient, false, null, List.of(), parts, error, errorClass, status, notSent);
     }
 
     /* ======================= deliver_sm ======================= */

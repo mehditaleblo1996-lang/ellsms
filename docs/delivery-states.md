@@ -59,6 +59,15 @@ Push callbacks (`/delivery`) follow the same rule. The gateway's mapping is chec
 tokens (`DELIVRD`, `UNDELIV`, `REJECTD`, `EXPIRED`, `ENROUTE`, …, `SMS_CALLBACK_DEFAULT_STATUSES`). Only
 a token that neither of them knows becomes `failed`. No code ever becomes `delivered` by default.
 
+### SMPP gateways
+
+An SMPP gateway has no status connector: its receipts carry a standard `stat` (`DELIVRD`, `UNDELIV`,
+`EXPIRED`, `REJECTD`, …), mapped by the gateway's own «نگاشت وضعیت رسید تحویل» on its SMPP settings
+card (`db/migrations/2026_11_20_smpp_status_mapping.sql`). By default `UNDELIV` and `EXPIRED` are
+`undelivered` (final, charged — the operator bills them), `REJECTD` is `rejected` and `DELETED` `failed`
+(both refunded). A `stat` it does not know stays `unknown` rather than `failed`, because a receipt is
+pushed once and never polled again. See `docs/smpp-gateway.md` §Delivery receipts.
+
 After a mapping change, rows the old mapping made final can be reopened with
 `cron/gateway-status-reopen.php` (see `docs/sms-gateway-connectors.md`). It now includes `undelivered`
 rows.

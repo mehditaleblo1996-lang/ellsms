@@ -136,6 +136,9 @@ function dispatch_gateway_result(array $user, string $originator, array $destina
         // True only when no request reached the provider (connection refused, HTTP 429, pinned gateway
         // down): nothing can have been sent, so the bulk worker may safely try again.
         'not_sent'               => !empty($result['not_sent']),
+        // Recipient => true for each one that never reached the provider although others in the same
+        // request did (an SMPP session dropping mid-batch): the bulk worker re-queues exactly those.
+        'not_sent_destinations'  => $result['not_sent_destinations'] ?? [],
         'attempt_ids'            => [],
     ];
 
@@ -2339,10 +2342,13 @@ function bulk_finalize_item(PDO $db, array $item, array $ctx, bool $groupOk, str
 
     // The ONE safe retry: no request reached the provider at all (connection refused, HTTP 429 rate
     // limit, pinned gateway down) — nothing can have been sent, so trying again cannot duplicate it.
-    if ($retryable && !empty($gatewayMeta['not_sent']) && $attemptCount < job_max_attempts()) {
+    // The same holds for one recipient the provider never received while its neighbours went out
+    // (not_sent_destinations: an SMPP session lost mid-batch, the SMSC throttling, the send's deadline).
+    $destinationNotSent = !empty($gatewayMeta['not_sent_destinations'][$destination]);
+    if ((($retryable && !empty($gatewayMeta['not_sent'])) || $destinationNotSent) && $attemptCount < job_max_attempts()) {
         $delay = job_retry_backoff_seconds($attemptCount);
         $db->prepare("UPDATE ellsms_bulk_items SET status='pending', error=?, claimed_by=NULL, lease_expires_at=NULL, next_attempt_at=DATE_ADD(NOW(), INTERVAL ? SECOND) WHERE id=?")
-           ->execute(['در حال تلاش مجدد (درخواست به تأمین‌کننده نرسید): ' . $info, $delay, $item['id']]);
+           ->execute(['در حال تلاش مجدد (درخواست به تأمین‌کننده نرسید): ' . ($groupOk ? 'این شماره به اپراتور فرستاده نشد.' : $info), $delay, $item['id']]);
         Logger::warning('job.retry_scheduled', ['job_type' => 'bulk_item', 'bulk_item_id' => $item['id'], 'job_id' => $item['job_id'], 'worker_id' => $workerId, 'attempt' => $attemptCount, 'delay_seconds' => $delay, 'reason' => 'not_sent']);
         return false;
     }

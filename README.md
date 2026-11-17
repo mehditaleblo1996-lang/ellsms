@@ -60,6 +60,22 @@ Bulk items (p2p, smart, gradual, large imports) never fall back to the legacy AP
 
 ELLSMS has its own push receivers, with the same URLs the backend platform used: `https://<host>/mo?from=…&to=…&content=…` for inbound SMS (Persian and emoji supported) and `https://<host>/delivery?id=…&status=…` for delivery reports. Guard them with `SMS_CALLBACK_TOKEN` and/or `SMS_CALLBACK_ALLOWED_IPS`. See [`docs/sms-callbacks.md`](docs/sms-callbacks.md).
 
+## SMPP gateways (درگاه SMPP)
+
+A gateway can use SMPP instead of HTTP. The SMPP sessions live in the `smpp-bridge` container (Java,
+`smpp-bridge/`); PHP submits through its internal API and reads delivery receipts and received messages
+from `ellsms_smpp_events`. Set up and monitored on **Platform Admin → درگاه‌های پیامک → (SMPP gateway) →
+«تنظیمات SMPP و مانیتورینگ»**: host, port, `system_id`, password (encrypted), bind type, TPS, TON/NPI, and
+«نگاشت وضعیت رسید تحویل», the map from the receipt's `stat` to a delivery state. By default `UNDELIV`
+and `EXPIRED` are `undelivered` (final, **charged**), `REJECTD` is `rejected` (refunded) and `DELIVRD`
+is `delivered` (`db/migrations/2026_11_20_smpp_status_mapping.sql`). Prices come from the gateway
+price matrix like any gateway. A message the SMSC never received (bridge down, gateway not running yet,
+session dropped mid-batch, SMSC throttling, request deadline) goes back to pending and is sent later;
+one the SMSC may have taken is never resent. `db/migrations/2026_11_21_smpp_gateway_192_168_111_80.sql`
+creates the gateway **`smpp_192_168_111_80`** (SMSC `192.168.111.80:40112`); enter its `system_id`
+and password in the panel, then assign it to a route or lines. No API route or setting changes. See
+[`docs/smpp-gateway.md`](docs/smpp-gateway.md).
+
 ## Message reports (لیست پیام‌های ارسالی / دریافتی)
 
 «لیست پیام‌های ارسالی» (`/messages/reports`, also `/reports.php`) lists every sent message — direct, API,
@@ -219,7 +235,8 @@ customer**, with or without delivery-based billing. On a gateway that has a stat
 **not in it counts as `failed`**, and the raw code is logged (`gateway.status.unmapped_token`) and kept
 for the admin. Messages sent before the migration keep the old rules. Migration
 `db/migrations/2026_11_19_undelivered_state.sql`; no API route or setting changes (the API already
-reports these as `undelivered`). See [`docs/delivery-states.md`](docs/delivery-states.md).
+reports these as `undelivered`). SMPP gateways have their own receipt mapping (default: `UNDELIV` and
+`EXPIRED` → `undelivered`; see the SMPP section above). See [`docs/delivery-states.md`](docs/delivery-states.md).
 
 ## Status report (گزارش وضعیت‌ها) and SMS parts
 

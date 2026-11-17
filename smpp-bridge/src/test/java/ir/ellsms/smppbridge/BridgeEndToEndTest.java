@@ -120,6 +120,26 @@ class BridgeEndToEndTest {
         // ESME_RTHROTTLED once, then accepted on retry.
         GatewayRuntime.Result throttled = rt.submit("30001234", "989122222222", "THROTTLE");
         assertTrue(throttled.ok(), String.valueOf(throttled.error()));
+        assertFalse(throttled.notSent());
+
+        // EXPIRED and REJECTD receipts are stored with their own stat.
+        GatewayRuntime.Result expired = rt.submit("30001234", "989129999999", "x");
+        GatewayRuntime.Result rejectd = rt.submit("30001234", "989128888888", "x");
+        waitFor(() -> count("SELECT COUNT(*) FROM ellsms_smpp_events WHERE message_id='" + expired.messageId() + "' AND dlr_stat='EXPIRED'") == 1, 10_000, "EXPIRED receipt stored");
+        waitFor(() -> count("SELECT COUNT(*) FROM ellsms_smpp_events WHERE message_id='" + rejectd.messageId() + "' AND dlr_stat='REJECTD'") == 1, 10_000, "REJECTD receipt stored");
+
+        // The SMSC refuses the destination: definite failure with its command_status, nothing went out.
+        GatewayRuntime.Result refused = rt.submit("30001234", "989127777777", "x");
+        assertFalse(refused.ok());
+        assertEquals("rejected", refused.errorClass());
+        assertEquals(0x0B, refused.commandStatus());
+        assertTrue(refused.notSent());
+
+        // A request whose deadline has already passed starts nothing: not_sent, retry-safe.
+        GatewayRuntime.Result late = rt.submit("30001234", "989124444444", "x", System.currentTimeMillis() - 1);
+        assertFalse(late.ok());
+        assertTrue(late.notSent());
+        assertEquals("unavailable", late.errorClass());
 
         // MO from the SMSC.
         assertEquals(1, sim.sendMo("989123333333", "30001234", "سلام از مشتری"));
@@ -145,6 +165,7 @@ class BridgeEndToEndTest {
         GatewayRuntime.Result r = bad.submit("1", "989121234567", "x");
         assertFalse(r.ok());
         assertEquals("unavailable", r.errorClass());
+        assertTrue(r.notSent(), "no bound session: the SMSC never saw it");
         assertNotNull(bad.describe().get("password_error"));
 
         // Archiving the gateway stops it.

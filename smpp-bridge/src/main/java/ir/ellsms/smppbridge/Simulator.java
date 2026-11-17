@@ -45,8 +45,10 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * A tiny SMSC for development and tests (SMPP_SIMULATOR_PORT). Accepts any bind (or only
  * SMPP_SIMULATOR_PASSWORD when set), answers submit_sm with a decimal id, and a second later sends a
- * delivery receipt to a bound TRX/RX session: DELIVRD, or UNDELIV when the destination ends in "0000".
- * A message whose text is "THROTTLE" is refused once with ESME_RTHROTTLED, to exercise the retry path.
+ * delivery receipt to a bound TRX/RX session: DELIVRD, UNDELIV when the destination ends in "0000",
+ * EXPIRED when it ends in "9999", REJECTD when it ends in "8888". A destination ending in "7777" is
+ * refused at submit with ESME_RINVDSTADR (0x0B). A message whose text is "THROTTLE" is refused once
+ * with ESME_RTHROTTLED, to exercise the retry path.
  * MOs can be injected through POST /v1/simulator/mo. NEVER enable it in production.
  */
 public final class Simulator implements ServerMessageReceiverListener {
@@ -97,11 +99,14 @@ public final class Simulator implements ServerMessageReceiverListener {
             throttledOnce = true;
             throw new ProcessRequestException("throttled", 0x58);
         }
+        if (submitSm.getDestAddress().endsWith("7777")) {
+            throw new ProcessRequestException("invalid destination", 0x0B); // ESME_RINVDSTADR
+        }
         submits.incrementAndGet();
         String id = String.valueOf(ids.incrementAndGet());
         if ((submitSm.getRegisteredDelivery() & 0x03) != 0) {
             String dest = submitSm.getDestAddress();
-            String stat = dest.endsWith("0000") ? "UNDELIV" : "DELIVRD";
+            String stat = dest.endsWith("0000") ? "UNDELIV" : dest.endsWith("9999") ? "EXPIRED" : dest.endsWith("8888") ? "REJECTD" : "DELIVRD";
             scheduler.schedule(() -> sendReceipt(source, id, dest, submitSm.getSourceAddr(), stat), 1, TimeUnit.SECONDS);
         }
         try {

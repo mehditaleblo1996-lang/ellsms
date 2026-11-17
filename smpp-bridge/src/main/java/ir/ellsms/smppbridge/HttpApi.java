@@ -27,6 +27,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,7 +38,7 @@ import java.util.regex.Pattern;
  *
  *   GET  /health                          liveness
  *   GET  /v1/status                       every gateway and session
- *   POST /v1/submit                       {gateway_id, sender, recipients[], message, messages{recipient: text}}
+ *   POST /v1/submit                       {gateway_id, sender, recipients[], message, messages{recipient: text}, deadline_ms}
  *   POST /v1/reload                       re-read configuration now
  *   POST /v1/gateways/{id}/reconnect      drop and rebind every session of a gateway
  *   POST /v1/gateways/{id}/test           one throw-away bind+unbind with the stored configuration
@@ -158,11 +160,34 @@ public final class HttpApi {
             return;
         }
         final GatewayRuntime runtime = rt;
+        // deadline_ms: PHP's own time budget for this request minus a margin. No message is STARTED after
+        // it; those come back not_sent, so PHP always gets the answer (with every accepted id) before its
+        // HTTP timeout and can safely retry the rest. 0/absent = no deadline.
+        long deadlineMs = body.path("deadline_ms").asLong(0) > 0 ? System.currentTimeMillis() + body.path("deadline_ms").asLong() : 0L;
+        // Recipients start in order, at most about two seconds' worth (2 x TPS) at a time — enough to keep
+        // the TPS busy while the SMSC takes up to ~2 s to answer — so the messages in flight when the
+        // deadline passes finish within seconds instead of all competing for tokens.
+        final Semaphore slots = new Semaphore(Math.max(1, Math.min(MAX_RECIPIENTS, 2 * runtime.config().tps())), true);
         List<CompletableFuture<GatewayRuntime.Result>> futures = new ArrayList<>();
         for (JsonNode r : recipients) {
             String to = r.asText();
             String text = perRecipient.isObject() && perRecipient.has(to) ? perRecipient.get(to).asText() : message;
-            futures.add(CompletableFuture.supplyAsync(() -> runtime.submit(sender, to, text), submitPool));
+            futures.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    long wait = deadlineMs > 0 ? deadlineMs - System.currentTimeMillis() : Long.MAX_VALUE / 2;
+                    if (wait <= 0 || !slots.tryAcquire(wait, TimeUnit.MILLISECONDS)) {
+                        return GatewayRuntime.fail(to, 0, "request deadline reached before this message was submitted", "unavailable", null, true);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return GatewayRuntime.fail(to, 0, "interrupted", "unavailable", null, true);
+                }
+                try {
+                    return runtime.submit(sender, to, text, deadlineMs);
+                } finally {
+                    slots.release();
+                }
+            }, submitPool));
         }
         List<Map<String, Object>> results = new ArrayList<>();
         for (CompletableFuture<GatewayRuntime.Result> f : futures) {
@@ -176,6 +201,7 @@ public final class HttpApi {
             m.put("error", r.error());
             m.put("error_class", r.errorClass());
             m.put("command_status", r.commandStatus());
+            m.put("not_sent", r.notSent());
             results.add(m);
         }
         send(ex, 200, Map.of("ok", true, "bound_senders", runtime.boundSenders(), "results", results));
