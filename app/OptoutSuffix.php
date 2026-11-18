@@ -2,12 +2,14 @@
 /**
  * «افزودن لغو۱۱ به انتهای پیام» — the opt-out footer option on every panel send form.
  *
- * Every panel page that composes a message (new-send, the old send page, P2P, smart, postal-code,
- * regional and LBA) shows one checkbox, ON by default. While it is on, the text "\nلغو۱۱" is appended
- * to each message right before it is priced or sent — unless the message already carries an opt-out
+ * A platform admin turns it on/off per user (ellsms_meta.optout_suffix, default ON); customers have no
+ * checkbox. While it is on, every panel page that composes a message (new-send, the old send page,
+ * P2P, smart, postal-code, regional and LBA) appends "\nلغو۱۱" to each message right before it is
+ * priced or sent — unless the message already carries an opt-out
  * marker anywhere («لغو11»، «لغو ۱۱»، «لغو: ۱۱»… Persian, Arabic or Latin digits), so it is never doubled.
  *
  * The web service (/api/v1) is deliberately untouched: integrations send exactly what they post.
+ * Schema: db/migrations/2026_11_24_user_optout_suffix.sql (per user).
  * The large-file path (p2p/smart files over the sync limit) stores the choice on
  * ellsms_import_jobs.add_optout_suffix (db/migrations/2026_11_23_import_job_optout_suffix.sql) and the
  * import worker applies it per row. See docs/optout-suffix.md.
@@ -16,7 +18,6 @@
 declare(strict_types=1);
 
 const OPTOUT_SUFFIX_TEXT = 'لغو۱۱';
-const OPTOUT_SUFFIX_FIELD = 'add_optout';
 
 /** True when $content already contains an opt-out marker («لغو» followed by 11 in any digit set). */
 function optout_suffix_present(string $content): bool {
@@ -37,32 +38,64 @@ function optout_suffix_maybe(string $content, bool $enabled): string {
     return $enabled ? optout_suffix_apply($content) : $content;
 }
 
-/**
- * Whether the submitted form asked for the suffix. The form posts a hidden "0" before the checkbox's
- * "1", so an unticked box is an explicit "0"; a request that has no field at all (an older cached
- * form, a script) gets the default — ON.
- */
-function optout_suffix_requested(?array $input = null): bool {
-    $input ??= $_POST;
-    if (!array_key_exists(OPTOUT_SUFFIX_FIELD, $input)) {
-        return true;
+/** Whether ellsms_meta has optout_suffix yet (db/migrations/2026_11_24_user_optout_suffix.sql). */
+function optout_suffix_user_column_available(): bool {
+    static $has = null;
+    if ($has === null) {
+        try {
+            db()->query('SELECT optout_suffix FROM ellsms_meta LIMIT 0');
+            $has = true;
+        } catch (Throwable) {
+            $has = false;
+        }
     }
-    return (string)$input[OPTOUT_SUFFIX_FIELD] === '1';
+    return $has;
 }
 
 /**
- * The checkbox (with its hidden "0" companion). $checked defaults to the posted value, or ON when
- * the form has not been submitted yet.
+ * Whether messages this user sends from the panel get the suffix. A platform admin decides it per
+ * user (Users → user, «افزودن لغو۱۱ به انتهای پیام»); the customer has no control over it. Default ON
+ * — also for every user before the migration is applied.
  */
-function optout_suffix_checkbox_html(?bool $checked = null, string $extraClass = ''): string {
-    $checked ??= optout_suffix_requested();
-    $name = OPTOUT_SUFFIX_FIELD;
-    return '<label class="check composer-check optout-suffix-check' . ($extraClass !== '' ? ' ' . e($extraClass) : '') . '">'
-        . '<input type="hidden" name="' . $name . '" value="0">'
-        . '<input type="checkbox" name="' . $name . '" value="1" data-optout-suffix="' . e(OPTOUT_SUFFIX_TEXT) . '"' . ($checked ? ' checked' : '') . '> '
-        . 'افزودن «' . e(OPTOUT_SUFFIX_TEXT) . '» به انتهای پیام'
-        . '<span class="hint" style="display:block;margin:2px 0 0">اگر «لغو۱۱» از قبل در متن باشد دوباره اضافه نمی‌شود؛ این متن در شمارش کاراکتر و هزینه حساب می‌شود.</span>'
-        . '</label>';
+function optout_suffix_for_user(int $userId): bool {
+    static $cache = [];
+    if ($userId <= 0 || !optout_suffix_user_column_available()) {
+        return true;
+    }
+    if (!array_key_exists($userId, $cache)) {
+        $st = db()->prepare('SELECT optout_suffix FROM ellsms_meta WHERE user_id = ?');
+        $st->execute([$userId]);
+        $v = $st->fetchColumn();
+        $cache[$userId] = $v === false ? true : (int)$v === 1;
+    }
+    return $cache[$userId];
+}
+
+/** Admin: turn the suffix on/off for one user. Returns true when something changed (audited). */
+function optout_suffix_set_for_user(int $userId, bool $on, int $byUserId): bool {
+    if ($userId <= 0 || !optout_suffix_user_column_available()) {
+        return false;
+    }
+    $st = db()->prepare('UPDATE ellsms_meta SET optout_suffix = ? WHERE user_id = ? AND optout_suffix <> ?');
+    $st->execute([$on ? 1 : 0, $userId, $on ? 1 : 0]);
+    if ($st->rowCount() > 0) {
+        audit($byUserId, $on ? 'user.optout_suffix_on' : 'user.optout_suffix_off', 'user_id=' . $userId);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Read-only note under the message box when the suffix is on for this user (no checkbox — the admin
+ * decides). Its data-optout-suffix attribute is what the composer / LBA counters look for.
+ */
+function optout_suffix_notice_html(bool $on): string {
+    if (!$on) {
+        return '';
+    }
+    return '<p class="hint optout-suffix-note" data-optout-suffix="' . e(OPTOUT_SUFFIX_TEXT) . '">'
+        . '«' . e(OPTOUT_SUFFIX_TEXT) . '» در یک خط جدید به انتهای پیام اضافه می‌شود (اگر از قبل در متن نباشد) و در شمارش کاراکتر و هزینه حساب می‌شود.'
+        . '</p>';
 }
 
 /** Cached: does ellsms_import_jobs have the add_optout_suffix column yet (migration applied)? */

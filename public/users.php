@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit((int)$me['id'], 'user.enable_2fa_all', (string)$n);
         flash('success', 'ورود دومرحله‌ای برای همه‌ی کاربران فعال شد.');
     } elseif (in_array($do, ['revoke', 'toggle_admin', 'toggle_2fa', 'originator', 'credit', 'password', 'ensure_organization', 'customer_save', 'menu_save', 'operator_prices_save',
-                               'price_change_confirm', 'price_change_discard', 'price_change_cancel', 'price_change_revert', 'delivery_billing_save', 'vip_save', 'p2p_auto_send_save'], true)) {
+                               'price_change_confirm', 'price_change_discard', 'price_change_cancel', 'price_change_revert', 'delivery_billing_save', 'vip_save', 'p2p_auto_send_save', 'optout_suffix_save'], true)) {
         /*
          * Every action in this branch targets an EXISTING ELLSMS-managed
          * account only — an ELLSMS admin is not automatically a global
@@ -190,6 +190,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                      : 'ارسال‌های نظیر به نظیر این کاربر دوباره منتظر تأیید می‌مانند.');
             } else {
                 flash('info', 'تغییری در «ارسال خودکار نظیر به نظیر» نبود.');
+            }
+        } elseif ($do === 'optout_suffix_save') {
+            // «افزودن لغو۱۱ به انتهای پیام» (app/OptoutSuffix.php): only the admin decides, per user.
+            $on = !empty($_POST['optout_suffix']);
+            if (!optout_suffix_user_column_available()) {
+                flash('error', 'برای این تنظیم ابتدا مهاجرت 2026_11_24_user_optout_suffix.sql را اجرا کنید.');
+            } elseif (optout_suffix_set_for_user($id, $on, (int)$me['id'])) {
+                flash('success', $on ? 'از این پس «لغو۱۱» به انتهای پیام‌های این کاربر اضافه می‌شود.'
+                                     : 'از این پس «لغو۱۱» به پیام‌های این کاربر اضافه نمی‌شود.');
+            } else {
+                flash('info', 'تغییری در «افزودن لغو۱۱» نبود.');
             }
         } elseif ($do === 'menu_save') {
             $roleId = (int)($_POST['menu_role_id'] ?? 0) ?: null;
@@ -536,6 +547,20 @@ require __DIR__ . '/../app/views/header.php';
         <button class="btn btn-sm">ثبت</button>
       </form>
       <div class="hint">فایل‌های حجیم نظیر به نظیر پس از بارگذاری، بدون «ادامه و تأیید ارسال» شروع به ارسال می‌کنند.<?php if ($editAuto && $editAuto['set_at'] !== null): ?> از <?= jdate_from_utc($editAuto['set_at']) ?><?php if ($editAuto['set_by'] !== null): ?> — <?= e(backend_usernames_by_ids([$editAuto['set_by']])[$editAuto['set_by']] ?? '#' . $editAuto['set_by']) ?><?php endif; ?><?php endif; ?></div>
+    </div>
+    <?php endif; ?>
+    <?php if (optout_suffix_user_column_available()): ?>
+    <div class="summary-item">
+      <div class="summary-label">افزودن «لغو۱۱» به انتهای پیام</div>
+      <form method="post" class="summary-value vip-form">
+        <?= csrf_field() ?>
+        <input type="hidden" name="do" value="optout_suffix_save">
+        <input type="hidden" name="id" value="<?= (int)$editUser['id'] ?>">
+        <input type="hidden" name="back" value="1">
+        <label class="check"><input type="checkbox" name="optout_suffix" value="1"<?= optout_suffix_for_user((int)$editUser['id']) ? ' checked' : '' ?>> فعال</label>
+        <button class="btn btn-sm">ثبت</button>
+      </form>
+      <div class="hint">«لغو۱۱» در یک خط جدید به انتهای همه‌ی پیام‌هایی که این کاربر از پنل می‌فرستد اضافه می‌شود (اگر از قبل در متن نباشد). خود کاربر نمی‌تواند آن را تغییر دهد؛ API تأثیری نمی‌گیرد.</div>
     </div>
     <?php endif; ?>
   </div>
