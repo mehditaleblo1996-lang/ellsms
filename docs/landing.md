@@ -111,6 +111,20 @@ take clicks; nodes behind the sphere are not clickable until they come round. Th
 The «محصولات و خدمات» bento grid (`#products`, «پنج خدمت، یک تیم») that used to sit between the hero and
 the showcases was removed; the page goes from the core to `#product-sms`.
 
+### Animated background
+
+Every public page (home, «درباره ما», «تماس با ما», «راهنما», the legal pages: all that use
+`app/views/public_header.php`) has one fixed, decorative layer behind the content, `.lp-bg`, matched to
+the light identity: two soft turquoise glows that float slowly, two layers of thin wave lines (turquoise
+and a fainter graphite) that drift sideways at different speeds (120s / 180s, opposite directions), and
+eight fine light streaks that glide right to left (four on phones). The wave paths are generated in the
+header (`$lpBgWave`): each strip is 3200 units wide and repeats every 1600, so sliding it by −50% loops
+with no seam; on narrow screens the strip is at least 2000px wide so the waves stay gentle. Only
+transform/opacity animate (compositor only), the layer is `aria-hidden` with no pointer events, it stands
+still without streaks for `prefers-reduced-motion`, and it is hidden for `prefers-contrast: more`. Styles:
+the «Animated page background» block in `style.css`. Full-width bands let it show through: the cloud
+showcase's band is 72% white and the AI band is a transparent turquoise tint.
+
 ### Motion
 
 Reveals use `.lp-reveal` (`public_footer.php`). Showcase mock-ups

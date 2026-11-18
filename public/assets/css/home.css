@@ -257,14 +257,14 @@ button.dx-node-face[aria-pressed="true"] .dx-node-label { background: var(--ink)
 .dx-scene.is-short .ps-svg { height: 100%; width: 100%; }
 .dx-show-cloud { position: relative; }
 .dx-show-cloud::before { /* a quiet white band behind the second showcase, for rhythm */
-  content: ""; position: absolute; z-index: -1; inset: 0 calc(50% - 50vw); background: var(--surface);
+  content: ""; position: absolute; z-index: -1; inset: 0 calc(50% - 50vw); background: rgba(255, 255, 255, .72);
   border-block: 1px solid var(--border);
 }
 
 /* AI showcase: a full-width light band with a very soft turquoise tint, like the rest of the page. */
 .dx-show-ai {
   max-width: none; position: relative; overflow: hidden;
-  background: linear-gradient(180deg, var(--background), rgba(17, 184, 197, .05) 50%, var(--background));
+  background: linear-gradient(180deg, rgba(248, 250, 250, 0), rgba(17, 184, 197, .05) 50%, rgba(248, 250, 250, 0));
   border-block: 1px solid var(--border);
 }
 .dx-show-ai::before {

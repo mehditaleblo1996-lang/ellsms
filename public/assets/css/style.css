@@ -776,6 +776,61 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-body .ab-hero, .lp-body .ab-statement, .lp-body .ab-mv-card { color: var(--ink); }
 @media (prefers-contrast: more) { .lp-body { background-image: none; background: var(--canvas); } }
 
+/* ---------- Animated page background (app/views/public_header.php, docs/landing.md) ----------
+   One fixed layer behind every public page: two soft turquoise glows that float, two layers of thin
+   wave lines drifting sideways at different speeds (parallax), and fine light streaks gliding right to
+   left. Only transform/opacity animate, so it stays on the compositor; it is decorative
+   (aria-hidden, no pointer events) and stands still for prefers-reduced-motion. */
+.lp-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; contain: strict; }
+.lp-bg-glow { position: absolute; border-radius: 50%; will-change: transform; }
+.lp-bg-glow.is-a {
+  width: 62vmax; height: 62vmax; inset-inline-end: -18vmax; top: -22vmax;
+  background: radial-gradient(closest-side, rgba(17, 184, 197, .11), rgba(17, 184, 197, 0) 72%);
+  animation: lp-bg-float-a 38s ease-in-out infinite alternate;
+}
+.lp-bg-glow.is-b {
+  width: 54vmax; height: 54vmax; inset-inline-start: -20vmax; bottom: -24vmax;
+  background: radial-gradient(closest-side, rgba(8, 127, 140, .08), rgba(8, 127, 140, 0) 72%);
+  animation: lp-bg-float-b 46s ease-in-out infinite alternate;
+}
+@keyframes lp-bg-float-a { to { transform: translate(-8vw, 10vh) scale(1.08); } }
+@keyframes lp-bg-float-b { to { transform: translate(10vw, -8vh) scale(1.12); } }
+/* At least 2000px wide so the waves keep a gentle slope on phones (−50% is always one full period). */
+.lp-bg-waves { position: absolute; top: 0; left: 0; width: max(200%, 2000px); height: 100%; will-change: transform; }
+.lp-bg-waves svg { display: block; width: 100%; height: 100%; }
+.lp-bg-waves path { fill: none; vector-effect: non-scaling-stroke; }
+.lp-bg-waves.is-a path { stroke: rgba(17, 184, 197, .16); stroke-width: 1; }
+.lp-bg-waves.is-b path { stroke: rgba(37, 41, 43, .05); stroke-width: 1.2; }
+.lp-bg-waves.is-a { animation: lp-bg-drift 120s linear infinite; }
+.lp-bg-waves.is-b { animation: lp-bg-drift 180s linear infinite reverse; }
+@keyframes lp-bg-drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.lp-bg-streak {
+  --n: 0; position: absolute; left: 0; height: 1px; width: 22vw; min-width: 140px;
+  top: calc(9% + var(--n) * 11.3%);
+  background: linear-gradient(90deg, rgba(17, 184, 197, 0), rgba(17, 184, 197, .55) 70%, rgba(255, 255, 255, .9) 96%, rgba(17, 184, 197, 0));
+  border-radius: 1px; opacity: 0; will-change: transform, opacity;
+  animation: lp-bg-streak calc(15s + var(--n) * 2.4s) cubic-bezier(.45, .05, .55, .95) infinite;
+  animation-delay: calc(var(--n) * -3.7s);
+}
+.lp-bg-streak:nth-child(3n) { width: 30vw; }
+.lp-bg-streak:nth-child(3n + 1) { width: 16vw; }
+/* Right to left, as Persian reads; fades in and out at the edges. */
+@keyframes lp-bg-streak {
+  0%   { transform: translateX(100vw); opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateX(-35vw); opacity: 0; }
+}
+@media (max-width: 640px) {
+  .lp-bg-streak:nth-child(n + 9) { display: none; } /* the two glows + two wave layers come first: keep 4 streaks */
+  .lp-bg-waves.is-a path { stroke: rgba(17, 184, 197, .12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-bg-glow, .lp-bg-waves { animation: none; }
+  .lp-bg-streak { display: none; }
+}
+@media (prefers-contrast: more) { .lp-bg { display: none; } }
+
 /* ---------- Floating navigation (app/views/public_header.php) ----------
    A light bar floating over the page: official DATIS logo on the right, links in the middle, the
    panel CTA on the left. Frosted white with a hairline border; a little more opaque, with a soft
