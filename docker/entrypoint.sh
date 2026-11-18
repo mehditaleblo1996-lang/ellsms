@@ -17,4 +17,10 @@ mkdir -p /var/www/html/public/assets/video/landing /var/www/html/public/assets/i
 chown -R www-data:www-data /var/www/html/public/assets/video /var/www/html/public/assets/img/landing-video-posters 2>/dev/null || true
 chmod -R u+rwX,g+rwX /var/www/html/public/assets/video /var/www/html/public/assets/img/landing-video-posters 2>/dev/null || true
 
+# PHP sessions (named volume ellsms_sessions, see docker/Dockerfile): an existing volume keeps the
+# ownership it was created with, so make sure Apache can still write it.
+mkdir -p /var/lib/php/sessions
+chown www-data:www-data /var/lib/php/sessions 2>/dev/null || true
+chmod 0700 /var/lib/php/sessions 2>/dev/null || true
+
 exec docker-php-entrypoint "$@"

@@ -52,6 +52,18 @@ the server never generated), idle timeout (default 1800s) and absolute timeout (
 independent of PHP's own GC, session ID regenerated on login/2FA/bootstrap-admin. See
 `tests/Unit/SessionSecurityTest.php`.
 
+**Session storage.** PHP's file sessions are stored in `/var/lib/php/sessions` (`session.save_path`
+in `docker/Dockerfile`), which `docker-compose.yml` mounts on the `app` service as the named volume
+`ellsms_sessions`. Before this, sessions sat in `/tmp` inside the container and every recreation
+of the `app` container (image rebuild, `./deploy.sh --full`, `docker compose up -d` after a
+`docker/` change) signed every logged-in user out. Now a deploy or server restart keeps sessions;
+only the idle/absolute timeouts above end them. Staging runs as compose project `ellsms-stage`, so
+it gets its own volume (`ellsms-stage_ellsms_sessions`). `docker/entrypoint.sh` re-asserts
+`www-data` ownership of the directory on every start. To sign everyone out deliberately:
+`docker compose stop app && docker volume rm <project>_ellsms_sessions && docker compose up -d app`.
+The first deploy that introduces the volume still signs users out once (their old sessions were in
+the old container's `/tmp`). No migration is needed.
+
 ## 4. Trusted proxy / HTTPS detection (Phase 10, new)
 
 `TRUSTED_PROXY_IPS` (`.env`) — comma-separated IP/CIDR allowlist. **Empty by default**, meaning
