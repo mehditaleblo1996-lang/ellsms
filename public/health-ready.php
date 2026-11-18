@@ -14,6 +14,8 @@
  * built image directly). Never returns credentials, hostnames, API
  * URLs, or exception detail — see app/Support/HealthCheck.php.
  */
+// No session: a monitor's cookieless probe must not create a sess_* file on every hit.
+define('ELLSMS_NO_SESSION', true);
 require_once __DIR__ . '/../app/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');

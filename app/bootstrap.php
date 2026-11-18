@@ -622,13 +622,20 @@ function session_mark_authenticated(): void {
     }
 }
 
-if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
+// ELLSMS_NO_SESSION: an entrypoint that never needs a session (the /health and /health/ready probes)
+// defines it before requiring this file, so every cookieless monitor hit no longer leaves an
+// empty sess_* file behind.
+if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli' && !defined('ELLSMS_NO_SESSION')) {
     // use_strict_mode rejects any session id the client presents that the
     // server never generated (blocks session fixation via a pre-set
     // cookie); secure is derived from the real request scheme rather than
     // hardcoded, so local/dev HTTP access still works while production
     // HTTPS gets the flag automatically.
     ini_set('session.use_strict_mode', '1');
+    // PHP's own session GC must not delete a session file before the app's idle timeout ends it:
+    // the default gc_maxlifetime (1440s) silently signed out users idle 24–30 minutes even though
+    // SESSION_IDLE_TIMEOUT_SECONDS said 30. Keep the file at least as long as the idle timeout.
+    ini_set('session.gc_maxlifetime', (string)session_idle_timeout_seconds());
     session_set_cookie_params([
         'httponly' => true,
         'samesite' => 'Lax',

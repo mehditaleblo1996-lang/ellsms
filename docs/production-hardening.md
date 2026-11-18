@@ -64,6 +64,13 @@ it gets its own volume (`ellsms-stage_ellsms_sessions`). `docker/entrypoint.sh` 
 The first deploy that introduces the volume still signs users out once (their old sessions were in
 the old container's `/tmp`). No migration is needed.
 
+`session.gc_maxlifetime` is set at runtime to `SESSION_IDLE_TIMEOUT_SECONDS` (`app/bootstrap.php`),
+so PHP's garbage collector never deletes a session file before the app's own idle timeout would
+end it (with PHP's default of 1440s, users idle 24–30 minutes were signed out early). The
+`/health` and `/health/ready` probes define `ELLSMS_NO_SESSION` and start no session, so monitor
+hits no longer fill the directory with empty `sess_*` files. The remaining small (~28-byte) files
+are anonymous visitors; they are collected after `SESSION_IDLE_TIMEOUT_SECONDS`.
+
 ## 4. Trusted proxy / HTTPS detection (Phase 10, new)
 
 `TRUSTED_PROXY_IPS` (`.env`) — comma-separated IP/CIDR allowlist. **Empty by default**, meaning
