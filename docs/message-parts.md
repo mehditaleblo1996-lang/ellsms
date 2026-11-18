@@ -85,7 +85,7 @@ column, to admins and customers alike. A count and its parts always cover the sa
 | «گزارش وضعیت‌ها» (`/messages/reports/status`) | a «بخش» column beside every «پیامک» column, per month/day and in the totals, the CSV and under the donut ([status-report](status-report.md)) |
 | «لیست پیام‌های دریافتی» (`/inbox.php`) | column «تعداد پارت» per message; the detail drawer |
 | «گزارش ارسال حجیم» (`/reports-bulk.php`) | each summary card «N پارت»; breakdown column «تعداد پارت»; list column «تعداد پارت» |
-| A bulk send's page (`/bulk-job.php`) | each card «N پارت»; list column «تعداد پارت» |
+| A bulk send's page (`/bulk-job.php`) | each card «N پارت» (with delivery states: «کل», «تحویل‌شده», «تحویل‌نشده», «منتظر گزارش تحویل», «ناموفق», «باقی‌مانده»); list column «تعداد پارت»; each row's detail drawer |
 | Delivery history (`/message-detail.php`) | a send: «تعداد پارت»; a bulk send: «تعداد پارت هر پیام» (or «(نمونه)» for a personalized one), «تعداد پیام‌ها» and «مجموع پارت‌ها», a «تعداد پارت» column per recipient |
 | «گزارش اپراتورها» — all, «بر اساس شماره», «بر اساس تأمین‌کننده» (`/operator-reports.php`) | share table and per-language table: a parts column after each count; admin status table (and each operator's per-language detail): «پارت ارسال‌شده» after «مجموع ارسال‌شده», «پارت تحویل گرفته‌شده» after «مجموع تحویل گرفته‌شده» and «پارت تحویل داده‌نشده» after «تحویل داده‌نشده» (the parts of the `undelivered` status only; the other status columns — including «لیست سیاه» and «فرستنده نامعتبر» — stay counts only); customer table: «تعداد پارت» after each of its columns |
 | «گزارش تعداد پیام‌های ارسالی» (`/sent-count-report.php`) | «تعداد پارت تعاملی», «… بالک درخواستی», «… بالک ارسال‌شده» after each count; the cards; the CSV |
