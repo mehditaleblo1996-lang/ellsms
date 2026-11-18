@@ -75,6 +75,12 @@ RUN sed -ri 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-avail
 # the application runs and is fail-safe, so MongoDB can never make an ELLSMS request unavailable.
 # session.upload_progress is unused by ELLSMS (no PHP_SESSION_UPLOAD_PROGRESS anywhere) and is a
 # known way to turn a local-file-inclusion bug into code execution, so it stays off.
+# Sessions live in /var/lib/php/sessions, which docker-compose.yml mounts as the named volume
+# ellsms_sessions: the default (/tmp inside the container) was wiped every time the app container
+# was recreated, signing every user out on each image rebuild / --full deploy (docs/production-hardening.md §3).
+RUN mkdir -p /var/lib/php/sessions \
+ && chown www-data:www-data /var/lib/php/sessions \
+ && chmod 0700 /var/lib/php/sessions
 RUN { \
       echo 'date.timezone = Asia/Tehran'; \
       echo 'memory_limit = 4G'; \
@@ -84,6 +90,7 @@ RUN { \
       echo 'display_errors = Off'; \
       echo 'log_errors = On'; \
       echo 'session.upload_progress.enabled = Off'; \
+      echo 'session.save_path = /var/lib/php/sessions'; \
       echo 'auto_prepend_file = /var/www/html/app/Support/AuditPrepend.php'; \
     } > /usr/local/etc/php/conf.d/ellsms.ini
 

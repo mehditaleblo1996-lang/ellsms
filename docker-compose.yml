@@ -122,6 +122,10 @@ services:
       ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED: ${ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED:-0}
     volumes:
       - ./:/var/www/html
+      # PHP sessions survive container recreation (deploys, image rebuilds, server restarts), so
+      # logged-in users are not signed out by a deploy. Staging gets its own copy automatically
+      # (compose project ellsms-stage -> volume ellsms-stage_ellsms_sessions).
+      - ellsms_sessions:/var/lib/php/sessions
     networks:
       - backend_net
 
@@ -814,5 +818,6 @@ networks:
     name: ${BACKEND_NETWORK:?set BACKEND_NETWORK in .env to the backend stack's Docker network name}
 
 volumes:
+  ellsms_sessions:
   ellsms_prometheus_data:
   ellsms_grafana_data:
