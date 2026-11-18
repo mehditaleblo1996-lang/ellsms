@@ -120,6 +120,8 @@ function import_job_analyze_pass(array $job): void {
     if (!is_array($variableHeaders)) {
         $variableHeaders = null;
     }
+    // «افزودن لغو۱۱» chosen on the send form (app/OptoutSuffix.php) — applied before pricing and dedupe.
+    $addOptout = !empty($job['add_optout_suffix']);
 
     $dedupeIns = $db->prepare(
         'INSERT IGNORE INTO ellsms_import_dedupe (import_job_id, mobile, content_fingerprint, content, segments)
@@ -167,6 +169,9 @@ function import_job_analyze_pass(array $job): void {
                 $content = trim(render_bulk_template($template, []));
             } else {
                 $content = $row['content'];
+            }
+            if ($addOptout) {
+                $content = optout_suffix_apply((string)$content);
             }
 
             $mobile = $row['mobile'];

@@ -47,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit((int)$me['id'], 'aimed_bulk.settings', 'enabled=' . (!empty($_POST['aimed_bulk_enabled']) ? 1 : 0) . ' surcharge=' . aimed_bulk_surcharge_percent());
         flash('success', 'تنظیمات ارسال با کد پستی ذخیره شد.');
     } elseif ($action === 'count' || $action === 'create') {
-        $form = array_intersect_key($_POST, array_flip(['postal_code', 'province_code', 'city_code', 'prefix', 'sim', 'pick', 'range_from', 'range_to', 'originator', 'content', 'count', 'title']));
+        $form = array_intersect_key($_POST, array_flip(['postal_code', 'province_code', 'city_code', 'prefix', 'sim', 'pick', 'range_from', 'range_to', 'originator', 'content', OPTOUT_SUFFIX_FIELD, 'count', 'title']));
         $_SESSION['aimed_bulk_form'] = $form;
         $c = aimed_bulk_criteria($form);
         if (!$c['ok']) {
@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } else {
             $count = (int)from_persian_digits((string)($form['count'] ?? '0'));
-            $r = aimed_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), (string)($form['content'] ?? ''), $count > 0 ? $count : null, (string)($form['title'] ?? ''));
+            $r = aimed_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), optout_suffix_maybe(trim((string)($form['content'] ?? '')), optout_suffix_requested($form)), $count > 0 ? $count : null, (string)($form['title'] ?? ''));
             if ($r['ok']) {
                 unset($_SESSION['aimed_bulk_form'], $_SESSION['aimed_bulk_count_id']);
                 flash('success', 'درخواست ثبت شد. شماره‌ها در پس‌زمینه شمرده، آماده و قیمت‌گذاری می‌شوند؛ پس از آماده شدن، آن را در فهرست زیر تأیید کنید.');
@@ -183,6 +183,7 @@ require __DIR__ . '/../app/views/header.php';
       <label style="flex:1 1 220px">عنوان (اختیاری) <input type="text" name="title" maxlength="160" style="width:100%" value="<?= e($fv('title')) ?>"></label>
     </div>
     <label style="display:block">متن پیام <textarea name="content" rows="4" style="width:100%"><?= e($fv('content')) ?></textarea></label>
+    <?= optout_suffix_checkbox_html(optout_suffix_requested($form)) ?>
     <button class="btn" name="action" value="count">شمارش شماره‌ها</button>
     <button class="btn btn-primary" name="action" value="create">ثبت درخواست و قیمت‌گذاری</button>
   </form>

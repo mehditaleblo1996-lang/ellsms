@@ -30,6 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $uploadName = import_upload_original_name($_FILES['file'] ?? []);
         $title      = trim($_POST['title'] ?? '') ?: ($uploadName !== '' ? $uploadName : 'بدون عنوان');
         $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
+        $addOptout  = optout_suffix_requested(); // «افزودن لغو۱۱» (app/OptoutSuffix.php), per row
 
         if (user_has_no_send_line($me)) {
             flash('error', NO_ASSIGNED_LINE_MESSAGE);
@@ -53,7 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         import_delete_storage($storageKey);
                         flash('error', 'تعداد ردیف‌های فایل از سقف مجاز بیشتر است.');
                     } elseif ($countResult['count'] > import_sync_max_recipients()) {
-                        $created = import_create_job($me, 'p2p', $originator, $title, $storageKey, null, null, null, null, null, $uploadName);
+                        $created = import_create_job($me, 'p2p', $originator, $title, $storageKey, null, null, null, null, null, $uploadName, $addOptout);
                         if ($created['ok']) {
                             audit((int)$me['id'], 'p2p.upload.large', "{$title}: " . $countResult['count'] . ' rows');
                             redirect('/import.php?id=' . $created['job_id']);
@@ -68,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             foreach (import_read_chunks($storageKey, import_chunk_size()) as $chunk) {
                                 foreach ($chunk as $row) {
                                     if ($row['mobile'] !== '' && $row['content'] !== '') {
-                                        $items[] = ['mobile' => $row['mobile'], 'content' => $row['content']];
+                                        $items[] = ['mobile' => $row['mobile'], 'content' => optout_suffix_maybe((string)$row['content'], $addOptout)];
                                     } else {
                                         $skipped++;
                                     }
@@ -167,6 +168,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
       </label>
       <label>فایل (xlsx یا csv) <input type="file" name="file" accept=".xlsx,.csv" required></label>
     </div>
+    <?= optout_suffix_checkbox_html() ?>
     <button class="btn btn-primary">بارگذاری و افزودن به صف ارسال</button>
   </form>
 </div>

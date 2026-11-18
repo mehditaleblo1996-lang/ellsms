@@ -32,6 +32,16 @@
   var digitToggle = byId('digitConvert');
   if (!content) return;
 
+  /* «افزودن لغو۱۱» checkbox (app/OptoutSuffix.php): the meter, phone preview and live cost all count
+     the text that will actually be sent — mirror of optout_suffix_apply(). */
+  var optoutBox = form.querySelector('input[type=checkbox][data-optout-suffix]');
+  var OPTOUT_RE = /لغو\s*[:：\-]?\s*(?:11|۱۱|١١)(?![0-9۰-۹٠-٩])/;
+  function sentText() {
+    var t = content.value, trimmed = t.replace(/\s+$/, '');
+    if (!optoutBox || !optoutBox.checked || trimmed === '' || OPTOUT_RE.test(trimmed)) return t;
+    return trimmed + '\n' + optoutBox.dataset.optoutSuffix;
+  }
+
   /* ---------- 1. Segments (mirror of sms_parts() / cost_estimate_segments()) ---------- */
   function analyzeText(raw) {
     // Browsers submit textarea newlines as CRLF and the server trims before counting.
@@ -278,7 +288,7 @@
     var data = new FormData();
     data.append('_csrf', (field('_csrf') || {}).value || '');
     data.append('originator', (field('originator') || {}).value || '');
-    data.append('content', content.value);
+    data.append('content', sentText());
     data.append('destinations', dest ? dest.value : '');
     data.append('group', (field('group') || {}).value || '');
     data.append('category', (field('category') || {}).value || '');
@@ -293,7 +303,7 @@
     costState('loading');
     timer = setTimeout(function () {
       var wait = pausedUntil - Date.now();
-      if (wait > 0) { timer = setTimeout(function () { estimate(analyzeText(content.value), analyzeDest()); }, wait); return; }
+      if (wait > 0) { timer = setTimeout(function () { estimate(analyzeText(sentText()), analyzeDest()); }, wait); return; }
       controller = typeof AbortController === 'function' ? new AbortController() : null;
       var mine = ++seq;
       inflightKey = key;
@@ -333,7 +343,7 @@
   }
   var destFrame = null;
   function refresh(destChanged) {
-    var a = analyzeText(content.value);
+    var a = analyzeText(sentText());
     renderMeter(a);
     renderPhone(a);
     var d = analyzeDest();
@@ -357,6 +367,8 @@
     f.addEventListener('change', function () { renderSender(); refresh(true); });
     f.addEventListener('input', function () { renderSender(); });
   });
+
+  if (optoutBox) optoutBox.addEventListener('change', function () { refresh(false); });
 
   // Page scripts that rewrite the fields (campaign loader, emoji, file upload, clipboard) call this.
   window.smsComposerRefresh = function () { renderSender(); refresh(true); };

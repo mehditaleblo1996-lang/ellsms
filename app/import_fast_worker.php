@@ -114,6 +114,9 @@ function import_fast_analyze_generated_job(array $job): void {
             $totals['processed']++;
             $mobile = (string)($row['mobile'] ?? '');
             $content = trim((string)($row['content'] ?? ''));
+            if ($content !== '' && !empty($job['add_optout_suffix'])) {
+                $content = optout_suffix_apply($content); // app/OptoutSuffix.php
+            }
             if ($mobile === '' || $content === '') {
                 $totals['invalid']++;
                 continue;

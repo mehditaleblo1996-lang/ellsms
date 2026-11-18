@@ -32,7 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // The «کد تایید اشتراکی» box posts here too; it is handled (and redirected) on its own.
     shared_otp_handle_send_form($me, '/send.php');
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
-    $content    = trim($_POST['content'] ?? '');
+    // «افزودن لغو۱۱» (app/OptoutSuffix.php, default on) — before preview, schedule and send alike.
+    $content    = optout_suffix_maybe(trim($_POST['content'] ?? ''), optout_suffix_requested());
     $dests      = parse_destinations($_POST['destinations'] ?? '');
 
     // The RAW, pre-normalization tokens, collected alongside $dests purely so the cost preview can
@@ -178,6 +179,9 @@ if (isset($costPreview) && $costPreview) {
     foreach (['originator', 'destinations', 'content', 'group', 'category', 'mode', 'repeat'] as $field) {
         $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)($_POST[$field] ?? '')) . '">';
     }
+    if (isset($_POST[OPTOUT_SUFFIX_FIELD])) {
+        $previewFormFields .= '<input type="hidden" name="' . OPTOUT_SUFFIX_FIELD . '" value="' . e((string)$_POST[OPTOUT_SUFFIX_FIELD]) . '">';
+    }
     // The schedule date/time fields (mode=later) must survive the round trip too, or confirming a
     // scheduled send after previewing it silently loses the date the user picked.
     foreach (['send_date_y', 'send_date_m', 'send_date_d', 'send_time_h', 'send_time_i'] as $field) {
@@ -218,6 +222,7 @@ require __DIR__ . '/../app/views/shared_otp_send_card.php';
     <label>متن پیام
       <textarea name="content" id="content" required rows="6" dir="auto" placeholder="مثلاً: مشتری گرامی، سفارش شما ارسال شد."><?= e($_POST['content'] ?? '') ?></textarea>
     </label>
+    <?= optout_suffix_checkbox_html() ?>
     <?= composer_meter_html() ?>
   </section>
 

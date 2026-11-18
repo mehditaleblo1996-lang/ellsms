@@ -187,3 +187,9 @@ call and chunk-completion UPDATE. The 10k-row integration test took several minu
 this test server. Production deployments should size `IMPORT_CHUNK_SIZE` and `DB_INSERT_BATCH`
 larger (see `docs/production-tuning.md`) to trade memory headroom for fewer round trips — this is a
 tuning question, not a bounded-memory violation; the per-chunk footprint stays flat either way.
+
+## Opt-out footer («افزودن لغو۱۱»)
+
+`ellsms_import_jobs.add_optout_suffix` (migration `db/migrations/2026_11_23_import_job_optout_suffix.sql`)
+carries the send form's «افزودن لغو۱۱ به انتهای پیام» choice; the analyze pass appends `\nلغو۱۱` to each
+row's text (after smart-template rendering) unless it already contains it. See `docs/optout-suffix.md`.
