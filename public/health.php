@@ -9,6 +9,8 @@
  * detail — see app/Support/HealthCheck.php. Full detail always still
  * goes to Logger for internal investigation.
  */
+// No session: a monitor's cookieless probe must not create a sess_* file on every hit.
+define('ELLSMS_NO_SESSION', true);
 require_once __DIR__ . '/../app/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
