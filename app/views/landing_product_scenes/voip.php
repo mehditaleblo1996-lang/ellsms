@@ -34,7 +34,7 @@
   <g transform="translate(344 200)">
     <rect width="40" height="70" rx="9" fill="#1c1408" stroke="url(#psVoipG)" stroke-width="2"/>
     <rect x="5" y="9" width="30" height="46" rx="4" fill="#2a1d0a"/>
-    <circle cx="20" cy="32" r="8" fill="#2dced1" class="ps-beat"/>
+    <circle cx="20" cy="32" r="8" fill="#48cbd7" class="ps-beat"/>
     <path d="M17 32h6" stroke="#06281b" stroke-width="2"/>
   </g>
   <!-- equaliser -->

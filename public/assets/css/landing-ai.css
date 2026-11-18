@@ -1,23 +1,23 @@
-/* «منشی هوشمند» on the landing page (public/landing.php, docs/landing.md): banner slide 7
-   (.lp-banner-ai), a chat in which the secretary answers a customer. Elements marked .lp-ai-pop start
-   hidden and rise in once their slide is .is-active, after their own --t delay. Loaded only by
-   landing.php (via $extraStyles). */
+/* «منشی هوشمند» on the home page (public/landing.php#product-ai, docs/landing.md): a chat in which
+   the secretary answers a customer, on the page's graphite band. Elements marked .lp-ai-pop start
+   hidden and rise in once the showcase is on screen ([data-dx-live].is-live), after their own --t
+   delay. Loaded only by landing.php (via $extraStyles). */
 
 .lp-body {
-  --ai-violet: #9de7e8;
-  --ai-blue: #12b5b7;
-  --ai-green: #2dced1;
-  --ai-teal: #2ed1d4;
+  --ai-violet: #9de2e8;
+  --ai-blue: #13b4c2;
+  --ai-green: #48cbd7;
+  --ai-teal: #4dceda;
   --ai-amber: #fbbf24;
   --ai-glass: rgba(15, 17, 19, .78);
-  --ai-edge: rgba(157, 231, 232, .22);
+  --ai-edge: rgba(157, 226, 232, .22);
   --ai-text: #e9eced;
   --ai-soft: #adb5bc;
 }
 
 /* ---------- shared pieces: pop-in, chat bubbles, typing dots ---------- */
 .lp-ai-pop { opacity: 0; transform: translateY(12px); }
-.lp-banner-slide.is-active .lp-ai-pop {
+[data-dx-live].is-live .lp-ai-pop {
   animation: lp-ai-pop .55s cubic-bezier(.2, .8, .3, 1) both; animation-delay: var(--t, 0s);
 }
 @keyframes lp-ai-pop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
@@ -27,59 +27,59 @@
   color: var(--ai-text); background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .1);
 }
 .lp-ai-msg small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--ai-soft); font-family: var(--font-num); }
-.lp-ai-msg b { color: #c1f0f1; font-weight: 700; }
+.lp-ai-msg b { color: #c1edf1; font-weight: 700; }
 /* RTL column: flex-end is the left side (the customer), flex-start the right side (the line). */
 .lp-ai-msg.is-in { align-self: flex-end; border-radius: 16px 16px 16px 4px; }
 .lp-ai-msg.is-out {
-  align-self: flex-start; border-radius: 16px 16px 4px 16px; border-color: rgba(157, 231, 232, .3);
-  background: linear-gradient(135deg, rgba(11, 115, 116, .42), rgba(13, 124, 126, .34));
+  align-self: flex-start; border-radius: 16px 16px 4px 16px; border-color: rgba(157, 226, 232, .3);
+  background: linear-gradient(135deg, rgba(12, 114, 124, .42), rgba(14, 124, 133, .34));
 }
 
 .lp-ai-typing {
   align-self: flex-start; display: inline-flex; gap: 4px; margin: 0; padding: 11px 14px; border-radius: 16px 16px 4px 16px;
-  background: rgba(11, 115, 116, .25); border: 1px solid rgba(157, 231, 232, .25); opacity: 0; height: 0; padding-block: 0; overflow: hidden;
+  background: rgba(12, 114, 124, .25); border: 1px solid rgba(157, 226, 232, .25); opacity: 0; height: 0; padding-block: 0; overflow: hidden;
 }
-.lp-ai-typing i { width: 6px; height: 6px; border-radius: 50%; background: #c1f0f1; animation: lp-ai-dot 1s ease-in-out infinite; }
+.lp-ai-typing i { width: 6px; height: 6px; border-radius: 50%; background: #c1edf1; animation: lp-ai-dot 1s ease-in-out infinite; }
 .lp-ai-typing i:nth-child(2) { animation-delay: .15s; }
 .lp-ai-typing i:nth-child(3) { animation-delay: .3s; }
 @keyframes lp-ai-dot { 0%, 60%, 100% { transform: none; opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
-.lp-banner-slide.is-active .lp-ai-typing { animation: lp-ai-typing 1.5s ease both; animation-delay: var(--t, 0s); }
+[data-dx-live].is-live .lp-ai-typing { animation: lp-ai-typing 1.5s ease both; animation-delay: var(--t, 0s); }
 @keyframes lp-ai-typing {
   0% { opacity: 0; height: 0; padding-block: 0; }
   15%, 85% { opacity: 1; height: 28px; padding-block: 11px; }
   100% { opacity: 0; height: 0; padding-block: 0; margin-top: -10px; }
 }
 
-/* ---------- banner slide 7 ---------- */
+/* ---------- the chat ---------- */
 .lp-banner-ai { width: min(400px, 94%); margin-inline: auto; }
 .lp-ai-chat {
   position: relative; border-radius: 24px; overflow: hidden; background: var(--ai-glass);
-  border: 1px solid var(--ai-edge); box-shadow: 0 30px 70px -24px rgba(11, 115, 116, .55), 0 0 0 1px rgba(255, 255, 255, .04) inset;
+  border: 1px solid var(--ai-edge); box-shadow: 0 30px 70px -24px rgba(12, 114, 124, .55), 0 0 0 1px rgba(255, 255, 255, .04) inset;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
 .lp-ai-chat-head {
   display: flex; align-items: center; gap: 11px; padding: 13px 16px;
-  background: linear-gradient(120deg, rgba(11, 115, 116, .35), rgba(13, 124, 126, .22)); border-bottom: 1px solid rgba(255, 255, 255, .08);
+  background: linear-gradient(120deg, rgba(12, 114, 124, .35), rgba(14, 124, 133, .22)); border-bottom: 1px solid rgba(255, 255, 255, .08);
 }
 .lp-ai-chat-head > div { display: flex; flex-direction: column; gap: 1px; flex: 1; }
 .lp-ai-chat-head b { color: #fff; font-size: 14.5px; }
-.lp-ai-chat-head span { color: #c1f0f1; font-size: 11.5px; }
+.lp-ai-chat-head span { color: #c1edf1; font-size: 11.5px; }
 .lp-ai-live { font-style: normal; font-size: 11px; color: var(--ai-green); display: inline-flex; align-items: center; gap: 5px; }
-.lp-ai-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ai-green); box-shadow: 0 0 0 3px rgba(45, 206, 209, .2); animation: lp-ai-blink 1.6s ease-in-out infinite; }
+.lp-ai-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ai-green); box-shadow: 0 0 0 3px rgba(72, 203, 215, .2); animation: lp-ai-blink 1.6s ease-in-out infinite; }
 @keyframes lp-ai-blink { 50% { opacity: .35; } }
 .lp-ai-orb {
   position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  background: radial-gradient(circle at 30% 30%, #c1f0f1, #0b7374 55%, #0d7c7e);
-  box-shadow: 0 0 22px rgba(157, 231, 232, .6);
+  background: radial-gradient(circle at 30% 30%, #c1edf1, #0c727c 55%, #0e7c85);
+  box-shadow: 0 0 22px rgba(157, 226, 232, .6);
 }
 .lp-ai-orb svg { width: 20px; height: 20px; fill: #fff; position: relative; z-index: 1; }
-.lp-ai-orb i { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(193, 240, 241, .7); animation: lp-ai-ring 2.4s ease-out infinite; }
+.lp-ai-orb i { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(193, 237, 241, .7); animation: lp-ai-ring 2.4s ease-out infinite; }
 .lp-ai-orb i:nth-child(2) { animation-delay: 1.2s; }
 @keyframes lp-ai-ring { from { transform: scale(1); opacity: .9; } to { transform: scale(1.8); opacity: 0; } }
 .lp-ai-chat-body { display: flex; flex-direction: column; gap: 10px; padding: 16px; min-height: 230px; }
 .lp-ai-chip {
   position: absolute; z-index: 1; display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 14px;
-  font-size: 12px; color: #e4e6e9; background: rgba(10, 11, 12, .86); border: 1px solid rgba(157, 231, 232, .35);
+  font-size: 12px; color: #e4e6e9; background: rgba(10, 11, 12, .86); border: 1px solid rgba(157, 226, 232, .35);
   box-shadow: 0 18px 36px -14px rgba(0, 0, 0, .7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 .lp-ai-chip svg { width: 16px; height: 16px; fill: none; stroke: var(--ai-violet); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }

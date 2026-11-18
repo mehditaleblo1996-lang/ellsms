@@ -2,13 +2,15 @@
    The feature slider in the card's end half has its own stylesheet, login-slider.css. */
 
 .auth {
-  --a-ink:    #25292d;
+  --a-ink:    #25292b;
   --a-soft:   #444c53;
   --a-faint:  #4b555b;
-  /* Turquoise on the platform's own host; a reseller's host sets --login-brand to its own colour
-     (brand_color_style() in app/ResellerPanel.php). #0b7a7c carries white text at 5.1:1. */
-  --a-brand:  var(--login-brand, #0b7a7c);
-  --a-brand-hover: color-mix(in srgb, var(--a-brand) 82%, #000);
+  /* DATIS turquoise on the platform's own host: the button is #11b8c5 with graphite text (6.1:1)
+     and turns #087f8c with white text (4.75:1) on hover. A reseller's host sets --login-brand,
+     --login-on-brand and --login-brand-hover to its own colour (brand_color_style()). */
+  --a-brand:  var(--login-brand, #11b8c5);
+  --a-on-brand: var(--login-on-brand, #25292b);
+  --a-brand-hover: var(--login-brand-hover, #087f8c);
   --a-err:    #a3182b;
   --a-err-bg: rgba(255, 226, 230, .75);
 
@@ -16,22 +18,22 @@
   --a-glass-strong: rgba(255, 255, 255, .72);
   --a-glass-edge:   #e7e9eb;
   --a-field:        rgba(255, 255, 255, .78);
-  --a-field-edge:   rgba(37, 41, 45, .14);
+  --a-field-edge:   rgba(37, 41, 43, .14);
   --a-field-hover:  rgba(255, 255, 255, .9);
   --a-field-focus:  #fff;
   --a-solid:        #fff;
-  --a-tint:         rgba(37, 41, 45, .07);
-  --a-shadow:       37, 41, 45;
+  --a-tint:         rgba(37, 41, 43, .07);
+  --a-shadow:       37, 41, 43;
   /* Quiet brand tints keep text readable and avoid continuous large repaints. */
   --a-base:  #f7f8f8;
-  --a-blob1: rgba(18, 164, 166, .12);
-  --a-blob2: rgba(37, 41, 45, .06);
+  --a-blob1: rgba(19, 163, 176, .12);
+  --a-blob2: rgba(37, 41, 43, .06);
   --a-blob3: transparent;
   --a-blob4: transparent;
-  --a-on-night:      #25292d;
+  --a-on-night:      #25292b;
   --a-on-night-soft: #5a666e;
 
-  --a-font: 'Vazirmatn', Tahoma, sans-serif;
+  --a-font: 'Estedad', 'Vazirmatn', Tahoma, sans-serif;
   --a-fs-xs:   13px;
   --a-fs-base: 14px;
   --a-fs-md:   16px;
@@ -56,7 +58,7 @@
 .auth *, .auth input, .auth button { font-family: var(--a-font); letter-spacing: 0; }
 .auth a { color: var(--a-ink); text-decoration: underline; text-decoration-color: var(--a-soft); text-underline-offset: 5px; text-decoration-thickness: 1px; transition: text-decoration-color .15s ease; }
 .auth a:hover { text-decoration-color: var(--a-ink); }
-.auth :focus-visible { outline: 2px solid var(--a-brand); outline-offset: 3px; }
+.auth :focus-visible { outline: 2px solid var(--a-brand-hover); outline-offset: 3px; }
 
 /* ---------- The colour field ---------- */
 .auth-bg {
@@ -164,12 +166,12 @@
 .auth-submit {
   margin-top: 6px; height: 52px; width: 100%;
   border: 0; border-radius: var(--a-radius);
-  background: var(--a-brand); color: #fff;
+  background: var(--a-brand); color: var(--a-on-brand);
   font-size: var(--a-fs-md); font-weight: 500; line-height: 1; cursor: pointer;
   box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 10px 24px -10px color-mix(in srgb, var(--a-brand) 70%, transparent);
   transition: background-color .15s ease, transform .12s var(--ease-out), box-shadow .15s ease;
 }
-.auth-submit:hover { background: var(--a-brand-hover); box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 14px 28px -10px color-mix(in srgb, var(--a-brand) 80%, transparent); }
+.auth-submit:hover { background: var(--a-brand-hover); color: #fff; box-shadow: 0 1px 0 rgba(255, 255, 255, .25) inset, 0 14px 28px -10px color-mix(in srgb, var(--a-brand) 80%, transparent); }
 .auth-submit:active { transform: scale(.99); }
 
 .auth-register { margin: 22px 0 0; font-size: var(--a-fs-base); color: var(--a-soft); text-align: center; }

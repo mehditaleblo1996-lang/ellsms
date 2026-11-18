@@ -173,6 +173,10 @@
   var update = function () { nav.classList.toggle('is-scrolled', window.scrollY > 8); };
   window.addEventListener('scroll', update, { passive: true });
   update();
+  // The nav's real height, for anchor offsets (scroll-margin-top) and the phone menu's max height.
+  var setH = function () { document.documentElement.style.setProperty('--lp-nav-h', nav.offsetHeight + 'px'); };
+  window.addEventListener('resize', setH);
+  setH();
 })();
 
 (function () {

@@ -29,6 +29,9 @@ $aboutMenu = [
 <title><?= e($pageTitle ?? 'داتیس رایان گستر ایرانیان') ?> — داتیس رایان گستر ایرانیان</title>
 <?php if (!empty($metaDescription)): ?><meta name="description" content="<?= e($metaDescription) ?>"><?php endif; ?>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
+<?php // The public pages' type is Estedad (fonts.css): fetch its two main weights with the CSS, not after it. ?>
+<link rel="preload" href="/assets/fonts/estedad/estedad-arabic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/estedad/estedad-arabic-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <?php foreach (($extraStyles ?? []) as $extraStyle): ?><link rel="stylesheet" href="<?= e(asset_url($extraStyle)) ?>">
 <?php endforeach; ?>
@@ -39,7 +42,7 @@ $aboutMenu = [
 <header class="lp-nav">
   <div class="lp-nav-inner">
     <a href="/landing.php" class="lp-brand" aria-label="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک">
-      <img class="lp-brand-logo" src="<?= e(asset_url('/assets/img/brand/logo-animated-light.svg')) ?>" alt="" aria-hidden="true">
+      <img class="lp-brand-logo" src="<?= e(asset_url('/assets/img/brand/logo.svg')) ?>" alt="" aria-hidden="true" width="1240" height="478" fetchpriority="high">
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
       <a href="/landing.php#products">محصولات</a>

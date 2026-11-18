@@ -3,6 +3,13 @@
 **Status: complete and active.** All five Vazirmatn weights are installed and self-hosted; the panel
 renders in the intended font with no external dependency. Verify with `make font-check` (exit 0).
 
+**Public pages:** the marketing site and the sign-in pages (`.lp-body`, `.auth`, `.login-body`) use
+**Estedad** instead (SIL OFL 1.1, from `@fontsource/estedad` 5.3.0): Arabic (incl. Persian digits) and
+Latin subsets in weights 400/500/700/800 under `public/assets/fonts/estedad/` (licence `OFL.txt`),
+declared with `unicode-range` at the end of `fonts.css`. Vazirmatn stays their fallback, and a face is
+only downloaded by a page that renders text in it, so the panel never fetches Estedad. The public
+header preloads the 400 and 800 Arabic files. See [landing.md](landing.md#colours-public-site-and-sign-in-pages).
+
 The binaries were not in the supplied pack and were obtained separately from the official upstream
 repository — see [Font binaries](#font-binaries).
 
