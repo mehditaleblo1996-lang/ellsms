@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . '/../app/backend.php';
 require_once __DIR__ . '/../app/FailedResend.php';
+require_once __DIR__ . '/../app/Reports/SentMessages.php';
+require_once __DIR__ . '/../app/views/panel-icons.php'; // the detail part runs before header.php
 $me = require_login();
 $pageTitle = 'جزئیات ارسال حجیم';
 $active = 'p2p';
@@ -40,6 +42,21 @@ if (!is_admin()) {
 }
 hidden_messages_handle_post();
 $jobHidden = is_admin() && hidden_messages_is_hidden('bulk_job', $jobId);
+
+// One message's detail drawer (?_part=detail&m=<ref>, public/assets/js/report-detail.js) — the same
+// view as «لیست پیام‌های ارسالی». Access to the job was checked above; the message must be one of
+// this job's own rows, so a ref of another job or source shows «پیام پیدا نشد».
+if (lazy_part_begin('detail')) {
+    $isAdmin = is_admin();
+    $canHide = $isAdmin && hidden_messages_available();
+    sent_report_show_delivery(delivery_status_visible($me));
+    $m = sent_report_find((string)($_GET['m'] ?? ''), null, false, $isAdmin);
+    if ($m !== null && ($m['source'] !== 'bulk' || (int)($m['job_id'] ?? 0) !== $jobId)) {
+        $m = null;
+    }
+    require __DIR__ . '/../app/views/sent_message_detail.php';
+    exit;
+}
 
 // Cancel from the job's own page: a job queued behind others had no cancel control anywhere once
 // its import was confirmed (the import page only cancels before confirmation, and reports are
@@ -101,10 +118,13 @@ if (!in_array($per, [50,100,200], true)) $per = 100;
 
 // Delivery states only for admins and customers on delivery-based billing (delivery_status_visible(),
 // set above); for anyone else a sent message stays «ارسال‌شده» and only a failed send is «ناموفق».
-$reportStatuses = $showDelivery ? ['pending', 'sent', 'delivered', 'failed'] : ['pending', 'sent', 'failed'];
+// With delivery states, «تحویل‌نشده» (handed to the operator, but the delivery report says it never
+// reached the phone) is kept apart from «ناموفق» (the send itself failed or was cancelled).
+$reportStatuses = $showDelivery ? ['pending', 'sent', 'delivered', 'undelivered', 'failed'] : ['pending', 'sent', 'failed'];
 $canonicalStatusSql = $showDelivery ? "CASE
     WHEN bi.delivery_status = 'delivered' THEN 'delivered'
-    WHEN bi.delivery_status IN ('failed','rejected','expired','undelivered') OR bi.status IN ('failed','cancelled') THEN 'failed'
+    WHEN bi.delivery_status IN ('failed','rejected','expired','undelivered') THEN 'undelivered'
+    WHEN bi.status IN ('failed','cancelled') THEN 'failed'
     WHEN bi.status = 'sent' THEN 'sent'
     ELSE 'pending'
 END" : "CASE
@@ -120,14 +140,20 @@ $sumSt = db()->prepare("SELECT
     SUM(({$canonicalStatusSql})='pending') pending_count,
     SUM(({$canonicalStatusSql})='sent') sent_count,
     SUM(({$canonicalStatusSql})='delivered') delivered_count,
+    SUM(({$canonicalStatusSql})='undelivered') undelivered_count,
     SUM(({$canonicalStatusSql})='failed') failed_count,
     SUM({$partsSql}) total_parts,
     SUM(IF(({$canonicalStatusSql})='pending', {$partsSql}, 0)) pending_parts,
-    SUM(IF(({$canonicalStatusSql}) IN ('sent','delivered'), {$partsSql}, 0)) sent_parts,
+    SUM(IF(({$canonicalStatusSql})='sent', {$partsSql}, 0)) sent_parts,
+    SUM(IF(({$canonicalStatusSql})='delivered', {$partsSql}, 0)) delivered_parts,
+    SUM(IF(({$canonicalStatusSql})='undelivered', {$partsSql}, 0)) undelivered_parts,
     SUM(IF(({$canonicalStatusSql})='failed', {$partsSql}, 0)) failed_parts
 FROM ellsms_bulk_items bi WHERE bi.job_id=?");
 $sumSt->execute([$jobId]);
-$summary = $sumSt->fetch() ?: ['total'=>0,'pending_count'=>0,'sent_count'=>0,'delivered_count'=>0,'failed_count'=>0];
+$summary = $sumSt->fetch() ?: [];
+foreach (['total', 'pending_count', 'sent_count', 'delivered_count', 'undelivered_count', 'failed_count'] as $k) {
+    $summary[$k] = (int)($summary[$k] ?? 0);
+}
 
 $where = ['bi.job_id=?'];
 $params = [$jobId];
@@ -186,12 +212,14 @@ if (is_admin()) {
     $providerCodes = $codeSt->fetchAll();
 }
 
-$statusFa = ['pending'=>'در انتظار','sent'=>'ارسال‌شده','delivered'=>'تحویل‌شده','failed'=>'ناموفق'];
-$statusClass = ['pending'=>'pending','sent'=>'success','delivered'=>'success','failed'=>'error'];
+$statusFa = ['pending'=>'در انتظار','sent'=>$showDelivery ? 'منتظر گزارش تحویل' : 'ارسال‌شده','delivered'=>'تحویل‌شده','undelivered'=>'تحویل‌نشده','failed'=>'ناموفق'];
+// One colour per state (public/assets/css/style.css): در انتظار yellow, ارسال‌شده / منتظر گزارش تحویل
+// indigo, تحویل‌شده green, تحویل‌نشده orange, ناموفق red.
+$statusClass = ['pending'=>'pending','sent'=>'sent','delivered'=>'delivered','undelivered'=>'not-delivered','failed'=>'failed'];
 $qs = fn(array $extra = []) => http_build_query(array_filter(array_merge($_GET, $extra), static fn($v) => $v !== null && $v !== ''));
 
 $total = (int)$summary['total'];
-$done = (int)$summary['sent_count'] + (int)$summary['delivered_count'] + (int)$summary['failed_count'];
+$done = $total - (int)$summary['pending_count'];
 $progress = $total > 0 ? min(100, (int)round(($done / $total) * 100)) : 0;
 
 $nextBatchText = '—';
@@ -209,6 +237,7 @@ if (!empty($job['throttle_count']) && !empty($job['throttle_minutes'])) {
     }
 }
 
+$extraStyles = ['/assets/css/reports.css'];
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
@@ -260,15 +289,33 @@ require __DIR__ . '/../app/views/header.php';
       <?php foreach ($resendHistory as $i => $h): ?><?= $i ? ' · ' : '' ?><a href="/messages/bulk-jobs?id=<?= (int)$h['new_job_id'] ?>">Job #<?= to_persian_digits((string)(int)$h['new_job_id']) ?></a> (<?= to_persian_digits(number_format((int)$h['item_count'])) ?> پیامک، <?= jdate((string)$h['created_at']) ?>)<?php endforeach; ?>
     </p>
   <?php endif; ?>
-  <div class="grid grid-4">
-    <?php $partsValue = static fn(string $k): string => '<div class="stat-value"><span class="stat-unit">پارت</span> ' . to_persian_digits(number_format((int)($summary[$k] ?? 0))) . '</div>';
-          $msgMeta = static fn(int $n): string => '<div class="stat-meta">' . to_persian_digits(number_format($n)) . ' پیام</div>'; ?>
-    <div class="stat"><div class="stat-label">کل</div><?= $partsValue('total_parts') ?><?= $msgMeta((int)$total) ?></div>
-    <div class="stat"><div class="stat-label"><?= $showDelivery ? 'ارسال/تحویل' : 'ارسال‌شده' ?></div><?= $partsValue('sent_parts') ?><?= $msgMeta((int)$summary['sent_count'] + (int)$summary['delivered_count']) ?></div>
-    <div class="stat"><div class="stat-label">ناموفق</div><?= $partsValue('failed_parts') ?><?= $msgMeta((int)$summary['failed_count']) ?></div>
-    <div class="stat"><div class="stat-label">باقی‌مانده</div><?= $partsValue('pending_parts') ?><?= $msgMeta((int)$summary['pending_count']) ?></div>
+  <?php
+    // Each card filters the list below to its messages (the «کل» card clears the filter).
+    $cards = $showDelivery ? [
+        ''            => ['کل', 'total', 'stat-accent'],
+        'delivered'   => ['تحویل‌شده', 'delivered', ''],
+        'undelivered' => ['تحویل‌نشده', 'undelivered', ''],
+        'sent'        => ['منتظر گزارش تحویل', 'sent', ''],
+        'failed'      => ['ناموفق', 'failed', ''],
+        'pending'     => ['باقی‌مانده', 'pending', ''],
+    ] : [
+        ''        => ['کل', 'total', 'stat-accent'],
+        'sent'    => ['ارسال‌شده', 'sent', ''],
+        'failed'  => ['ناموفق', 'failed', ''],
+        'pending' => ['باقی‌مانده', 'pending', ''],
+    ];
+  ?>
+  <div class="report-stats">
+    <?php foreach ($cards as $key => [$label, $k, $class]):
+        $n = $k === 'total' ? $total : (int)$summary[$k . '_count'];
+        $isOn = $statusFilter === $key; ?>
+      <a class="stat <?= $class ?><?= $isOn ? ' is-on' : '' ?>" href="?<?= e($qs(['status' => $key === '' ? null : $key, 'page' => null])) ?>"<?= $isOn ? ' aria-current="true"' : '' ?>>
+        <div class="stat-label"><?= e($label) ?></div>
+        <div class="stat-value"><span class="stat-unit">پارت</span> <?= to_persian_digits(number_format((int)($summary[$k . '_parts'] ?? 0))) ?></div>
+        <div class="stat-meta"><?= to_persian_digits(number_format($n)) ?> پیام<?php if ($key !== '' && $total > 0): ?> · <?= to_persian_digits((string)round($n / $total * 100)) ?>٪<?php endif; ?></div>
+      </a>
+    <?php endforeach; ?>
   </div>
-
   <div style="margin-top:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
     <div><strong>پیشرفت:</strong> <?= to_persian_digits((string)$progress) ?>٪</div>
     <div><strong>وضعیت Job:</strong> <?= e((string)$job['status']) ?></div>
@@ -303,9 +350,9 @@ require __DIR__ . '/../app/views/header.php';
     </p>
   <?php endif; ?>
   <div class="table-wrap"><table>
-    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>تعداد پارت</th><th>وضعیت</th><?php if (is_admin()): ?><th>کد سرویس‌دهنده</th><?php endif; ?><th>Provider ID</th><?php if ($showDelivery): ?><th>دفعات استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?></tr>
-    <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; ?>
-      <tr>
+    <tr><th>#</th><th>گیرنده</th><th>متن</th><th>تعداد پارت</th><th>وضعیت</th><?php if (is_admin()): ?><th>کد سرویس‌دهنده</th><?php endif; ?><th>Provider ID</th><?php if ($showDelivery): ?><th>دفعات استعلام</th><?php endif; ?><th>زمان ثبت</th><?php if ($showDelivery): ?><th>آخرین استعلام</th><?php endif; ?><th><span class="sr-only">جزئیات</span></th></tr>
+    <?php foreach ($rows as $r): $cs=(string)$r['canonical_status']; $ref = sent_report_public_ref('bulk', (int)$r['id']); ?>
+      <tr data-detail="<?= e($ref) ?>" tabindex="0" class="is-clickable">
         <td class="num"><?= to_persian_digits((string)$r['id']) ?></td>
         <td class="msisdn"><?= e(bulk_recipient_display((string)$r['mobile'], !empty($job['recipients_masked']))) ?></td>
         <td class="msg-preview" title="<?= e((string)$r['content']) ?>"><?= e(mb_strimwidth((string)$r['content'],0,80,'…')) ?></td>
@@ -316,11 +363,18 @@ require __DIR__ . '/../app/views/header.php';
         <?php if ($showDelivery): ?><td class="num"><?= to_persian_digits((string)(int)$r['delivery_attempts']) ?></td><?php endif; ?>
         <td class="num"><?= jdate((string)$r['created_at']) ?></td>
         <?php if ($showDelivery): ?><td class="num"><?= !empty($r['delivery_checked_at']) ? jdate((string)$r['delivery_checked_at']) : '—' ?></td><?php endif; ?>
+        <td><button type="button" class="icon-button report-eye" data-detail="<?= e($ref) ?>" aria-label="جزئیات پیام <?= e($ref) ?>" title="جزئیات"><?= panel_icon('eye') ?></button></td>
       </tr>
     <?php endforeach; ?>
-    <?php if (!$rows): ?><tr><td colspan="<?= ($showDelivery ? 9 : 7) + (is_admin() ? 1 : 0) ?>" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
+    <?php if (!$rows): ?><tr><td colspan="<?= ($showDelivery ? 10 : 8) + (is_admin() ? 1 : 0) ?>" class="empty">ردیفی با این فیلتر پیدا نشد.</td></tr><?php endif; ?>
   </table></div>
 
   <?= pager_links($page, pager_pages($listTotal, $per), array_filter(array_diff_key($_GET, ['before_id' => 1, 'after_id' => 1]), static fn($v) => is_scalar($v) && $v !== ''), 'page', $listTotal) ?>
 </div>
+
+<dialog class="report-drawer" id="reportDrawer" aria-label="جزئیات پیام" data-keep-params="id">
+  <div class="report-drawer-bar"><button type="button" class="icon-button" data-drawer-close aria-label="بستن"><?= panel_icon('close') ?></button></div>
+  <div class="report-drawer-body"></div>
+</dialog>
+<script src="<?= e(asset_url('/assets/js/report-detail.js')) ?>" defer></script>
 <?php require __DIR__ . '/../app/views/footer.php'; ?>

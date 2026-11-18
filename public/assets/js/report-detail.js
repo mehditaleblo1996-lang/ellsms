@@ -4,7 +4,8 @@
  * A row or button carrying data-detail="<ref>" opens a <dialog> and loads the page's own
  * ?_part=detail&m=<ref> fragment into it (app/LazyParts.php). ?m=<ref> in the address opens the
  * drawer on load, so a message's detail can be linked to. The fragment is HTML the server built and
- * escaped; nothing from the row itself is inserted.
+ * escaped; nothing from the row itself is inserted. A page whose detail part needs some of its own
+ * query parameters (public/bulk-job.php needs ?id=) lists them in data-keep-params on the dialog.
  */
 (function () {
   'use strict';
@@ -29,6 +30,10 @@
     if (!dialog.open) dialog.showModal();
     setParam(ref);
     var url = new URL(location.pathname, location.origin);
+    var here = new URLSearchParams(location.search);
+    (dialog.getAttribute('data-keep-params') || '').split(/[\s,]+/).forEach(function (name) {
+      if (name && here.has(name)) url.searchParams.set(name, here.get(name));
+    });
     url.searchParams.set('_part', 'detail');
     url.searchParams.set('m', ref);
     fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { 'X-Requested-With': 'lazy-part' } })

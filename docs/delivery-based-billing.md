@@ -34,7 +34,7 @@ state (`delivery_status_visible()` in `app/DeliveryRefunds.php`). Every other cu
 as «ارسال‌شده» once the provider took it, «ناموفق» only when the send itself failed, or «در صف» — with
 no «تحویل‌شده» / «منتظر گزارش تحویل», delivery times, delivery rate or status-check counts. This
 applies to «لیست پیام‌های ارسالی» and its detail drawer (`sent_report_show_delivery()`), «گزارش ارسال
-حجیم» and each bulk send's page, the dashboard (cards and 7-day chart), «گزارش اپراتورها» (the
+حجیم» and each bulk send's page (its «تحویل‌شده» / «تحویل‌نشده» / «منتظر گزارش تحویل» cards and filters, and the detail drawer of each row), the dashboard (cards and 7-day chart), «گزارش اپراتورها» (the
 «تحویل گرفته‌شده» column), «گزارش وضعیت‌ها» (no «رسیده / نرسیده به گوشی»; everything the operator
 reported on counts as «رسیده به مخابرات», `docs/status-report.md`), the reseller and sub-account send summaries, and CSV exports (the flag is
 stored with the export as `show_delivery`, and the delivery columns are dropped). The delivery history

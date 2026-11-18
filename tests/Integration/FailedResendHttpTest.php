@@ -207,6 +207,36 @@ final class FailedResendHttpTest extends TestCase
         $this->assertStringNotContainsString('کد سرویس‌دهنده', $customer['body']);
         $this->assertStringContainsString('text 0', $customer['body'], 'a customer cannot filter by code');
     }
+    public function testTheJobPageSplitsDeliveredFromUndeliveredAndOpensAMessagesDetail(): void
+    {
+        $jobId = $this->seedJob();
+        $ids = array_map('intval', db()->query("SELECT id FROM ellsms_bulk_items WHERE job_id = {$jobId} ORDER BY id")->fetchAll(\PDO::FETCH_COLUMN));
+        db()->prepare("UPDATE ellsms_bulk_items SET delivery_status = 'undelivered' WHERE id = ?")->execute([$ids[2]]);
+        $admin = $this->sessionFor($this->adminId);
+
+        $page = $this->request('GET', '/bulk-job.php?id=' . $jobId, $admin);
+        $this->assertSame(200, $page['code'], $page['body']);
+        $this->assertStringContainsString('تحویل‌نشده', $page['body']);
+        $this->assertStringContainsString('منتظر گزارش تحویل', $page['body']);
+        $ref = sent_report_public_ref('bulk', $ids[2]);
+        $this->assertStringContainsString('data-detail="' . $ref . '"', $page['body']);
+        $this->assertStringContainsString('data-keep-params="id"', $page['body']);
+
+        $undelivered = $this->request('GET', '/bulk-job.php?id=' . $jobId . '&status=undelivered', $admin);
+        $this->assertStringContainsString('text 2', $undelivered['body']);
+        $this->assertStringNotContainsString('text 0', $undelivered['body'], 'a send failure is not «تحویل‌نشده»');
+
+        $detail = $this->request('GET', '/bulk-job.php?id=' . $jobId . '&_part=detail&m=' . rawurlencode($ref), $admin);
+        $this->assertSame(200, $detail['code'], $detail['body']);
+        $this->assertStringContainsString('text 2', $detail['body']);
+        $this->assertStringNotContainsString('پیام پیدا نشد', $detail['body']);
+
+        // A message of another job is not shown through this job's page.
+        $other = $this->seedJob();
+        $otherRef = sent_report_public_ref('bulk', (int)db()->query("SELECT MIN(id) FROM ellsms_bulk_items WHERE job_id = {$other}")->fetchColumn());
+        $foreign = $this->request('GET', '/bulk-job.php?id=' . $jobId . '&_part=detail&m=' . rawurlencode($otherRef), $admin);
+        $this->assertStringContainsString('پیام پیدا نشد', $foreign['body']);
+    }
     public function testTheFinancialLogShowsABulkSendAsOneRowAndFlagsAMismatchToTheAdminOnly(): void
     {
         $jobId = $this->seedJob(); // one row 'sent' without a charge: a mismatch
