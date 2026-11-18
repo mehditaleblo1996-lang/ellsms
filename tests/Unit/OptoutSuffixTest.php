@@ -68,18 +68,14 @@ final class OptoutSuffixTest extends TestCase
         $this->assertSame("پیام\nلغو۱۱", optout_suffix_maybe('پیام', true));
     }
 
-    public function testRequestedDefaultsToOn(): void
+    public function testNoticeOnlyWhenOn(): void
     {
-        $this->assertTrue(optout_suffix_requested([]));
-        $this->assertTrue(optout_suffix_requested([OPTOUT_SUFFIX_FIELD => '1']));
-        $this->assertFalse(optout_suffix_requested([OPTOUT_SUFFIX_FIELD => '0']));
+        $this->assertStringContainsString('data-optout-suffix="لغو۱۱"', optout_suffix_notice_html(true));
+        $this->assertSame('', optout_suffix_notice_html(false));
     }
 
-    public function testCheckboxHtml(): void
+    public function testUnknownUserDefaultsToOn(): void
     {
-        $on = optout_suffix_checkbox_html(true);
-        $this->assertStringContainsString('type="hidden" name="add_optout" value="0"', $on);
-        $this->assertStringContainsString(' checked', $on);
-        $this->assertStringNotContainsString(' checked', optout_suffix_checkbox_html(false));
+        $this->assertTrue(optout_suffix_for_user(0));
     }
 }

@@ -464,12 +464,15 @@ Two new per-user concepts came with this: a **do-not-contact list** (`/blacklist
 
 ## Opt-out footer — «افزودن لغو۱۱ به انتهای پیام»
 
-Every panel send form — «ارسال پیامک» (`/new-send.php`), the old send page (`/send.php`), «نظیر به نظیر»,
-«پیامک هوشمند», «ارسال با کد پستی», «ارسال منطقه‌ای» and LBA — has a checkbox, ticked by default, that
-adds `لغو۱۱` on a new line at the end of each message (each row, for files). It is skipped when the
-text already contains «لغو11»/«لغو ۱۱»/«لغو: ۱۱» (any digit set), so it is never doubled, and it counts
-toward parts and cost (the live counters include it). The API is not affected. Large P2P/smart files
-need `db/migrations/2026_11_23_import_job_optout_suffix.sql`. See [`docs/optout-suffix.md`](docs/optout-suffix.md).
+A platform admin decides per user (**Users → user → «افزودن «لغو۱۱» به انتهای پیام»**, default on)
+whether `لغو۱۱` is added on a new line at the end of every message that user sends from the panel —
+«ارسال پیامک» (`/new-send.php`), the old send page (`/send.php`), «نظیر به نظیر», «پیامک هوشمند» (each
+row), «ارسال با کد پستی», «ارسال منطقه‌ای» and LBA. Customers have no checkbox, only a read-only note.
+It is skipped when the text already contains «لغو11»/«لغو ۱۱»/«لغو: ۱۱» (any digit set), so it is never
+doubled, and it counts toward parts and cost. The API is not affected. Migrations
+`db/migrations/2026_11_24_user_optout_suffix.sql` (per-user switch) and
+`db/migrations/2026_11_23_import_job_optout_suffix.sql` (large P2P/smart files). See
+[`docs/optout-suffix.md`](docs/optout-suffix.md).
 
 ## Bulk personalized sending — نظیر به نظیر and پیامک هوشمند
 

@@ -32,13 +32,14 @@
   var digitToggle = byId('digitConvert');
   if (!content) return;
 
-  /* «افزودن لغو۱۱» checkbox (app/OptoutSuffix.php): the meter, phone preview and live cost all count
+  /* «افزودن لغو۱۱» (app/OptoutSuffix.php, set per user by the admin; the page renders a
+     [data-optout-suffix] note only when it is on): the meter, phone preview and live cost all count
      the text that will actually be sent — mirror of optout_suffix_apply(). */
-  var optoutBox = form.querySelector('input[type=checkbox][data-optout-suffix]');
+  var optoutBox = form.querySelector('[data-optout-suffix]');
   var OPTOUT_RE = /لغو\s*[:：\-]?\s*(?:11|۱۱|١١)(?![0-9۰-۹٠-٩])/;
   function sentText() {
     var t = content.value, trimmed = t.replace(/\s+$/, '');
-    if (!optoutBox || !optoutBox.checked || trimmed === '' || OPTOUT_RE.test(trimmed)) return t;
+    if (!optoutBox || trimmed === '' || OPTOUT_RE.test(trimmed)) return t;
     return trimmed + '\n' + optoutBox.dataset.optoutSuffix;
   }
 
@@ -367,8 +368,6 @@
     f.addEventListener('change', function () { renderSender(); refresh(true); });
     f.addEventListener('input', function () { renderSender(); });
   });
-
-  if (optoutBox) optoutBox.addEventListener('change', function () { refresh(false); });
 
   // Page scripts that rewrite the fields (campaign loader, emoji, file upload, clipboard) call this.
   window.smsComposerRefresh = function () { renderSender(); refresh(true); };
