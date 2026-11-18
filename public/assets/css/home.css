@@ -14,8 +14,6 @@
 }
 .dx-kicker::before { content: ""; width: 18px; height: 2px; border-radius: 2px; background: var(--primary); }
 .dx-accent { color: var(--primary-hover); }
-.lp-dark .dx-accent { color: var(--primary); }
-.lp-dark .dx-kicker { color: var(--t-300); }
 .dx-head { max-width: 640px; margin: 0 auto clamp(36px, 5vw, 56px); text-align: center; }
 .dx-head .dx-kicker { justify-content: center; }
 .dx-section h2 { font-weight: 800; letter-spacing: -.012em; color: var(--ink); text-wrap: balance; }
@@ -27,8 +25,8 @@
   transition: border-color .25s var(--ease), background-color .25s var(--ease), transform .25s var(--ease);
 }
 .lp-body .btn-ghost:hover { border-color: var(--foreground); background: var(--surface); color: var(--ink); text-decoration: none; }
-.lp-dark .btn-ghost, .lp-cta .btn-ghost { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .28); }
-.lp-dark .btn-ghost:hover, .lp-cta .btn-ghost:hover { border-color: #fff; background: rgba(255, 255, 255, .06); color: #fff; }
+.lp-cta .btn-ghost { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .28); }
+.lp-cta .btn-ghost:hover { border-color: #fff; background: rgba(255, 255, 255, .06); color: #fff; }
 .dx-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
 .dx-link {
   display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--primary-ink); text-decoration: none;
@@ -198,7 +196,6 @@ button.dx-node-face[aria-pressed="true"] .dx-node-label { background: var(--ink)
   color: var(--primary-hover); background: var(--primary-light); border: 1px solid var(--primary-border);
 }
 .dx-ico svg { width: 21px; height: 21px; }
-.lp-dark .dx-ico { color: var(--primary); background: rgba(17, 184, 197, .1); border-color: rgba(17, 184, 197, .28); }
 .dx-channels { margin-top: 30px; padding: 20px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border); }
 .dx-channels > p { margin: 0 0 12px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .dx-channels ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
@@ -264,11 +261,15 @@ button.dx-node-face[aria-pressed="true"] .dx-node-label { background: var(--ink)
   border-block: 1px solid var(--border);
 }
 
-/* AI showcase: the page's one graphite band. */
-.dx-show-ai { max-width: none; position: relative; color: var(--ink); background: var(--dark-surface); overflow: hidden; }
+/* AI showcase: a full-width light band with a very soft turquoise tint, like the rest of the page. */
+.dx-show-ai {
+  max-width: none; position: relative; overflow: hidden;
+  background: linear-gradient(180deg, var(--background), rgba(17, 184, 197, .05) 50%, var(--background));
+  border-block: 1px solid var(--border);
+}
 .dx-show-ai::before {
   content: ""; position: absolute; inset: auto auto -30% -10%; width: 60%; aspect-ratio: 1;
-  background: radial-gradient(closest-side, rgba(17, 184, 197, .16), transparent 70%); pointer-events: none;
+  background: radial-gradient(closest-side, rgba(17, 184, 197, .1), transparent 70%); pointer-events: none;
 }
 .dx-show-ai > .dx-show-grid { max-width: 1152px; margin: 0 auto; position: relative; }
 .dx-show-ai .lp-banner-ai { width: min(420px, 100%); margin-inline: auto; position: relative; }

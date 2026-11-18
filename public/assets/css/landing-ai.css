@@ -1,18 +1,16 @@
 /* «منشی هوشمند» on the home page (public/landing.php#product-ai, docs/landing.md): a chat in which
-   the secretary answers a customer, on the page's graphite band. Elements marked .lp-ai-pop start
+   the secretary answers a customer, as a light chat window on the page's light band. Elements marked .lp-ai-pop start
    hidden and rise in once the showcase is on screen ([data-dx-live].is-live), after their own --t
    delay. Loaded only by landing.php (via $extraStyles). */
 
 .lp-body {
-  --ai-violet: #9de2e8;
-  --ai-blue: #13b4c2;
-  --ai-green: #48cbd7;
-  --ai-teal: #4dceda;
-  --ai-amber: #fbbf24;
-  --ai-glass: rgba(15, 17, 19, .78);
-  --ai-edge: rgba(157, 226, 232, .22);
-  --ai-text: #e9eced;
-  --ai-soft: #adb5bc;
+  --ai-accent: var(--primary-hover, #087f8c);
+  --ai-glass: var(--surface, #fff);
+  --ai-edge: var(--border, #e3e8e9);
+  --ai-text: var(--foreground, #25292b);
+  --ai-soft: var(--muted-foreground, #697477);
+  --ai-tint: rgba(17, 184, 197, .1);
+  --ai-tint-edge: rgba(17, 184, 197, .32);
 }
 
 /* ---------- shared pieces: pop-in, chat bubbles, typing dots ---------- */
@@ -24,22 +22,22 @@
 
 .lp-ai-msg {
   position: relative; max-width: 86%; margin: 0; padding: 9px 13px; border-radius: 16px; font-size: 13.5px; line-height: 1.8;
-  color: var(--ai-text); background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .1);
+  color: var(--ai-text); background: var(--background, #f8fafa); border: 1px solid var(--ai-edge);
 }
 .lp-ai-msg small { display: block; margin-top: 2px; font-size: 10.5px; color: var(--ai-soft); font-family: var(--font-num); }
-.lp-ai-msg b { color: #c1edf1; font-weight: 700; }
+.lp-ai-msg b { color: var(--primary-ink, #076f7a); font-weight: 700; }
 /* RTL column: flex-end is the left side (the customer), flex-start the right side (the line). */
 .lp-ai-msg.is-in { align-self: flex-end; border-radius: 16px 16px 16px 4px; }
 .lp-ai-msg.is-out {
-  align-self: flex-start; border-radius: 16px 16px 4px 16px; border-color: rgba(157, 226, 232, .3);
-  background: linear-gradient(135deg, rgba(12, 114, 124, .42), rgba(14, 124, 133, .34));
+  align-self: flex-start; border-radius: 16px 16px 4px 16px; border-color: var(--ai-tint-edge);
+  background: var(--ai-tint);
 }
 
 .lp-ai-typing {
   align-self: flex-start; display: inline-flex; gap: 4px; margin: 0; padding: 11px 14px; border-radius: 16px 16px 4px 16px;
-  background: rgba(12, 114, 124, .25); border: 1px solid rgba(157, 226, 232, .25); opacity: 0; height: 0; padding-block: 0; overflow: hidden;
+  background: var(--ai-tint); border: 1px solid var(--ai-tint-edge); opacity: 0; height: 0; padding-block: 0; overflow: hidden;
 }
-.lp-ai-typing i { width: 6px; height: 6px; border-radius: 50%; background: #c1edf1; animation: lp-ai-dot 1s ease-in-out infinite; }
+.lp-ai-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--ai-accent); animation: lp-ai-dot 1s ease-in-out infinite; }
 .lp-ai-typing i:nth-child(2) { animation-delay: .15s; }
 .lp-ai-typing i:nth-child(3) { animation-delay: .3s; }
 @keyframes lp-ai-dot { 0%, 60%, 100% { transform: none; opacity: .5; } 30% { transform: translateY(-4px); opacity: 1; } }
@@ -54,43 +52,41 @@
 .lp-banner-ai { width: min(400px, 94%); margin-inline: auto; }
 .lp-ai-chat {
   position: relative; border-radius: 24px; overflow: hidden; background: var(--ai-glass);
-  border: 1px solid var(--ai-edge); box-shadow: 0 30px 70px -24px rgba(12, 114, 124, .55), 0 0 0 1px rgba(255, 255, 255, .04) inset;
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--ai-edge); box-shadow: 0 2px 4px rgba(37, 41, 43, .04), 0 30px 60px -30px rgba(37, 41, 43, .35);
 }
 .lp-ai-chat-head {
   display: flex; align-items: center; gap: 11px; padding: 13px 16px;
-  background: linear-gradient(120deg, rgba(12, 114, 124, .35), rgba(14, 124, 133, .22)); border-bottom: 1px solid rgba(255, 255, 255, .08);
+  background: linear-gradient(120deg, rgba(17, 184, 197, .12), rgba(17, 184, 197, .03)); border-bottom: 1px solid var(--ai-edge);
 }
 .lp-ai-chat-head > div { display: flex; flex-direction: column; gap: 1px; flex: 1; }
-.lp-ai-chat-head b { color: #fff; font-size: 14.5px; }
-.lp-ai-chat-head span { color: #c1edf1; font-size: 11.5px; }
-.lp-ai-live { font-style: normal; font-size: 11px; color: var(--ai-green); display: inline-flex; align-items: center; gap: 5px; }
-.lp-ai-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ai-green); box-shadow: 0 0 0 3px rgba(72, 203, 215, .2); animation: lp-ai-blink 1.6s ease-in-out infinite; }
+.lp-ai-chat-head b { color: var(--ai-text); font-size: 14.5px; }
+.lp-ai-chat-head span { color: var(--ai-soft); font-size: 11.5px; }
+.lp-ai-live { font-style: normal; font-size: 11px; font-weight: 700; color: var(--ai-accent); display: inline-flex; align-items: center; gap: 5px; }
+.lp-ai-live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ai-accent); box-shadow: 0 0 0 3px rgba(17, 184, 197, .2); animation: lp-ai-blink 1.6s ease-in-out infinite; }
 @keyframes lp-ai-blink { 50% { opacity: .35; } }
 .lp-ai-orb {
   position: relative; flex: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
   background: radial-gradient(circle at 30% 30%, #c1edf1, #0c727c 55%, #0e7c85);
-  box-shadow: 0 0 22px rgba(157, 226, 232, .6);
+  box-shadow: 0 6px 16px -6px rgba(8, 127, 140, .55);
 }
 .lp-ai-orb svg { width: 20px; height: 20px; fill: #fff; position: relative; z-index: 1; }
-.lp-ai-orb i { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(193, 237, 241, .7); animation: lp-ai-ring 2.4s ease-out infinite; }
+.lp-ai-orb i { position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(17, 184, 197, .55); animation: lp-ai-ring 2.4s ease-out infinite; }
 .lp-ai-orb i:nth-child(2) { animation-delay: 1.2s; }
 @keyframes lp-ai-ring { from { transform: scale(1); opacity: .9; } to { transform: scale(1.8); opacity: 0; } }
 .lp-ai-chat-body { display: flex; flex-direction: column; gap: 10px; padding: 16px; min-height: 230px; }
 .lp-ai-chip {
   position: absolute; z-index: 1; display: inline-flex; align-items: center; gap: 7px; padding: 8px 13px; border-radius: 14px;
-  font-size: 12px; color: #e4e6e9; background: rgba(10, 11, 12, .86); border: 1px solid rgba(157, 226, 232, .35);
-  box-shadow: 0 18px 36px -14px rgba(0, 0, 0, .7); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  font-size: 12px; font-weight: 600; color: var(--ai-text); background: var(--ai-glass); border: 1px solid var(--ai-edge);
+  box-shadow: 0 16px 32px -18px rgba(37, 41, 43, .4);
 }
-.lp-ai-chip svg { width: 16px; height: 16px; fill: none; stroke: var(--ai-violet); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.lp-ai-chip svg { width: 16px; height: 16px; fill: none; stroke: var(--ai-accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .lp-ai-chip.is-a { bottom: -14px; left: -30px; }
-.lp-ai-chip.is-b { top: 74px; left: -44px; }
-.lp-ai-chip.is-b svg { stroke: var(--ai-green); }
+.lp-ai-chip.is-b { top: -18px; left: -30px; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 860px) {
   .lp-ai-chip.is-a { left: 0; bottom: -10px; }
-  .lp-ai-chip.is-b { left: -4px; top: 64px; }
+  .lp-ai-chip.is-b { left: 0; top: -16px; }
 }
 
 /* ---------- reduced motion: the chat shown complete and still ---------- */

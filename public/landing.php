@@ -219,9 +219,9 @@ require __DIR__ . '/../app/views/public_header.php';
     </div>
   </section>
 
-  <!-- Showcase 3 — AI, on the page's one graphite band: «منشی هوشمند» answering a customer
+  <!-- Showcase 3 — AI, on a soft turquoise-tinted light band: «منشی هوشمند» answering a customer
        (styles: landing-ai.css; animates while on screen via [data-dx-live]). -->
-  <section id="product-ai" class="dx-section dx-show dx-show-ai lp-dark" aria-labelledby="product-ai-t">
+  <section id="product-ai" class="dx-section dx-show dx-show-ai" aria-labelledby="product-ai-t">
     <div class="dx-show-grid">
       <div class="dx-show-copy lp-reveal">
         <p class="dx-kicker">۰۳ · هوش مصنوعی و اتوماسیون</p>

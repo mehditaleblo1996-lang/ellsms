@@ -763,7 +763,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-body :focus-visible { outline: 2px solid var(--primary-hover); outline-offset: 3px; }
 /* The dark (graphite) bands re-declare the tokens, so components that read var(--ink) /
    var(--card) / var(--line) inside them draw light-on-dark. */
-.lp-body .lp-cta, .lp-body .lp-footer, .lp-dark, .lp-body .ab-hero, .lp-body .ab-subnav, .lp-body .ab-statement, .lp-body .ab-mv-card {
+.lp-body .lp-cta, .lp-body .lp-footer, .lp-body .ab-hero, .lp-body .ab-subnav, .lp-body .ab-statement, .lp-body .ab-mv-card {
   --ink: #f2f5f5;
   --muted: #aab4b6;
   --line: rgba(255, 255, 255, .13);
@@ -773,7 +773,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   --ok: #6fd6df;
   --ok-bg: rgba(111, 214, 223, .16);
 }
-.lp-dark, .lp-body .ab-hero, .lp-body .ab-statement, .lp-body .ab-mv-card { color: var(--ink); }
+.lp-body .ab-hero, .lp-body .ab-statement, .lp-body .ab-mv-card { color: var(--ink); }
 @media (prefers-contrast: more) { .lp-body { background-image: none; background: var(--canvas); } }
 
 /* ---------- Floating navigation (app/views/public_header.php) ----------

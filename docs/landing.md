@@ -37,7 +37,7 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 |---|---|---|
 | `--background` / `--surface` | `#F8FAFA` / `#FFFFFF` | Page background and cards (the 60%) |
 | `--foreground` / `--muted-foreground` | `#25292B` / `#697477` | Headings and text / secondary text (4.6:1 on the background) |
-| `--dark-surface` | `#25292B` | The graphite bands: the AI showcase, the CTA, the footer, the scene panels, the about hero, section bar, statement and mission/vision cards (the 30% with the type) |
+| `--dark-surface` | `#25292B` | The graphite bands: the CTA, the footer, the scene panels, the about hero, section bar, statement and mission/vision cards (the 30% with the type) |
 | `--primary` | `#11B8C5` | Primary buttons (with graphite text, 6.1:1), selected states, icons, highlights |
 | `--primary-hover` | `#087F8C` | Hover of primary buttons (white text, 4.75:1), turquoise text on white |
 | `--primary-ink` | `#076F7A` | Small turquoise text on the pale surface |
@@ -47,8 +47,8 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 - **Where:** the `.lp-body` token block in `public/assets/css/style.css` (it also maps the older
   names `--ink`, `--muted`, `--line`, `--card`, `--t-*`, `--charcoal` onto these, and holds the
   fluid type scale, radii, shadows and the `--ease` timing). The graphite bands re-declare `--ink`,
-  `--muted`, `--line`, `--card` light-on-dark in the rule just below it; add `.lp-dark` to any element
-  to make it a graphite band. The sign-in page's tokens are the `.auth` block of
+  `--muted`, `--line`, `--card` light-on-dark in the rule just below it (the `.lp-dark` utility class
+  was removed with the last graphite band on the home page). The sign-in page's tokens are the `.auth` block of
   `public/assets/css/login.css` (slider: `.ls` in `login-slider.css`); the pages around sign-in get
   theirs from `.login-body` in `style.css`.
 - **Type:** Estedad (self-hosted, OFL) on the public and sign-in pages, with Vazirmatn as fallback;
@@ -69,7 +69,7 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 | — | **Hero**: the signature core (below), centred, with the hint «برای آشنایی با هر خدمت، روی آن در مدار بزنید.» under it. Clicking a service node opens its explanation card (see below). The former headline, paragraph and «کشف خدمات داتیس» / «مشاوره با کارشناسان» buttons were removed; the consultation link stays in the closing CTA. |
 | `#product-sms` | Showcase: the SMS platform — four features, its channels (پیامک، پیام صوتی، پیام در بله), and a mock-up of «قالب ← پیام شخصی هر ردیف ← گزارش تحویل» |
 | `#product-cloud` | Showcase: cloud and infrastructure, with the animated rack scene |
-| `#product-ai` | Showcase on the graphite band: AI and automation, with the «منشی هوشمند» chat (its button opens `/guide.php#guide-ai-secretary`) |
+| `#product-ai` | Showcase on a light full-width band (page background with a faint turquoise tint, hairline borders): AI and automation, with the «منشی هوشمند» chat as a light chat window (white card, grey customer bubble, pale-turquoise reply bubble, white chips; colours from the `.lp-body` tokens in `landing-ai.css`) (its button opens `/guide.php#guide-ai-secretary`) |
 | `#product-it`, `#product-voip` | Two companion panels: IT services and enterprise telephony, each with its scene and four sub-services |
 | `#trust` | «چرا داتیس — ساخته‌شده برای اطمینان»: four guarantees of the platform |
 | `#customers` | «مشتریان و همکاران»: one scrolling rail of monochrome customer logos (see below) |
