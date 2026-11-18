@@ -115,9 +115,11 @@ the showcases was removed; the page goes from the core to `#product-sms`.
 
 Every public page (home, «درباره ما», «تماس با ما», «راهنما», the legal pages: all that use
 `app/views/public_header.php`) has one fixed, decorative layer behind the content, `.lp-bg`, matched to
-the light identity: two soft turquoise glows that float slowly, two layers of thin wave lines (turquoise
-and a fainter graphite) that drift sideways at different speeds (120s / 180s, opposite directions), and
-eight fine light streaks that glide right to left (four on phones). The wave paths are generated in the
+the light identity: two soft turquoise glows that float slowly, two layers of thin wave lines that drift
+sideways at different speeds (120s / 180s, opposite directions) — the front layer stroked with a
+repeating turquoise gradient (`#lpBgShine`, period 1600 like the waves) so each line brightens and fades
+along its length, the back layer a faint graphite — and ten glowing light streaks (2px, turquoise tail,
+white head, soft glow; every second one fainter) that glide right to left (six on phones). The wave paths are generated in the
 header (`$lpBgWave`): each strip is 3200 units wide and repeats every 1600, so sliding it by −50% loops
 with no seam; on narrow screens the strip is at least 2000px wide so the waves stay gentle. Only
 transform/opacity animate (compositor only), the layer is `aria-hidden` with no pointer events, it stands

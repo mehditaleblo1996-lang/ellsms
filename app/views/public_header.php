@@ -39,7 +39,8 @@ $aboutMenu = [
 <body class="lp-body">
 <?php
 // Animated page background (docs/landing.md#animated-background): two soft turquoise glows, two layers
-// of thin wave lines that drift sideways at different speeds, and fine light streaks gliding across.
+// of thin wave lines that drift sideways at different speeds, and fine glowing light streaks gliding across. Layer a's lines use a repeating gradient (period 1600,
+// like the waves) so they brighten and fade along their length.
 // Each wave strip is 3200 units wide and repeats every 1600, so sliding it by −50% loops seamlessly.
 // Fixed behind everything, decorative only, transform/opacity animation; still for reduced motion.
 $lpBgWave = static function (float $y0, float $amp, float $wl, float $ph, float $amp2): string {
@@ -58,9 +59,9 @@ $lpBgLayers = [
 <div class="lp-bg" aria-hidden="true">
   <span class="lp-bg-glow is-a"></span><span class="lp-bg-glow is-b"></span>
   <?php foreach ($lpBgLayers as $layer => $waves): ?>
-  <div class="lp-bg-waves is-<?= $layer ?>"><svg viewBox="0 0 3200 900" preserveAspectRatio="none" focusable="false"><?php foreach ($waves as $w): ?><path d="<?= $lpBgWave(...$w) ?>"/><?php endforeach; ?></svg></div>
+  <div class="lp-bg-waves is-<?= $layer ?>"><svg viewBox="0 0 3200 900" preserveAspectRatio="none" focusable="false"><?php if ($layer === 'a'): ?><defs><linearGradient id="lpBgShine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1600" y2="0" spreadMethod="repeat"><stop offset="0" stop-color="#11b8c5" stop-opacity=".12"/><stop offset=".3" stop-color="#11b8c5" stop-opacity=".55"/><stop offset=".5" stop-color="#087f8c" stop-opacity=".22"/><stop offset=".75" stop-color="#6fd6df" stop-opacity=".6"/><stop offset="1" stop-color="#11b8c5" stop-opacity=".12"/></linearGradient></defs><?php endif; ?><?php foreach ($waves as $w): ?><path d="<?= $lpBgWave(...$w) ?>"/><?php endforeach; ?></svg></div>
   <?php endforeach; ?>
-  <?php for ($i = 0; $i < 8; $i++): ?><span class="lp-bg-streak" style="--n:<?= $i ?>"></span><?php endfor; ?>
+  <?php for ($i = 0; $i < 10; $i++): ?><span class="lp-bg-streak" style="--n:<?= $i ?>"></span><?php endfor; ?>
 </div>
 <a class="skip-link" href="#main">پرش به محتوای اصلی</a>
 
