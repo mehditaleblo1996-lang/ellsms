@@ -67,11 +67,24 @@ $abServices = [
         ['یکپارچه‌سازی ارتباطات', 'بهبود تعاملات', 'ارتباط با مشتریان'], 'is-amber'],
 ];
 
-// Hub in the hero: the five areas on a circle (r = 150 in a 400×400 box) around the brand mark.
+// Hub in the hero (docs/about.md#hero-hub): the five areas on a circle (r = 150 in a 400×400 box)
+// around the brand mark. Each has a curved beam from the core's edge (r = 62) to just short of its tile
+// (r = 122), bent 14° at mid-radius so the five read as a turning wheel.
+$abPolar = static fn (float $r, float $deg): string => round(200 + $r * cos(deg2rad($deg)), 1) . ' ' . round(200 + $r * sin(deg2rad($deg)), 1);
 $abHub = [];
 foreach ($abServices as $k => $svc) {
-    $a = deg2rad(-90 + $k * 72);
-    $abHub[] = ['x' => round(200 + 150 * cos($a), 1), 'y' => round(200 + 150 * sin($a), 1), 'svc' => $svc];
+    $deg = -90 + $k * 72;
+    $a = deg2rad($deg);
+    $abHub[] = [
+        'x' => round(200 + 150 * cos($a), 1), 'y' => round(200 + 150 * sin($a), 1), 'svc' => $svc,
+        'beam' => 'M' . $abPolar(62, $deg) . ' Q' . $abPolar(96, $deg + 14) . ' ' . $abPolar(122, $deg),
+    ];
+}
+// The dial around the hub: a tick every 5°, a long one every 30°.
+$abTicks = '';
+for ($i = 0; $i < 72; $i++) {
+    $deg = $i * 5;
+    $abTicks .= 'M' . $abPolar(186, $deg) . 'L' . $abPolar($i % 6 === 0 ? 174 : 180, $deg);
 }
 
 // «از پیامک تا سبد کامل خدمات»: the four areas that grew out of SMS, as branches of one tree
@@ -134,37 +147,71 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </div>
 
-      <div class="ab-hub" aria-hidden="true">
-        <svg class="ab-hub-svg" viewBox="0 0 400 400">
-          <defs>
-            <radialGradient id="abHubGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0" stop-color="#7c5cff" stop-opacity=".45"/>
-              <stop offset=".55" stop-color="#2e63f6" stop-opacity=".12"/>
-              <stop offset="1" stop-color="#2e63f6" stop-opacity="0"/>
-            </radialGradient>
-            <linearGradient id="abHubPulse" x1="0" x2="1">
-              <stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#60a5fa"/>
-            </linearGradient>
-          </defs>
-          <circle cx="200" cy="200" r="190" fill="url(#abHubGlow)"/>
-          <circle class="ab-hub-orbit" cx="200" cy="200" r="150"/>
-          <circle class="ab-hub-orbit is-inner" cx="200" cy="200" r="96"/>
-          <?php foreach ($abHub as $k => $n): ?>
-            <line class="ab-hub-spoke" x1="200" y1="200" x2="<?= $n['x'] ?>" y2="<?= $n['y'] ?>"/>
-            <line class="ab-hub-pulse" x1="200" y1="200" x2="<?= $n['x'] ?>" y2="<?= $n['y'] ?>" pathLength="100" style="animation-delay:<?= $k * 0.6 ?>s"/>
-          <?php endforeach; ?>
-          <g class="ab-hub-comet"><circle cx="200" cy="50" r="4"/></g>
-          <g class="ab-hub-comet is-slow"><circle cx="200" cy="104" r="3"/></g>
-        </svg>
-        <div class="ab-hub-core">
-          <span class="ab-hub-ring"></span><span class="ab-hub-ring" style="animation-delay:1.3s"></span>
-          <img src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="321" height="204">
+      <!-- The hub (docs/about.md#hero-hub): three layers that shift apart with the pointer (back: radar,
+           dial, drifting motes; middle: orbits, comets, scanning arcs and the beams with their data
+           packets; front: the five tiles), the core in between. The services light up one after another
+           (the script at the end of the page); hovering a tile takes over, and each tile is a link to its
+           card in «حوزه‌های تخصصی». -->
+      <div class="ab-hub" data-ab-hub>
+        <div class="ab-hub-layer is-back" aria-hidden="true">
+          <span class="ab-hub-radar"></span>
+          <svg class="ab-hub-svg" viewBox="0 0 400 400" focusable="false">
+            <defs>
+              <radialGradient id="abHubGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0" stop-color="#11b8c5" stop-opacity=".32"/>
+                <stop offset=".5" stop-color="#11b8c5" stop-opacity=".08"/>
+                <stop offset="1" stop-color="#11b8c5" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+            <circle cx="200" cy="200" r="196" fill="url(#abHubGlow)"/>
+            <g class="ab-hub-dial"><path d="<?= $abTicks ?>"/></g>
+            <circle class="ab-hub-faint" cx="200" cy="200" r="122"/>
+            <circle class="ab-hub-faint" cx="200" cy="200" r="168"/>
+          </svg>
+          <span class="ab-hub-motes"><?php for ($i = 0; $i < 18; $i++): ?><i style="--m:<?= $i ?>;left:<?= 12 + ($i * 37) % 76 ?>%;top:<?= 14 + ($i * 53) % 72 ?>%"></i><?php endfor; ?></span>
         </div>
-        <?php foreach ($abHub as $k => $n): [$ico, , $short, , , $tone] = $n['svc']; ?>
-          <div class="ab-hub-node <?= $tone ?>" style="left:<?= $n['x'] / 4 ?>%;top:<?= $n['y'] / 4 ?>%;--d:<?= $k * 0.45 ?>s">
-            <span class="ab-hub-float"><span class="ab-ico"><?= $abIcon($ico) ?></span><b><?= e($short) ?></b></span>
-          </div>
-        <?php endforeach; ?>
+        <div class="ab-hub-layer is-mid" aria-hidden="true">
+          <svg class="ab-hub-svg" viewBox="0 0 400 400" focusable="false">
+            <defs>
+              <linearGradient id="abHubOrbit" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#6fd6df" stop-opacity=".55"/>
+                <stop offset=".5" stop-color="#11b8c5" stop-opacity=".12"/>
+                <stop offset="1" stop-color="#6fd6df" stop-opacity=".5"/>
+              </linearGradient>
+            </defs>
+            <circle class="ab-hub-orbit" cx="200" cy="200" r="150"/>
+            <circle class="ab-hub-arc" cx="200" cy="200" r="150" pathLength="100"/>
+            <circle class="ab-hub-arc is-b" cx="200" cy="200" r="150" pathLength="100"/>
+            <circle class="ab-hub-orbit is-inner" cx="200" cy="200" r="96"/>
+            <?php foreach ($abHub as $k => $n): ?>
+            <g class="ab-hub-beam" data-ab-beam="<?= $k ?>" style="--n:<?= $k ?>">
+              <path class="ab-hub-beam-base" d="<?= $n['beam'] ?>" pathLength="100"/>
+              <path class="ab-hub-beam-out" d="<?= $n['beam'] ?>" pathLength="100"/>
+              <path class="ab-hub-beam-in" d="<?= $n['beam'] ?>" pathLength="100"/>
+            </g>
+            <?php endforeach; ?>
+          </svg>
+          <span class="ab-hub-comet"></span><span class="ab-hub-comet is-inner"></span>
+        </div>
+        <div class="ab-hub-core" aria-hidden="true">
+          <span class="ab-hub-ring"></span><span class="ab-hub-ring" style="animation-delay:1.3s"></span>
+          <span class="ab-hub-energy"></span>
+          <span class="ab-hub-body">
+            <span class="ab-hub-sweep"></span>
+            <img src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="321" height="204">
+          </span>
+          <span class="ab-hub-flash"></span>
+        </div>
+        <div class="ab-hub-layer is-front">
+          <?php foreach ($abHub as $k => $n): [$ico, $title, $short, , , $tone] = $n['svc']; ?>
+          <a class="ab-hub-node <?= $tone ?>" href="#service-<?= $k + 1 ?>" data-ab-node="<?= $k ?>" style="left:<?= $n['x'] / 4 ?>%;top:<?= $n['y'] / 4 ?>%;--d:<?= $k * 0.45 ?>s;--n:<?= $k ?>" aria-label="<?= e($title) ?>">
+            <span class="ab-hub-float">
+              <span class="ab-hub-tile"><span class="ab-hub-tile-ripple" aria-hidden="true"></span><span class="ab-ico"><?= $abIcon($ico) ?></span></span>
+              <b><?= e($short) ?></b>
+            </span>
+          </a>
+          <?php endforeach; ?>
+        </div>
       </div>
     </div>
   </section>
@@ -350,6 +397,51 @@ require __DIR__ . '/../app/views/public_header.php';
     entries.forEach(function (en) { en.target.classList.toggle('is-live', en.isIntersecting); });
   }, { rootMargin: '80px 0px' });
   document.querySelectorAll('[data-ab-live]').forEach(function (s) { live.observe(s); });
+
+  // Hero hub (docs/about.md#hero-hub): light the services one after another while the hero is on
+  // screen; a hovered or focused tile takes over. Pointer parallax for the three layers (fine pointers).
+  var hub = document.querySelector('[data-ab-hub]');
+  if (hub) {
+    var hero = hub.closest('[data-ab-live]');
+    var hubNodes = hub.querySelectorAll('[data-ab-node]');
+    var hubBeams = hub.querySelectorAll('[data-ab-beam]');
+    var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var on = -1, held = false, timer = 0;
+    var light = function (k) {
+      on = k;
+      hubNodes.forEach(function (n, i) { n.classList.toggle('is-on', i === k); });
+      hubBeams.forEach(function (b, i) { b.classList.toggle('is-on', i === k); });
+      hub.classList.remove('is-flash'); void hub.offsetWidth; if (k >= 0) hub.classList.add('is-flash');
+    };
+    var tick = function () {
+      if (!held && hero.classList.contains('is-live') && !document.hidden) light((on + 1) % hubNodes.length);
+    };
+    new IntersectionObserver(function (en) {
+      if (en[0].isIntersecting) hub.classList.add('is-in');
+    }, { threshold: 0.2 }).observe(hub);
+    if (!still) timer = setInterval(tick, 2600);
+    hubNodes.forEach(function (n, i) {
+      var take = function () { held = true; light(i); };
+      var release = function () { held = false; };
+      n.addEventListener('pointerenter', take); n.addEventListener('focus', take);
+      n.addEventListener('pointerleave', release); n.addEventListener('blur', release);
+    });
+    if (!still && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+      var tx = 0, ty = 0, px = 0, py = 0, raf = 0;
+      var step = function () {
+        px += (tx - px) * 0.08; py += (ty - py) * 0.08;
+        hub.style.setProperty('--px', px.toFixed(3)); hub.style.setProperty('--py', py.toFixed(3));
+        raf = (Math.abs(tx - px) > 0.002 || Math.abs(ty - py) > 0.002) ? requestAnimationFrame(step) : 0;
+      };
+      hero.addEventListener('pointermove', function (e) {
+        var r = hub.getBoundingClientRect();
+        tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (r.width / 1.2)));
+        ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (r.height / 1.2)));
+        if (!raf) raf = requestAnimationFrame(step);
+      });
+      hero.addEventListener('pointerleave', function () { tx = 0; ty = 0; if (!raf) raf = requestAnimationFrame(step); });
+    }
+  }
 
   // Section bar: highlight the section in the middle band of the screen.
   var bar = document.querySelector('[data-ab-subnav]');
