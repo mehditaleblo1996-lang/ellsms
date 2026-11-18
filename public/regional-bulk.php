@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('success', 'تنظیمات ارسال منطقه‌ای ذخیره شد.');
         }
     } elseif ($action === 'count' || $action === 'create') {
-        $form = array_intersect_key($_POST, array_flip(['kind', 'sim', 'operator', 'prefix', 'province_code', 'city_code', 'postal_code', 'originator', 'content', OPTOUT_SUFFIX_FIELD, 'scheduled_at', 'count']));
+        $form = array_intersect_key($_POST, array_flip(['kind', 'sim', 'operator', 'prefix', 'province_code', 'city_code', 'postal_code', 'originator', 'content', 'scheduled_at', 'count']));
         $_SESSION['regional_bulk_form'] = $form;
         $c = regional_bulk_criteria($form);
         if (!$c['ok']) {
@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $scheduledAt = $ts !== false ? date('Y-m-d H:i:s', $ts) : null;
             }
             $count = (int)from_persian_digits((string)($form['count'] ?? '0'));
-            $r = regional_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), optout_suffix_maybe(trim((string)($form['content'] ?? '')), optout_suffix_requested($form)), $scheduledAt, $count > 0 ? $count : null);
+            $r = regional_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), optout_suffix_maybe(trim((string)($form['content'] ?? '')), optout_suffix_for_user((int)$me['id'])), $scheduledAt, $count > 0 ? $count : null);
             if ($r['ok']) {
                 unset($_SESSION['regional_bulk_form']);
                 flash('success', 'درخواست ساخته و قیمت‌گذاری شد. برای ارسال، آن را در فهرست زیر تأیید کنید.');
@@ -159,7 +159,7 @@ require __DIR__ . '/../app/views/header.php';
       <label>زمان ارسال (خالی = فوری) <input type="datetime-local" name="scheduled_at" class="ltr" value="<?= e($fv('scheduled_at')) ?>"></label>
     </div>
     <label style="display:block">متن پیام <textarea name="content" rows="4" style="width:100%"><?= e($fv('content')) ?></textarea></label>
-    <?= optout_suffix_checkbox_html(optout_suffix_requested($form)) ?>
+    <?= optout_suffix_notice_html(optout_suffix_for_user((int)$me['id'])) ?>
     <button class="btn" name="action" value="count">شمارش مشترکان</button>
     <button class="btn btn-primary" name="action" value="create">ساخت درخواست و قیمت‌گذاری</button>
   </form>

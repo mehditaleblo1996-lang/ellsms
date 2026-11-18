@@ -45,5 +45,5 @@ edits the settings.
 
 Tests: `tests/Integration/LineOptoutsTest.php`, `tests/Integration/LineOptoutsHttpTest.php`.
 
-Related: the panel send forms add «لغو۱۱» to the end of messages by default so recipients know how to
+Related: the panel adds «لغو۱۱» to the end of messages (per user, set by the admin, default on) so recipients know how to
 opt out — `docs/optout-suffix.md`.

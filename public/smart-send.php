@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $uploadName = import_upload_original_name($_FILES['file'] ?? []);
         $title      = trim($_POST['title'] ?? '') ?: ($uploadName !== '' ? $uploadName : 'بدون عنوان');
         $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
-        $addOptout  = optout_suffix_requested(); // «افزودن لغو۱۱» (app/OptoutSuffix.php), per row
+        $addOptout  = optout_suffix_for_user((int)$me['id']); // «افزودن لغو۱۱» (app/OptoutSuffix.php, per user, set by the admin), per row
 
         if (user_has_no_send_line($me)) {
             flash('error', NO_ASSIGNED_LINE_MESSAGE);
@@ -174,7 +174,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
       </label>
       <label>فایل (xlsx یا csv) <input type="file" name="file" accept=".xlsx,.csv" required></label>
     </div>
-    <?= optout_suffix_checkbox_html() ?>
+    <?= optout_suffix_notice_html(optout_suffix_for_user((int)$me['id'])) ?>
     <button class="btn btn-primary">بارگذاری و افزودن به صف ارسال</button>
   </form>
 </div>
