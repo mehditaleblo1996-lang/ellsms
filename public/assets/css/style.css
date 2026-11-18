@@ -385,6 +385,8 @@ tr:hover td { background: #f9f9ff; }
 .badge-failed, .badge-send_failed, .badge-undelivered, .badge-cancelled, .badge-off { background: var(--err-bg); color: var(--err); }
 .badge-done, .badge-user, .badge-sent { background: var(--tint); color: var(--indigo); }
 .badge-unknown { background: var(--line); color: var(--muted); }
+/* Reached the operator, but the delivery report says it never reached the phone (bulk job page). */
+.badge-not-delivered { background: #ffedd5; color: #b45309; }
 .badge-admin { background: var(--ink); color: #fff; }
 /* «مشتری ویژه» (app/VipCustomers.php): a gold badge, and a warm tint with a gold edge on the customer's
    rows in admin lists and reports. */
