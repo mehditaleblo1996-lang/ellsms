@@ -45,7 +45,7 @@ $aboutMenu = [
       <img class="lp-brand-logo" src="<?= e(asset_url('/assets/img/brand/logo.svg')) ?>" alt="" aria-hidden="true" width="1240" height="478" fetchpriority="high">
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
-      <a href="/landing.php#products">محصولات</a>
+      <a href="/landing.php#product-sms">محصولات</a>
       <a href="/landing.php#faq">سوالات</a>
       <a href="/guide.php">راهنمای استفاده</a>
       <?php // «درباره ما» opens a submenu (hover, or the chevron button) with the parts of /about; ?>
