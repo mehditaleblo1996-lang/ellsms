@@ -3,7 +3,7 @@
 The marketing home page that visitors who are not logged in see at the site root. A reseller's own
 host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 
-It is built as a short guided story rather than a catalogue: a cinematic hero, three showcases (SMS, cloud, AI), the IT and
+It is built as a short guided story rather than a catalogue: a brand statement (the page's h1), the cinematic hero core with a click-to-explain card per service line, three showcases (SMS, cloud, AI), the IT and
 telephony panels, why DATIS, customers, FAQ and a closing call to action.
 
 | File | What |
@@ -11,7 +11,7 @@ telephony panels, why DATIS, customers, FAQ and a closing call to action.
 | `public/landing.php` | The page: every section below, the `$customers` list, and two small inline scripts (on-screen animation trigger; the hero core's pointer tilt) |
 | `app/views/public_header.php` / `public_footer.php` | Shared public chrome: the floating nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in, and `--lp-nav-h` (the nav's measured height, used for anchor offsets). The header preloads the two main Estedad weights, takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد، the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup, and the «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» badge, which opens the company's member page on tehran.irannsr.org; its green emblem and calligraphic caption are `public/assets/img/nsr-tehran-emblem.png` / `nsr-tehran-text.png`, the caption drawn as an SVG mask in the footer's text colour) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
 | `public/assets/css/style.css` | Design tokens of the public pages (`.lp-body`), the floating nav, footer, FAQ list, customer rail, `.lp-reveal` |
-| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): hero and its 3D core, showcases, IT/telephony panels, why DATIS, FAQ layout, CTA. Loaded only by `landing.php`. |
+| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero and its 3D core with the explanation card, showcases, IT/telephony panels, why DATIS, FAQ layout, CTA. Loaded only by `landing.php`. |
 | `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat in the AI showcase (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
 | `public/assets/css/landing-products.css` | The `.ps-*` primitives and animations of the product scenes. Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/{cloud,it,voip}.php` | Animated SVG scenes for the cloud showcase and the IT / telephony panels |
@@ -65,7 +65,8 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 
 | Anchor | Section |
 |---|---|
-| — | **Hero**: only the signature core (below), centred. It has no visible headline, paragraph or buttons (removed); the page's `<h1>` («داتیس رایان گستر ایرانیان») is visually hidden (`.sr-only`) for screen readers and search engines. The consultation link stays in the closing CTA. |
+| — | **Intro** (first): the page's `<h1>` «یک شریک فناوری برای همه‌ی نیازهای کسب‌وکار شما», a short paragraph and «آشنایی با داتیس رایان» (→ `/about`) |
+| — | **Hero**: the signature core (below), centred, with the hint «برای آشنایی با هر خدمت، روی آن در مدار بزنید.» under it. Clicking a service node opens its explanation card (see below). The former headline, paragraph and «کشف خدمات داتیس» / «مشاوره با کارشناسان» buttons were removed; the consultation link stays in the closing CTA. |
 | `#product-sms` | Showcase: the SMS platform — four features, its channels (پیامک، پیام صوتی، پیام در بله), and a mock-up of «قالب ← پیام شخصی هر ردیف ← گزارش تحویل» |
 | `#product-cloud` | Showcase: cloud and infrastructure, with the animated rack scene |
 | `#product-ai` | Showcase on the graphite band: AI and automation, with the «منشی هوشمند» chat (its button opens `/guide.php#guide-ai-secretary`) |
@@ -97,9 +98,19 @@ damped tilt toward the pointer (the inline script writes `--px`/`--py`; only on 
 rAF loop stops once settled), an entrance fade, and a pause when off-screen. With
 `prefers-reduced-motion` it is a still composition. It is scaled per breakpoint with `--k`.
 
-The brand statement («یک شریک فناوری برای همه‌ی نیازهای کسب‌وکار شما») and the «محصولات و خدمات»
-bento grid (`#products`, «پنج خدمت، یک تیم») that used to sit between the hero and the showcases were
-removed; the page goes straight from the core to `#product-sms`.
+### Click-to-explain (the core's nodes)
+
+Each of the five nodes is a `<button data-dx-node>` (`$dxLines` in `landing.php` holds its anchor, short
+name, icon, title, one-paragraph explanation and three main services). A click stops the orbit
+(`.dx-core.is-held`), highlights the node (`aria-pressed="true"`, turquoise ball, graphite label) and shows
+its card in `#dxCoreInfo` under the core: number (۰۱ / ۰۵ …), title, explanation, the three services as
+chips and «جزئیات …» linking to its showcase (`#product-*`). Clicking the same node again or «×» closes the
+card and the orbit turns again. The decorative 3D layers have `pointer-events: none` so only the nodes
+take clicks; nodes behind the sphere are not clickable until they come round. The card region is
+`aria-live="polite"`.
+
+The «محصولات و خدمات» bento grid (`#products`, «پنج خدمت، یک تیم») that used to sit between the hero and
+the showcases was removed; the page goes from the core to `#product-sms`.
 
 ### Motion
 

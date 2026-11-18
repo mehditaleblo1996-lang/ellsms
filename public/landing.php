@@ -39,7 +39,7 @@ unset($c);
 require __DIR__ . '/../app/views/public_header.php';
 ?>
 <?php
-  // Icons (24×24 line glyphs) shared by the hero core, the bento grid and the showcases.
+  // Icons (24×24 line glyphs) shared by the hero core and the showcases.
   $dxIcons = [
       'send'   => '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7Z"/>',
       'cloud'  => '<path d="M17.5 19a4.5 4.5 0 1 0-1.4-8.8A6 6 0 1 0 6 16.5"/><path d="M6 19h11.5"/>',
@@ -65,48 +65,76 @@ require __DIR__ . '/../app/views/public_header.php';
       'arrow'  => '<path d="M19 12H5"/><path d="m11 18-6-6 6-6"/>',
   ];
   $dxIcon = static fn (string $k, string $cls = ''): string => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"' . ($cls !== '' ? ' class="' . $cls . '"' : '') . '>' . $dxIcons[$k] . '</svg>';
-  // The five product lines: [anchor id, short name, icon] — the hero core's nodes and the bento grid.
+  // The five product lines: [anchor id, short name, icon, title, explanation, three main services] —
+  // the hero core's nodes and the explanation card a click on a node opens.
   $dxLines = [
-      ['product-sms',   'پیامک و بازاریابی', 'send'],
-      ['product-cloud', 'خدمات ابری',        'cloud'],
-      ['product-ai',    'هوش مصنوعی',        'spark'],
-      ['product-it',    'فناوری اطلاعات',    'shield'],
-      ['product-voip',  'تلفن سازمانی',      'phone'],
+      ['product-sms',   'پیامک و بازاریابی', 'send',   'سامانه پیامکی و بازاریابی', 'ارسال انبوه، شخصی‌سازی‌شده و زمان‌بندی‌شده، منشی هوشمند و گزارش لحظه‌ای تحویل هر پیام — همه در یک پنل.', ['ارسال انبوه و هدفمند', 'قالب پویا و زمان‌بندی', 'منشی هوشمند و وب‌سرویس']],
+      ['product-cloud', 'خدمات ابری',        'cloud',  'خدمات ابری و زیرساختی',     'سرور مجازی با منابع اختصاصی، هاست و دامنه و فضای ذخیره‌سازی ابری امن، با پشتیبانی فنی کارشناسان داتیس.', ['سرور مجازی (VPS)', 'هاست و دامنه', 'فضای ذخیره‌سازی ابری']],
+      ['product-ai',    'هوش مصنوعی',        'spark',  'هوش مصنوعی و اتوماسیون',    'محتوای تبلیغاتی را در چند ثانیه بسازید و کارهای تکراری کسب‌وکار را به گردش‌کارهای خودکار بسپارید.', ['تولید محتوا با هوش مصنوعی', 'اتوماسیون فرآیندها', 'چت‌بات و دستیار هوشمند']],
+      ['product-it',    'فناوری اطلاعات',    'shield', 'خدمات فناوری اطلاعات',      'راه‌اندازی، نگهداری و ایمن‌سازی شبکه، سرورها و نرم‌افزارهای سازمان شما؛ یک تیم فنی کامل بدون هزینه‌ی استخدام.', ['پشتیبانی شبکه', 'نصب و راه‌اندازی سرور', 'مشاوره‌ی امنیت زیرساخت']],
+      ['product-voip',  'تلفن سازمانی',      'phone',  'تلفن و ارتباطات سازمانی',   'سانترال تحت شبکه، منشی تلفنی گویا، صف تماس و اتصال شعب؛ تا هیچ تماس مشتری بی‌پاسخ نماند.', ['سانترال تحت شبکه (VoIP)', 'منشی تلفنی و صف تماس', 'اتصال شعب و ضبط مکالمات']],
   ];
+  $dxNum = ['۰۱', '۰۲', '۰۳', '۰۴', '۰۵'];
   // Scenes are rendered in their own scope so their loop variables cannot leak into this page.
   $renderProdScene = static function (string $file): void { require $file; };
 ?>
-  <!-- Hero (docs/landing.md#hero): only the signature «هسته‌ی داتیس» (the page's h1 is visually hidden) — a
-       graphite-and-glass core with the DATIS mark, a brushed-metal ring and the five product lines
-       orbiting on it. Pure CSS 3D (no WebGL, no library): it renders the same with or without a GPU,
-       turns slowly, tilts a little toward the pointer (damped, inline script at the end of this block),
-       pauses off-screen and stands still for prefers-reduced-motion. -->
-  <section class="dx-hero" aria-labelledby="dxHeroTitle">
+  <!-- Brand introduction (docs/landing.md#sections-top-to-bottom): the page's h1 and where to read more. -->
+  <section class="dx-section dx-intro" aria-labelledby="dxIntroTitle">
+    <div class="dx-intro-grid">
+      <h1 id="dxIntroTitle" class="dx-rise">یک شریک فناوری برای <span class="dx-accent">همه‌ی نیازهای</span> کسب‌وکار شما</h1>
+      <div class="dx-intro-copy dx-rise" style="--i:1">
+        <p>از پیامک و بازاریابی تا زیرساخت ابری، هوش مصنوعی، پشتیبانی فناوری اطلاعات و تلفن سازمانی — داتیس رایان گستر ایرانیان همه را یکجا، با یک تیم پشتیبانی ارائه می‌دهد.</p>
+        <a href="/about" class="dx-link">آشنایی با داتیس رایان <?= $dxIcon('arrow') ?></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hero (docs/landing.md#hero): the signature «هسته‌ی داتیس» — a graphite-and-glass core with the
+       DATIS mark, a brushed-metal ring and the five product lines orbiting on it. Pure CSS 3D (no WebGL,
+       no library): it renders the same with or without a GPU, turns slowly, tilts a little toward the
+       pointer (damped), pauses off-screen and stands still for prefers-reduced-motion. Each node is a
+       button: a click stops the orbit, highlights the node and opens its explanation card under the
+       core (script at the end of this block). -->
+  <section class="dx-hero" aria-label="خدمات داتیس">
     <div class="dx-hero-inner">
-      <h1 id="dxHeroTitle" class="sr-only">داتیس رایان گستر ایرانیان</h1>
-      <div class="dx-core" data-dx-core aria-hidden="true">
+      <div class="dx-core" data-dx-core>
         <div class="dx-core-stage">
           <div class="dx-core-world" data-dx-world>
-            <span class="dx-core-floor"></span>
-            <span class="dx-core-light"></span>
-            <div class="dx-ring dx-ring-b"><span class="dx-ring-line"></span></div>
+            <span class="dx-core-floor" aria-hidden="true"></span>
+            <span class="dx-core-light" aria-hidden="true"></span>
+            <div class="dx-ring dx-ring-b" aria-hidden="true"><span class="dx-ring-line"></span></div>
             <div class="dx-ring dx-ring-a">
-              <span class="dx-ring-band"></span>
-              <span class="dx-ring-line"></span>
-              <div class="dx-orbit">
+              <span class="dx-ring-band" aria-hidden="true"></span>
+              <span class="dx-ring-line" aria-hidden="true"></span>
+              <div class="dx-orbit" role="group" aria-label="خدمات داتیس؛ برای توضیح هر خدمت روی آن بزنید">
                 <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
                 <div class="dx-node" style="--a:<?= $k * 72 ?>deg">
-                  <div class="dx-node-face"><span class="dx-node-ball"><?= $dxIcon($ico) ?></span><span class="dx-node-label"><?= e($name) ?></span></div>
+                  <button type="button" class="dx-node-face" data-dx-node="<?= $k ?>" aria-controls="dxCoreInfo" aria-pressed="false"><span class="dx-node-ball"><?= $dxIcon($ico) ?></span><span class="dx-node-label"><?= e($name) ?></span></button>
                 </div>
                 <?php endforeach; ?>
               </div>
             </div>
-            <div class="dx-sphere">
+            <div class="dx-sphere" aria-hidden="true">
               <span class="dx-sphere-shell"></span>
               <span class="dx-sphere-body"><img src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="84" height="54"></span>
             </div>
           </div>
         </div>
+      </div>
+      <div class="dx-core-info" id="dxCoreInfo" aria-live="polite">
+        <p class="dx-core-hint" data-dx-hint>برای آشنایی با هر خدمت، روی آن در مدار بزنید.</p>
+        <?php foreach ($dxLines as $k => [$id, $name, $ico, $title, $desc, $items]): ?>
+        <div class="dx-core-card" data-dx-card="<?= $k ?>" hidden>
+          <div class="dx-core-card-head">
+            <span class="dx-core-card-ico"><?= $dxIcon($ico) ?></span>
+            <div><span class="dx-core-card-num"><?= e($dxNum[$k]) ?> / ۰۵</span><h2><?= e($title) ?></h2></div>
+            <button type="button" class="dx-core-close" data-dx-close aria-label="بستن توضیح">×</button>
+          </div>
+          <p><?= e($desc) ?></p>
+          <ul><?php foreach ($items as $f): ?><li><?= e($f) ?></li><?php endforeach; ?></ul>
+          <a href="#<?= e($id) ?>" class="dx-link">جزئیات <?= e($title) ?> <?= $dxIcon('arrow') ?></a>
+        </div>
+        <?php endforeach; ?>
       </div>
     </div>
   </section>
@@ -284,6 +312,25 @@ require __DIR__ . '/../app/views/public_header.php';
   requestAnimationFrame(function () { core.classList.add('is-in'); });
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (en) { core.classList.toggle('is-paused', !en[0].isIntersecting); }).observe(core);
+  }
+  // Click a node: stop the orbit, mark the node and show its card; click it again (or ×) to close.
+  var nodes = core.querySelectorAll('[data-dx-node]');
+  var info = document.getElementById('dxCoreInfo');
+  var hint = info && info.querySelector('[data-dx-hint]');
+  function show(k) {
+    nodes.forEach(function (n) { n.setAttribute('aria-pressed', String(n.getAttribute('data-dx-node') === k)); });
+    info.querySelectorAll('[data-dx-card]').forEach(function (c) { c.hidden = c.getAttribute('data-dx-card') !== k; });
+    if (hint) hint.hidden = k !== null;
+    core.classList.toggle('is-held', k !== null);
+  }
+  if (info) {
+    nodes.forEach(function (n) {
+      n.addEventListener('click', function () {
+        var k = n.getAttribute('data-dx-node');
+        show(n.getAttribute('aria-pressed') === 'true' ? null : k);
+      });
+    });
+    info.querySelectorAll('[data-dx-close]').forEach(function (b) { b.addEventListener('click', function () { show(null); }); });
   }
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var fine = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
