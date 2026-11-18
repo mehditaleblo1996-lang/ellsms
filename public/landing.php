@@ -76,27 +76,14 @@ require __DIR__ . '/../app/views/public_header.php';
   // Scenes are rendered in their own scope so their loop variables cannot leak into this page.
   $renderProdScene = static function (string $file): void { require $file; };
 ?>
-  <!-- Hero (docs/landing.md#hero): headline, two actions, and the signature «هسته‌ی داتیس» — a
+  <!-- Hero (docs/landing.md#hero): only the signature «هسته‌ی داتیس» (the page's h1 is visually hidden) — a
        graphite-and-glass core with the DATIS mark, a brushed-metal ring and the five product lines
        orbiting on it. Pure CSS 3D (no WebGL, no library): it renders the same with or without a GPU,
        turns slowly, tilts a little toward the pointer (damped, inline script at the end of this block),
        pauses off-screen and stands still for prefers-reduced-motion. -->
   <section class="dx-hero" aria-labelledby="dxHeroTitle">
     <div class="dx-hero-inner">
-      <div class="dx-hero-copy">
-        <p class="dx-kicker dx-rise" style="--i:0">داتیس رایان گستر ایرانیان</p>
-        <h1 id="dxHeroTitle" class="dx-rise" style="--i:1">فناوری هوشمند، <span class="dx-accent">برای آینده</span> کسب‌وکار شما</h1>
-        <p class="dx-hero-lead dx-rise" style="--i:2">از ارتباطات هوشمند و سامانه‌های پیامکی تا زیرساخت ابری و هوش مصنوعی؛ داتیس همراه تحول دیجیتال کسب‌وکار شماست.</p>
-        <div class="dx-hero-cta dx-rise" style="--i:3">
-          <a href="#products" class="btn btn-primary dx-btn-lg">کشف خدمات داتیس</a>
-          <a href="/contact.php" class="btn btn-ghost dx-btn-lg">مشاوره با کارشناسان</a>
-        </div>
-        <ul class="dx-hero-lines dx-rise" style="--i:4" aria-label="حوزه‌های خدمات داتیس">
-          <?php foreach ($dxLines as [$id, $name, $ico]): ?>
-          <li><a href="#<?= e($id) ?>"><?= $dxIcon($ico) ?><?= e($name) ?></a></li>
-          <?php endforeach; ?>
-        </ul>
-      </div>
+      <h1 id="dxHeroTitle" class="sr-only">داتیس رایان گستر ایرانیان</h1>
       <div class="dx-core" data-dx-core aria-hidden="true">
         <div class="dx-core-stage">
           <div class="dx-core-world" data-dx-world>

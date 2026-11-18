@@ -66,7 +66,7 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 
 | Anchor | Section |
 |---|---|
-| — | **Hero**: «فناوری هوشمند، برای آینده کسب‌وکار شما», a short paragraph, «کشف خدمات داتیس» (→ `#products`) and «مشاوره با کارشناسان» (→ `/contact.php`), the five service lines as small links, and the signature core (below) |
+| — | **Hero**: only the signature core (below), centred. It has no visible headline, paragraph or buttons (removed); the page's `<h1>` («داتیس رایان گستر ایرانیان») is visually hidden (`.sr-only`) for screen readers and search engines. The consultation link stays in the closing CTA. |
 | — | **Intro**: «یک شریک فناوری برای همه‌ی نیازهای کسب‌وکار شما» and a link to `/about` |
 | `#products` | **«پنج خدمت، یک تیم»** — the bento grid (below) |
 | `#product-sms` | Showcase: the SMS platform — four features, its channels (پیامک، پیام صوتی، پیام در بله), and a mock-up of «قالب ← پیام شخصی هر ردیف ← گزارش تحویل» |
@@ -109,7 +109,7 @@ the tiles stack. Hover lifts a tile and animates its illustration.
 
 ### Motion
 
-Reveals use `.lp-reveal` (`public_footer.php`), the hero copy `.dx-rise`. Showcase mock-ups
+Reveals use `.lp-reveal` (`public_footer.php`). Showcase mock-ups
 (`[data-dx-live]`) build once when they come on screen; the product scenes (`[data-lp-prod-scene]`)
 animate only while on screen. Everything uses transform/opacity and stops for `prefers-reduced-motion`.
 
