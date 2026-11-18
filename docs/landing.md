@@ -13,8 +13,8 @@ telephony panels, customers, FAQ and a closing call to action.
 | `public/assets/css/style.css` | Design tokens of the public pages (`.lp-body`), the floating nav, footer, FAQ list, customer rail, `.lp-reveal` |
 | `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero and its 3D core with the explanation card, showcases, IT/telephony panels, FAQ layout, CTA. Loaded only by `landing.php`. |
 | `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat in the AI showcase (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
-| `public/assets/css/landing-products.css` | The `.ps-*` primitives and animations of the product scenes. Loaded only by `landing.php`. |
-| `app/views/landing_product_scenes/{cloud,it,voip}.php` | Animated SVG scenes for the cloud showcase and the IT / telephony panels |
+| `public/assets/css/landing-products.css` | The `.ps-*` primitives of the product scenes, and the IT / telephony carousels (`.pc-*`: carousel chrome and each slide's story). Loaded only by `landing.php`. |
+| `app/views/landing_product_scenes/cloud.php`, `it-{1,2,3}.php`, `voip-{1,2,3}.php` | Animated SVG scenes: the cloud showcase, and the three slides of each of the IT / telephony carousels |
 | `public/assets/fonts/estedad/` | Estedad (SIL OFL 1.1, `OFL.txt`), Arabic + Latin subsets, weights 400/500/700/800; `@font-face` rules in `fonts.css` |
 | `public/assets/js/landing-customers.js` | Drives the `#customers` logo rail (scroll speed-up, hover glide, drag, centre focus) |
 | `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
@@ -70,7 +70,7 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 | `#product-sms` | Showcase: the SMS platform — four features, its channels (پیامک، پیام صوتی، پیام در بله), and a mock-up of «قالب ← پیام شخصی هر ردیف ← گزارش تحویل» |
 | `#product-cloud` | Showcase: cloud and infrastructure, with the animated rack scene |
 | `#product-ai` | Showcase on a light full-width band (page background with a faint turquoise tint, hairline borders): AI and automation, with the «منشی هوشمند» chat as a light chat window (white card, grey customer bubble, pale-turquoise reply bubble, white chips; colours from the `.lp-body` tokens in `landing-ai.css`) (its button opens `/guide.php#guide-ai-secretary`) |
-| `#product-it`, `#product-voip` | Two companion panels: IT services and enterprise telephony, each with its scene and four sub-services |
+| `#product-it`, `#product-voip` | Two companion panels: IT services and enterprise telephony, each with a three-slide animated carousel (below) and four sub-services |
 | `#customers` | «مشتریان و همکاران»: one scrolling rail of monochrome customer logos (see below) |
 | `#faq` | Questions (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 | — | Call to action: «مشاوره با کارشناسان» and the panel login |
@@ -141,6 +141,32 @@ until they come round. The card region is
 
 The «محصولات و خدمات» bento grid (`#products`, «پنج خدمت، یک تیم») that used to sit between the hero and
 the showcases was removed; the page goes from the core to `#product-sms`.
+
+### IT and telephony carousels
+
+Each of the two panels opens with a three-slide carousel (`$renderProdCarousel()` in `landing.php`; slides
+`app/views/landing_product_scenes/it-1..3.php` and `voip-1..3.php`, 440×250 SVGs on the graphite scene
+surface; IT in turquoise, telephony in its amber). Every slide is a short story on a 7 s clock (one-shot
+keyframes with fill `both`, plus a few loops); only the active slide animates, so its story replays from
+the start each time it comes on.
+
+| Slide | Story |
+|---|---|
+| IT 1 «پشتیبانی و پایش شبکه» | Core switch with live traffic (packets both ways) to the office, laptops, Wi-Fi and a branch; at 2 s the branch link fails (amber dashes, «!»), a wrench works on it, at 4.6 s it is back with a check; «پایش شبانه‌روزی» chip |
+| IT 2 «سرور و مجازی‌سازی» | Rack with blinking LEDs, activity bars and a scan line; three VMs (Windows, Linux, Mail) rise onto the virtualisation layer one by one, fill their boot bars and get a check; CPU and RAM gauges fill |
+| IT 3 «امنیت و نگهداری» | Threats fly in and burst on a turning firewall ring; the shield draws its check; the «نگهداری و به‌روزرسانی» checklist (وصله‌های امنیتی، پشتیبان‌گیری، بررسی آسیب‌پذیری) ticks off while the update bar fills |
+| Telephony 1 «سانترال تحت شبکه» | An incoming call rings («تماس ورودی…»), the IP PBX routes it (scans past ۱۰۱, lights ۱۰۲), ۱۰۲ rings, then «در حال مکالمه» with a live voice wave |
+| Telephony 2 «منشی گویا و صف تماس» | «سلام، به داتیس خوش آمدید» types out; the IVR menu highlights ۱، ۳ and settles on «۲ پشتیبانی», «انتقال به پشتیبانی ←»; callers move up the queue to the agents |
+| Telephony 3 «شعب، دورکاری و ضبط مکالمات» | Head office, branch and a remote colleague connected through the VoIP hub with calls flowing on the arcs; a blinking REC badge over a waveform; the «گزارش تماس‌ها» bars grow |
+
+**Controls.** A caption («۰۱ پشتیبانی و پایش شبکه») and three dots; the active dot is a pill whose fill is
+the 7 s clock, and its `animationend` advances to the next slide, so pausing that one animation pauses the
+carousel: on hover/focus (`.is-hold`) and while the panel is off screen (`.is-live` off). Dots jump to a
+slide; a horizontal swipe steps (right = next, RTL). Accessibility: `role="group"` +
+`aria-roledescription="carousel"/"slide"`, inactive slides `aria-hidden`, the caption is
+`aria-live="polite"`, dots are buttons with `aria-label` and `aria-current`. Reduced motion: no clock (no
+autoplay), each slide shows its finished state, dots still switch slides. No new table, setting or
+migration.
 
 ### Animated background
 

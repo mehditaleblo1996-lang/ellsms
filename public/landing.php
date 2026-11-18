@@ -77,6 +77,29 @@ require __DIR__ . '/../app/views/public_header.php';
   $dxNum = ['۰۱', '۰۲', '۰۳', '۰۴', '۰۵'];
   // Scenes are rendered in their own scope so their loop variables cannot leak into this page.
   $renderProdScene = static function (string $file): void { require $file; };
+  // A three-slide scene carousel (docs/landing.md#it-and-telephony-carousels): slides
+  // landing_product_scenes/<base>-1..3.php, a caption and dots. Each slide's story replays from the
+  // start whenever it comes on; it advances when the active dot's progress line ends (7 s), pauses on
+  // hover/focus and while off screen, and can be swiped. Script: the carousel block further down.
+  $renderProdCarousel = static function (string $base, string $label, array $titles) use ($renderProdScene): void { ?>
+      <div class="dx-scene is-short is-car" data-lp-prod-scene data-pc-car role="group" aria-roledescription="carousel" aria-label="<?= e($label) ?>">
+        <div class="pc-slides">
+          <?php foreach ($titles as $i => $t): ?>
+          <div class="pc-slide<?= $i === 0 ? ' is-active' : '' ?>" data-pc-slide role="group" aria-roledescription="slide" aria-label="<?= e(to_persian_digits((string) ($i + 1)) . ' از ' . to_persian_digits((string) count($titles)) . ': ' . $t) ?>"<?= $i === 0 ? '' : ' aria-hidden="true"' ?>>
+            <?php $renderProdScene(__DIR__ . '/../app/views/landing_product_scenes/' . $base . '-' . ($i + 1) . '.php'); ?>
+          </div>
+          <?php endforeach; ?>
+        </div>
+        <div class="pc-bar">
+          <p class="pc-title" aria-live="polite"><span class="pc-num" data-pc-num>۰۱</span><span data-pc-title><?= e($titles[0]) ?></span></p>
+          <div class="pc-dots">
+            <?php foreach ($titles as $i => $t): ?>
+            <button type="button" class="pc-dot<?= $i === 0 ? ' is-active' : '' ?>" data-pc-dot="<?= $i ?>" data-title="<?= e($t) ?>" aria-label="<?= e('اسلاید ' . to_persian_digits((string) ($i + 1)) . ': ' . $t) ?>"<?= $i === 0 ? ' aria-current="true"' : '' ?>><i></i></button>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      </div>
+  <?php };
 ?>
   <!-- Brand introduction (docs/landing.md#sections-top-to-bottom): the page's h1 and where to read more. -->
   <section class="dx-section dx-intro" aria-labelledby="dxIntroTitle">
@@ -274,7 +297,7 @@ require __DIR__ . '/../app/views/public_header.php';
   <!-- IT services and enterprise telephony: two companion panels, each with its scene. -->
   <section class="dx-section dx-duo" aria-label="خدمات فناوری اطلاعات و تلفن سازمانی">
     <article id="product-it" class="dx-panel lp-reveal" aria-labelledby="product-it-t">
-      <div class="dx-scene is-short" data-lp-prod-scene aria-hidden="true"><?php $renderProdScene(__DIR__ . '/../app/views/landing_product_scenes/it.php'); ?></div>
+      <?php $renderProdCarousel('it', 'نمایش خدمات فناوری اطلاعات', ['پشتیبانی و پایش شبکه', 'سرور و مجازی‌سازی', 'امنیت و نگهداری']); ?>
       <p class="dx-kicker">۰۴ · خدمات فناوری اطلاعات</p>
       <h2 id="product-it-t">یک تیم فنی کامل، بدون هزینه‌ی استخدام</h2>
       <p class="dx-lead">کارشناسان داتیس رایان شبکه، سرورها و نرم‌افزارهای سازمان شما را راه‌اندازی می‌کنند، سالم نگه می‌دارند و در برابر تهدیدها ایمن می‌کنند؛ تا شما فقط روی کسب‌وکارتان تمرکز کنید.</p>
@@ -287,7 +310,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <a href="/contact.php" class="btn btn-primary">درخواست مشاوره و قیمت</a>
     </article>
     <article id="product-voip" class="dx-panel lp-reveal" style="--i:1" aria-labelledby="product-voip-t">
-      <div class="dx-scene is-short" data-lp-prod-scene aria-hidden="true"><?php $renderProdScene(__DIR__ . '/../app/views/landing_product_scenes/voip.php'); ?></div>
+      <?php $renderProdCarousel('voip', 'نمایش خدمات تلفن سازمانی', ['سانترال تحت شبکه', 'منشی گویا و صف تماس', 'شعب، دورکاری و ضبط مکالمات']); ?>
       <p class="dx-kicker">۰۵ · تلفن و ارتباطات سازمانی</p>
       <h2 id="product-voip-t">هیچ تماس مشتری بی‌پاسخ نماند</h2>
       <p class="dx-lead">سیستم تلفن سازمانی مبتنی بر VoIP؛ تماس‌های داخلی و شعب روی بستر اینترنت، منشی تلفنی گویا و صف تماس. داخلی‌ها روی گوشی رومیزی، موبایل یا کامپیوتر، هر جا که تیم شما باشد.</p>
@@ -314,6 +337,46 @@ require __DIR__ . '/../app/views/public_header.php';
     });
   }, { threshold: 0.25 });
   els.forEach(function (s) { io.observe(s); });
+})();
+(function () {
+  // Scene carousels (IT / telephony panels): the active dot's progress line runs 7 s (CSS) and its
+  // animationend moves to the next slide, so hover/focus (CSS pause) and off-screen (.is-live off)
+  // pause it for free. Dots jump, horizontal swipes step; reduced motion = no autoplay.
+  var fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  document.querySelectorAll('[data-pc-car]').forEach(function (car) {
+    var slides = car.querySelectorAll('[data-pc-slide]'), dots = car.querySelectorAll('[data-pc-dot]');
+    var num = car.querySelector('[data-pc-num]'), title = car.querySelector('[data-pc-title]'), cur = 0;
+    function go(k) {
+      cur = (k + slides.length) % slides.length;
+      slides.forEach(function (s, i) {
+        var on = i === cur;
+        s.classList.toggle('is-active', on);
+        if (on) s.removeAttribute('aria-hidden'); else s.setAttribute('aria-hidden', 'true');
+      });
+      dots.forEach(function (d, i) {
+        var on = i === cur;
+        d.classList.toggle('is-active', on);
+        if (on) d.setAttribute('aria-current', 'true'); else d.removeAttribute('aria-current');
+      });
+      num.textContent = ('0' + (cur + 1)).replace(/\d/g, function (c) { return fa[c]; });
+      title.textContent = dots[cur].getAttribute('data-title');
+    }
+    dots.forEach(function (d, i) {
+      d.addEventListener('click', function () { go(i); });
+      d.querySelector('i').addEventListener('animationend', function () { if (i === cur) go(cur + 1); });
+    });
+    car.addEventListener('mouseenter', function () { car.classList.add('is-hold'); });
+    car.addEventListener('mouseleave', function () { car.classList.remove('is-hold'); });
+    car.addEventListener('focusin', function () { car.classList.add('is-hold'); });
+    car.addEventListener('focusout', function () { car.classList.remove('is-hold'); });
+    var sx = null, sy = 0;
+    car.addEventListener('touchstart', function (e) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+    car.addEventListener('touchend', function (e) {
+      if (sx === null) return;
+      var dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy; sx = null;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) go(cur + (dx > 0 ? 1 : -1));  // RTL: swipe right = next
+    });
+  });
 })();
 (function () {
   // Hero core (docs/landing.md#the-signature-core-hero). One rAF loop drives the orbit angle --rot
