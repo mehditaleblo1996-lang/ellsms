@@ -43,6 +43,10 @@ if (($_GET['action'] ?? '') === 'cities') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $do = (string)($_POST['do'] ?? '');
+    // «افزودن لغو۱۱» (app/OptoutSuffix.php, default on) — applied to the text before it is priced/sent.
+    if (in_array($do, ['send_simple', 'periodic_start', 'periodic_update'], true) && isset($_POST['body'])) {
+        $_POST['body'] = optout_suffix_maybe(trim((string)$_POST['body']), optout_suffix_requested());
+    }
     if ($do === 'check_polygon') {
         header('Content-Type: application/json; charset=utf-8');
         $r = lba_check_polygons($me, $line, (array)($_POST['operators'] ?? []), (string)($_POST['polygons'] ?? ''));
@@ -281,6 +285,7 @@ $fmt = static fn($n): string => to_persian_digits(number_format((int)$n));
       <?php endforeach; ?>
     </table></div>
     <label style="display:block">متن پیامک <textarea name="body" rows="4" style="width:100%" class="lba-body" required></textarea></label>
+    <?= optout_suffix_checkbox_html(true) ?>
     <p class="muted"><span class="lba-parts"></span> — هزینه‌ی تقریبی: <span class="lba-cost">۰</span> ریال</p>
     <button class="btn btn-primary" onclick="return confirm('ارسال انجام شود؟ هزینه از اعتبار کسر می‌شود.')">ارسال</button>
   </form>
@@ -327,6 +332,7 @@ $fmt = static fn($n): string => to_persian_digits(number_format((int)$n));
     <?php if (!$periodicSend): ?><div class="toolbar"><span>اپراتورها:</span> <?= $checks('operators', array_intersect_key($opLabels, array_flip((array)($criteria['operators'] ?? []))), (array)($criteria['operators'] ?? [])) ?></div><?php endif; ?>
     <label><input type="checkbox" name="continue_on_error" value="1"<?= $pv('continueSendIfAnyOperatorHaveError', '1') === '1' ? ' checked' : '' ?>> اگر یکی از اپراتورها خطا داشت، ارسال بقیه ادامه یابد</label>
     <label style="display:block">متن پیامک <textarea name="body" rows="4" style="width:100%" class="lba-body" required><?= e((string)($periodicSend['body'] ?? '')) ?></textarea></label>
+    <?= optout_suffix_checkbox_html(true) ?>
     <p class="muted"><span class="lba-parts"></span> — سقف رزرو: <span class="lba-cost">۰</span> ریال (در پایان فقط ارسال‌شده‌ها کسر و باقی آزاد می‌شود)</p>
     <p class="hint">طول هر دوره حداقل ۱۰ دقیقه و حداکثر ۱۱ ساعت است. در ویرایش، شروع کمپین و اپراتورها تغییر نمی‌کنند و می‌توان روش را از درصدی به تعدادی (یا برعکس) عوض کرد.</p>
     <button class="btn btn-primary"><?= $periodicSend ? 'ذخیره‌ی تغییرات' : 'شروع ارسال دوره‌ای' ?></button>
@@ -617,13 +623,20 @@ $fmt = static fn($n): string => to_persian_digits(number_format((int)$n));
     if (!n) return [0, uni];
     return [uni ? (n <= 70 ? 1 : Math.ceil(n / 67)) : (n <= 160 ? 1 : Math.ceil(n / 153)), uni];
   }
+  // Mirrors optout_suffix_apply() (app/OptoutSuffix.php) so the part count includes «لغو۱۱».
+  function optoutText(f, t) {
+    var cb = f.querySelector('input[type=checkbox][data-optout-suffix]');
+    var trimmed = t.replace(/\s+$/, '');
+    if (!cb || !cb.checked || trimmed === '' || /لغو\s*[:：\-]?\s*(?:11|۱۱|١١)(?![0-9۰-۹٠-٩])/.test(trimmed)) return t;
+    return trimmed + '\n' + cb.dataset.optoutSuffix;
+  }
   function fa(n) { return String(n.toLocaleString('en-US')).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
   ['lba-simple-form', 'lba-periodic-form'].forEach(function (id) {
     var f = document.getElementById(id);
     if (!f) return;
     var op = document.getElementById('lba-simple-op');
     function upd() {
-      var p = parts(f.querySelector('.lba-body').value), price = +(p[1] ? f.dataset.fa : f.dataset.en), count = 0;
+      var p = parts(optoutText(f, f.querySelector('.lba-body').value)), price = +(p[1] ? f.dataset.fa : f.dataset.en), count = 0;
       if (id === 'lba-simple-form') {
         f.querySelectorAll('tr[data-op]').forEach(function (tr) {
           var on = !op || tr.getAttribute('data-op') === op.value;

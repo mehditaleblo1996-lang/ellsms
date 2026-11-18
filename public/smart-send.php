@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $uploadName = import_upload_original_name($_FILES['file'] ?? []);
         $title      = trim($_POST['title'] ?? '') ?: ($uploadName !== '' ? $uploadName : 'بدون عنوان');
         $originator = normalize_originator($_POST['originator'] ?? '') ?? '';
+        $addOptout  = optout_suffix_requested(); // «افزودن لغو۱۱» (app/OptoutSuffix.php), per row
 
         if (user_has_no_send_line($me)) {
             flash('error', NO_ASSIGNED_LINE_MESSAGE);
@@ -65,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             flash('error', 'فایل هوشمند باید حداقل ستون موبایل و متن داشته باشد.');
                         } else {
                             $varHeaders = array_slice($headers, 2);
-                            $created = import_create_job($me, 'smart', $originator, $title, $storageKey, null, null, null, null, $varHeaders, $uploadName);
+                            $created = import_create_job($me, 'smart', $originator, $title, $storageKey, null, null, null, null, $varHeaders, $uploadName, $addOptout);
                             if ($created['ok']) {
                                 audit((int)$me['id'], 'smart.upload.large', "{$title}: " . $countResult['count'] . ' rows');
                                 redirect('/import.php?id=' . $created['job_id']);
@@ -99,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     }
                                     $content = trim(render_bulk_template($template, $vars));
                                     if ($content === '') { $skipped++; continue; }
+                                    $content = optout_suffix_maybe($content, $addOptout);
                                     $items[] = ['mobile' => $mobile, 'content' => $content];
                                 }
 
@@ -172,6 +174,7 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
       </label>
       <label>فایل (xlsx یا csv) <input type="file" name="file" accept=".xlsx,.csv" required></label>
     </div>
+    <?= optout_suffix_checkbox_html() ?>
     <button class="btn btn-primary">بارگذاری و افزودن به صف ارسال</button>
   </form>
 </div>

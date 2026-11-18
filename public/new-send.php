@@ -69,6 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $mode       = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? ($_POST['mode'] ?? 'direct') : 'direct';
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     $content    = trim($_POST['content'] ?? '');
+    // «افزودن لغو۱۱» (app/OptoutSuffix.php, default on): applied before preview, pricing and every
+    // send branch below; a saved campaign keeps the text exactly as typed.
+    $typedContent = $content;
+    $content    = optout_suffix_maybe($content, optout_suffix_requested());
     $notes      = trim($_POST['notes'] ?? '');
     $dests      = parse_destinations($_POST['destinations'] ?? '');
 
@@ -144,9 +148,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // saved templates must not fail the whole request.
             flash('error', 'ذخیره‌ی قالب کمپین در پلن فعلی سازمان شما موجود نیست — پیام ارسال شد ولی قالب ذخیره نشد.');
         } else {
-            $slot = entitlement_with_resource_slot($campaignOrgId, Limits::CAMPAIGNS, static function (PDO $db) use ($me, $originator, $content) {
+            $slot = entitlement_with_resource_slot($campaignOrgId, Limits::CAMPAIGNS, static function (PDO $db) use ($me, $originator, $typedContent) {
                 $db->prepare('INSERT INTO ellsms_campaigns (user_id, organization_id, name, originator, content) VALUES (?,?,?,?,?)')
-                   ->execute([$me['id'], $me['organization_id'] ?? null, trim($_POST['campaign_name']), $originator, $content]);
+                   ->execute([$me['id'], $me['organization_id'] ?? null, trim($_POST['campaign_name']), $originator, $typedContent]);
                 return true;
             });
             if (!$slot['ok']) {
@@ -268,7 +272,7 @@ if (isset($costPreview) && $costPreview) {
     $previewFormFields = '';
     foreach (['originator', 'destinations', 'content', 'notes', 'group', 'category', 'mode',
               'repeat', 'throttle_count', 'throttle_minutes', 'use_blacklist', 'channel',
-              'save_campaign', 'campaign_name'] as $field) {
+              'save_campaign', 'campaign_name', OPTOUT_SUFFIX_FIELD] as $field) {
         if (isset($_POST[$field])) {
             $previewFormFields .= '<input type="hidden" name="' . $field . '" value="' . e((string)$_POST[$field]) . '">';
         }
@@ -333,6 +337,7 @@ $postedMode = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'grad
     <label>متن پیام *
       <textarea name="content" id="contentField" required rows="6" dir="auto" placeholder="مثلاً: مشتری گرامی، سفارش شما ارسال شد."><?= e($_POST['content'] ?? '') ?></textarea>
     </label>
+    <?= optout_suffix_checkbox_html() ?>
     <?= composer_meter_html() ?>
 
     <div class="composer-tools">

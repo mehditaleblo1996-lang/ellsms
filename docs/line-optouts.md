@@ -44,3 +44,6 @@ or remove an opt-out by hand (audited as `line_optout.admin_add` / `line_optout.
 edits the settings.
 
 Tests: `tests/Integration/LineOptoutsTest.php`, `tests/Integration/LineOptoutsHttpTest.php`.
+
+Related: the panel send forms add «لغو۱۱» to the end of messages by default so recipients know how to
+opt out — `docs/optout-suffix.md`.

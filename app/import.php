@@ -99,7 +99,8 @@ function import_create_job(
     ?string $messageType = null,
     ?string $template = null,
     ?array $variableHeaders = null,
-    ?string $originalFilename = null
+    ?string $originalFilename = null,
+    bool $addOptoutSuffix = false
 ): array {
     $organizationId = isset($user['organization_id']) ? (int)$user['organization_id'] : null;
     $userId = (int)($user['id'] ?? 0);
@@ -139,7 +140,7 @@ function import_create_job(
         $jobId = db_transaction(function (PDO $db) use (
             $userId, $organizationId, $sourceType, $title, $originator,
             $storageKey, $totalRows, $chunkSize, $throttleCount, $throttleMinutes, $messageType,
-            $template, $variableHeaders, $originalFilename
+            $template, $variableHeaders, $originalFilename, $addOptoutSuffix
         ): int {
             $db->prepare(
                 "INSERT INTO ellsms_import_jobs
@@ -163,6 +164,16 @@ function import_create_job(
             if (import_jobs_have_title_column()) {
                 $db->prepare('UPDATE ellsms_import_jobs SET title = ? WHERE id = ?')
                    ->execute([mb_substr($title, 0, 190), $jobId]);
+            }
+
+            // «افزودن لغو۱۱» (app/OptoutSuffix.php): the worker appends it per row. Separate UPDATE
+            // for the same reason as the title — needs db/migrations/2026_11_23_import_job_optout_suffix.sql.
+            if ($addOptoutSuffix) {
+                if (import_jobs_have_optout_column()) {
+                    $db->prepare('UPDATE ellsms_import_jobs SET add_optout_suffix = 1 WHERE id = ?')->execute([$jobId]);
+                } else {
+                    Logger::warning('import.optout_suffix_column_missing', ['import_job_id' => $jobId]);
+                }
             }
 
             $chunkIns = $db->prepare(

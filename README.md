@@ -462,6 +462,15 @@ A single three-column page (`/new-send.php`) matching a reference design: messag
 
 Two new per-user concepts came with this: a **do-not-contact list** (`/blacklist.php`, `ellsms_blacklist`) that the "فقط ارسال به لیست سفید" toggle filters against before sending, and **saved campaigns** (`ellsms_campaigns`) — a reusable sender+message template reloadable from a dropdown on the new panel.
 
+## Opt-out footer — «افزودن لغو۱۱ به انتهای پیام»
+
+Every panel send form — «ارسال پیامک» (`/new-send.php`), the old send page (`/send.php`), «نظیر به نظیر»,
+«پیامک هوشمند», «ارسال با کد پستی», «ارسال منطقه‌ای» and LBA — has a checkbox, ticked by default, that
+adds `لغو۱۱` on a new line at the end of each message (each row, for files). It is skipped when the
+text already contains «لغو11»/«لغو ۱۱»/«لغو: ۱۱» (any digit set), so it is never doubled, and it counts
+toward parts and cost (the live counters include it). The API is not affected. Large P2P/smart files
+need `db/migrations/2026_11_23_import_job_optout_suffix.sql`. See [`docs/optout-suffix.md`](docs/optout-suffix.md).
+
 ## Bulk personalized sending — نظیر به نظیر and پیامک هوشمند
 
 Two upload-a-spreadsheet features that share one engine (`ellsms_bulk_jobs` / `ellsms_bulk_items`, processed by the worker's `run_bulk_send_pass()`):
@@ -708,7 +717,8 @@ updated in the same change** — see `CLAUDE.md`.
 [queue-monitor](docs/queue-monitor.md) ·
 [bulk-archive-workflow](docs/bulk-archive-workflow.md) ·
 [prohibited-words](docs/prohibited-words.md) ·
-[line-optouts](docs/line-optouts.md)
+[line-optouts](docs/line-optouts.md) ·
+[optout-suffix](docs/optout-suffix.md)
 
 **Lines & services**
 [numbers](docs/numbers.md) ·
