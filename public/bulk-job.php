@@ -213,7 +213,9 @@ if (is_admin()) {
 }
 
 $statusFa = ['pending'=>'در انتظار','sent'=>$showDelivery ? 'منتظر گزارش تحویل' : 'ارسال‌شده','delivered'=>'تحویل‌شده','undelivered'=>'تحویل‌نشده','failed'=>'ناموفق'];
-$statusClass = ['pending'=>'pending','sent'=>'success','delivered'=>'success','undelivered'=>'error','failed'=>'error'];
+// One colour per state (public/assets/css/style.css): در انتظار yellow, ارسال‌شده / منتظر گزارش تحویل
+// indigo, تحویل‌شده green, تحویل‌نشده orange, ناموفق red.
+$statusClass = ['pending'=>'pending','sent'=>'sent','delivered'=>'delivered','undelivered'=>'not-delivered','failed'=>'failed'];
 $qs = fn(array $extra = []) => http_build_query(array_filter(array_merge($_GET, $extra), static fn($v) => $v !== null && $v !== ''));
 
 $total = (int)$summary['total'];
