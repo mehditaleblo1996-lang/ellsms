@@ -2,8 +2,8 @@
    header's $extraStyles, after style.css (which holds the .lp-body tokens: --background, --surface,
    --foreground, --primary …, the floating nav, footer, FAQ and customer rail).
 
-   Section rhythm: hero → intro → bento services → three showcases (SMS, cloud, AI on the one graphite
-   band) → IT + telephony → why DATIS → customers → FAQ → call to action. Motion is CSS only, uses
+   Section rhythm: intro (h1) → hero core (click-to-explain) → three showcases (SMS, cloud, AI) →
+   IT + telephony → customers → FAQ → call to action. Motion is CSS only, uses
    transform/opacity, runs only while on screen, and stops for prefers-reduced-motion. */
 
 /* ---------- shared building blocks ---------- */
@@ -290,23 +290,6 @@ button.dx-node-face[aria-pressed="true"] .dx-node-label { background: var(--ink)
 .dx-mini b { display: block; color: var(--ink); font-size: 15px; }
 .dx-panel .btn { margin-top: auto; }
 
-/* ---------- why DATIS ---------- */
-.dx-why { display: grid; grid-template-columns: .9fr 1.1fr; gap: clamp(32px, 6vw, 88px); align-items: start; }
-.dx-why-head { position: sticky; top: calc(var(--lp-nav-h, 76px) + 24px); }
-.dx-why-head > p:not(.dx-kicker) { color: var(--muted); font-size: var(--fs-lead); line-height: 2; margin: 0; }
-.dx-why-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.dx-why .lp-trust-item {
-  padding: 26px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--border);
-  transition: transform .45s var(--ease), box-shadow .45s var(--ease), border-color .45s var(--ease);
-}
-.dx-why .lp-trust-item:hover { transform: translateY(-3px); box-shadow: var(--shadow-soft); border-color: var(--primary-border); }
-.dx-why .lp-trust-icon { width: 46px; height: 46px; border-radius: 14px; margin-bottom: 18px; color: var(--primary-hover); background: var(--primary-light); border: 1px solid var(--primary-border); }
-.dx-why .lp-trust-icon svg { width: 22px; height: 22px; }
-.dx-why .lp-trust-item h3 { font-size: 16.5px; font-weight: 800; margin: 0 0 8px; color: var(--ink); }
-.dx-why .lp-trust-item p { font-size: 14.5px; line-height: 1.95; }
-.dx-why .lp-trust-item:nth-child(2) { transform: translateY(28px); }
-.dx-why .lp-trust-item:nth-child(4) { transform: translateY(28px); }
-.dx-why .lp-trust-item:nth-child(2):hover, .dx-why .lp-trust-item:nth-child(4):hover { transform: translateY(25px); }
 
 /* ---------- customers + FAQ ---------- */
 .lp-customers.dx-section { padding-bottom: clamp(40px, 6vw, 72px); }
@@ -350,10 +333,8 @@ button.dx-node-face[aria-pressed="true"] .dx-node-label { background: var(--ink)
 @media (max-width: 960px) {
   .dx-hero-inner { padding-top: 0; }
   .dx-core { --k: .7; max-width: 440px; margin-top: -12px; }
-  .dx-intro-grid, .dx-show-grid, .dx-why, .dx-faq { grid-template-columns: 1fr; }
+  .dx-intro-grid, .dx-show-grid, .dx-faq { grid-template-columns: 1fr; }
   .dx-show-grid.is-flip > .dx-show-visual { order: 2; }
-  .dx-why-head { position: static; }
-  .dx-why .lp-trust-item:nth-child(2), .dx-why .lp-trust-item:nth-child(4) { transform: none; }
   .dx-duo { grid-template-columns: 1fr; }
   .dx-ui-report { width: 88%; }
 }
@@ -362,7 +343,7 @@ button.dx-node-face[aria-pressed="true"] .dx-node-label { background: var(--ink)
   .dx-hero-inner { padding-inline: 16px; }
   .dx-core { --k: .56; max-width: 340px; }
   .dx-hero-inner { padding-bottom: 24px; }
-  .dx-feats.is-grid, .dx-why-grid, .dx-channels ul { grid-template-columns: 1fr; }
+  .dx-feats.is-grid, .dx-channels ul { grid-template-columns: 1fr; }
   .dx-actions .btn { flex: 1 1 100%; text-align: center; }
   .dx-ui-report { width: 94%; margin-top: -30px; }
   .lp-body .dx-cta { border-radius: 24px; }

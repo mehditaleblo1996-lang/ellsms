@@ -4,14 +4,14 @@ The marketing home page that visitors who are not logged in see at the site root
 host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 
 It is built as a short guided story rather than a catalogue: a brand statement (the page's h1), the cinematic hero core with a click-to-explain card per service line, three showcases (SMS, cloud, AI), the IT and
-telephony panels, why DATIS, customers, FAQ and a closing call to action.
+telephony panels, customers, FAQ and a closing call to action.
 
 | File | What |
 |---|---|
 | `public/landing.php` | The page: every section below, the `$customers` list, and two small inline scripts (on-screen animation trigger; the hero core's pointer tilt) |
 | `app/views/public_header.php` / `public_footer.php` | Shared public chrome: the floating nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in, and `--lp-nav-h` (the nav's measured height, used for anchor offsets). The header preloads the two main Estedad weights, takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد، the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup, and the «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» badge, which opens the company's member page on tehran.irannsr.org; its green emblem and calligraphic caption are `public/assets/img/nsr-tehran-emblem.png` / `nsr-tehran-text.png`, the caption drawn as an SVG mask in the footer's text colour) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
 | `public/assets/css/style.css` | Design tokens of the public pages (`.lp-body`), the floating nav, footer, FAQ list, customer rail, `.lp-reveal` |
-| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero and its 3D core with the explanation card, showcases, IT/telephony panels, why DATIS, FAQ layout, CTA. Loaded only by `landing.php`. |
+| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero and its 3D core with the explanation card, showcases, IT/telephony panels, FAQ layout, CTA. Loaded only by `landing.php`. |
 | `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat in the AI showcase (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
 | `public/assets/css/landing-products.css` | The `.ps-*` primitives and animations of the product scenes. Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/{cloud,it,voip}.php` | Animated SVG scenes for the cloud showcase and the IT / telephony panels |
@@ -71,7 +71,6 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 | `#product-cloud` | Showcase: cloud and infrastructure, with the animated rack scene |
 | `#product-ai` | Showcase on a light full-width band (page background with a faint turquoise tint, hairline borders): AI and automation, with the «منشی هوشمند» chat as a light chat window (white card, grey customer bubble, pale-turquoise reply bubble, white chips; colours from the `.lp-body` tokens in `landing-ai.css`) (its button opens `/guide.php#guide-ai-secretary`) |
 | `#product-it`, `#product-voip` | Two companion panels: IT services and enterprise telephony, each with its scene and four sub-services |
-| `#trust` | «چرا داتیس — ساخته‌شده برای اطمینان»: four guarantees of the platform |
 | `#customers` | «مشتریان و همکاران»: one scrolling rail of monochrome customer logos (see below) |
 | `#faq` | Questions (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
 | — | Call to action: «مشاوره با کارشناسان» and the panel login |

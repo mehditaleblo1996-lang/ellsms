@@ -906,9 +906,6 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   box-shadow: 0 1px 0 rgba(255,255,255,.06) inset;
 }
 
-.lp-trust-item { padding: 6px 0; }
-.lp-trust-item h3 { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
-.lp-trust-item p { color: var(--muted); font-size: 13.5px; margin: 0; }
 
 .lp-cta {
   position: relative; overflow: hidden;
@@ -1304,14 +1301,6 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   .lp-marquee-set { flex-wrap: wrap; justify-content: center; padding: 0; }
   .lp-bank, .lp-bank:hover, .lp-bank-logo, .lp-bank-logo img { transition: none; transform: none; translate: none; }
 }
-
-/* ---------- Trust icons ---------- */
-.lp-trust-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border-radius: 10px; background: var(--tint); color: var(--lp-accent);
-  margin-bottom: 10px;
-}
-.lp-trust-icon svg { width: 17px; height: 17px; }
 
 /* ---------- Guide (public accordion) ---------- */
 .lp-guide-list { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }

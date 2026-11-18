@@ -397,45 +397,6 @@ require __DIR__ . '/../app/views/public_header.php';
   </section>
   <script src="/assets/js/landing-customers.js" defer></script>
 
-  <!-- Why DATIS: what the platform actually guarantees (no invented figures). -->
-  <section id="trust" class="dx-section dx-why" aria-labelledby="dxWhyTitle">
-    <div class="dx-why-head lp-reveal">
-      <p class="dx-kicker">چرا داتیس</p>
-      <h2 id="dxWhyTitle">ساخته‌شده برای اطمینان</h2>
-      <p>پنلی که برای کار روزمره‌ی کسب‌وکارهای ایرانی ساخته شده؛ فارسی از پایه، امن در پرداخت و پیوسته در اجرا.</p>
-    </div>
-    <div class="dx-why-grid">
-      <div class="lp-trust-item lp-reveal" style="--i:0">
-        <span class="lp-trust-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-        </span>
-        <h3>راست‌به‌چپ و تقویم شمسی</h3>
-        <p>تمام پنل فارسی و راست‌به‌چپ است؛ تاریخ‌ها با تقویم جلالی و اعداد فارسی نمایش داده می‌شوند.</p>
-      </div>
-      <div class="lp-trust-item lp-reveal" style="--i:1">
-        <span class="lp-trust-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="10" width="18" height="10" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg>
-        </span>
-        <h3>پرداخت امن با زرین‌پال</h3>
-        <p>خرید اعتبار مستقیماً از طریق API رسمی زرین‌پال انجام می‌شود؛ هر پرداخت فقط یک‌بار اعتبار می‌دهد.</p>
-      </div>
-      <div class="lp-trust-item lp-reveal" style="--i:2">
-        <span class="lp-trust-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
-        </span>
-        <h3>پردازش پیوسته در پس‌زمینه</h3>
-        <p>زمان‌بندی‌ها، منشی پیامک و ارسال‌های انبوه توسط یک پردازشگر پیوسته دنبال می‌شوند، نه فقط هنگام باز بودن مرورگر.</p>
-      </div>
-      <div class="lp-trust-item lp-reveal" style="--i:3">
-        <span class="lp-trust-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 20h5v-1a4 4 0 0 0-3-3.87M9 20H4v-1a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm6-2a3 3 0 1 0 0-6M6 8a3 3 0 1 0 0-6"/></svg>
-        </span>
-        <h3>مدیریت متمرکز کاربران</h3>
-        <p>مدیر می‌تواند دسترسی، اعتبار و شماره‌های اختصاصی هر کاربر را از یک‌جا کنترل کند.</p>
-      </div>
-    </div>
-  </section>
-
   <section id="faq" class="dx-section dx-faq" aria-labelledby="dxFaqTitle">
     <div class="dx-faq-head lp-reveal">
       <p class="dx-kicker">پرسش‌ها</p>
