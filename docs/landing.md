@@ -132,7 +132,7 @@ rather than across it.
 Each of the five nodes is a `<button data-dx-node>` (`$dxLines` in `landing.php` holds its anchor, short
 name, icon, title, one-paragraph explanation and three main services). A click turns the orbit to bring the node to the front and holds it there
 (`.dx-core.is-held`), highlights the node (`aria-pressed="true"`, turquoise ball, graphite label) and shows
-its card in `#dxCoreInfo` under the core: number (۰۱ / ۰۵ …), title, explanation, the three services as
+its card in `#dxCoreInfo` under the core: title, explanation, the three services as
 chips and «جزئیات …» linking to its showcase (`#product-*`). Clicking the same node again, «×» or the core closes the
 card and the orbit turns again. The decorative 3D layers have `pointer-events: none` so only the nodes
 take clicks (plus the core and dragging on the core itself); nodes behind the sphere are not clickable
@@ -159,7 +159,7 @@ the start each time it comes on.
 | Telephony 2 «منشی گویا و صف تماس» | «سلام، به داتیس خوش آمدید» types out; the IVR menu highlights ۱، ۳ and settles on «۲ پشتیبانی», «انتقال به پشتیبانی ←»; callers move up the queue to the agents |
 | Telephony 3 «شعب، دورکاری و ضبط مکالمات» | Head office, branch and a remote colleague connected through the VoIP hub with calls flowing on the arcs; a blinking REC badge over a waveform; the «گزارش تماس‌ها» bars grow |
 
-**Controls.** A caption («۰۱ پشتیبانی و پایش شبکه») and three dots; the active dot is a pill whose fill is
+**Controls.** A caption (the slide title, e.g. «پشتیبانی و پایش شبکه»; no number) and three dots; the active dot is a pill whose fill is
 the 7 s clock, and its `animationend` advances to the next slide, so pausing that one animation pauses the
 carousel: on hover/focus (`.is-hold`) and while the panel is off screen (`.is-live` off). Dots jump to a
 slide; a horizontal swipe steps (right = next, RTL). Accessibility: `role="group"` +

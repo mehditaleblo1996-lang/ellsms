@@ -74,7 +74,6 @@ require __DIR__ . '/../app/views/public_header.php';
       ['product-it',    'فناوری اطلاعات',    'shield', 'خدمات فناوری اطلاعات',      'راه‌اندازی، نگهداری و ایمن‌سازی شبکه، سرورها و نرم‌افزارهای سازمان شما؛ یک تیم فنی کامل بدون هزینه‌ی استخدام.', ['پشتیبانی شبکه', 'نصب و راه‌اندازی سرور', 'مشاوره‌ی امنیت زیرساخت']],
       ['product-voip',  'تلفن سازمانی',      'phone',  'تلفن و ارتباطات سازمانی',   'سانترال تحت شبکه، منشی تلفنی گویا، صف تماس و اتصال شعب؛ تا هیچ تماس مشتری بی‌پاسخ نماند.', ['سانترال تحت شبکه (VoIP)', 'منشی تلفنی و صف تماس', 'اتصال شعب و ضبط مکالمات']],
   ];
-  $dxNum = ['۰۱', '۰۲', '۰۳', '۰۴', '۰۵'];
   // Scenes are rendered in their own scope so their loop variables cannot leak into this page.
   $renderProdScene = static function (string $file): void { require $file; };
   // A three-slide scene carousel (docs/landing.md#it-and-telephony-carousels): slides
@@ -91,7 +90,7 @@ require __DIR__ . '/../app/views/public_header.php';
           <?php endforeach; ?>
         </div>
         <div class="pc-bar">
-          <p class="pc-title" aria-live="polite"><span class="pc-num" data-pc-num>۰۱</span><span data-pc-title><?= e($titles[0]) ?></span></p>
+          <p class="pc-title" aria-live="polite"><span data-pc-title><?= e($titles[0]) ?></span></p>
           <div class="pc-dots">
             <?php foreach ($titles as $i => $t): ?>
             <button type="button" class="pc-dot<?= $i === 0 ? ' is-active' : '' ?>" data-pc-dot="<?= $i ?>" data-title="<?= e($t) ?>" aria-label="<?= e('اسلاید ' . to_persian_digits((string) ($i + 1)) . ': ' . $t) ?>"<?= $i === 0 ? ' aria-current="true"' : '' ?>><i></i></button>
@@ -162,7 +161,7 @@ require __DIR__ . '/../app/views/public_header.php';
         <div class="dx-core-card" data-dx-card="<?= $k ?>" hidden>
           <div class="dx-core-card-head">
             <span class="dx-core-card-ico"><?= $dxIcon($ico) ?></span>
-            <div><span class="dx-core-card-num"><?= e($dxNum[$k]) ?> / ۰۵</span><h2><?= e($title) ?></h2></div>
+            <div><h2><?= e($title) ?></h2></div>
             <button type="button" class="dx-core-close" data-dx-close aria-label="بستن توضیح">×</button>
           </div>
           <p><?= e($desc) ?></p>
@@ -342,10 +341,9 @@ require __DIR__ . '/../app/views/public_header.php';
   // Scene carousels (IT / telephony panels): the active dot's progress line runs 7 s (CSS) and its
   // animationend moves to the next slide, so hover/focus (CSS pause) and off-screen (.is-live off)
   // pause it for free. Dots jump, horizontal swipes step; reduced motion = no autoplay.
-  var fa = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
   document.querySelectorAll('[data-pc-car]').forEach(function (car) {
     var slides = car.querySelectorAll('[data-pc-slide]'), dots = car.querySelectorAll('[data-pc-dot]');
-    var num = car.querySelector('[data-pc-num]'), title = car.querySelector('[data-pc-title]'), cur = 0;
+    var title = car.querySelector('[data-pc-title]'), cur = 0;
     function go(k) {
       cur = (k + slides.length) % slides.length;
       slides.forEach(function (s, i) {
@@ -358,7 +356,6 @@ require __DIR__ . '/../app/views/public_header.php';
         d.classList.toggle('is-active', on);
         if (on) d.setAttribute('aria-current', 'true'); else d.removeAttribute('aria-current');
       });
-      num.textContent = ('0' + (cur + 1)).replace(/\d/g, function (c) { return fa[c]; });
       title.textContent = dots[cur].getAttribute('data-title');
     }
     dots.forEach(function (d, i) {
