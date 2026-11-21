@@ -785,12 +785,12 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-bg-glow { position: absolute; border-radius: 50%; will-change: transform; }
 .lp-bg-glow.is-a {
   width: 62vmax; height: 62vmax; inset-inline-end: -18vmax; top: -22vmax;
-  background: radial-gradient(closest-side, rgba(17, 184, 197, .17), rgba(17, 184, 197, 0) 72%);
+  background: radial-gradient(closest-side, rgba(17, 184, 197, .11), rgba(17, 184, 197, 0) 72%);
   animation: lp-bg-float-a 38s ease-in-out infinite alternate;
 }
 .lp-bg-glow.is-b {
   width: 54vmax; height: 54vmax; inset-inline-start: -20vmax; bottom: -24vmax;
-  background: radial-gradient(closest-side, rgba(8, 127, 140, .12), rgba(8, 127, 140, 0) 72%);
+  background: radial-gradient(closest-side, rgba(8, 127, 140, .08), rgba(8, 127, 140, 0) 72%);
   animation: lp-bg-float-b 46s ease-in-out infinite alternate;
 }
 @keyframes lp-bg-float-a { to { transform: translate(-8vw, 10vh) scale(1.08); } }
@@ -799,8 +799,8 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
 .lp-bg-waves { position: absolute; top: 0; left: 0; width: max(200%, 2000px); height: 100%; will-change: transform; }
 .lp-bg-waves svg { display: block; width: 100%; height: 100%; }
 .lp-bg-waves path { fill: none; vector-effect: non-scaling-stroke; }
-.lp-bg-waves.is-a path { stroke: url(#lpBgShine); stroke-width: 1.4; }
-.lp-bg-waves.is-b path { stroke: rgba(37, 41, 43, .085); stroke-width: 1.2; }
+.lp-bg-waves.is-a path { stroke: url(#lpBgShine); stroke-width: 1.1; }
+.lp-bg-waves.is-b path { stroke: rgba(37, 41, 43, .045); stroke-width: 1; }
 .lp-bg-waves.is-a { animation: lp-bg-drift 120s linear infinite; }
 .lp-bg-waves.is-b { animation: lp-bg-drift 180s linear infinite reverse; }
 @keyframes lp-bg-drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
@@ -808,19 +808,19 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   --n: 0; position: absolute; left: 0; height: 2px; width: 22vw; min-width: 150px;
   top: calc(6% + var(--n) * 9.4%);
   /* A turquoise tail that brightens into a white-hot head (the head leads, on the left). */
-  background: linear-gradient(270deg, rgba(17, 184, 197, 0), rgba(17, 184, 197, .7) 72%, #fff 97%, rgba(17, 184, 197, 0));
-  border-radius: 2px; box-shadow: 0 0 10px rgba(17, 184, 197, .45); opacity: 0; will-change: transform, opacity;
+  background: linear-gradient(270deg, rgba(17, 184, 197, 0), rgba(17, 184, 197, .38) 72%, rgba(255, 255, 255, .7) 97%, rgba(17, 184, 197, 0));
+  border-radius: 2px; box-shadow: 0 0 8px rgba(17, 184, 197, .2); opacity: 0; will-change: transform, opacity;
   animation: lp-bg-streak calc(13s + var(--n) * 1.9s) cubic-bezier(.45, .05, .55, .95) infinite;
   animation-delay: calc(var(--n) * -3.3s);
 }
 .lp-bg-streak:nth-child(3n) { width: 30vw; }
 .lp-bg-streak:nth-child(3n + 1) { width: 16vw; }
 /* Right to left, as Persian reads; fades in and out at the edges. Every second streak is fainter. */
-.lp-bg-streak:nth-child(2n) { height: 1.5px; box-shadow: 0 0 6px rgba(17, 184, 197, .3); }
+.lp-bg-streak:nth-child(2n) { height: 1.5px; box-shadow: none; }
 @keyframes lp-bg-streak {
   0%   { transform: translateX(100vw); opacity: 0; }
-  12%  { opacity: 1; }
-  88%  { opacity: 1; }
+  12%  { opacity: .75; }
+  88%  { opacity: .75; }
   100% { transform: translateX(-35vw); opacity: 0; }
 }
 @media (max-width: 640px) {

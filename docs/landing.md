@@ -175,8 +175,8 @@ Every public page (home, «درباره ما», «تماس با ما», «راه
 the light identity: two soft turquoise glows that float slowly, two layers of thin wave lines that drift
 sideways at different speeds (120s / 180s, opposite directions) — the front layer stroked with a
 repeating turquoise gradient (`#lpBgShine`, period 1600 like the waves) so each line brightens and fades
-along its length, the back layer a faint graphite — and ten glowing light streaks (2px, turquoise tail,
-white head, soft glow; every second one fainter) that glide right to left (six on phones). The wave paths are generated in the
+along its length, the back layer a faint graphite — and ten faint light streaks (2px, soft turquoise
+tail and a pale head; every second one thinner). All of it is kept faint so it never competes with the content that glide right to left (six on phones). The wave paths are generated in the
 header (`$lpBgWave`): each strip is 3200 units wide and repeats every 1600, so sliding it by −50% loops
 with no seam; on narrow screens the strip is at least 2000px wide so the waves stay gentle. Only
 transform/opacity animate (compositor only), the layer is `aria-hidden` with no pointer events, it stands

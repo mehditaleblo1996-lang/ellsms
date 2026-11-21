@@ -181,7 +181,7 @@ require __DIR__ . '/../app/views/public_header.php';
   <section id="product-sms" class="dx-section dx-show dx-show-sms" aria-labelledby="product-sms-t">
     <div class="dx-show-grid">
       <div class="dx-show-copy lp-reveal">
-        <p class="dx-kicker">۰۱ · سامانه پیامکی و بازاریابی</p>
+        <p class="dx-kicker">سامانه پیامکی و بازاریابی</p>
         <h2 id="product-sms-t">هر نفر، <span class="dx-accent">پیام خودش</span>؛ و گزارش هر پیام، همان لحظه</h2>
         <p class="dx-lead">پنل پیامک تحت وب برای ارسال انبوه، شخصی‌سازی‌شده و خودکار؛ از یک پیام تبلیغاتی ساده تا کمپین‌های هدفمند با قالب پویا، زمان‌بندی با تقویم شمسی، منشی هوشمند با هوش مصنوعی و گزارش لحظه‌ای تحویل هر پیام.</p>
         <ul class="dx-feats">
@@ -237,7 +237,7 @@ require __DIR__ . '/../app/views/public_header.php';
         <div class="dx-scene" data-lp-prod-scene><?php $renderProdScene(__DIR__ . '/../app/views/landing_product_scenes/cloud.php'); ?></div>
       </div>
       <div class="dx-show-copy lp-reveal" style="--i:1">
-        <p class="dx-kicker">۰۲ · خدمات ابری و زیرساختی</p>
+        <p class="dx-kicker">خدمات ابری و زیرساختی</p>
         <h2 id="product-cloud-t">زیرساختی پایدار، <span class="dx-accent">هر وقت بزرگ‌تر شدید</span></h2>
         <p class="dx-lead">زیرساخت پایدار و مقیاس‌پذیر برای میزبانی سایت، اپلیکیشن و داده‌های کسب‌وکار شما؛ از یک هاست ساده برای وب‌سایت شرکتی تا سرور مجازی قدرتمند و فضای ذخیره‌سازی ابری امن، با منابع قابل ارتقا و پشتیبانی فنی کارشناسان داتیس رایان.</p>
         <ul class="dx-feats is-grid">
@@ -259,7 +259,7 @@ require __DIR__ . '/../app/views/public_header.php';
   <section id="product-ai" class="dx-section dx-show dx-show-ai" aria-labelledby="product-ai-t">
     <div class="dx-show-grid">
       <div class="dx-show-copy lp-reveal">
-        <p class="dx-kicker">۰۳ · هوش مصنوعی و اتوماسیون</p>
+        <p class="dx-kicker">هوش مصنوعی و اتوماسیون</p>
         <h2 id="product-ai-t">کارهای تکراری را <span class="dx-accent">به هوش مصنوعی</span> بسپارید</h2>
         <p class="dx-lead">محتوای تبلیغاتی و پیام‌های کمپین را در چند ثانیه به فارسی روان بسازید و فرآیندهای کسب‌وکار — از ثبت سفارش تا پیگیری مشتری — را خودکار کنید. منشی هوشمند به پیامک‌هایی که به خط شما می‌رسد، از روی اطلاعات کسب‌وکار و جدول‌های خودتان، شبانه‌روزی جواب می‌دهد.</p>
         <ul class="dx-feats is-grid">
@@ -298,7 +298,7 @@ require __DIR__ . '/../app/views/public_header.php';
   <section class="dx-section dx-duo" aria-label="خدمات فناوری اطلاعات و تلفن سازمانی">
     <article id="product-it" class="dx-panel lp-reveal" aria-labelledby="product-it-t">
       <?php $renderProdCarousel('it', 'نمایش خدمات فناوری اطلاعات', ['پشتیبانی و پایش شبکه', 'سرور و مجازی‌سازی', 'امنیت و نگهداری']); ?>
-      <p class="dx-kicker">۰۴ · خدمات فناوری اطلاعات</p>
+      <p class="dx-kicker">خدمات فناوری اطلاعات</p>
       <h2 id="product-it-t">یک تیم فنی کامل، بدون هزینه‌ی استخدام</h2>
       <p class="dx-lead">کارشناسان داتیس رایان شبکه، سرورها و نرم‌افزارهای سازمان شما را راه‌اندازی می‌کنند، سالم نگه می‌دارند و در برابر تهدیدها ایمن می‌کنند؛ تا شما فقط روی کسب‌وکارتان تمرکز کنید.</p>
       <ul class="dx-mini">
@@ -311,7 +311,7 @@ require __DIR__ . '/../app/views/public_header.php';
     </article>
     <article id="product-voip" class="dx-panel lp-reveal" style="--i:1" aria-labelledby="product-voip-t">
       <?php $renderProdCarousel('voip', 'نمایش خدمات تلفن سازمانی', ['سانترال تحت شبکه', 'منشی گویا و صف تماس', 'شعب، دورکاری و ضبط مکالمات']); ?>
-      <p class="dx-kicker">۰۵ · تلفن و ارتباطات سازمانی</p>
+      <p class="dx-kicker">تلفن و ارتباطات سازمانی</p>
       <h2 id="product-voip-t">هیچ تماس مشتری بی‌پاسخ نماند</h2>
       <p class="dx-lead">سیستم تلفن سازمانی مبتنی بر VoIP؛ تماس‌های داخلی و شعب روی بستر اینترنت، منشی تلفنی گویا و صف تماس. داخلی‌ها روی گوشی رومیزی، موبایل یا کامپیوتر، هر جا که تیم شما باشد.</p>
       <ul class="dx-mini">

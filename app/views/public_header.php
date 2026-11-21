@@ -59,7 +59,7 @@ $lpBgLayers = [
 <div class="lp-bg" aria-hidden="true">
   <span class="lp-bg-glow is-a"></span><span class="lp-bg-glow is-b"></span>
   <?php foreach ($lpBgLayers as $layer => $waves): ?>
-  <div class="lp-bg-waves is-<?= $layer ?>"><svg viewBox="0 0 3200 900" preserveAspectRatio="none" focusable="false"><?php if ($layer === 'a'): ?><defs><linearGradient id="lpBgShine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1600" y2="0" spreadMethod="repeat"><stop offset="0" stop-color="#11b8c5" stop-opacity=".12"/><stop offset=".3" stop-color="#11b8c5" stop-opacity=".55"/><stop offset=".5" stop-color="#087f8c" stop-opacity=".22"/><stop offset=".75" stop-color="#6fd6df" stop-opacity=".6"/><stop offset="1" stop-color="#11b8c5" stop-opacity=".12"/></linearGradient></defs><?php endif; ?><?php foreach ($waves as $w): ?><path d="<?= $lpBgWave(...$w) ?>"/><?php endforeach; ?></svg></div>
+  <div class="lp-bg-waves is-<?= $layer ?>"><svg viewBox="0 0 3200 900" preserveAspectRatio="none" focusable="false"><?php if ($layer === 'a'): ?><defs><linearGradient id="lpBgShine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1600" y2="0" spreadMethod="repeat"><stop offset="0" stop-color="#11b8c5" stop-opacity=".06"/><stop offset=".3" stop-color="#11b8c5" stop-opacity=".26"/><stop offset=".5" stop-color="#087f8c" stop-opacity=".1"/><stop offset=".75" stop-color="#6fd6df" stop-opacity=".3"/><stop offset="1" stop-color="#11b8c5" stop-opacity=".06"/></linearGradient></defs><?php endif; ?><?php foreach ($waves as $w): ?><path d="<?= $lpBgWave(...$w) ?>"/><?php endforeach; ?></svg></div>
   <?php endforeach; ?>
   <?php for ($i = 0; $i < 10; $i++): ?><span class="lp-bg-streak" style="--n:<?= $i ?>"></span><?php endfor; ?>
 </div>
