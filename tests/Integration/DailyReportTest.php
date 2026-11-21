@@ -170,4 +170,75 @@ final class DailyReportTest extends IntegrationTestCase
         $this->assertLessThanOrEqual((int)$min, $lo);
         $this->assertGreaterThanOrEqual((int)$max, $hi);
     }
+
+    public function testHeadlineDeltaAndPercentArePure(): void
+    {
+        $this->assertSame(' ▲۱۲٪', daily_report_delta(112, 100));
+        $this->assertSame(' ▼۵٪', daily_report_delta(95, 100));
+        $this->assertSame(' ＝', daily_report_delta(100, 100));
+        $this->assertSame('', daily_report_delta(100, 0), 'nothing to compare with');
+        $this->assertNull(daily_report_percent(1, 0));
+        $this->assertSame(56, daily_report_percent(38426, 68435));
+
+        $base = ['messages' => ['total' => 1000, 'delivered' => 950, 'failed' => 20, 'queued' => 0],
+                 'previous' => ['messages' => ['total' => 900]], 'gateways' => [], 'failing_jobs' => [], 'incidents' => []];
+        $this->assertSame('🟢 وضعیت عادی · نرخ تحویل ۹۵٪', daily_report_headline($base));
+
+        $yellow = $base;
+        $yellow['messages'] = ['total' => 68435, 'delivered' => 38426, 'failed' => 11425, 'queued' => 682];
+        $this->assertSame('🟡 نرخ خطا بالا (۱۷٪) · ۶۸۲ پیام هنوز در صف', daily_report_headline($yellow));
+
+        $red = $yellow;
+        $red['incidents'] = [['severity' => 'critical', 'title' => 'x', 'status' => 'open']];
+        $red['gateways'] = [['id' => 1, 'name' => 'X', 'total' => 1000, 'delivered' => 410, 'failed' => 300]];
+        $red['previous']['messages']['total'] = 200000;
+        $this->assertSame('🔴 ۱ حادثه‌ی بحرانی باز · نرخ خطا بالا (۱۷٪) · ۶۸۲ پیام هنوز در صف · …', daily_report_headline($red));
+
+        $volume = $base;
+        $volume['previous']['messages']['total'] = 3000;
+        $this->assertSame('🟡 افت ارسال ▼۶۷٪', daily_report_headline($volume));
+    }
+
+    public function testItNamesTheWorstGatewayComparesWithTheDayBeforeAndFlagsQueuedMessages(): void
+    {
+        $db = db();
+        $gw = $db->prepare("INSERT INTO ellsms_sms_gateways (code, name, status) VALUES (?, ?, 'archived')");
+        $gw->execute(['daily_good_' . bin2hex(random_bytes(3)), 'درگاه خوب']);
+        $good = (int)$db->lastInsertId();
+        $gw->execute(['daily_bad_' . bin2hex(random_bytes(3)), 'درگاه بد']);
+        $bad = (int)$db->lastInsertId();
+
+        $db->prepare("INSERT INTO ellsms_bulk_jobs (user_id, type, title, originator, status, created_at) VALUES (?, 'p2p', 'daily-gw', '3000111', 'processing', ?)")
+           ->execute([$this->userId, self::utc('09:00:00')]);
+        $jobId = (int)$db->lastInsertId();
+        $item = $db->prepare('INSERT INTO ellsms_bulk_items (job_id, mobile, content, status, delivery_status, gateway_id, parts, created_at) VALUES (?,?,?,?,?,?,1,?)');
+        $add = static function (int $n, string $status, ?string $delivery, ?int $gateway, string $at) use ($item, $jobId): void {
+            for ($k = 0; $k < $n; $k++) {
+                $item->execute([$jobId, '98912' . random_int(1000000, 9999999), 'سلام', $status, $delivery, $gateway, $at]);
+            }
+        };
+        $at = self::utc('10:00:00');
+        $add(55, 'sent', 'delivered', $good, $at);
+        $add(5, 'failed', null, $good, $at);
+        $add(20, 'sent', 'delivered', $bad, $at);
+        $add(30, 'sent', 'undelivered', $bad, $at);
+        $add(10, 'sent', null, $bad, $at);
+        $add(10, 'sent', 'delivered', null, $at);   // no gateway: left out of the gateway figures
+        $add(3, 'pending', null, null, $at);         // still queued the next morning
+        $add(1, 'sent', 'delivered', null, self::utc('10:00:00', '2001-03-14')); // the day before
+
+        $r = daily_report_collect(self::DAY);
+        $this->assertSame(['درگاه بد', 'درگاه خوب'], array_column($r['gateways'], 'name'), 'the lowest delivery rate first');
+        $this->assertSame(['total' => 60, 'delivered' => 20, 'failed' => 30], array_intersect_key($r['gateways'][0], ['total' => 0, 'delivered' => 0, 'failed' => 0]));
+        $this->assertSame(1, $r['previous']['messages']['total']);
+        $this->assertSame(3, $r['messages']['queued']);
+
+        $text = daily_report_format($r);
+        $this->assertStringContainsString('بدترین درگاه: درگاه بد — ۳۳٪ تحویل، ۵۰٪ ناموفق از ۶۰ پیام', $text);
+        $this->assertStringContainsString('کل: ۱۳۳ پیام / ۱۳۳ پارت ▲', $text);
+        $this->assertStringContainsString('▲▼ نسبت به روز قبل', $text);
+        $this->assertStringContainsString('گیرکرده: ۳ پیام از این روز هنوز در صف است', $text);
+        $this->assertStringContainsString('۳ پیام هنوز در صف', explode("\n", $text)[2], 'the headline is the third line');
+        $this->assertStringContainsString('درگاه درگاه بد با ۳۳٪ تحویل', $text);
+    }
 }
