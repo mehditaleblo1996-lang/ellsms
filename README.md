@@ -428,7 +428,10 @@ change with its estimate; a scheduled one can be cancelled and an applied one **
 ## Daily Telegram report (گزارش روزانه‌ی مدیر)
 
 Every day after `DAILY_REPORT_AT` (08:00 Tehran) the scheduler job `daily-report` sends yesterday's
-summary to the admin's Telegram: messages and parts by state, money charged («مبلغ کسرشده») and
+summary to the admin's Telegram: a one-line 🟢/🟡/🔴 headline of what needs attention (failure rate,
+messages still queued, the worst gateway, a drop in volume, failing jobs, critical alerts), messages
+and parts by state with delivery / failure rates and ▲▼ against the day before, the gateway with the
+lowest delivery rate, money charged («مبلغ کسرشده») and
 refunded («مبلغ برگشتی») and credit bought, failed messages with their top error codes and failing
 scheduler jobs, new customers, and every open alert. Switch it off, pick its chat (default: the «تماس
 با ما» chat), preview it or send it now on **هشدارها** (`/admin/alerts`). A failed send is retried at
