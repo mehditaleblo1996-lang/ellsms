@@ -1,47 +1,194 @@
-# Public landing page (`/landing.php`)
+# Public home page (`/landing.php`)
 
 The marketing home page that visitors who are not logged in see at the site root. A reseller's own
 host has no landing page: it opens on the login (`reseller_brand_for_host()`).
 
+It is built as a short guided story rather than a catalogue: a brand statement (the page's h1), the cinematic hero core with a click-to-explain card per service line, three showcases (SMS, cloud, AI), the IT and
+telephony panels, customers, FAQ and a closing call to action.
+
 | File | What |
 |---|---|
-| `public/landing.php` | The page: banner, hero, sections, and the small inline scripts that drive the sliders |
-| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in. The header takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد، the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup, and the «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» badge, which opens the company's member page on tehran.irannsr.org; its green emblem and calligraphic caption are `public/assets/img/nsr-tehran-emblem.png` / `nsr-tehran-text.png`, the caption drawn as an SVG mask in the footer's text colour) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
-| `public/assets/css/style.css` | Base styles of the public pages, the banner and the other sections |
-| `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat of banner slide 7 (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
-| `public/assets/css/landing-products.css` | Banner slide 1 «یک مجموعه، پنج خدمت» (`.lp-suite-*`) and the «محصولات و خدمات» section (`#products`): rows, quick-nav pills and the `.ps-*` scene animations. Loaded only by `landing.php`. |
-| `app/views/landing_product_scenes/*.php` | One animated SVG scene per product line (`sms`, `cloud`, `ai`, `it`, `voip`), included by the `#products` section |
-| `public/assets/img/landing/` | The two stills used by the banner and hero (WebP + JPEG fallback) |
+| `public/landing.php` | The page: every section below, the `$customers` list, and two small inline scripts (on-screen animation trigger; the hero core's pointer tilt) |
+| `app/views/public_header.php` / `public_footer.php` | Shared public chrome: the floating nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in, and `--lp-nav-h` (the nav's measured height, used for anchor offsets). The header preloads the two main Estedad weights, takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد، the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup, and the «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» badge, which for now links to the site's home page (`/`) — the company's member page on tehran.irannsr.org is kept commented out in `legal_nsr_badge_html()` to restore later; its green emblem and calligraphic caption are `public/assets/img/nsr-tehran-emblem.png` / `nsr-tehran-text.png`, the caption drawn as an SVG mask in the footer's text colour) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
+| `public/assets/css/style.css` | Design tokens of the public pages (`.lp-body`), the floating nav, footer, FAQ list, customer rail, `.lp-reveal` |
+| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero and its 3D core with the explanation card, showcases, IT/telephony panels, FAQ layout, CTA. Loaded only by `landing.php`. |
+| `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat in the AI showcase (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
+| `public/assets/css/landing-products.css` | The `.ps-*` primitives of the product scenes, and the IT / telephony carousels (`.pc-*`: carousel chrome and each slide's story). Loaded only by `landing.php`. |
+| `app/views/landing_product_scenes/cloud.php`, `it-{1,2,3}.php`, `voip-{1,2,3}.php` | Animated SVG scenes: the cloud showcase, and the three slides of each of the IT / telephony carousels |
+| `public/assets/fonts/estedad/` | Estedad (SIL OFL 1.1, `OFL.txt`), Arabic + Latin subsets, weights 400/500/700/800; `@font-face` rules in `fonts.css` |
 | `public/assets/js/landing-customers.js` | Drives the `#customers` logo rail (scroll speed-up, hover glide, drag, centre focus) |
 | `public/assets/img/customers/` | Customer logos for `#customers`, one file per customer named `<slug>.svg/.webp/.png/.jpg` |
 
-There is no database table behind the banner or the sections: they are fixed HTML. The page reads
-only the registration setting (how the FAQ says an account is obtained). No migration is needed.
-The SMS packages managed at `/pricing.php` (`ellsms_pricing_packages`) are not shown on this page
-since the pricing section was removed. Admin-managed slides from «اسلایدر صفحه‌ی اصلی» (`/slides.php`)
-are not shown on this page.
+There is no database table behind the page: it is fixed HTML. It reads only the registration setting
+(how the FAQ says an account is obtained). No migration or setting is needed. The SMS packages managed
+at `/pricing.php` (`ellsms_pricing_packages`) and the admin slides of «اسلایدر صفحه‌ی اصلی»
+(`/slides.php`) are not shown on this page.
+
+## Colours (public site and sign-in pages)
+
+The public pages (home, «درباره ما», «تماس با ما», «راهنما», the legal pages) and the sign-in pages
+(login, «ثبت‌نام», «تأیید دومرحله‌ای», «خروج») use a **white + graphite + turquoise** identity in a
+60 / 30 / 10 split; the turquoise is the cyan-turquoise of the triangle in the DATIS logo. There is no
+blue and no green in the UI; status colours (success / warning / error) keep their own meaning. The
+logged-in panel keeps its own indigo colours: every value below is scoped to `.lp-body`, `.auth` or
+`.login-body`, never to `:root`.
+
+| Token | Value | Use |
+|---|---|---|
+| `--background` / `--surface` | `#F8FAFA` / `#FFFFFF` | Page background and cards (the 60%) |
+| `--foreground` / `--muted-foreground` | `#25292B` / `#697477` | Headings and text / secondary text (4.6:1 on the background) |
+| `--dark-surface` | `#25292B` | The graphite bands: the CTA, the footer, the scene panels, the about hero, section bar, statement and mission/vision cards (the 30% with the type) |
+| `--primary` | `#11B8C5` | Primary buttons (with graphite text, 6.1:1), selected states, icons, highlights |
+| `--primary-hover` | `#087F8C` | Hover of primary buttons (white text, 4.75:1), turquoise text on white |
+| `--primary-ink` | `#076F7A` | Small turquoise text on the pale surface |
+| `--primary-light` / `--primary-border` | `#E7F8FA` / `#B8E8EC` | Pale turquoise surfaces and their borders |
+| `--border` | `#E4EAEB` | Hairlines and card borders |
+
+- **Where:** the `.lp-body` token block in `public/assets/css/style.css` (it also maps the older
+  names `--ink`, `--muted`, `--line`, `--card`, `--t-*`, `--charcoal` onto these, and holds the
+  fluid type scale, radii, shadows and the `--ease` timing). The graphite bands re-declare `--ink`,
+  `--muted`, `--line`, `--card` light-on-dark in the rule just below it (the `.lp-dark` utility class
+  was removed with the last graphite band on the home page). The sign-in page's tokens are the `.auth` block of
+  `public/assets/css/login.css` (slider: `.ls` in `login-slider.css`); the pages around sign-in get
+  theirs from `.login-body` in `style.css`.
+- **Type:** Estedad (self-hosted, OFL) on the public and sign-in pages, with Vazirmatn as fallback;
+  headings use `clamp()` sizes. The panel still uses Vazirmatn ([font-integration.md](font-integration.md)).
+- **Logo:** the official DATIS logo in its own colours (`assets/img/brand/logo.svg` in the nav and on
+  a white plate in the footer) — it is never recoloured.
+- **Scenes:** the SVG scenes and the AI chat were recoloured to the turquoise hue; their motion is
+  unchanged. «تلفن و ارتباطات سازمانی» keeps its amber.
+- **Reseller hosts:** `brand_color_style()` (`app/ResellerPanel.php`) also sets `--login-brand`,
+  `--login-on-brand` and `--login-brand-hover`, so a reseller's own host shows its colour on the
+  sign-in page instead of the turquoise.
 
 ## Sections, top to bottom
 
 | Anchor | Section |
 |---|---|
-| — | **Top banner**: seven animated slides («یک مجموعه، پنج خدمت» — all five product lines, bulk SMS, smart template, live report, voice, Bale, «منشی هوشمند») |
-| — | Hero with the 3D phone scene |
-| `#products` | **«محصولات و خدمات»**: the five product lines of the company, described below |
+| — | **Intro** (first): the page's `<h1>` «یک شریک فناوری برای همه‌ی نیازهای کسب‌وکار شما», a short paragraph and «آشنایی با داتیس رایان» (→ `/about`) |
+| — | **Hero**: the signature core (below), centred, with the hint «برای آشنایی با هر خدمت، روی آن در مدار بزنید.» under it. Clicking a service node opens its explanation card (see below). The former headline, paragraph and «کشف خدمات داتیس» / «مشاوره با کارشناسان» buttons were removed; the consultation link stays in the closing CTA. |
+| `#product-sms` | Showcase: the SMS platform — four features, its channels (پیامک، پیام صوتی، پیام در بله), and a mock-up of «قالب ← پیام شخصی هر ردیف ← گزارش تحویل» |
+| `#product-cloud` | Showcase: cloud and infrastructure, with the animated rack scene |
+| `#product-ai` | Showcase on a light full-width band (page background with a faint turquoise tint, hairline borders): AI and automation, with the «منشی هوشمند» chat as a light chat window (white card, grey customer bubble, pale-turquoise reply bubble, white chips; colours from the `.lp-body` tokens in `landing-ai.css`) (its button opens `/guide.php#guide-ai-secretary`) |
+| `#product-it`, `#product-voip` | Two companion panels: IT services and enterprise telephony, each with a three-slide animated carousel (below) and four sub-services |
 | `#customers` | «مشتریان و همکاران»: one scrolling rail of monochrome customer logos (see below) |
-| `#trust`, `#faq` | Trust points, FAQ (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
+| `#faq` | Questions (includes «منشی هوشمند چیست و چه هزینه‌ای دارد؟») |
+| — | Call to action: «مشاوره با کارشناسان» and the panel login |
 
-The nav button reads «ورود به پنل پیامک» (the site sells more than the SMS panel; «بازگشت به داشبورد»
-when logged in; the same label is used by the hero and the SMS product row). The nav links are «محصولات»
-(`/landing.php#products`), «سوالات» (`/landing.php#faq`), «راهنمای استفاده», «درباره ما» (`/about`,
-with a submenu of that page's sections, see [about.md](about.md)) and «تماس با ما».
+The nav is a light bar floating over the page (frosted white, hairline border, a soft shadow once the
+page scrolls): the DATIS logo on the right, «محصولات» (`/landing.php#product-sms`, the first showcase), «سوالات»
+(`/landing.php#faq`), «راهنمای استفاده», «درباره ما» (`/about`, with a submenu of that page's sections,
+see [about.md](about.md)) and «تماس با ما» in the middle, and «ورود به پنل پیامک» («بازگشت به داشبورد»
+when logged in) on the left. Under 980px the links fold into a card opened by the menu button.
 
-The sections «از فایل مخاطبین تا گوشی مشتری» (`#flow`), «هر روش ارسالی که نیاز دارید» (`#features`),
-the «منشی هوشمند» seven-step showcase (`#ai-secretary`), «چرا به‌جای ارسال دستی؟» (`#compare`),
-«بسته‌های پیامک» (`#pricing`), «سه قدم تا اولین ارسال» (`#how`) and «برای چه کسب‌وکارهایی مناسب
-است؟» (`#use-cases`) were removed; «مشتریان و همکاران» now follows «محصولات و خدمات». Links that used
-to point at them now go to `#products` («مشاهده‌ی محصولات» in the hero and banner) or to
-`/guide.php#guide-ai-secretary` (banner slide 7 and the FAQ answer about «منشی هوشمند»).
+The content of the old seven-slide banner lives on in the showcases: bulk SMS, the smart template and
+the live report in `#product-sms` (with voice and Bale as channels), «منشی هوشمند» in `#product-ai`.
+The products' texts are those of the former product rows, unchanged. No figures, clients or claims are
+invented: the one number on the page (۱۲٬۴۸۰ in the report mock-up) is labelled «نمونه».
+
+### The signature core (hero)
+
+A graphite sphere with a glass shell and the DATIS mark, a brushed-metal ring and a wide second ring in
+tilted planes, and the five service lines orbiting on the main ring. It is **pure CSS 3D**
+(`.dx-core-*` in `home.css`, one `preserve-3d` context, so the browser depth-sorts the nodes in front of
+or behind the sphere); no WebGL or library, so it looks the same with or without a GPU. Each node face
+counter-rotates and un-tilts, so it always faces the viewer. Scaled per breakpoint with `--k`.
+
+**Graphics.**
+- The core: a turquoise halo that breathes behind it; three energy pulses that ripple outwards, one
+  after another; a soft light sweep turning inside the graphite; a glassy highlight that slides opposite
+  the pointer (`--px`/`--py`), so the core reads as round.
+- Energy beams (`.dx-beam`): a spoke from the core to each service in the ring's plane, with a light
+  flowing outwards along it (staggered per service).
+- Sparks (`.dx-dust`): fifteen tiny twinkling lights on a second, slower orbit turning the other way.
+- Entrance: the services pop out of the core one after another.
+
+**Interaction (the inline script after the hero).** One rAF loop sets `--rot` (the orbit angle, in
+degrees) on `.dx-core-world`; `.dx-orbit` turns by it and every node face turns back by it.
+- It turns slowly on its own (360° per 56 s) and slows to a fifth while a service is hovered or
+  focused.
+- **Drag / swipe** anywhere on the core to spin it, with momentum that eases back to the slow turn.
+  Only horizontal drags count (`touch-action: pan-y`), so vertical swipes still scroll the page. The
+  click that ends a drag is ignored.
+- **Click a service:** the orbit turns the shortest way to bring it to the front (+90° on the tilted
+  ring), its ball turns turquoise with a ripple, its beam brightens and flows faster, the core swaps the
+  DATIS mark for that service's icon (`.dx-core[data-sel]`) and its card opens below (see
+  «Click-to-explain»). Clicking it again or «×» releases the orbit.
+- **Click the core** (a `<button>`): a shockwave ring, a thump, the card closes and the orbit gets a spin
+  boost that decays back.
+- The loop runs only while the core is on screen and the tab is visible; off screen the CSS animations
+  pause too (`.is-paused`).
+- `prefers-reduced-motion`: no auto-turn, no pulses, sparks, sweep or flowing light; a click still selects
+  and the service jumps to the front.
+
+**Rendering rule.** A translucent layer that crosses the tilted ring's plane is split there by the
+browser and shows a seam. So the core's soft glows (`.dx-core-light`, `.dx-sphere-halo`) sit behind the
+whole ring (`translateZ(-300px)`, scaled up for the perspective), the selected-state glow is in the halo
+rather than on the shell, and the second ring is wide enough that its front arc passes around the core
+rather than across it.
+
+### Click-to-explain (the core's nodes)
+
+Each of the five nodes is a `<button data-dx-node>` (`$dxLines` in `landing.php` holds its anchor, short
+name, icon, title, one-paragraph explanation and three main services). A click turns the orbit to bring the node to the front and holds it there
+(`.dx-core.is-held`), highlights the node (`aria-pressed="true"`, turquoise ball, graphite label) and shows
+its card in `#dxCoreInfo` under the core: title, explanation, the three services as
+chips and «جزئیات …» linking to its showcase (`#product-*`). Clicking the same node again, «×» or the core closes the
+card and the orbit turns again. The decorative 3D layers have `pointer-events: none` so only the nodes
+take clicks (plus the core and dragging on the core itself); nodes behind the sphere are not clickable
+until they come round. The card region is
+`aria-live="polite"`.
+
+The «محصولات و خدمات» bento grid (`#products`, «پنج خدمت، یک تیم») that used to sit between the hero and
+the showcases was removed; the page goes from the core to `#product-sms`.
+
+### IT and telephony carousels
+
+Each of the two panels opens with a three-slide carousel (`$renderProdCarousel()` in `landing.php`; slides
+`app/views/landing_product_scenes/it-1..3.php` and `voip-1..3.php`, 440×250 SVGs on the graphite scene
+surface; IT in turquoise, telephony in its amber). Every slide is a short story on a 7 s clock (one-shot
+keyframes with fill `both`, plus a few loops); only the active slide animates, so its story replays from
+the start each time it comes on.
+
+| Slide | Story |
+|---|---|
+| IT 1 «پشتیبانی و پایش شبکه» | Core switch with live traffic (packets both ways) to the office, laptops, Wi-Fi and a branch; at 2 s the branch link fails (amber dashes, «!»), a wrench works on it, at 4.6 s it is back with a check; «پایش شبانه‌روزی» chip |
+| IT 2 «سرور و مجازی‌سازی» | Rack with blinking LEDs, activity bars and a scan line; three VMs (Windows, Linux, Mail) rise onto the virtualisation layer one by one, fill their boot bars and get a check; CPU and RAM gauges fill |
+| IT 3 «امنیت و نگهداری» | Threats fly in and burst on a turning firewall ring; the shield draws its check; the «نگهداری و به‌روزرسانی» checklist (وصله‌های امنیتی، پشتیبان‌گیری، بررسی آسیب‌پذیری) ticks off while the update bar fills |
+| Telephony 1 «سانترال تحت شبکه» | An incoming call rings («تماس ورودی…»), the IP PBX routes it (scans past ۱۰۱, lights ۱۰۲), ۱۰۲ rings, then «در حال مکالمه» with a live voice wave |
+| Telephony 2 «منشی گویا و صف تماس» | «سلام، به داتیس خوش آمدید» types out; the IVR menu highlights ۱، ۳ and settles on «۲ پشتیبانی», «انتقال به پشتیبانی ←»; callers move up the queue to the agents |
+| Telephony 3 «شعب، دورکاری و ضبط مکالمات» | Head office, branch and a remote colleague connected through the VoIP hub with calls flowing on the arcs; a blinking REC badge over a waveform; the «گزارش تماس‌ها» bars grow |
+
+**Controls.** A caption (the slide title, e.g. «پشتیبانی و پایش شبکه»; no number) and three dots; the active dot is a pill whose fill is
+the 7 s clock, and its `animationend` advances to the next slide, so pausing that one animation pauses the
+carousel: on hover/focus (`.is-hold`) and while the panel is off screen (`.is-live` off). Dots jump to a
+slide; a horizontal swipe steps (right = next, RTL). Accessibility: `role="group"` +
+`aria-roledescription="carousel"/"slide"`, inactive slides `aria-hidden`, the caption is
+`aria-live="polite"`, dots are buttons with `aria-label` and `aria-current`. Reduced motion: no clock (no
+autoplay), each slide shows its finished state, dots still switch slides. No new table, setting or
+migration.
+
+### Animated background
+
+Every public page (home, «درباره ما», «تماس با ما», «راهنما», the legal pages: all that use
+`app/views/public_header.php`) has one fixed, decorative layer behind the content, `.lp-bg`, matched to
+the light identity: two soft turquoise glows that float slowly, two layers of thin wave lines that drift
+sideways at different speeds (120s / 180s, opposite directions) — the front layer stroked with a
+repeating turquoise gradient (`#lpBgShine`, period 1600 like the waves) so each line brightens and fades
+along its length, the back layer a faint graphite — and ten faint light streaks (2px, soft turquoise
+tail and a pale head; every second one thinner). All of it is kept faint so it never competes with the content that glide right to left (six on phones). The wave paths are generated in the
+header (`$lpBgWave`): each strip is 3200 units wide and repeats every 1600, so sliding it by −50% loops
+with no seam; on narrow screens the strip is at least 2000px wide so the waves stay gentle. Only
+transform/opacity animate (compositor only), the layer is `aria-hidden` with no pointer events, it stands
+still without streaks for `prefers-reduced-motion`, and it is hidden for `prefers-contrast: more`. Styles:
+the «Animated page background» block in `style.css`. Full-width bands let it show through: the cloud
+showcase's band is 72% white and the AI band is a transparent turquoise tint.
+
+### Motion
+
+Reveals use `.lp-reveal` (`public_footer.php`). Showcase mock-ups
+(`[data-dx-live]`) build once when they come on screen; the product scenes (`[data-lp-prod-scene]`)
+animate only while on screen. Everything uses transform/opacity and stops for `prefers-reduced-motion`.
 
 ## «مشتریان و همکاران» (`#customers`)
 
@@ -53,8 +200,8 @@ One tile per customer from the `$customers` list at the top of `landing.php`: th
 
 The logo is the first of `public/assets/img/customers/<slug>.svg`, `.webp`, `.png`, `.jpg` that exists,
 shown **monochrome** by default: the inline SVG filter `#lp-logo-mono` (in the section markup) paints
-every pixel white and turns its darkness into opacity, so the file's white square disappears and the
-logo stays as a light mark on the dark page (opacity .7; .85 on touch screens, which have no hover).
+every pixel charcoal and turns its darkness into opacity, so the file's white square disappears and the
+logo stays as a grey mark on the white page (opacity .7; .85 on touch screens, which have no hover).
 On hover or keyboard focus the tile lifts and the logo shows in its own colours on a white plate, with
 the name brightening. With no file the tile shows a monogram badge instead (grey by default, filled with
 the customer's `color` on hover), so a missing logo never breaks the layout. The logo files themselves
@@ -83,95 +230,18 @@ a plain CSS animation (70 s per loop) that pauses on hover. With `prefers-reduce
 does nothing and the rail is replaced by one still, wrapped list of every customer. Styles:
 `.lp-marquee-*` and `.lp-bank-*` in `style.css`.
 
-## Top banner
+## Products (`#product-*`)
 
-Slides are `<article class="lp-banner-slide">` inside `[data-lp-banner]`, with one dot per slide in
-`.lp-banner-dots`. Slide 7 (`#lpSlide7`, `.lp-banner-ai`) shows a chat in which a customer asks about
-a product and the secretary answers from a «محصولات» table; its button opens the customer guide's
-«منشی هوشمند» section (`/guide.php#guide-ai-secretary`).
-
-### Slide 1 — «یک مجموعه، پنج خدمت» (`#lpSlide1`, `[data-lp-suite]`, `.lp-suite-*`)
-
-The first thing a visitor sees: the five product lines (`#products`) on a tilted 3D orbit around the
-DATIS mark. The orbit turns each product to the front in turn and explains it.
-
-**Content.** The slide's `$suite` array (one entry per line: tone, short name, title, one-paragraph
-description, three main services, icon) feeds everything: the planets, the glass cards, the copy
-panel and the chips.
-
-**Visual (left).** A holographic floor (concentric ellipses and spokes that fade out, with ripples
-running across it), a soft nebula, three ellipses (the middle one is the orbit, with a gradient and a
-glow; its front half is drawn again above the core so the orbit really passes in front of it), the
-core (an energy sphere with the DATIS mark, a turning light sweep, a colour aura in the five product
-colours and two tilted gyroscope rings), five glossy gem-like planets with a glow pool under each,
-name labels, a beam from the core to each planet, and one holographic card per product. Planets
-behind the core are smaller, darker, less saturated and drawn under it; the front one is the
-biggest. The script places the planets every frame from one angle, in container units of the stage
-(`100cqw` square; core at 50/38, orbit rx 36, ry 17 — the same numbers are in the SVG, the CSS and
-the script).
-
-**Copy (right).** The fixed headline «یک مجموعه، پنج خدمت؛ همه‌ی فناوری کسب‌وکار شما», a panel with
-the focused product («۰۲ / ۰۵», title, description; it switches with a blur-and-rise) and a progress
-bar to the next product, five chip buttons (one per product) and the buttons «مشاهده‌ی محصولات»
-(`#products`) and «درخواست مشاوره» (`/contact.php`).
-
-**Timeline.**
-
-| Time | What happens |
-|---|---|
-| 0–0.7 s | Warp: 18 light streaks rush into the centre |
-| 0.62 s | White flash from the centre |
-| 0.7 s | The core ignites (scales up with an overshoot); then it breathes |
-| 0.8–1.4 s | The floor grid, aura, gyroscope rings and ellipses fade in; the orbit draws itself; two shockwaves spread flat along the plane |
-| 0.85 s + k·0.12 s | Product k swirls out of the core onto the orbit (the whole ring spins 160° into place) |
-| 2.1 s | Opening done: product 1 (پیامک) is in front |
-| on every arrival | Burst at the front product: a flat ring along the floor and ten particles; a spinning Saturn ring appears around it, its halo pulses, its beam turns hot with two sparks running to it; its card materialises like a hologram (wipe from the top with a flicker, a scan line, icon pops, the three services slide in one by one) |
-| every 2.6 s | The orbit turns (1.1 s, eased) to bring the next product to the front, coming from the right; the copy panel, progress bar and chip switch with it |
-| always | Floor ripples, comet on the orbit, dotted ellipses running, aura and gyroscope rings turning, planets bobbing, dust twinkling, nebula drifting, the whole scene swaying slowly |
-| 15.3 s | The banner moves to slide 2 (`data-duration="15300"`: the opening plus all five products) |
-
-**Interaction.** Clicking a chip turns the orbit the short way to that product and holds it for 6 s
-before stepping on (focus inside the banner also stops the banner moving to the next slide). On a
-desktop pointer the stage tilts towards the mouse (parallax), the dust layer and card move against it.
-
-**Pauses and accessibility.** The script runs only while the slide is active; its clock stops while
-the banner is off screen, the tab is hidden, or the visitor pressed «توقف اسلایدها». With reduced
-motion there is no opening, no auto-step and no tween: the complete still frame (product 1 in front,
-its card open) is shown, and the chips switch products instantly. The visual is `aria-hidden`; the
-same information is in the copy panel and the chips, which are real buttons with `aria-pressed`.
-
-Behaviour: auto-advance every 7 s (a slide can stay longer with `data-duration` in ms; slide 1 uses 15300); pauses on hover, keyboard focus, off-screen and hidden tab;
-«توقف اسلایدها» stops it for good (WCAG 2.2.2). The dots are an ARIA tablist (arrows, Home, End),
-swipe works on touch screens, and with `prefers-reduced-motion` the banner stays on slide 1 with no
-motion.
-
-To add a slide: add the `<article>` (ids `lpSlideN`, `aria-label="N از M"` on every slide), add its
-dot button, and update the `M` in every label.
-
-## «محصولات و خدمات» (`#products`)
-
-Right after the hero, the page lists every product line of Datis Rayan, not only the SMS panel. A
-row of quick-nav pills links to each line; each line is an `<article id="product-…">` with a number,
-a tag, a title, a full paragraph, four sub-services (icon, title, one sentence) and two buttons, next
-to an animated SVG scene. Rows alternate sides (`.is-flip`) and stack on screens under 960px.
-
-| Anchor | Product line | Sub-services | Scene | Buttons |
+| Anchor | Product line | Sub-services | Visual | Buttons |
 |---|---|---|---|---|
-| `#product-sms` | سامانه پیامکی و بازاریابی | ارسال انبوه و هدفمند، پیامک هوشمند با قالب پویا، زمان‌بندی و ارسال دوره‌ای، منشی هوشمند و وب‌سرویس | Phone sending to recipients, delivery ticks, rising chart | Panel login |
-| `#product-cloud` | خدمات ابری و زیرساختی | سرور مجازی (VPS)، هاست و دامنه، فضای ذخیره‌سازی ابری، پایش و پشتیبان‌گیری | Cloud over blinking racks, two-way data, spinning globe, filling storage | `/contact.php` |
-| `#product-ai` | هوش مصنوعی و اتوماسیون | تولید محتوا با هوش مصنوعی، اتوماسیون فرآیندهای کسب‌وکار، دستیار و چت‌بات هوشمند، گزارش و تحلیل خودکار | AI core with a neural net, self-writing document, workflow with a gear | `/contact.php` |
-| `#product-it` | خدمات فناوری اطلاعات | پشتیبانی شبکه، نصب و راه‌اندازی سرور، نگهداری و پشتیبانی نرم‌افزار، مشاوره‌ی امنیت زیرساخت | Network topology with traffic, scanned server, shield drawing its check, gears | `/contact.php` |
-| `#product-voip` | تلفن و ارتباطات سازمانی | سانترال تحت شبکه (VoIP)، منشی تلفنی و صف تماس، اتصال شعب و دورکاری، ضبط و گزارش مکالمات | Ringing VoIP core linking two offices and a mobile, voice equaliser, IVR menu | `/contact.php` |
+| `#product-sms` | سامانه پیامکی و بازاریابی | ارسال انبوه و هدفمند، پیامک هوشمند با قالب پویا، زمان‌بندی و ارسال دوره‌ای، منشی هوشمند و وب‌سرویس | Template → personal messages → delivery report mock-up | Panel login, «راهنمای استفاده» |
+| `#product-cloud` | خدمات ابری و زیرساختی | سرور مجازی (VPS)، هاست و دامنه، فضای ذخیره‌سازی ابری، پایش و پشتیبان‌گیری | Cloud over blinking racks, globe, storage (`cloud.php`) | `/contact.php` |
+| `#product-ai` | هوش مصنوعی و اتوماسیون | تولید محتوا با هوش مصنوعی، اتوماسیون فرآیندهای کسب‌وکار، دستیار و چت‌بات هوشمند، گزارش و تحلیل خودکار | «منشی هوشمند» chat | `/guide.php#guide-ai-secretary`, `/contact.php` |
+| `#product-it` | خدمات فناوری اطلاعات | پشتیبانی شبکه، نصب و راه‌اندازی سرور، نگهداری و پشتیبانی نرم‌افزار، مشاوره‌ی امنیت زیرساخت | Network, shield, gears (`it.php`) | `/contact.php` |
+| `#product-voip` | تلفن و ارتباطات سازمانی | سانترال تحت شبکه (VoIP)، منشی تلفنی و صف تماس، اتصال شعب و دورکاری، ضبط و گزارش مکالمات | VoIP core linking offices and a mobile (`voip.php`) | `/contact.php` |
 
 Only the SMS panel is sold inside the panel; the other four lines are services ordered through
-«تماس با ما», so the section names no prices. The content is the `$productLines` array at the top of
-the section in `landing.php`: edit a line's text or sub-services there. To add a line, add an entry,
-a scene file `app/views/landing_product_scenes/<scene>.php`, a tone block (`.is-<tone>`) in
-`landing-products.css`, and a nav-pill icon in `$prodNavIcon`. Scenes are included through a closure,
-so their loop variables cannot leak into the page.
-
-Motion: the scenes are pure CSS animations on SVG (`.ps-flow`, `.ps-blink`, `.ps-pop`, …). A small
-script toggles `.is-live` with an IntersectionObserver, and off-screen scenes have no animation at
-all (they show their fully drawn still frame). With `prefers-reduced-motion` every animation in the
-section is off. The section itself is not `.lp-reveal` (it is too tall to reach the reveal threshold
-on a phone); its head, pills and each row reveal separately.
+«تماس با ما», so the page names no prices. The texts are in the section markup of `landing.php`.
+Scenes are included through a closure (`$renderProdScene`), so their loop variables cannot leak into
+the page; they sit on graphite `.dx-scene` panels and show their fully drawn still frame when off
+screen.

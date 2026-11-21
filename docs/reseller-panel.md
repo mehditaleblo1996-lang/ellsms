@@ -126,7 +126,8 @@ support phone/e-mail, and its own host name (`sms.example.com`, unique, never th
 
 When a request's `Host` is an enabled reseller host (`reseller_brand_for_host()`):
 
-- the login page, sign-up page, panel and reseller panel show the reseller's name, logo and colour;
+- the login page, sign-up page, panel and reseller panel show the reseller's name, logo and colour
+  (on the sign-in page the colour replaces the platform's turquoise through `--login-brand`);
   the platform's marketing site (`/`) goes to `/login` and the platform's trust badges are hidden;
 - by default only the reseller, its staff and its own sub-tree may sign in
   (`reseller_host_login_refusal()`);

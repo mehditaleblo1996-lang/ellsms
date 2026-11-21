@@ -629,7 +629,10 @@ function current_brand(): array {
 function brand_color_style(array $brand): string {
     $color = (string)($brand['color'] ?? '');
     if (!preg_match('/^#[0-9a-f]{6}$/', $color)) return '';
-    return '<style>:root{--indigo:' . $color . ';--blue:' . $color . ';--lp-accent:' . $color . '}</style>';
+    // --login-brand (+ its text and hover colours) recolours the sign-in pages
+    // (public/assets/css/login.css, .login-body), which otherwise use the platform's turquoise.
+    return '<style>:root{--indigo:' . $color . ';--blue:' . $color . ';--lp-accent:' . $color
+        . ';--login-brand:' . $color . ';--login-on-brand:#fff;--login-brand-hover:color-mix(in srgb,' . $color . ' 82%,#000)}</style>';
 }
 
 /** Why $userId may not sign in on this (branded) host, or null when it may. */

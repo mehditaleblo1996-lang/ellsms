@@ -2,8 +2,9 @@
 
 The public page that introduces the company (داتیس رایان گستر ایرانیان): who it is, its five service
 areas, the trust of large organizations, mission, vision and core values. It is part of the public
-marketing site and shares its dark glass theme and chrome with the landing page
-([landing.md](landing.md)).
+marketing site and shares its white + graphite + turquoise identity and chrome with the landing page
+([landing.md](landing.md#colours-public-site-and-sign-in-pages)). The hero, section bar, statement and
+mission/vision cards are graphite bands; the rest of the page is white.
 
 | File | What |
 |---|---|
@@ -46,7 +47,7 @@ When a section of the page is added, removed or renamed, update both `$abSection
 
 | Anchor | Section |
 |---|---|
-| `#intro` | **Hero**: «درباره ما» badge, the company name, the two intro paragraphs, buttons to `#services` and `/contact`. Beside it an animated hub: the brand mark in the middle (`/assets/img/brand/mark-light.svg`) with the five service areas on an orbit, pulses running out along the spokes and two dots circling. |
+| `#intro` | **Hero**: «درباره ما» badge, the company name, the two intro paragraphs, buttons to `#services` and `/contact`. Beside it the animated hub (see «Hero hub» below): the brand core with the five service areas on an orbit; the services light up in turn and each tile links to its card (`#service-1` … `#service-5`). |
 | — | **Section bar**: sticky under the site nav, one chip per section; the section in view is highlighted (`aria-current="location"`). On a phone it scrolls sideways and keeps the current chip in view. |
 | `#story` | «از پیامک، تا سبد کامل خدمات فناوری»: how SMS was the starting point, the audience chips (سازمان‌ها، نهادهای حاکمیتی، بانک‌ها، مجموعه‌های بزرگ اقتصادی، پلتفرم‌های دیجیتال), and a tree in which «پیامک و ارتباطات» branches into the four other areas (lines draw in, then a light runs along each branch). Below it the statement «برای سازمان‌های بزرگ، فناوری صرفاً یک ابزار نیست» with four tiles: تداوم کسب‌وکار، امنیت، بهره‌وری، تجربه مشتری. |
 | `#services` | «حوزه‌های تخصصی خدمات»: a bento of five cards. The large one is SMS («نقطه‌ی آغاز ما») with a small animated message thread; the others are cloud, AI, IT and telephony. Each card has an animated icon (typing dots, sync arrows, a chip with a sparkle, blinking server LEDs, a ringing phone) and its tags. |
@@ -58,12 +59,38 @@ When a section of the page is added, removed or renamed, update both `$abSection
 The page shows no figures (years, customer counts, client logos): none were provided, and nothing is
 invented. Add them to `about.php` only from real data.
 
+## Hero hub
+
+The hub beside the hero text (`.ab-hub` in `about.php`, styles in the «Hub» block of `about.css`, script at
+the end of the page). Pure SVG/CSS with a few lines of JS, turquoise only (the telephony tile keeps its
+amber), built in three layers that shift apart with the pointer for depth (`--px`/`--py`, fine pointers
+only):
+
+- **Back:** a radar sweep (a conic gradient masked to a ring), a dial with a tick every 5° and a long one
+  every 30° turning slowly, two faint rings and eighteen drifting motes.
+- **Middle:** the orbit (gradient stroke) with two scanning arcs, a dashed inner orbit, two comets with
+  fading tails (conic gradients masked to thin rings) on the outer and inner orbit, and five curved beams
+  from the core's edge to the tiles (paths generated in PHP, `$abHub[*]['beam']`), each with a packet
+  running out and a fainter one running back.
+- **Core:** ripples, a turning energy ring, graphite glass with a light sweep inside and the DATIS mark,
+  breathing glow, and a flash each time a service lights up.
+- **Front:** the five tiles (`<a href="#service-N" data-ab-node>`), floating gently.
+
+**The cycle:** while the hero is on screen the services light up one after another every 2.6 s. The lit
+service's tile lifts and glows with a ripple, its icon tilts, its label takes the tile's colour, its beam
+brightens and its packets race, and the core flashes. Hovering or focusing a tile lights that one and
+holds the cycle. **Entrance:** once the hub is first seen the back and middle layers open out of the core
+and the tiles pop in one after another. Loops pause while the hero is off screen; with
+`prefers-reduced-motion` nothing moves and the cycle is off, but hover/focus still highlight a tile.
+
 ## Motion and accessibility
 
 - All motion is CSS/SVG; there are no images other than the brand mark and no library.
 - Looping animations run only while their section is on screen: `[data-ab-live]` sections get
   `.is-live` from an `IntersectionObserver`. Content fades in with the shared `.lp-reveal`.
 - `prefers-reduced-motion`: nothing moves, the tree is drawn complete and the message thread is shown.
-- The hub, tree and other illustrations are `aria-hidden`; everything they say is also in the text.
+- The tree and other illustrations are `aria-hidden`; everything they say is also in the text. In the hub
+  only the decorative layers are hidden: its five tiles are real links (`aria-label` = the service's full
+  title) to the service cards.
 - Layout: the hero, story and trust sections stack under 980 px; under 640 px the tree becomes a
   vertical list and the cards a single column.

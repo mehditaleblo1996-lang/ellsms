@@ -87,18 +87,22 @@ function legal_trust_badges_html(int $height): string {
 }
 
 /**
- * The «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» membership badge, linked to the organisation's
- * «مشاهده اعضا» page for this company. The emblem keeps its own green
+ * The «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» membership badge. For now it links to the site's
+ * home page; its «مشاهده اعضا» page on irannsr.org is kept commented out in the function. The emblem keeps its own green
  * (/assets/img/nsr-tehran-emblem.png); the calligraphic caption (/assets/img/nsr-tehran-text.png) is
  * used as an SVG mask filled with currentColor, so it takes the footer's text colour like the ecunion
  * badge and stays readable on both the dark landing footer and the light panel footer.
  */
 function legal_nsr_badge_html(int $height): string {
-    $url = 'https://tehran.irannsr.org/fa/page/104366-%D9%85%D8%B4%D8%A7%D9%87%D8%AF%D9%87-%D8%A7%D8%B9%D8%B6%D8%A7.html?ctp_id=1086&id=67113';
+    // For now the badge links to the site's home page. Its membership page on irannsr.org is kept here,
+    // commented out, to restore later (then put back target="_blank" rel="noopener" and the aria-label
+    // «… — استعلام در سایت irannsr.org»):
+    // $url = 'https://tehran.irannsr.org/fa/page/104366-%D9%85%D8%B4%D8%A7%D9%87%D8%AF%D9%87-%D8%A7%D8%B9%D8%B6%D8%A7.html?ctp_id=1086&id=67113';
+    $url = '/';
     $width = (int) round($height * 288 / 366);
 
-    return '<a class="nsr-badge" href="' . e($url) . '" target="_blank" rel="noopener"'
-         . ' aria-label="عضو سازمان نظام صنفی رایانه‌ای استان تهران — استعلام در سایت irannsr.org" style="display:block;line-height:0;color:inherit">'
+    return '<a class="nsr-badge" href="' . e($url) . '"'
+         . ' aria-label="عضو سازمان نظام صنفی رایانه‌ای استان تهران — صفحه‌ی اصلی" style="display:block;line-height:0;color:inherit">'
          . '<svg viewBox="0 0 288 366" width="' . $width . '" height="' . $height . '" role="img" aria-hidden="true" focusable="false" style="display:block">'
          . '<defs><mask id="nsr-badge-text" maskUnits="userSpaceOnUse" x="0" y="199" width="288" height="167">'
          . '<image href="' . e(asset_url('/assets/img/nsr-tehran-text.png')) . '" x="0" y="199" width="288" height="167"/></mask></defs>'

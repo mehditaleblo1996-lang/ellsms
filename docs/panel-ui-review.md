@@ -1,6 +1,6 @@
 # Panel UI refresh — staging review
 
-The customer panel, administration panel and sign-in page use a light interface while retaining the existing brand hues (`#4a32e8`, `#2e63f6`) and self-hosted Vazirmatn. The public marketing pages retain their existing stylesheet and markup.
+The customer panel and administration panel use a light interface while retaining the existing brand hues (`#4a32e8`, `#2e63f6`) and self-hosted Vazirmatn. The sign-in pages and the public marketing pages use the white + graphite + turquoise identity with Estedad instead ([landing.md](landing.md#colours-public-site-and-sign-in-pages)).
 
 ## Changes
 

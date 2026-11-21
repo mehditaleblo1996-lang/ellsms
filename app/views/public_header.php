@@ -29,20 +29,49 @@ $aboutMenu = [
 <title><?= e($pageTitle ?? 'داتیس رایان گستر ایرانیان') ?> — داتیس رایان گستر ایرانیان</title>
 <?php if (!empty($metaDescription)): ?><meta name="description" content="<?= e($metaDescription) ?>"><?php endif; ?>
 <link rel="icon" href="<?= e(asset_url('/assets/img/favicon.png')) ?>">
+<?php // The public pages' type is Estedad (fonts.css): fetch its two main weights with the CSS, not after it. ?>
+<link rel="preload" href="/assets/fonts/estedad/estedad-arabic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/estedad/estedad-arabic-800-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="<?= e(asset_url('/assets/css/style.css')) ?>">
 <?php foreach (($extraStyles ?? []) as $extraStyle): ?><link rel="stylesheet" href="<?= e(asset_url($extraStyle)) ?>">
 <?php endforeach; ?>
 </head>
 <body class="lp-body">
+<?php
+// Animated page background (docs/landing.md#animated-background): two soft turquoise glows, two layers
+// of thin wave lines that drift sideways at different speeds, and fine glowing light streaks gliding across. Layer a's lines use a repeating gradient (period 1600,
+// like the waves) so they brighten and fade along their length.
+// Each wave strip is 3200 units wide and repeats every 1600, so sliding it by −50% loops seamlessly.
+// Fixed behind everything, decorative only, transform/opacity animation; still for reduced motion.
+$lpBgWave = static function (float $y0, float $amp, float $wl, float $ph, float $amp2): string {
+    $d = [];
+    for ($x = 0; $x <= 3200; $x += 50) {
+        $y = $y0 + $amp * sin(2 * M_PI * $x / $wl + $ph) + $amp2 * sin(2 * M_PI * $x / 1600 + $ph * 1.7);
+        $d[] = $x . ' ' . round($y, 1);
+    }
+    return 'M' . implode(' L', $d);
+};
+$lpBgLayers = [
+    'a' => [[150, 38, 1600, 0.0, 14], [260, 30, 800, 1.2, 18], [380, 46, 1600, 2.1, 10], [520, 34, 800, 0.6, 22], [650, 42, 1600, 3.0, 12], [780, 28, 800, 4.2, 16]],
+    'b' => [[200, 60, 1600, 0.9, 0], [450, 52, 1600, 2.6, 0], [600, 64, 1600, 4.4, 0], [720, 48, 1600, 5.5, 0]],
+];
+?>
+<div class="lp-bg" aria-hidden="true">
+  <span class="lp-bg-glow is-a"></span><span class="lp-bg-glow is-b"></span>
+  <?php foreach ($lpBgLayers as $layer => $waves): ?>
+  <div class="lp-bg-waves is-<?= $layer ?>"><svg viewBox="0 0 3200 900" preserveAspectRatio="none" focusable="false"><?php if ($layer === 'a'): ?><defs><linearGradient id="lpBgShine" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1600" y2="0" spreadMethod="repeat"><stop offset="0" stop-color="#11b8c5" stop-opacity=".06"/><stop offset=".3" stop-color="#11b8c5" stop-opacity=".26"/><stop offset=".5" stop-color="#087f8c" stop-opacity=".1"/><stop offset=".75" stop-color="#6fd6df" stop-opacity=".3"/><stop offset="1" stop-color="#11b8c5" stop-opacity=".06"/></linearGradient></defs><?php endif; ?><?php foreach ($waves as $w): ?><path d="<?= $lpBgWave(...$w) ?>"/><?php endforeach; ?></svg></div>
+  <?php endforeach; ?>
+  <?php for ($i = 0; $i < 10; $i++): ?><span class="lp-bg-streak" style="--n:<?= $i ?>"></span><?php endfor; ?>
+</div>
 <a class="skip-link" href="#main">پرش به محتوای اصلی</a>
 
 <header class="lp-nav">
   <div class="lp-nav-inner">
     <a href="/landing.php" class="lp-brand" aria-label="داتیس رایان گستر ایرانیان — پنل هوشمند پیامک">
-      <img class="lp-brand-logo" src="<?= e(asset_url('/assets/img/brand/logo-animated-light.svg')) ?>" alt="" aria-hidden="true">
+      <img class="lp-brand-logo" src="<?= e(asset_url('/assets/img/brand/logo.svg')) ?>" alt="" aria-hidden="true" width="1240" height="478" fetchpriority="high">
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
-      <a href="/landing.php#products">محصولات</a>
+      <a href="/landing.php#product-sms">محصولات</a>
       <a href="/landing.php#faq">سوالات</a>
       <a href="/guide.php">راهنمای استفاده</a>
       <?php // «درباره ما» opens a submenu (hover, or the chevron button) with the parts of /about; ?>
