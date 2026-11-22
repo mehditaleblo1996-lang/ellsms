@@ -1,5 +1,8 @@
 # Payment (ZarinPal credit purchase)
 
+The active gateway is chosen in Settings → «پرداخت آنلاین». Saman Electronic Payment is a second
+adapter with its own callback (`docs/sep-payment.md`). This page describes the ZarinPal path.
+
 `public/buy-credit.php` (initiate) → ZarinPal-hosted checkout → `public/zarinpal-callback.php`
 (verify + credit). Client code in `app/zarinpal.php`. See `docs/flows/credit.md` for how this
 fits alongside the other places `user_.currentcredit` is touched.

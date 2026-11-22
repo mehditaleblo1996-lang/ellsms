@@ -116,7 +116,7 @@ require __DIR__ . '/../app/views/header.php';
       <label>وضعیت<select name="status"><option value="">همه</option><?php foreach(($tab==='invoices'?$invoiceStatusFa:$paymentStatusFa) as $k=>$v): ?><option value="<?= e($k) ?>" <?= $filterStatus===$k?'selected':'' ?>><?= e($v) ?></option><?php endforeach; ?></select></label>
       <label>نوع<select name="purpose"><option value="">همه</option><option value="credit" <?= $filterPurpose==='credit'?'selected':'' ?>>خرید اعتبار</option><option value="subscription" <?= $filterPurpose==='subscription'?'selected':'' ?>>اشتراک</option></select></label>
     <?php endif; ?>
-    <?php if ($tab==='payments'): ?><label>درگاه / روش<select name="gateway"><option value="">همه</option><option value="zarinpal" <?= $filterGateway==='zarinpal'?'selected':'' ?>>زرین‌پال</option><option value="fake" <?= $filterGateway==='fake'?'selected':'' ?>>آزمایشی</option><?php foreach (MANUAL_PAYMENT_METHODS as $mk => $mv): ?><option value="<?= e($mk) ?>" <?= $filterGateway===$mk?'selected':'' ?>><?= e($mv) ?></option><?php endforeach; ?></select></label><?php endif; ?>
+    <?php if ($tab==='payments'): ?><label>درگاه / روش<select name="gateway"><option value="">همه</option><option value="zarinpal" <?= $filterGateway==='zarinpal'?'selected':'' ?>>زرین‌پال</option><option value="sep" <?= $filterGateway==='sep'?'selected':'' ?>>پرداخت الکترونیک سامان</option><option value="fake" <?= $filterGateway==='fake'?'selected':'' ?>>آزمایشی</option><?php foreach (MANUAL_PAYMENT_METHODS as $mk => $mv): ?><option value="<?= e($mk) ?>" <?= $filterGateway===$mk?'selected':'' ?>><?= e($mv) ?></option><?php endforeach; ?></select></label><?php endif; ?>
     <button class="btn btn-sm">فیلتر</button>
   </form>
 

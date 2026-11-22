@@ -50,7 +50,7 @@ maintenance-status`.
 | Authenticated pages | 503 | part of "most pages" |
 | Sends (new-send, p2p, smart, legacy URL API) | 503 | prevents new work starting mid-maintenance |
 | Payment creation (buy-credit) | 503 | prevents new charges starting mid-maintenance |
-| Payment **callbacks** (zarinpal-callback.php) | **exempt, always reachable** | ZarinPal already completed the charge by the time the browser lands here; blocking would strand a real payment in `pending`, creating exactly the manual-reconciliation work `payments-reconcile.php` exists to avoid |
+| Payment **callbacks** (`zarinpal-callback.php`, `sep-callback.php`) | **exempt, always reachable** | The bank already completed the charge by the time the browser lands here; blocking would strand a real payment in `pending`, creating exactly the manual-reconciliation work `payments-reconcile.php` exists to avoid |
 | `/health`, `/health/ready` | **exempt, always reachable** | liveness/readiness must stay visible regardless of maintenance mode |
 | Platform admin | 503 | same as any other authenticated page — no special bypass |
 | Workers (`cron/worker.php`) | **not killed** — polls normally but skips its three dispatch passes (`worker.maintenance_mode.paused`, logged at most once/minute) | an in-flight lease from before maintenance was flipped on is left exactly as-is; Phase 4's own lease-expiry self-healing already covers a maintenance window long enough for a lease to expire |

@@ -78,7 +78,15 @@ function manual_payments_available(?bool $set = null): bool {
 }
 
 function manual_payment_method_label(string $method): string {
-    return MANUAL_PAYMENT_METHODS[$method] ?? ($method === 'zarinpal' ? 'پرداخت آنلاین (زرین‌پال)' : ($method === 'fake' ? 'پرداخت آنلاین (آزمایشی)' : $method));
+    if (isset(MANUAL_PAYMENT_METHODS[$method])) {
+        return MANUAL_PAYMENT_METHODS[$method];
+    }
+    return match ($method) {
+        'zarinpal' => 'پرداخت آنلاین (زرین‌پال)',
+        'sep' => 'پرداخت آنلاین (پرداخت الکترونیک سامان)',
+        'fake' => 'پرداخت آنلاین (آزمایشی)',
+        default => $method,
+    };
 }
 
 function manual_payment_is_manual_gateway(?string $gateway): bool {

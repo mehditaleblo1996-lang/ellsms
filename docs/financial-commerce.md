@@ -88,10 +88,17 @@ invoice total.
 so core commerce logic (`public/buy-credit.php`, `public/billing.php`, the shared callback handler)
 never references a ZarinPal-specific field name directly.
 
-`payment_gateway_name()` decides which adapter a NEW payment uses:
-`PAYMENT_DEFAULT_GATEWAY` (env, default `zarinpal`), except `fake` is only ever selected when
+`payment_gateway_name()` decides which adapter a NEW payment uses. Settings → «پرداخت آنلاین»
+(`ellsms_settings.payment_default_gateway`, `zarinpal` or `sep`) wins over
+`PAYMENT_DEFAULT_GATEWAY` (env, default `zarinpal`). The test suite reads the env only, so a
+developer database cannot change what a test selects. `fake` is only ever selected when
 `ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED=1` is *also* set — a misconfigured `PAYMENT_DEFAULT_GATEWAY=fake`
 in production alone can never route real payments through the sandbox.
+
+**Saman Electronic Payment** (`sep`, «پرداخت الکترونیک سامان») is the second real adapter.
+Token, browser return, verify, amount check and receipt uniqueness are in `app/Payment/SepGateway.php`
+and `docs/sep-payment.md`. It does not report `payment_gateway_supports_refund()` — SEP's reverse
+call is used only when the verified amount disagrees with the invoice, not as a customer refund.
 
 `ellsms_payments.gateway` (new, additive, default `'zarinpal'`) records which adapter created each
 payment, so `cron/payments-reconcile.php` re-verifies a stale payment against the SAME gateway that

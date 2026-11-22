@@ -40,6 +40,7 @@ DELETE FROM ellsms_settings WHERE skey IN (
   'api_base_url',
   'telegram_bot_token', 'telegram_chat_id', 'telegram_webhook_secret', 'telegram_bot_allowed_chats',
   'zarinpal_merchant_id', 'zarinpal_callback_url', 'zarinpal_sandbox',
+  'sep_terminal_id', 'sep_callback_url', 'sep_token_expiry_min', 'payment_default_gateway',
   'alert_email_recipient', 'registration_admin_mobiles',
   'bale_base_url', 'bale_bot_id',
   'vesal_bulk_base_url', 'vesal_bulk_username',

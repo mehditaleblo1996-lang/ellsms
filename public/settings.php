@@ -98,14 +98,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', 'رمز وب‌هوک تازه ساخته شد — حتماً دستور setWebhook زیر را دوباره اجرا کنید تا تلگرام رمز جدید را بداند.');
     }
 
-    if ($do === 'zarinpal') {
+    if ($do === 'zarinpal' || $do === 'payment') {
+        if (impersonation_guard_post('gateway.config')) {
+            redirect('/settings.php');
+        }
+        $gateway = (string)($_POST['payment_default_gateway'] ?? 'zarinpal');
+        if (!in_array($gateway, ['zarinpal', 'sep'], true)) {
+            $gateway = 'zarinpal';
+        }
+        $terminal = preg_replace('/\D/', '', from_persian_digits(trim((string)($_POST['sep_terminal_id'] ?? '')))) ?? '';
+        if ($terminal !== '' && !preg_match('/^\d{4,15}$/', $terminal)) {
+            flash('error', 'شماره ترمینال سامان باید فقط عدد و بین ۴ تا ۱۵ رقم باشد.');
+            redirect('/settings.php');
+        }
+        $sepCallback = rtrim(trim((string)($_POST['sep_callback_url'] ?? '')), '/');
+        if (!sep_callback_url_acceptable($sepCallback)) {
+            flash('error', 'آدرس بازگشت سامان باید با https شروع شود و نام سایت داشته باشد.');
+            redirect('/settings.php');
+        }
+        $expiryRaw = trim(from_persian_digits((string)($_POST['sep_token_expiry_min'] ?? '')));
+        $expiry = '';
+        if ($expiryRaw !== '') {
+            if (!ctype_digit($expiryRaw)) {
+                flash('error', 'مدت اعتبار توکن سامان باید عدد باشد.');
+                redirect('/settings.php');
+            }
+            $expiryN = (int)$expiryRaw;
+            if ($expiryN < 20 || $expiryN > 3600) {
+                flash('error', 'مدت اعتبار توکن سامان باید بین ۲۰ و ۳۶۰۰ دقیقه باشد، یا خالی بماند.');
+                redirect('/settings.php');
+            }
+            $expiry = (string)$expiryN;
+        }
+        set_setting('payment_default_gateway', $gateway);
+        set_setting('sep_terminal_id', $terminal);
+        set_setting('sep_callback_url', $sepCallback);
+        set_setting('sep_token_expiry_min', $expiry);
         set_setting('zarinpal_merchant_id',   trim($_POST['zarinpal_merchant_id'] ?? ''));
         set_setting('zarinpal_callback_url',  rtrim(trim($_POST['zarinpal_callback_url'] ?? ''), '/'));
         set_setting('zarinpal_sandbox',       !empty($_POST['zarinpal_sandbox']) ? '1' : '0');
         set_setting('min_credit_purchase',    (string)max(1, (int)($_POST['min_credit_purchase'] ?? 100000)));
         set_setting('credit_packages',        trim($_POST['credit_packages'] ?? ''));
-        audit((int)$me['id'], 'settings.zarinpal_update');
-        flash('success', 'تنظیمات پرداخت ذخیره شد.');
+        audit((int)$me['id'], 'settings.payment_update', 'gateway=' . $gateway);
+        $warn = ($gateway === 'sep' && $terminal === '') ? ' تا وقتی شماره ترمینال خالی است و در env هم نیست، پرداخت سامان شروع نمی‌شود.' : '';
+        flash('success', 'تنظیمات پرداخت ذخیره شد.' . $warn);
     }
 
     if ($do === 'audit_retention') {
@@ -246,11 +282,44 @@ require __DIR__ . '/../app/views/header.php';
 </div>
 
 <div class="card">
-  <h2>پرداخت — زرین‌پال</h2>
-  <p class="hint">این مقادیر را می‌توان از طریق متغیرهای محیطی (<code class="kbd">.env</code>) هم تنظیم کرد؛ آنچه اینجا ذخیره شود اولویت دارد.</p>
+  <h2>پرداخت آنلاین</h2>
+  <?php
+    $activePayGateway = payment_gateway_name();
+    $sepCallbackEffective = sep_callback_url();
+    $sepSiteUrl = sep_site_url_from_callback($sepCallbackEffective);
+  ?>
+  <p class="hint">درگاه فعال برای خرید جدید: <strong><?= e(payment_gateway_label($activePayGateway)) ?></strong>. آنچه اینجا ذخیره شود بر متغیرهای محیطی (<code class="kbd">.env</code>) اولویت دارد. فیلد خالی یعنی همان مقدار env، و اگر آن هم خالی باشد آدرس سایت از <code class="kbd">APP_URL</code> ساخته می‌شود.</p>
   <form method="post">
     <?= csrf_field() ?>
-    <input type="hidden" name="do" value="zarinpal">
+    <input type="hidden" name="do" value="payment">
+    <label>درگاه فعال
+      <select name="payment_default_gateway">
+        <option value="zarinpal" <?= $activePayGateway !== 'sep' ? 'selected' : '' ?>>زرین‌پال</option>
+        <option value="sep" <?= $activePayGateway === 'sep' ? 'selected' : '' ?>>پرداخت الکترونیک سامان</option>
+      </select>
+    </label>
+    <h3>پرداخت الکترونیک سامان</h3>
+    <div class="form-row">
+      <label>شماره ترمینال (TerminalId)
+        <input type="text" name="sep_terminal_id" value="<?= e(setting('sep_terminal_id', '')) ?>" inputmode="numeric" class="ltr" placeholder="12345678">
+      </label>
+      <label>آدرس بازگشت (Callback URL)
+        <input type="text" name="sep_callback_url" value="<?= e(setting('sep_callback_url', '')) ?>" placeholder="https://panel.example.com/sep-callback.php" class="ltr">
+        <div class="hint">خالی باشد همان <span class="ltr"><?= e($sepCallbackEffective) ?></span> استفاده می‌شود.</div>
+      </label>
+    </div>
+    <label>مدت اعتبار توکن (دقیقه)
+      <input type="number" name="sep_token_expiry_min" min="20" max="3600" value="<?= e(setting('sep_token_expiry_min', '')) ?>" placeholder="20">
+      <div class="hint">خالی یعنی ۲۰ دقیقه، همان پیش‌فرض سامان. مجاز: ۲۰ تا ۳۶۰۰.</div>
+    </label>
+    <p class="hint">این مقدارها را در فرم پذیرندگی سامان ثبت کنید. آدرس سایت باید با https شروع شود و مسیر اضافه نداشته باشد:</p>
+    <ul class="hint">
+      <li>آدرس سایت: <span class="ltr"><?= e($sepSiteUrl !== '' ? $sepSiteUrl : '— ابتدا APP_URL یا آدرس بازگشت https را تنظیم کنید') ?></span></li>
+      <li>آدرس کال‌بک: <span class="ltr"><?= e($sepCallbackEffective) ?></span></li>
+      <li>پورت کال‌بک: ۴۴۳</li>
+      <li>آی‌پی سرور: آی‌پی عمومی خروجی همین سرور (همان سروری که توکن می‌گیرد و تراکنش را تأیید می‌کند). بدون ثبت آن، دریافت توکن با خطای ۸ و تأیید با خطای ۱۰۶- رد می‌شود.</li>
+    </ul>
+    <h3>زرین‌پال</h3>
     <div class="form-row">
       <label>Merchant ID زرین‌پال
         <input type="text" name="zarinpal_merchant_id" value="<?= e(setting('zarinpal_merchant_id', '')) ?>" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" class="ltr">
@@ -262,7 +331,7 @@ require __DIR__ . '/../app/views/header.php';
     </div>
     <label style="display:flex;align-items:center;gap:8px">
       <input type="checkbox" name="zarinpal_sandbox" value="1" <?= setting('zarinpal_sandbox','0') === '1' ? 'checked' : '' ?> style="width:auto;margin:0">
-      حالت آزمایشی (Sandbox) — برای تست بدون پرداخت واقعی
+      حالت آزمایشی زرین‌پال (Sandbox) — برای تست بدون پرداخت واقعی. سامان سندباکس عمومی ندارد.
     </label>
     <div class="form-row" style="margin-top:14px">
       <label>حداقل مبلغ خرید اعتبار (ریال)
