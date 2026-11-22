@@ -19,7 +19,7 @@ Everything is driven by `ops/staging/stage.sh`, run on the **staging** server.
 | Sending real SMS | All real gateways are archived; the mock gateway (`mock-sms-gateway` container) is the default and takes every route and pinned number. |
 | Replaying production's queue | Pending bulk jobs/items, schedules, direct-send queue, imports and regional bulk are cancelled. |
 | Calling customers | Webhook endpoints and remote-DB connections are disabled. |
-| Production integrations | Fresh keys/tokens; no backend API URL, Telegram, Bale or Vesal settings; Zarinpal sandbox + fake gateway. DB-stored settings for these are deleted (they would override `.env`). |
+| Production integrations | Fresh keys/tokens; no backend API URL, Telegram, Bale or Vesal settings; Zarinpal sandbox + fake gateway. DB-stored settings for these are deleted (they would override `.env`). The production Saman terminal (`sep_terminal_id`) and the saved payment gateway choice are deleted too, so a restored database cannot charge cards through production's terminal. |
 
 The full list is in `ops/staging/sanitize.sql`; it runs after every restore.
 

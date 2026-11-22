@@ -14,14 +14,19 @@
  *     a real, previously-unrecovered gap documented in
  *     docs/flows/payment.md.
  *
- * For each candidate, re-runs zarinpal_verify() against ZarinPal itself
- * (the actual source of truth for whether money moved) and, only on a
- * fresh success, credits the wallet via the exact same
- * payment_claim_and_credit() transaction public/zarinpal-callback.php
- * uses — so running this script can never double-credit a payment that a
- * user's own browser callback already processed (or that a previous
- * reconciliation run already processed), and running it twice in a row is
- * always safe.
+ * For each candidate, re-runs verification against the gateway that created
+ * the payment (the actual source of truth for whether money moved) and, only
+ * on a fresh success whose confirmed amount matches the invoice, credits the
+ * wallet via the same claim transaction the browser callback uses — so running
+ * this script can never double-credit a payment that a user's own browser
+ * callback already processed (or that a previous reconciliation run already
+ * processed), and running it twice in a row is always safe.
+ *
+ * SEP is different from ZarinPal: the bank can only be asked about a RefNum,
+ * and that receipt exists only after the browser has returned at least once
+ * (it is stored on gateway_ref). A SEP payment that never came back is left
+ * pending; SEP reverses it itself after 30 minutes. Amount mismatches are
+ * reversed with SEP's ReverseTransaction and are not credited.
  *
  * Manual/on-demand only in this phase, per explicit instruction not to
  * build a scheduler here — invoke via:
@@ -64,9 +69,12 @@ $errors = 0;
 foreach ($rows as $payment) {
     $paymentId = (int)$payment['id'];
     try {
-        if (empty($payment['authority'])) {
-            // Never even got an authority from ZarinPal — nothing to
+        $gateway = (string)($payment['gateway'] ?? 'zarinpal');
+        if ($gateway !== 'sep' && empty($payment['authority'])) {
+            // Never even got an authority from the gateway — nothing to
             // verify; this one genuinely never started a real payment.
+            // SEP is handled below: it can be verified only after the callback
+            // stored a RefNum, which is checked on its own.
             $stillUnresolved++;
             continue;
         }
@@ -78,15 +86,45 @@ foreach ($rows as $payment) {
 
         // FIN-2: dispatch to whichever gateway actually created this payment — a stale fake-gateway
         // payment (test/dev only, since the fake gateway is off by default in production) must never
-        // be re-verified against ZarinPal, and vice versa.
-        $gateway = (string)($payment['gateway'] ?? 'zarinpal');
-        $verify = payment_gateway_verify($gateway, (int)$payment['amount_rial'], $payment['authority']);
+        // be re-verified against ZarinPal, and vice versa. SEP goes through sep_complete_payment(),
+        // the same verify/amount/claim path as public/sep-callback.php.
+        if ($gateway === 'sep') {
+            $ref = trim((string)($payment['gateway_ref'] ?? ''));
+            if ($ref === '') {
+                Logger::info('payments.reconcile.sep_waiting_for_callback', ['payment_id' => $paymentId]);
+                $stillUnresolved++;
+                continue;
+            }
+            $done = sep_complete_payment($payment, $ref);
+            if (!empty($done['claimed'])) {
+                $recovered++;
+            } elseif (!$done['ok']) {
+                $stillUnresolved++;
+            }
+            continue;
+        }
+
+        $verify = payment_gateway_verify($gateway, (int)$payment['amount_rial'], (string)$payment['authority']);
         $ok = $verify['ok'];
         $info = $verify['message'];
         $refId = $verify['ref_id'];
         if (!$ok) {
             Logger::warning('payments.reconcile.still_unverified', ['payment_id' => $paymentId, 'info' => $info]);
             $db->prepare("UPDATE ellsms_payments SET status='verification_failed' WHERE id=? AND status IN ('pending','verification_failed')")
+               ->execute([$paymentId]);
+            $stillUnresolved++;
+            continue;
+        }
+
+        if (isset($verify['verified_amount_rial']) && $verify['verified_amount_rial'] !== null
+            && (int)$verify['verified_amount_rial'] !== (int)$payment['amount_rial']) {
+            Logger::critical('payment.amount_mismatch', [
+                'payment_id' => $paymentId,
+                'gateway' => $gateway,
+                'expected_amount_rial' => (int)$payment['amount_rial'],
+                'verified_amount_rial' => (int)$verify['verified_amount_rial'],
+            ]);
+            $db->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=? AND status IN ('pending','verification_failed')")
                ->execute([$paymentId]);
             $stillUnresolved++;
             continue;

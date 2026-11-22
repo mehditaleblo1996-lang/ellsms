@@ -136,10 +136,15 @@ cmd_env() {
     echo "GRAFANA_ADMIN_USER=admin"
     echo "GRAFANA_ADMIN_PASSWORD=$(rand_hex 16)"
     echo
-    echo "# --- payments: Zarinpal sandbox + the fake gateway, never the real merchant ---"
+    echo "# --- payments: Zarinpal sandbox + the fake gateway, never a production merchant ---"
+    echo "# SEP terminal is NOT copied from production (sanitize.sql deletes it). Enter the"
+    echo "# staging terminal in Settings → پرداخت آنلاین after the SEP panel allows this host."
     echo "ZARINPAL_MERCHANT_ID=$(rand_uuid)"
     echo "ZARINPAL_SANDBOX=1"
     echo "ZARINPAL_CALLBACK_URL=https://$domain/zarinpal-callback.php"
+    echo "SEP_TERMINAL_ID="
+    echo "SEP_CALLBACK_URL=https://$domain/sep-callback.php"
+    echo "PAYMENT_DEFAULT_GATEWAY=zarinpal"
     echo "ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED=1"
     echo
     echo "# --- alerts off ---"

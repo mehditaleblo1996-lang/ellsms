@@ -566,7 +566,7 @@ require __DIR__ . '/../app/views/public_header.php';
       </details>
       <details class="lp-guide-item">
         <summary>خرید اعتبار چقدر طول می‌کشد؟</summary>
-        <div class="lp-guide-body">پرداخت از طریق درگاه زرین‌پال انجام می‌شود و اعتبار پس از تأیید تراکنش در پنل شما فعال است. شرایط انصراف و بازگشت وجه در <a href="/refund">این صفحه</a> آمده است.</div>
+        <div class="lp-guide-body">پرداخت از طریق درگاه بانکی فعال (زرین‌پال یا پرداخت الکترونیک سامان) انجام می‌شود و اعتبار پس از تأیید تراکنش در پنل شما فعال است. شرایط انصراف و بازگشت وجه در <a href="/refund">این صفحه</a> آمده است.</div>
       </details>
       <details class="lp-guide-item">
         <summary>آیا می‌توانم زمان‌بندی ارسال را لغو یا تغییر دهم؟</summary>

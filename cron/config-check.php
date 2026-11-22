@@ -132,6 +132,9 @@ if ($isProduction && $merchantId !== '' && strtolower($merchantId) === 'change_m
 if ($isProduction && env('ZARINPAL_SANDBOX', '0') === '1') {
     finding($findings, 'WARN', 'ZARINPAL_SANDBOX', 'enabled with APP_ENV=production — real payments will be routed to ZarinPal\'s sandbox, not the live gateway');
 }
+if (env('PAYMENT_DEFAULT_GATEWAY', 'zarinpal') === 'sep' && env('SEP_TERMINAL_ID', '') === '') {
+    finding($findings, 'WARN', 'SEP_TERMINAL_ID', 'PAYMENT_DEFAULT_GATEWAY=sep but SEP_TERMINAL_ID is empty — set it here or in Settings → پرداخت آنلاین. A terminal saved in settings still wins when this env value is empty.');
+}
 
 /* ---------- Queue/worker numeric settings ---------- */
 

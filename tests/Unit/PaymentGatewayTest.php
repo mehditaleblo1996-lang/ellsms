@@ -133,8 +133,19 @@ final class PaymentGatewayTest extends TestCase
 
     // ------------------------------------------------------------------ dispatcher
 
+    public function testGatewayNameSelectsSepFromEnv(): void {
+        putenv('PAYMENT_DEFAULT_GATEWAY=sep');
+        self::assertSame('sep', payment_gateway_name());
+    }
+
+    public function testUnknownGatewayFallsBackToZarinpal(): void {
+        putenv('PAYMENT_DEFAULT_GATEWAY=mellat');
+        self::assertSame('zarinpal', payment_gateway_name());
+    }
+
     public function testGatewaySupportsRefundFlags(): void {
         self::assertFalse(payment_gateway_supports_refund('zarinpal'));
+        self::assertFalse(payment_gateway_supports_refund('sep'));
         self::assertTrue(payment_gateway_supports_refund('fake'));
     }
 

@@ -56,6 +56,7 @@ final class MaintenanceModeTest extends TestCase
         $this->assertContains('health.php', \MAINTENANCE_MODE_EXEMPT_SCRIPTS);
         $this->assertContains('health-ready.php', \MAINTENANCE_MODE_EXEMPT_SCRIPTS);
         $this->assertContains('zarinpal-callback.php', \MAINTENANCE_MODE_EXEMPT_SCRIPTS);
+        $this->assertContains('sep-callback.php', \MAINTENANCE_MODE_EXEMPT_SCRIPTS);
     }
 
     public function testLoginAndSendPagesAreNotExempt(): void

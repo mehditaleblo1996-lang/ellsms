@@ -7,11 +7,35 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../zarinpal.php';
 require_once __DIR__ . '/FakeGateway.php';
+require_once __DIR__ . '/SepGateway.php';
 
-const PAYMENT_GATEWAYS = ['zarinpal', 'fake'];
+const PAYMENT_GATEWAYS = ['zarinpal', 'sep', 'fake'];
+
+/**
+ * Which adapter a NEW payment uses.
+ *
+ * Settings → «پرداخت» (ellsms_settings.payment_default_gateway) wins over PAYMENT_DEFAULT_GATEWAY.
+ * The test suite reads the env only, so a developer database cannot change what the tests select.
+ * `fake` is still refused unless ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED=1, from either source.
+ */
+function payment_gateway_configured(): string {
+    $fromEnv = strtolower(trim((string)(env('PAYMENT_DEFAULT_GATEWAY', 'zarinpal') ?? 'zarinpal')));
+    if ($fromEnv === '') {
+        $fromEnv = 'zarinpal';
+    }
+    if (app_env() === 'testing') {
+        return $fromEnv;
+    }
+    try {
+        $chosen = strtolower(trim((string)(setting('payment_default_gateway', $fromEnv) ?? $fromEnv)));
+        return $chosen !== '' ? $chosen : 'zarinpal';
+    } catch (Throwable) {
+        return $fromEnv;
+    }
+}
 
 function payment_gateway_name(): string {
-    $configured = (string)(env('PAYMENT_DEFAULT_GATEWAY', 'zarinpal') ?? 'zarinpal');
+    $configured = payment_gateway_configured();
     if ($configured === 'fake' && !payment_fake_gateway_enabled()) {
         return 'zarinpal';
     }
@@ -53,6 +77,7 @@ function payment_gateway_create(string $gateway, int $amountRial, int $paymentId
     $amountRial = payment_gateway_effective_amount($paymentId, $amountRial);
     return match ($gateway) {
         'fake' => payment_fake_gateway_create($amountRial, $paymentId, $description, $mobile),
+        'sep' => payment_sep_gateway_create($amountRial, $paymentId, $description, $mobile),
         default => payment_zarinpal_gateway_create($amountRial, $paymentId, $description, $mobile),
     };
 }
@@ -60,6 +85,7 @@ function payment_gateway_create(string $gateway, int $amountRial, int $paymentId
 function payment_gateway_redirect_url(string $gateway, string $authority): string {
     return match ($gateway) {
         'fake' => payment_fake_gateway_redirect_url($authority),
+        'sep' => payment_sep_redirect_url($authority),
         default => zarinpal_start_pay_url($authority),
     };
 }
@@ -67,7 +93,17 @@ function payment_gateway_redirect_url(string $gateway, string $authority): strin
 function payment_gateway_verify(string $gateway, int $amountRial, string $authority): array {
     return match ($gateway) {
         'fake' => payment_fake_gateway_verify($amountRial, $authority),
+        'sep' => payment_sep_gateway_verify($amountRial, $authority),
         default => payment_zarinpal_gateway_verify($amountRial, $authority),
+    };
+}
+
+function payment_gateway_label(string $gateway): string {
+    return match ($gateway) {
+        'sep' => 'پرداخت الکترونیک سامان',
+        'zarinpal' => 'زرین‌پال',
+        'fake' => 'پرداخت آزمایشی',
+        default => $gateway,
     };
 }
 

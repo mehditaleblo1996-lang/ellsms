@@ -457,6 +457,21 @@ Admin configures, from **Settings → پرداخت (زرین‌پال)**:
 
 **Double-crediting is explicitly guarded against.** ZarinPal can call the callback URL more than once for the same payment (retries, a user refreshing the result page). The callback handler only credits an account on the specific database update that actually flips a payment row from `pending` to `paid` — a repeat hit finds the row already `paid`, does nothing, and shows "already processed" instead of adding credit twice.
 
+## Buying credit — Saman (پرداخت الکترونیک سامان)
+
+The same purchase pages (`/buy-credit.php`, invoices, subscriptions, reseller packages) can charge
+through Saman Electronic Payment instead of ZarinPal. An admin picks the active gateway in
+**Settings → پرداخت آنلاین**. The terminal number, callback URL and token lifetime are saved there
+too (a saved value wins over `.env`). There is no public sandbox. The full flow — token, the
+browser form SEP requires, callback, verify, amount check, and the rule that one bank receipt can
+never credit two payments — is `docs/sep-payment.md`.
+
+```
+SEP_TERMINAL_ID=
+SEP_CALLBACK_URL=https://your-domain/sep-callback.php
+PAYMENT_DEFAULT_GATEWAY=sep
+```
+
 ## پنل جدید ارسال — combined send panel
 
 A single three-column page (`/new-send.php`) matching a reference design: message composer on the right (character/part counter, emoji insert, a Persian→Latin digit converter to save SMS parts, live preview, quick-send shortcut), recipient building in the middle (manual entry with a live valid/invalid split as you type, file upload, clipboard paste — all three funnel into the same textarea), and send-mode settings on the left. It doesn't duplicate logic — every mode routes to something that already existed:
@@ -763,6 +778,7 @@ updated in the same change** — see `CLAUDE.md`.
 [ai-billing](docs/ai-billing.md) ·
 [manual-payments](docs/manual-payments.md) ·
 [financial-commerce](docs/financial-commerce.md) ·
+[sep-payment](docs/sep-payment.md) ·
 [plans-and-entitlements](docs/plans-and-entitlements.md) ·
 [billing-operations](docs/billing-operations.md)
 

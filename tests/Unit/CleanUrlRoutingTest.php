@@ -46,6 +46,7 @@ final class CleanUrlRoutingTest extends TestCase
             'RewriteRule ^admin/registrations/?$ registration-requests.php [QSA,L]',
             'RewriteRule ^admin/settings/?$ settings.php [QSA,L]',
             'RewriteRule ^payments/zarinpal/callback/?$ zarinpal-callback.php [QSA,L]',
+            'RewriteRule ^payments/sep/callback/?$ sep-callback.php [QSA,L]',
             'RewriteRule ^mo/?$ mo.php [QSA,L]',
             'RewriteRule ^(?:delivery|dlr)/?$ delivery.php [QSA,L]',
         ];
@@ -64,6 +65,9 @@ final class CleanUrlRoutingTest extends TestCase
             'health.php',
             'health-ready.php',
             'zarinpal-callback.php',
+            'sep-callback.php',
+            // Same-site hop that auto-posts the buyer to Saman. Not a public canonical page.
+            'sep-redirect.php',
             // Internal POST-only command endpoint. It immediately redirects back to a clean user URL
             // and is deliberately not given a public canonical GET route.
             'send-queue.php',
@@ -102,7 +106,7 @@ final class CleanUrlRoutingTest extends TestCase
     {
         $prepend = (string)file_get_contents(dirname(__DIR__, 2) . '/app/Support/AuditPrepend.php');
         $exempt = [
-            'health.php', 'health-ready.php', 'zarinpal-callback.php', 'send-queue.php', 'import-cancel.php', 'send-estimate.php',
+            'health.php', 'health-ready.php', 'zarinpal-callback.php', 'sep-callback.php', 'sep-redirect.php', 'send-queue.php', 'import-cancel.php', 'send-estimate.php',
             'reports-v2.php', 'telegram-webhook.php',
             // SMS provider push callbacks (/mo, /delivery): called by the provider, never linked.
             'mo.php', 'delivery.php',
@@ -131,6 +135,8 @@ final class CleanUrlRoutingTest extends TestCase
     public function testSensitiveProviderCallbackIsNotCanonicallyRedirected(): void
     {
         self::assertStringNotContainsString('THE_REQUEST} \\s/+zarinpal-callback\\.php', $this->config);
+        self::assertStringNotContainsString('THE_REQUEST} \\s/+sep-callback\\.php', $this->config);
         self::assertStringContainsString('RewriteRule ^payments/zarinpal/callback/?$ zarinpal-callback.php [QSA,L]', $this->config);
+        self::assertStringContainsString('RewriteRule ^payments/sep/callback/?$ sep-callback.php [QSA,L]', $this->config);
     }
 }

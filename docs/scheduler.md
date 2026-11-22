@@ -8,7 +8,7 @@ before.
 
 | Job | When | What |
 |---|---|---|
-| `payments-reconcile` | every 10 min | re-verifies payments whose callback never arrived or whose verify failed, and credits the ones ZarinPal completed |
+| `payments-reconcile` | every 10 min | re-verifies payments whose callback never arrived or whose verify failed, and credits the ones the gateway completed. Saman can be verified only after the callback stored a RefNum; a buyer who never returns is reversed by Saman after 30 minutes (`docs/sep-payment.md`) |
 | `invoices-expire` | every 15 min | marks issued invoices past their `due_at` expired (an invoice without one never expires; a late payment still marks it paid) |
 | `delivery-refunds` | every 5 min | refunds what the status path itself missed: failed / rejected / expired messages of every customer sent after the `delivery_failed_free_since` cutoff (100%, `docs/delivery-states.md`), and of delivery-based-billing users sent before it (`docs/delivery-based-billing.md`) |
 | `subscription-lifecycle` | every 15 min | trial and grace expiry, period rollover, stale usage reservations (skips itself while `BILLING_ENABLED=0`) |

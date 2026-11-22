@@ -15,7 +15,7 @@
  *   - login, authenticated pages, sends, payment CREATION, platform-admin: BLOCKED (503).
  *   - health.php / health-ready.php: NEVER blocked — liveness/readiness must stay visible
  *     regardless of maintenance mode (Invariant L's spirit extended here).
- *   - zarinpal-callback.php (payment CALLBACKS): NEVER blocked — ZarinPal already completed the
+ *   - zarinpal-callback.php and sep-callback.php (payment CALLBACKS): NEVER blocked — the bank already completed the
  *     charge by the time the browser lands here; blocking it would strand a real payment in
  *     'pending' for no benefit, creating exactly the kind of manual reconciliation work
  *     cron/payments-reconcile.php exists to avoid. See docs/production-runbook.md.
@@ -47,7 +47,7 @@ function maintenance_mode_message(): string {
 /** Script filenames that must stay reachable during maintenance -- see this file's own docblock
  * for why each one is on this list. Matched against basename(SCRIPT_FILENAME), not the URL, so it
  * can't be bypassed/broken by rewrite rules or query strings. */
-const MAINTENANCE_MODE_EXEMPT_SCRIPTS = ['health.php', 'health-ready.php', 'zarinpal-callback.php', 'mo.php', 'delivery.php'];
+const MAINTENANCE_MODE_EXEMPT_SCRIPTS = ['health.php', 'health-ready.php', 'zarinpal-callback.php', 'sep-callback.php', 'mo.php', 'delivery.php'];
 
 function maintenance_mode_current_script_exempt(): bool {
     $script = basename((string)($_SERVER['SCRIPT_FILENAME'] ?? ''));

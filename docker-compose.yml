@@ -120,6 +120,10 @@ services:
       BILLING_TAX_PERCENT: ${BILLING_TAX_PERCENT:-0}
       PAYMENT_DEFAULT_GATEWAY: ${PAYMENT_DEFAULT_GATEWAY:-zarinpal}
       ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED: ${ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED:-0}
+      # Saman Electronic Payment (docs/sep-payment.md). Admin settings override these.
+      SEP_TERMINAL_ID: ${SEP_TERMINAL_ID:-}
+      SEP_CALLBACK_URL: ${SEP_CALLBACK_URL:-}
+      SEP_TOKEN_EXPIRY_MIN: ${SEP_TOKEN_EXPIRY_MIN:-}
     volumes:
       - ./:/var/www/html
       # PHP sessions survive container recreation (deploys, image rebuilds, server restarts), so
@@ -186,10 +190,13 @@ services:
       USAGE_RESERVATION_TTL_MINUTES: ${USAGE_RESERVATION_TTL_MINUTES:-60}
       BILLING_CURRENCY: ${BILLING_CURRENCY:-IRR}
       # Financial commerce (docs/financial-commerce.md) — cron/payments-reconcile.php runs from
-      # this container and needs the same gateway/tax config the app container uses.
+      # the scheduler, which merges this block, and needs the same gateway config as the app.
       BILLING_TAX_PERCENT: ${BILLING_TAX_PERCENT:-0}
       PAYMENT_DEFAULT_GATEWAY: ${PAYMENT_DEFAULT_GATEWAY:-zarinpal}
       ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED: ${ELLSMS_FAKE_PAYMENT_GATEWAY_ENABLED:-0}
+      SEP_TERMINAL_ID: ${SEP_TERMINAL_ID:-}
+      SEP_CALLBACK_URL: ${SEP_CALLBACK_URL:-}
+      SEP_TOKEN_EXPIRY_MIN: ${SEP_TOKEN_EXPIRY_MIN:-}
       BACKEND_DB_HOST: ${BACKEND_DB_HOST:?set BACKEND_DB_HOST in .env}
       BACKEND_DB_PORT: ${BACKEND_DB_PORT:-3306}
       BACKEND_DB_NAME: ${BACKEND_DB_NAME:?set BACKEND_DB_NAME in .env}

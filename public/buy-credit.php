@@ -155,9 +155,10 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
   </div>
 
   <section data-section="online">
-    <p class="hint">درگاه پرداخت را انتخاب کنید:</p>
+    <?php $onlineGateway = payment_gateway_name(); ?>
+    <p class="hint">پرداخت آنلاین از طریق <?= e(payment_gateway_label($onlineGateway)) ?> انجام می‌شود. انتخاب درگاه با مدیر، در تنظیمات پرداخت است.</p>
     <div class="pay-methods pay-gateways">
-      <label class="pay-method"><input type="radio" name="gateway_choice" value="zarinpal" checked><span class="pay-method-box"><span class="pay-method-icon"><?= $methodIcons['online'] ?></span><span>زرین‌پال</span></span></label>
+      <label class="pay-method"><input type="radio" name="gateway_choice" value="<?= e($onlineGateway) ?>" checked><span class="pay-method-box"><span class="pay-method-icon"><?= $methodIcons['online'] ?></span><span><?= e(payment_gateway_label($onlineGateway)) ?></span></span></label>
     </div>
   </section>
 
