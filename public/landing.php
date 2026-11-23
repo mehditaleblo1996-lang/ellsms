@@ -111,68 +111,62 @@ require __DIR__ . '/../app/views/public_header.php';
     </div>
   </section>
 
-  <?php
-  // The positions and route endpoints share the same 640 × 420 coordinate space.
-  $dxConstellation = [
-      [514, 112, 'M320 210 C397 220 438 112 514 112'],
-      [530, 303, 'M320 210 C407 208 441 303 530 303'],
-      [320, 56,  'M320 210 C357 154 283 104 320 56'],
-      [110, 303, 'M320 210 C233 208 199 303 110 303'],
-      [126, 112, 'M320 210 C243 220 202 112 126 112'],
-  ];
-  ?>
-  <section class="dx-hero" aria-label="منظومه خدمات داتیس">
-    <div class="dx-hero-inner" data-dx-constellation>
-      <div class="dx-core" data-dx-core role="group" aria-label="انتخاب خدمات داتیس">
-        <svg class="dx-routes" viewBox="0 0 640 420" aria-hidden="true" focusable="false">
-          <g class="dx-map-guides">
-            <ellipse cx="320" cy="210" rx="276" ry="130" transform="rotate(-13 320 210)"/>
-            <ellipse cx="320" cy="210" rx="236" ry="162" transform="rotate(12 320 210)"/>
-            <circle cx="320" cy="210" r="81"/>
-            <ellipse class="dx-map-orbit" cx="320" cy="210" rx="276" ry="130" transform="rotate(-13 320 210)" pathLength="100"/>
-            <circle cx="320" cy="210" r="94" class="dx-hub-pulse"/>
-            <path d="M61 193h12m-6-6v12m525 18h10m-5-5v10M196 65h8m-4-4v8m250 296h10m-5-5v10M230 350h6m-3-3v6"/>
-          </g>
-          <?php foreach ($dxConstellation as $k => [$x, $y, $path]): ?>
-          <g class="dx-route" data-dx-highlight="<?= $k ?>" data-dx-tone="<?= $k ?>" style="--delay:<?= -$k * 0.9 ?>s">
-            <path class="dx-route-track" d="<?= $path ?>" />
-            <path class="dx-route-packets" d="<?= $path ?>" pathLength="100" />
-            <path class="dx-route-signal" d="<?= $path ?>" pathLength="100" />
-          </g>
-          <?php endforeach; ?>
-        </svg>
-
-        <button type="button" class="dx-hub" data-dx-sphere aria-label="هستهٔ داتیس؛ نمایش همهٔ خدمات">
-          <img class="dx-hub-mark" src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="84" height="54">
-          <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
-          <span class="dx-hub-icon" data-dx-highlight="<?= $k ?>" data-dx-tone="<?= $k ?>" aria-hidden="true"><?= $dxIcon($ico) ?></span>
-          <?php endforeach; ?>
-        </button>
-
-        <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
-          <?php [$x, $y] = $dxConstellation[$k]; ?>
-          <button type="button" class="dx-node-face" data-dx-node="<?= $k ?>" data-dx-tone="<?= $k ?>"
-                  style="--x:<?= $x * 100 / 640 ?>%;--y:<?= $y * 100 / 420 ?>%"
-                  aria-controls="dxCoreInfo" aria-pressed="false">
-            <span class="dx-node-ball"><?= $dxIcon($ico) ?></span><span class="dx-node-label"><?= e($name) ?></span>
-          </button>
-        <?php endforeach; ?>
+  <!-- Hero (docs/landing.md#hero): the signature «هسته‌ی داتیس» — a graphite-and-glass core with the
+       DATIS mark, a brushed-metal ring and the five product lines orbiting on it. Pure CSS 3D (no WebGL,
+       no library): it renders the same with or without a GPU, turns slowly, tilts a little toward the
+       pointer (damped), pauses off-screen and stands still for prefers-reduced-motion. Each node is a
+       button: a click stops the orbit, highlights the node and opens its explanation card under the
+       core (script at the end of this block). -->
+  <section class="dx-hero" aria-label="خدمات داتیس">
+    <div class="dx-hero-inner">
+      <div class="dx-core" data-dx-core>
+        <div class="dx-core-stage">
+          <div class="dx-core-world" data-dx-world>
+            <span class="dx-core-floor" aria-hidden="true"></span>
+            <span class="dx-core-light" aria-hidden="true"></span>
+            <div class="dx-ring dx-ring-b" aria-hidden="true"><span class="dx-ring-line"></span></div>
+            <div class="dx-ring dx-ring-a">
+              <span class="dx-ring-band" aria-hidden="true"></span>
+              <span class="dx-ring-line" aria-hidden="true"></span>
+              <div class="dx-dust" aria-hidden="true">
+                <?php foreach ([[8, 252, 0], [31, 236, 1], [57, 270, 2], [83, 248, 0], [104, 228, 1], [129, 262, 2], [151, 244, 0], [176, 274, 1], [198, 232, 2], [221, 258, 0], [247, 240, 1], [268, 268, 2], [293, 230, 0], [316, 254, 1], [339, 246, 2]] as [$da, $dr, $dv]): ?><i class="is-<?= $dv ?>" style="--a:<?= $da ?>deg;--r:<?= $dr ?>px"></i><?php endforeach; ?>
+              </div>
+              <div class="dx-orbit" role="group" aria-label="خدمات داتیس؛ برای توضیح هر خدمت روی آن بزنید، یا مدار را بکشید و بچرخانید">
+                <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
+                <span class="dx-beam" data-dx-beam="<?= $k ?>" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>" aria-hidden="true"><i></i></span>
+                <div class="dx-node" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>">
+                  <button type="button" class="dx-node-face" data-dx-node="<?= $k ?>" aria-controls="dxCoreInfo" aria-pressed="false"><span class="dx-node-ball"><?= $dxIcon($ico) ?></span><span class="dx-node-label"><?= e($name) ?></span></button>
+                </div>
+                <?php endforeach; ?>
+              </div>
+            </div>
+            <div class="dx-sphere">
+              <span class="dx-sphere-halo" aria-hidden="true"></span>
+              <span class="dx-sphere-pulse" aria-hidden="true"></span><span class="dx-sphere-pulse is-2" aria-hidden="true"></span><span class="dx-sphere-pulse is-3" aria-hidden="true"></span>
+              <span class="dx-sphere-wave" aria-hidden="true"></span>
+              <span class="dx-sphere-shell" aria-hidden="true"></span>
+              <button type="button" class="dx-sphere-body" data-dx-sphere aria-label="هسته‌ی داتیس: نمایش همه‌ی خدمات و چرخش مدار">
+                <span class="dx-sphere-sweep" aria-hidden="true"></span>
+                <img class="dx-sphere-mark" src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="84" height="54">
+                <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?><span class="dx-sphere-icon" data-k="<?= $k ?>" aria-hidden="true"><?= $dxIcon($ico) ?></span><?php endforeach; ?>
+                <span class="dx-sphere-spec" aria-hidden="true"></span>
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="dx-core-info" id="dxCoreInfo" aria-live="polite">
-        <div class="dx-core-hint" data-dx-hint>
-          <h2>منظومهٔ خدمات داتیس</h2>
-          <p>یکی از خدمات را روی نقشه انتخاب کنید و ببینید چه امکاناتی برای کسب‌وکارتان دارد.</p>
-        </div>
+        <p class="dx-core-hint" data-dx-hint>روی هر خدمت بزنید تا معرفی شود؛ مدار را بکشید تا بچرخد، یا روی هسته بزنید.</p>
         <?php foreach ($dxLines as $k => [$id, $name, $ico, $title, $desc, $items]): ?>
-        <div class="dx-core-card" data-dx-card="<?= $k ?>" data-dx-tone="<?= $k ?>" hidden>
+        <div class="dx-core-card" data-dx-card="<?= $k ?>" hidden>
           <div class="dx-core-card-head">
             <span class="dx-core-card-ico"><?= $dxIcon($ico) ?></span>
+            <div><h2><?= e($title) ?></h2></div>
             <button type="button" class="dx-core-close" data-dx-close aria-label="بستن توضیح">×</button>
           </div>
-          <h2><?= e($title) ?></h2>
           <p><?= e($desc) ?></p>
           <ul><?php foreach ($items as $f): ?><li><?= e($f) ?></li><?php endforeach; ?></ul>
-          <a href="#<?= e($id) ?>" class="dx-link">مشاهدهٔ جزئیات <?= $dxIcon('arrow') ?></a>
+          <a href="#<?= e($id) ?>" class="dx-link">جزئیات <?= e($title) ?> <?= $dxIcon('arrow') ?></a>
         </div>
         <?php endforeach; ?>
       </div>
@@ -382,72 +376,142 @@ require __DIR__ . '/../app/views/public_header.php';
   });
 })();
 (function () {
-  var constellation = document.querySelector('[data-dx-constellation]');
-  if (!constellation) return;
-  var core = constellation.querySelector('[data-dx-core]');
-  var nodes = Array.from(core.querySelectorAll('[data-dx-node]'));
-  var highlights = core.querySelectorAll('[data-dx-highlight]');
-  var cards = constellation.querySelectorAll('[data-dx-card]');
-  var hint = constellation.querySelector('[data-dx-hint]');
-  var selected = null;
-  var swipe = null;
-  var suppressClick = false;
+  // Hero core (docs/landing.md#the-signature-core-hero). One rAF loop drives the orbit angle --rot
+  // (degrees) on the 3D world: a slow auto-turn, drag/swipe with momentum, slow-down while a node is
+  // hovered, and a damped turn that brings a clicked service to the front. It also eases the pointer
+  // tilt (--px/--py). It runs only while the core is on screen and the tab is visible.
+  var core = document.querySelector('[data-dx-core]');
+  if (!core) return;
+  var world = core.querySelector('[data-dx-world]');
+  var nodes = core.querySelectorAll('[data-dx-node]');
+  var sphere = core.querySelector('[data-dx-sphere]');
+  var info = document.getElementById('dxCoreInfo');
+  var hint = info && info.querySelector('[data-dx-hint]');
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var fine = window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  var BASE = still ? 0 : 360 / 56;         // auto-turn, degrees per second
+  var rot = 0, vel = BASE, sel = null, target = null, hover = false, onScreen = true;
+  var tx = 0, ty = 0, px = 0, py = 0, raf = 0, last = 0;
+  var drag = null, dragged = false;
 
-  function show(index) {
-    selected = index;
-    nodes.forEach(function (node, key) { node.setAttribute('aria-pressed', String(key === index)); });
-    highlights.forEach(function (item) {
-      item.classList.toggle('is-selected', Number(item.getAttribute('data-dx-highlight')) === index);
-    });
-    cards.forEach(function (card, key) { card.hidden = key !== index; });
-    hint.hidden = index !== null;
-    if (index === null) constellation.removeAttribute('data-dx-tone');
-    else constellation.setAttribute('data-dx-tone', String(index));
+  requestAnimationFrame(function () { core.classList.add('is-in'); });
+
+  // Node k sits at angle 72·k on the ring; with the ring tilted back, the point nearest the viewer
+  // is at +90°. Choose the turn that brings it there by the shortest way.
+  function frontAngle(k) {
+    var t = 90 - k * 72, d = ((t - rot) % 360 + 540) % 360 - 180;
+    return rot + d;
+  }
+  function show(k) {
+    sel = k;
+    nodes.forEach(function (n) { n.setAttribute('aria-pressed', String(n.getAttribute('data-dx-node') === k)); });
+    if (info) info.querySelectorAll('[data-dx-card]').forEach(function (c) { c.hidden = c.getAttribute('data-dx-card') !== k; });
+    if (hint) hint.hidden = k !== null;
+    core.classList.toggle('is-held', k !== null);
+    if (k === null) { core.removeAttribute('data-sel'); target = null; }
+    else { core.setAttribute('data-sel', k); target = frontAngle(+k); if (still) rot = target; }
+    kick();
+  }
+  function burst() {
+    core.classList.remove('is-burst'); void core.offsetWidth; core.classList.add('is-burst');
+    setTimeout(function () { core.classList.remove('is-burst'); }, 1100);
   }
 
+  nodes.forEach(function (n) {
+    n.addEventListener('click', function (e) {
+      if (dragged) { e.preventDefault(); return; }
+      var k = n.getAttribute('data-dx-node');
+      show(n.getAttribute('aria-pressed') === 'true' ? null : k);
+    });
+    n.addEventListener('pointerenter', function () { hover = true; });
+    n.addEventListener('pointerleave', function () { hover = false; });
+    n.addEventListener('focus', function () { hover = true; });
+    n.addEventListener('blur', function () { hover = false; });
+  });
   function closeCard() {
-    if (selected === null) return;
-    var trigger = nodes[selected];
+    if (sel === null) return;
+    var trigger = nodes[Number(sel)];
     show(null);
     trigger.focus({ preventScroll: true });
   }
-
-  nodes.forEach(function (node, index) {
-    node.addEventListener('click', function () {
-      if (!suppressClick) show(selected === index ? null : index);
-    });
+  if (info) info.querySelectorAll('[data-dx-close]').forEach(function (b) { b.addEventListener('click', closeCard); });
+  core.closest('.dx-hero').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeCard();
   });
-  constellation.querySelectorAll('[data-dx-close]').forEach(function (button) {
-    button.addEventListener('click', closeCard);
-  });
-  core.querySelector('[data-dx-sphere]').addEventListener('click', function () {
-    if (!suppressClick) show(null);
-  });
-  constellation.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape') closeCard();
+  if (sphere) sphere.addEventListener('click', function () {
+    if (dragged) return;
+    show(null); burst();
+    if (!still) vel = BASE + 260;            // a spin boost that decays back to the slow turn
   });
 
-  // Swiping changes the active route while leaving vertical touch scrolling available.
-  core.addEventListener('pointerdown', function (event) {
-    if (event.isPrimary && event.button === 0) swipe = [event.clientX, event.clientY];
+  // Drag / swipe anywhere on the core to spin it (horizontal only; vertical swipes still scroll).
+  core.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY, t: performance.now(), v: 0, on: false, id: e.pointerId };
+    dragged = false;
   });
-  core.addEventListener('pointerup', function (event) {
-    if (!event.isPrimary || !swipe) return;
-    var dx = event.clientX - swipe[0], dy = event.clientY - swipe[1];
-    swipe = null;
-    if (Math.abs(dx) < 36 || Math.abs(dx) < Math.abs(dy)) return;
-    var next = selected === null ? (dx < 0 ? 0 : nodes.length - 1) : (selected + (dx < 0 ? 1 : -1) + nodes.length) % nodes.length;
-    show(next);
-    suppressClick = true;
-    setTimeout(function () { suppressClick = false; }, 0);
+  core.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    var dx = e.clientX - drag.x;
+    if (!drag.on) {
+      if (Math.abs(dx) < 6 || Math.abs(dx) < Math.abs(e.clientY - drag.y)) return;
+      drag.on = true; dragged = true; core.classList.add('is-dragging');
+      try { core.setPointerCapture(e.pointerId); } catch (err) {}
+      if (sel !== null) show(null);
+    }
+    var now = performance.now(), dt = Math.max(1, now - drag.t) / 1000;
+    var d = -dx * 0.42;                         // the front of the ring follows the finger
+    rot += d; drag.v = drag.v * 0.6 + (d / dt) * 0.4;
+    drag.x = e.clientX; drag.t = now; kick();
   });
-  core.addEventListener('pointercancel', function () { swipe = null; });
+  function endDrag() {
+    if (!drag) return;
+    if (drag.on) { vel = Math.max(-900, Math.min(900, drag.v)); core.classList.remove('is-dragging'); }
+    drag = null;
+    setTimeout(function () { dragged = false; }, 0);   // let the click that ends a drag be ignored
+  }
+  core.addEventListener('pointerup', endDrag);
+  core.addEventListener('pointercancel', endDrag);
 
+  if (fine && !still) window.addEventListener('pointermove', function (e) {
+    var r = core.getBoundingClientRect();
+    tx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / (window.innerWidth / 2)));
+    ty = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / (window.innerHeight / 2)));
+    kick();
+  }, { passive: true });
+
+  function frame(now) {
+    var dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016; last = now;
+    if (!drag || !drag.on) {
+      if (target !== null) {
+        var remaining = target - rot;
+        rot = Math.abs(remaining) <= 0.05 ? target : rot + remaining * (1 - Math.exp(-dt * 6));
+        vel = 0;
+      } else {
+        var want = hover ? BASE * 0.2 : BASE;
+        vel += (want - vel) * (1 - Math.exp(-dt * 1.6));
+        rot += vel * dt;
+      }
+    }
+    if (rot > 7200 || rot < -7200) { var w = rot % 360; if (target !== null) target += w - rot; rot = w; }
+    px += (tx - px) * (1 - Math.exp(-dt * 4)); py += (ty - py) * (1 - Math.exp(-dt * 4));
+    world.style.setProperty('--rot', rot.toFixed(2));
+    world.style.setProperty('--px', px.toFixed(3));
+    world.style.setProperty('--py', py.toFixed(3));
+    var moving = (!still && target === null) || (target !== null && target !== rot)
+      || Math.abs(tx - px) > 0.001 || Math.abs(ty - py) > 0.001;
+    raf = (onScreen && !document.hidden && moving) ? requestAnimationFrame(frame) : 0;
+    if (!raf) last = 0;
+  }
+  function kick() { if (!raf && onScreen && !document.hidden) raf = requestAnimationFrame(frame); }
   if ('IntersectionObserver' in window) {
-    new IntersectionObserver(function (entries) {
-      core.classList.toggle('is-paused', !entries[0].isIntersecting);
+    new IntersectionObserver(function (en) {
+      onScreen = en[0].isIntersecting; core.classList.toggle('is-paused', !onScreen); kick();
     }).observe(core);
   }
+  document.addEventListener('visibilitychange', kick);
+  world.style.setProperty('--rot', '0');
+  kick();
 })();
 </script>
 

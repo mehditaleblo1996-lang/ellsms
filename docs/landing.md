@@ -8,10 +8,10 @@ telephony panels, customers, FAQ and a closing call to action.
 
 | File | What |
 |---|---|
-| `public/landing.php` | The page: every section below, the `$customers` list, and two small inline scripts (on-screen animation trigger; service selection) |
+| `public/landing.php` | The page: every section below, the `$customers` list, and two small inline scripts (on-screen animation trigger; the hero core's pointer tilt) |
 | `app/views/public_header.php` / `public_footer.php` | Shared public chrome: the floating nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in, and `--lp-nav-h` (the nav's measured height, used for anchor offsets). The header preloads the two main Estedad weights, takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد، the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup, and the «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» badge, which for now links to the site's home page (`/`) — the company's member page on tehran.irannsr.org is kept commented out in `legal_nsr_badge_html()` to restore later; its green emblem and calligraphic caption are `public/assets/img/nsr-tehran-emblem.png` / `nsr-tehran-text.png`, the caption drawn as an SVG mask in the footer's text colour) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
 | `public/assets/css/style.css` | Design tokens of the public pages (`.lp-body`), the floating nav, footer, FAQ list, customer rail, `.lp-reveal` |
-| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero constellation and its explanation cards, showcases, IT/telephony panels, FAQ layout, CTA. Loaded only by `landing.php`. |
+| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero and its 3D core with the explanation card, showcases, IT/telephony panels, FAQ layout, CTA. Loaded only by `landing.php`. |
 | `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat in the AI showcase (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
 | `public/assets/css/landing-products.css` | The `.ps-*` primitives of the product scenes, and the IT / telephony carousels (`.pc-*`: carousel chrome and each slide's story). Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/cloud.php`, `it-{1,2,3}.php`, `voip-{1,2,3}.php` | Animated SVG scenes: the cloud showcase, and the three slides of each of the IT / telephony carousels |
@@ -66,7 +66,7 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 | Anchor | Section |
 |---|---|
 | — | **Intro** (first): the page's `<h1>` «یک شریک فناوری برای همه‌ی نیازهای کسب‌وکار شما», a short paragraph and «آشنایی با داتیس رایان» (→ `/about`) |
-| — | **Hero**: an animated constellation of the five services and a detail card. Choosing a service highlights its route and opens its card. |
+| — | **Hero**: the signature core (below), centred, with the hint «برای آشنایی با هر خدمت، روی آن در مدار بزنید.» under it. Clicking a service node opens its explanation card (see below). The former headline, paragraph and «کشف خدمات داتیس» / «مشاوره با کارشناسان» buttons were removed; the consultation link stays in the closing CTA. |
 | `#product-sms` | Showcase: the SMS platform — four features, its channels (پیامک، پیام صوتی، پیام در بله), and a mock-up of «قالب ← پیام شخصی هر ردیف ← گزارش تحویل» |
 | `#product-cloud` | Showcase: cloud and infrastructure, with the animated rack scene |
 | `#product-ai` | Showcase on a light full-width band (page background with a faint turquoise tint, hairline borders): AI and automation, with the «منشی هوشمند» chat as a light chat window (white card, grey customer bubble, pale-turquoise reply bubble, white chips; colours from the `.lp-body` tokens in `landing-ai.css`) (its button opens `/guide.php#guide-ai-secretary`) |
@@ -86,17 +86,61 @@ the live report in `#product-sms` (with voice and Bale as channels), «منشی 
 The products' texts are those of the former product rows, unchanged. No figures, clients or claims are
 invented: the one number on the page (۱۲٬۴۸۰ in the report mock-up) is labelled «نمونه».
 
-### Service constellation
+### The signature core (hero)
 
-The SVG map and the five HTML buttons share the same coordinate space (`$dxConstellation` in
-`landing.php`). The buttons stay in fixed positions while light travels along the routes and the
-hub pulses. SVG product icons keep their dimensions and strokes when selected.
+A graphite sphere with a glass shell and the DATIS mark, a brushed-metal ring and a wide second ring in
+tilted planes, and the five service lines orbiting on the main ring. It is **pure CSS 3D**
+(`.dx-core-*` in `home.css`, one `preserve-3d` context, so the browser depth-sorts the nodes in front of
+or behind the sphere); no WebGL or library, so it looks the same with or without a GPU. Each node face
+counter-rotates and un-tilts, so it always faces the viewer. Scaled per breakpoint with `--k`.
 
-A click or tap lights the selected route, shows its icon in the hub, and opens a card next to the map
-(or below it on small screens). Cards link to the corresponding `#product-*` showcases. Horizontal
-swipes cycle through the services. The same product button, the hub, the close button, and Escape
-all clear the selection. Closing with the button or Escape returns focus to the product button.
-Offscreen map animations pause, and the map is static with reduced motion enabled.
+**Graphics.**
+- The core: a turquoise halo that breathes behind it; three energy pulses that ripple outwards, one
+  after another; a soft light sweep turning inside the graphite; a glassy highlight that slides opposite
+  the pointer (`--px`/`--py`), so the core reads as round.
+- Energy beams (`.dx-beam`): a spoke from the core to each service in the ring's plane, with a light
+  flowing outwards along it (staggered per service).
+- Sparks (`.dx-dust`): fifteen tiny twinkling lights on a second, slower orbit turning the other way.
+- Entrance: the services pop out of the core one after another.
+
+**Interaction (the inline script after the hero).** One rAF loop sets `--rot` (the orbit angle, in
+degrees) on `.dx-core-world`; `.dx-orbit` turns by it and every node face turns back by it.
+- It turns slowly on its own (360° per 56 s) and slows to a fifth while a service is hovered or
+  focused.
+- **Drag / swipe** anywhere on the core to spin it, with momentum that eases back to the slow turn.
+  Only horizontal drags count (`touch-action: pan-y`), so vertical swipes still scroll the page. The
+  click that ends a drag is ignored.
+- **Click a service:** the orbit turns the shortest way to bring it to the front (+90° on the tilted
+  ring), its ball turns turquoise with a ripple, its beam brightens and flows faster, the core swaps the
+  DATIS mark for that service's icon (`.dx-core[data-sel]`) and its card opens below (see
+  «Click-to-explain»). Clicking it again or «×» releases the orbit.
+- **Click the core** (a `<button>`): a shockwave ring, a thump, the card closes and the orbit gets a spin
+  boost that decays back.
+- The loop runs only while the core is on screen and the tab is visible; off screen the CSS animations
+  pause too (`.is-paused`).
+- `prefers-reduced-motion`: no auto-turn, no pulses, sparks, sweep or flowing light; a click still selects
+  and the service jumps to the front.
+
+**Rendering rule.** A translucent layer that crosses the tilted ring's plane is split there by the
+browser and shows a seam. So the core's soft glows (`.dx-core-light`, `.dx-sphere-halo`) sit behind the
+whole ring (`translateZ(-300px)`, scaled up for the perspective), the selected-state glow is in the halo
+rather than on the shell, and the second ring is wide enough that its front arc passes around the core
+rather than across it.
+
+### Click-to-explain (the core's nodes)
+
+Each of the five nodes is a `<button data-dx-node>` (`$dxLines` in `landing.php` holds its anchor, short
+name, icon, title, one-paragraph explanation and three main services). A click turns the orbit to bring the node to the front and holds it there
+(`.dx-core.is-held`), highlights the node (`aria-pressed="true"`, turquoise ball, graphite label) and shows
+its card in `#dxCoreInfo` under the core: title, explanation, the three services as
+chips and «جزئیات …» linking to its showcase (`#product-*`). Clicking the same node again, «×» or the core closes the
+card and the orbit turns again. The decorative 3D layers have `pointer-events: none` so only the nodes
+take clicks (plus the core and dragging on the core itself); nodes behind the sphere are not clickable
+until they come round. The card region is
+`aria-live="polite"`.
+
+The «محصولات و خدمات» bento grid (`#products`, «پنج خدمت، یک تیم») that used to sit between the hero and
+the showcases was removed; the page goes from the core to `#product-sms`.
 
 ### IT and telephony carousels
 
