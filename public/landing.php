@@ -133,8 +133,8 @@ require __DIR__ . '/../app/views/public_header.php';
               </div>
               <div class="dx-orbit" role="group" aria-label="خدمات داتیس؛ برای توضیح هر خدمت روی آن بزنید، یا مدار را بکشید و بچرخانید">
                 <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
-                <span class="dx-beam" data-dx-beam="<?= $k ?>" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>" aria-hidden="true"><i></i></span>
-                <div class="dx-node" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>">
+                <span class="dx-beam" data-dx-highlight="<?= $k ?>" data-dx-tone="<?= $k ?>" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>" aria-hidden="true"><i></i></span>
+                <div class="dx-node" data-dx-tone="<?= $k ?>" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>">
                   <button type="button" class="dx-node-face" data-dx-node="<?= $k ?>" aria-controls="dxCoreInfo" aria-pressed="false"><span class="dx-node-ball"><?= $dxIcon($ico) ?></span><span class="dx-node-label"><?= e($name) ?></span></button>
                 </div>
                 <?php endforeach; ?>
@@ -148,7 +148,7 @@ require __DIR__ . '/../app/views/public_header.php';
               <button type="button" class="dx-sphere-body" data-dx-sphere aria-label="هسته‌ی داتیس: نمایش همه‌ی خدمات و چرخش مدار">
                 <span class="dx-sphere-sweep" aria-hidden="true"></span>
                 <img class="dx-sphere-mark" src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="84" height="54">
-                <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?><span class="dx-sphere-icon" data-k="<?= $k ?>" aria-hidden="true"><?= $dxIcon($ico) ?></span><?php endforeach; ?>
+                <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?><span class="dx-sphere-icon" data-dx-highlight="<?= $k ?>" data-dx-tone="<?= $k ?>" aria-hidden="true"><?= $dxIcon($ico) ?></span><?php endforeach; ?>
                 <span class="dx-sphere-spec" aria-hidden="true"></span>
               </button>
             </div>
@@ -158,7 +158,7 @@ require __DIR__ . '/../app/views/public_header.php';
       <div class="dx-core-info" id="dxCoreInfo" aria-live="polite">
         <p class="dx-core-hint" data-dx-hint>روی هر خدمت بزنید تا معرفی شود؛ مدار را بکشید تا بچرخد، یا روی هسته بزنید.</p>
         <?php foreach ($dxLines as $k => [$id, $name, $ico, $title, $desc, $items]): ?>
-        <div class="dx-core-card" data-dx-card="<?= $k ?>" hidden>
+        <div class="dx-core-card" data-dx-card="<?= $k ?>" data-dx-tone="<?= $k ?>" hidden>
           <div class="dx-core-card-head">
             <span class="dx-core-card-ico"><?= $dxIcon($ico) ?></span>
             <div><h2><?= e($title) ?></h2></div>
@@ -385,6 +385,7 @@ require __DIR__ . '/../app/views/public_header.php';
   var world = core.querySelector('[data-dx-world]');
   var nodes = core.querySelectorAll('[data-dx-node]');
   var sphere = core.querySelector('[data-dx-sphere]');
+  var highlights = core.querySelectorAll('[data-dx-highlight]');
   var info = document.getElementById('dxCoreInfo');
   var hint = info && info.querySelector('[data-dx-hint]');
   var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -405,6 +406,9 @@ require __DIR__ . '/../app/views/public_header.php';
   function show(k) {
     sel = k;
     nodes.forEach(function (n) { n.setAttribute('aria-pressed', String(n.getAttribute('data-dx-node') === k)); });
+    highlights.forEach(function (item) {
+      item.classList.toggle('is-selected', item.getAttribute('data-dx-highlight') === k);
+    });
     if (info) info.querySelectorAll('[data-dx-card]').forEach(function (c) { c.hidden = c.getAttribute('data-dx-card') !== k; });
     if (hint) hint.hidden = k !== null;
     core.classList.toggle('is-held', k !== null);
@@ -428,7 +432,18 @@ require __DIR__ . '/../app/views/public_header.php';
     n.addEventListener('focus', function () { hover = true; });
     n.addEventListener('blur', function () { hover = false; });
   });
-  if (info) info.querySelectorAll('[data-dx-close]').forEach(function (b) { b.addEventListener('click', function () { show(null); }); });
+  function closeCard() {
+    if (sel === null) return;
+    var trigger = nodes[Number(sel)];
+    show(null);
+    trigger.focus({ preventScroll: true });
+  }
+  if (info) info.querySelectorAll('[data-dx-close]').forEach(function (b) {
+    b.addEventListener('click', closeCard);
+  });
+  core.closest('.dx-hero').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeCard();
+  });
   if (sphere) sphere.addEventListener('click', function () {
     if (dragged) return;
     show(null); burst();
