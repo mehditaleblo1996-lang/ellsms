@@ -78,7 +78,9 @@
 .dx-core.is-in .dx-core-world { opacity: 1; }
 .dx-core-floor {
   position: absolute; left: 50%; top: 86%; width: 360px; height: 60px; margin: -30px 0 0 -180px;
-  background: radial-gradient(closest-side, rgba(37, 41, 43, .2), rgba(37, 41, 43, 0));
+  background:
+    radial-gradient(ellipse at 50% 52%, rgba(37, 41, 43, .19), transparent 57%),
+    radial-gradient(closest-side, rgba(37, 41, 43, .12), transparent);
   transform: translateZ(-200px);
 }
 .dx-core-light {
@@ -93,16 +95,34 @@
 /* Wide and gently tilted so its front arc passes around the core (minor semi-axis ≈ 100px > the 80px
    core) instead of slicing across it edge-on. */
 .dx-ring-b { width: 400px; height: 400px; margin: -200px 0 0 -200px; transform: rotateX(54deg) rotateY(32deg); }
-/* Brushed metal: a conic sweep of silvers, masked to a 7px band. */
+/* Two polished edges frame the brushed face of the main silver ring. */
 .dx-ring-band {
   position: absolute; inset: 0; border-radius: 50%;
   background: conic-gradient(from 20deg, #9aa7aa, #f4f7f7 12%, #6c787b 26%, #d9e0e1 40%, #505b5e 55%, #eef2f2 68%, #7f8b8e 82%, #9aa7aa);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
-          mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
-  box-shadow: 0 0 0 1px rgba(37, 41, 43, .06);
+  mask-image: radial-gradient(farthest-side, transparent calc(100% - 12px), #000 calc(100% - 10px), #000 calc(100% - 1px), transparent);
 }
-.dx-ring-line { position: absolute; inset: 16px; border-radius: 50%; border: 1px solid rgba(17, 184, 197, .5); }
-.dx-ring-b .dx-ring-line { inset: 0; border: 1px dashed rgba(37, 41, 43, .2); animation: dx-spin 90s linear infinite reverse; }
+.dx-ring-band::before, .dx-ring-band::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+}
+.dx-ring-band::before {
+  background: radial-gradient(farthest-side,
+    transparent calc(100% - 12px), #ffffffb8 calc(100% - 10px), transparent calc(100% - 8px),
+    transparent calc(100% - 4px), #1a1e205c calc(100% - 2px), #ffffffbf calc(100% - 1px), transparent);
+}
+.dx-ring-band::after {
+  background: conic-gradient(from 45deg, transparent 12%, #fff 17%, transparent 25%, transparent 61%, #fff9 65%, transparent 72%);
+  animation: dx-spin 16s linear infinite;
+}
+.dx-ring-line {
+  position: absolute; inset: 18px; border-radius: 50%;
+  border: 1px solid rgba(17, 184, 197, .5);
+  box-shadow: inset 0 0 6px rgba(17, 184, 197, .12), 0 0 6px rgba(17, 184, 197, .18);
+}
+.dx-ring-b .dx-ring-line {
+  inset: 0; border: 1px dashed rgba(37, 41, 43, .28);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .44);
+  animation: dx-spin 90s linear infinite reverse;
+}
 .dx-orbit { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateZ(calc(var(--rot, 0) * 1deg)); }
 .dx-node {
   position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d;
@@ -162,16 +182,20 @@
 @keyframes dx-wave { 0% { transform: scale(.9); opacity: 1; } 100% { transform: scale(3.4); opacity: 0; } }
 .dx-sphere-shell {
   position: absolute; left: 0; top: 0; width: 212px; height: 212px; margin: -106px 0 0 -106px; border-radius: 50%;
+  --rim-glow: .21;
   background:
-    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 30%),
-    radial-gradient(circle, rgba(255, 255, 255, 0) 58%, rgba(255, 255, 255, .55) 70%, rgba(214, 228, 230, .35) 100%);
+    radial-gradient(circle at 50% 50%, transparent 55%, rgba(255, 255, 255, .34) 61%, transparent 66%),
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, .85), transparent 31%),
+    radial-gradient(circle, transparent 58%, rgba(255, 255, 255, .44) 69%, rgba(214, 228, 230, .35) 100%);
   border: 1px solid rgba(255, 255, 255, .95);
-  box-shadow: 0 30px 60px -30px rgba(37, 41, 43, .45), inset 0 -8px 20px rgba(17, 184, 197, .12), inset 0 0 0 2px rgba(17, 184, 197, 0);
+  box-shadow:
+    0 30px 60px -30px rgba(37, 41, 43, .45),
+    inset 0 0 0 2px rgba(17, 184, 197, var(--rim-glow)),
+    inset 0 0 0 6px rgba(255, 255, 255, .19),
+    inset 0 -12px 26px rgba(17, 184, 197, var(--rim-glow));
   transition: box-shadow .5s var(--ease), transform .5s var(--ease);
 }
-/* Selected: the glass fills with turquoise from inside and the halo (behind the ring) brightens; no outer
-   glow on the shell itself, which crosses the ring's plane and would show a seam. */
-.dx-core.is-held .dx-sphere-shell { box-shadow: 0 30px 60px -30px rgba(37, 41, 43, .45), inset 0 -10px 30px rgba(17, 184, 197, .32), inset 0 0 0 2px rgba(17, 184, 197, .25); }
+.dx-core.is-held .dx-sphere-shell { --rim-glow: .34; }
 .dx-core.is-held .dx-sphere-halo { background: radial-gradient(closest-side, rgba(17, 184, 197, .42), rgba(17, 184, 197, .12) 55%, rgba(17, 184, 197, 0)); }
 .dx-core.is-burst .dx-sphere-shell { animation: dx-thump .6s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes dx-thump { 30% { transform: scale(.94); } 100% { transform: none; } }
@@ -181,10 +205,15 @@
   width: calc(160px * var(--k)); height: calc(160px * var(--k)); border-radius: 50%; display: grid; place-items: center;
   padding: 0; border: 0; font: inherit; cursor: pointer; overflow: hidden; isolation: isolate; pointer-events: auto; -webkit-tap-highlight-color: transparent;
   background:
-    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 34%),
+    radial-gradient(ellipse at 34% 20%, rgba(255, 255, 255, .22), transparent 41%),
+    radial-gradient(circle at 54% 53%, transparent 52%, rgba(255, 255, 255, .11) 68%, transparent 72%),
     radial-gradient(circle at 50% 118%, rgba(17, 184, 197, .55), rgba(17, 184, 197, 0) 46%),
     radial-gradient(circle at 42% 36%, #4b5558 0%, #2b3134 46%, #1a1e20 78%, #121516 100%);
-  box-shadow: inset 0 2px 1px rgba(255, 255, 255, .18), inset 0 -12px 24px rgba(0, 0, 0, .35), 0 24px 40px -22px rgba(37, 41, 43, .8);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .23),
+    inset 0 2px 3px rgba(255, 255, 255, .26),
+    inset 0 -10px 24px rgba(0, 0, 0, .35),
+    0 24px 40px -22px rgba(37, 41, 43, .8);
   transition: transform .35s var(--ease);
 }
 .dx-sphere-body:hover { transform: scale(1.04); }
@@ -210,7 +239,7 @@
 /* A glassy highlight that slides opposite the pointer, so the core feels round. */
 .dx-sphere-spec {
   position: absolute; left: 22%; top: 14%; width: 46%; height: 34%; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, .42), rgba(255, 255, 255, 0));
+  background: radial-gradient(closest-side, rgba(255, 255, 255, .28), transparent);
   transform: translate(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -14px));
 }
 
@@ -472,7 +501,7 @@ button.dx-node-face:hover .dx-node-label { border-color: var(--primary-border); 
 
 /* ---------- reduced motion: still composition, everything visible ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .dx-rise, .dx-core-card, .dx-ring-b .dx-ring-line, .dx-dust, .dx-dust i, .dx-beam i, .dx-sphere-halo, .dx-sphere-pulse, .dx-sphere-wave,
+  .dx-rise, .dx-core-card, .dx-ring-band::after, .dx-ring-b .dx-ring-line, .dx-dust, .dx-dust i, .dx-beam i, .dx-sphere-halo, .dx-sphere-pulse, .dx-sphere-wave,
   .dx-sphere-sweep, .dx-sphere-shell, .dx-sphere-body, .dx-node-ball, .dx-node-label, .dx-node-ball::after { animation: none !important; }
   .dx-sphere-pulse { opacity: 0; }
   .dx-beam i { opacity: 0; }
