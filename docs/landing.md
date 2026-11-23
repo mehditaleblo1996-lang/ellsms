@@ -89,10 +89,10 @@ invented: the one number on the page (۱۲٬۴۸۰ in the report mock-up) is lab
 ### The signature core (hero)
 
 A graphite sphere with a glass shell and the DATIS mark, a brushed-metal ring and a wide second ring in
-tilted planes, and the five service lines orbiting on the main ring. It is **pure CSS 3D**
-(`.dx-core-*` in `home.css`, one `preserve-3d` context, so the browser depth-sorts the nodes in front of
-or behind the sphere); no WebGL or library, so it looks the same with or without a GPU. Each node face
-counter-rotates and un-tilts, so it always faces the viewer. Scaled per breakpoint with `--k`.
+tilted planes, and the five service lines orbiting on the main ring. CSS 3D draws the rings and light
+effects. The hub and product buttons live on a separate flat layer so text and SVG glyphs are painted
+at their display size. Invisible anchors on the main ring supply each button's screen position, size
+and stacking order. The scene scales per breakpoint with `--k`.
 
 **Graphics.**
 - The core: a turquoise halo that breathes behind it; three energy pulses that ripple outwards, one
@@ -104,7 +104,7 @@ counter-rotates and un-tilts, so it always faces the viewer. Scaled per breakpoi
 - Entrance: the services pop out of the core one after another.
 
 **Interaction (the inline script after the hero).** One rAF loop sets `--rot` (the orbit angle, in
-degrees) on `.dx-core-world`; `.dx-orbit` turns by it and every node face turns back by it.
+degrees) on `.dx-core-world`; `.dx-orbit` turns by it and the buttons follow their projected anchors.
 - It turns slowly on its own (360° per 56 s) and slows to a fifth while a service is hovered or
   focused.
 - **Drag / swipe** anywhere on the core to spin it, with momentum that eases back to the slow turn.

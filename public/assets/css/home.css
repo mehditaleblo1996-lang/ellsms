@@ -61,8 +61,8 @@
 /* ---------- the signature core (pure CSS 3D) ----------
    .dx-core-world holds one 3D rendering context: the graphite sphere (a billboard at z=0), a
    brushed-metal ring and a thin second ring lying in tilted planes, and five nodes on the main ring.
-   The orbit turns by --rot (set by the script); each node face counter-turns and un-tilts, so it always faces the viewer
-   while the browser depth-sorts it in front of or behind the sphere. --px/--py (−1…1) come from the
+   The orbit turns by --rot (set by the script); invisible anchors counter-turn and un-tilt to measure
+   screen positions and depth for the flat button layer. --px/--py (−1…1) come from the
    pointer, damped in JS. Sizes are in px at --k = 1 and the whole world is scaled per breakpoint. */
 .dx-core { --k: 1; --tilt: 70deg; position: relative; width: 100%; aspect-ratio: 1 / 1; max-width: 580px; margin-inline: auto; }
 .dx-core-stage { position: absolute; inset: 0; perspective: 1400px; }
@@ -108,25 +108,33 @@
   position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d;
   transform: rotateZ(var(--a)) translateX(260px) rotateZ(calc(var(--a) * -1));
 }
+.dx-node-anchor {
+  position: absolute; left: 0; top: 0; width: 20px; height: 0; transform-origin: 0 0;
+  transform: rotateZ(calc(var(--rot, 0) * -1deg)) rotateY(8deg) rotateX(calc(var(--tilt) * -1)) translateX(-50%);
+}
+/* Keep button surfaces, labels and vector strokes out of the perspective compositor. */
+.dx-core-faces {
+  position: absolute; inset: 0; isolation: isolate; pointer-events: none;
+  opacity: 0; transition: opacity 1.2s var(--ease);
+}
+.dx-core.is-in .dx-core-faces { opacity: 1; }
 .dx-node-face {
-  position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  /* The un-tilt comes first and the centring translate last, so the rotations cancel exactly. */
-  /* --rot (degrees, from the script) turns the orbit; the face turns back by the same amount. */
-  transform: rotateZ(calc(var(--rot, 0) * -1deg)) rotateY(8deg) rotateX(calc(var(--tilt) * -1)) translate(-50%, -29px);
-  transform-origin: 0 0;
+  position: absolute; left: var(--face-x); top: var(--face-y);
+  display: flex; flex-direction: column; align-items: center; gap: calc(8px * var(--face-scale));
+  translate: -50% calc(-29px * var(--face-scale));
 }
 @keyframes dx-spin { to { transform: rotateZ(360deg); } }
 .dx-node-ball {
-  display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; color: var(--primary-hover);
+  display: grid; place-items: center; width: calc(58px * var(--face-scale)); height: calc(58px * var(--face-scale)); border-radius: 50%; color: var(--primary-hover);
   background:
     radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 42%),
     linear-gradient(160deg, #ffffff, #e6eced 62%, #d3dcde);
   border: 1px solid rgba(255, 255, 255, .9);
   box-shadow: 0 14px 26px -14px rgba(37, 41, 43, .55), inset 0 -4px 10px rgba(37, 41, 43, .08), 0 0 0 1px rgba(37, 41, 43, .05);
 }
-.dx-node-ball svg { width: 24px; height: 24px; }
+.dx-node-ball svg { width: 42%; height: 42%; }
 .dx-node-label {
-  padding: 4px 11px; border-radius: 999px; white-space: nowrap; font-size: 12.5px; font-weight: 700; color: var(--foreground);
+  padding: calc(4px * var(--face-scale)) calc(11px * var(--face-scale)); border-radius: 999px; white-space: nowrap; font-size: calc(12.5px * var(--face-scale)); font-weight: 700; color: var(--foreground);
   background: rgba(255, 255, 255, .86); border: 1px solid var(--border); box-shadow: 0 6px 14px -10px rgba(37, 41, 43, .4);
 }
 /* The sphere: graphite body with a soft studio key light, a turquoise rim from below and a glass shell. */
@@ -169,7 +177,8 @@
 @keyframes dx-thump { 30% { transform: scale(.94); } 100% { transform: none; } }
 /* The graphite core is a button: a click sends a shockwave, closes the card and spins the orbit. */
 .dx-sphere-body {
-  position: absolute; left: 0; top: 0; width: 160px; height: 160px; margin: -80px 0 0 -80px; border-radius: 50%; display: grid; place-items: center;
+  position: absolute; z-index: 100; left: 50%; top: 50%; translate: -50% -50%;
+  width: calc(160px * var(--k)); height: calc(160px * var(--k)); border-radius: 50%; display: grid; place-items: center;
   padding: 0; border: 0; font: inherit; cursor: pointer; overflow: hidden; isolation: isolate; pointer-events: auto; -webkit-tap-highlight-color: transparent;
   background:
     radial-gradient(circle at 34% 26%, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 34%),
@@ -190,14 +199,14 @@
 }
 .dx-core.is-held .dx-sphere-sweep { animation-duration: 2.2s; }
 .dx-sphere-mark, .dx-sphere-icon { grid-area: 1 / 1; transition: opacity .35s var(--ease); }
-.dx-sphere-mark { width: 76px; height: auto; display: block; opacity: .96; }
+.dx-sphere-mark { width: calc(76px * var(--k)); height: auto; display: block; opacity: .96; }
 .dx-core[data-sel] .dx-sphere-mark { opacity: 0; }
 /* The selected service's icon takes the mark's place on the core. */
 .dx-sphere-icon {
   color: #9de9ef; opacity: 0;
   background: radial-gradient(closest-side, rgba(17, 184, 197, .35), transparent);
 }
-.dx-sphere-icon svg { width: 58px; height: 58px; display: block; stroke-width: 1.25; }
+.dx-sphere-icon svg { width: calc(58px * var(--k)); height: calc(58px * var(--k)); display: block; stroke-width: 1.25; }
 /* A glassy highlight that slides opposite the pointer, so the core feels round. */
 .dx-sphere-spec {
   position: absolute; left: 22%; top: 14%; width: 46%; height: 34%; border-radius: 50%; pointer-events: none;
@@ -467,7 +476,7 @@ button.dx-node-face:hover .dx-node-label { border-color: var(--primary-border); 
   .dx-sphere-sweep, .dx-sphere-shell, .dx-sphere-body, .dx-node-ball, .dx-node-label, .dx-node-ball::after { animation: none !important; }
   .dx-sphere-pulse { opacity: 0; }
   .dx-beam i { opacity: 0; }
-  .dx-core-world, .dx-sphere-mark, .dx-sphere-icon { transition: none; }
+  .dx-core-world, .dx-core-faces, .dx-sphere-mark, .dx-sphere-icon { transition: none; }
   .dx-core-world { opacity: 1; }
   [data-dx-live] .dx-ui-out p, [data-dx-live] .dx-ui-bars i, [data-dx-live] .dx-ui-row { opacity: 1; animation: none !important; }
 }

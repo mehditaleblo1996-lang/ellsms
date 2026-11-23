@@ -131,12 +131,10 @@ require __DIR__ . '/../app/views/public_header.php';
               <div class="dx-dust" aria-hidden="true">
                 <?php foreach ([[8, 252, 0], [31, 236, 1], [57, 270, 2], [83, 248, 0], [104, 228, 1], [129, 262, 2], [151, 244, 0], [176, 274, 1], [198, 232, 2], [221, 258, 0], [247, 240, 1], [268, 268, 2], [293, 230, 0], [316, 254, 1], [339, 246, 2]] as [$da, $dr, $dv]): ?><i class="is-<?= $dv ?>" style="--a:<?= $da ?>deg;--r:<?= $dr ?>px"></i><?php endforeach; ?>
               </div>
-              <div class="dx-orbit" role="group" aria-label="خدمات داتیس؛ برای توضیح هر خدمت روی آن بزنید، یا مدار را بکشید و بچرخانید">
+              <div class="dx-orbit" aria-hidden="true">
                 <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
                 <span class="dx-beam" data-dx-beam="<?= $k ?>" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>" aria-hidden="true"><i></i></span>
-                <div class="dx-node" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>">
-                  <button type="button" class="dx-node-face" data-dx-node="<?= $k ?>" aria-controls="dxCoreInfo" aria-pressed="false"><span class="dx-node-ball"><?= $dxIcon($ico) ?></span><span class="dx-node-label"><?= e($name) ?></span></button>
-                </div>
+                <span class="dx-node" style="--a:<?= $k * 72 ?>deg"><span class="dx-node-anchor" data-dx-anchor></span></span>
                 <?php endforeach; ?>
               </div>
             </div>
@@ -145,14 +143,22 @@ require __DIR__ . '/../app/views/public_header.php';
               <span class="dx-sphere-pulse" aria-hidden="true"></span><span class="dx-sphere-pulse is-2" aria-hidden="true"></span><span class="dx-sphere-pulse is-3" aria-hidden="true"></span>
               <span class="dx-sphere-wave" aria-hidden="true"></span>
               <span class="dx-sphere-shell" aria-hidden="true"></span>
-              <button type="button" class="dx-sphere-body" data-dx-sphere aria-label="هسته‌ی داتیس: نمایش همه‌ی خدمات و چرخش مدار">
-                <span class="dx-sphere-sweep" aria-hidden="true"></span>
-                <img class="dx-sphere-mark" src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="84" height="54">
-                <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?><span class="dx-sphere-icon" data-k="<?= $k ?>" aria-hidden="true"><?= $dxIcon($ico) ?></span><?php endforeach; ?>
-                <span class="dx-sphere-spec" aria-hidden="true"></span>
-              </button>
             </div>
           </div>
+        </div>
+        <div class="dx-core-faces" data-dx-faces role="group" aria-label="خدمات داتیس؛ برای توضیح هر خدمت روی آن بزنید، یا مدار را بکشید و بچرخانید">
+          <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
+          <button type="button" class="dx-node-face" data-dx-node="<?= $k ?>" style="--n:<?= $k ?>"
+                  aria-controls="dxCoreInfo" aria-pressed="false">
+            <span class="dx-node-ball"><?= $dxIcon($ico) ?></span><span class="dx-node-label"><?= e($name) ?></span>
+          </button>
+          <?php endforeach; ?>
+          <button type="button" class="dx-sphere-body" data-dx-sphere aria-label="هسته‌ی داتیس: نمایش همه‌ی خدمات و چرخش مدار">
+            <span class="dx-sphere-sweep" aria-hidden="true"></span>
+            <img class="dx-sphere-mark" src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="84" height="54">
+            <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?><span class="dx-sphere-icon" data-k="<?= $k ?>" aria-hidden="true"><?= $dxIcon($ico) ?></span><?php endforeach; ?>
+            <span class="dx-sphere-spec" aria-hidden="true"></span>
+          </button>
         </div>
       </div>
       <div class="dx-core-info" id="dxCoreInfo" aria-live="polite">
@@ -384,6 +390,8 @@ require __DIR__ . '/../app/views/public_header.php';
   if (!core) return;
   var world = core.querySelector('[data-dx-world]');
   var nodes = core.querySelectorAll('[data-dx-node]');
+  var anchors = core.querySelectorAll('[data-dx-anchor]');
+  var faces = core.querySelector('[data-dx-faces]');
   var sphere = core.querySelector('[data-dx-sphere]');
   var info = document.getElementById('dxCoreInfo');
   var hint = info && info.querySelector('[data-dx-hint]');
@@ -394,7 +402,25 @@ require __DIR__ . '/../app/views/public_header.php';
   var tx = 0, ty = 0, px = 0, py = 0, raf = 0, last = 0;
   var drag = null, dragged = false;
 
-  requestAnimationFrame(function () { core.classList.add('is-in'); });
+  // Read all projected points together. The SVG faces stay in the flat layer, sized in CSS pixels.
+  function placeFaces() {
+    var bounds = faces.getBoundingClientRect();
+    var points = Array.from(anchors, function (anchor) { return anchor.getBoundingClientRect(); });
+    // Compare projected scale with the responsive scale of the hub to order the faces by depth.
+    var anchorWidth = anchors[0].offsetWidth;
+    var hubScale = sphere.offsetWidth / 160;
+    points.forEach(function (point, index) {
+      var scale = point.width / anchorWidth;
+      var style = nodes[index].style;
+      style.setProperty('--face-x', (point.left + point.width / 2 - bounds.left).toFixed(2) + 'px');
+      style.setProperty('--face-y', (point.top + point.height / 2 - bounds.top).toFixed(2) + 'px');
+      style.setProperty('--face-scale', scale.toFixed(4));
+      style.zIndex = String(Math.round(100 + (scale - hubScale) * 200));
+    });
+    faces.style.setProperty('--px', px.toFixed(3));
+    faces.style.setProperty('--py', py.toFixed(3));
+    core.classList.add('is-in');
+  }
 
   // Node k sits at angle 72·k on the ring; with the ring tilted back, the point nearest the viewer
   // is at +90°. Choose the turn that brings it there by the shortest way.
@@ -498,6 +524,7 @@ require __DIR__ . '/../app/views/public_header.php';
     world.style.setProperty('--rot', rot.toFixed(2));
     world.style.setProperty('--px', px.toFixed(3));
     world.style.setProperty('--py', py.toFixed(3));
+    placeFaces();
     var moving = (!still && target === null) || (target !== null && target !== rot)
       || Math.abs(tx - px) > 0.001 || Math.abs(ty - py) > 0.001;
     raf = (onScreen && !document.hidden && moving) ? requestAnimationFrame(frame) : 0;
@@ -509,6 +536,8 @@ require __DIR__ . '/../app/views/public_header.php';
       onScreen = en[0].isIntersecting; core.classList.toggle('is-paused', !onScreen); kick();
     }).observe(core);
   }
+  if ('ResizeObserver' in window) new ResizeObserver(kick).observe(core);
+  window.addEventListener('resize', kick, { passive: true });
   document.addEventListener('visibilitychange', kick);
   world.style.setProperty('--rot', '0');
   kick();
