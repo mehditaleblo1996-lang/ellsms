@@ -451,7 +451,18 @@ function lba_lookup(array $gateway, string $method, array $query = []): array|st
     return $rows;
 }
 
-/** CheckPolygonCells: whether each operator covers the drawn area. @return array{ok:bool, rows?:list<array>, error?:string} */
+/**
+ * CheckPolygonCells: whether each operator covers the drawn area.
+ *
+ * The guide types `polygon` as "array of polygon" but gives no request example, and PishgamRayan answered
+ * that shape with a bare statusCode 25 even for the guide's own example area, which
+ * CreateSimpleSmartSmsRequest accepted. So two shapes are tried: 'list' (all polygons, as documented)
+ * and 'ring' (one call per polygon, `polygon` = its points). A 25 on one shape tries the other; the shape
+ * that worked is remembered per gateway (setting lba_check_shape.<id>) and tried first next time.
+ * With several polygons, an operator covers the area only if it covers every polygon.
+ *
+ * @return array{ok:bool, rows?:list<array>, error?:string}
+ */
 function lba_check_polygons(array $user, string $originator, array $operators, string $polygonsJson): array {
     $guard = lba_guard($user, $originator);
     if (!$guard['ok']) return $guard;
@@ -459,13 +470,42 @@ function lba_check_polygons(array $user, string $originator, array $operators, s
     if ($operators === []) return ['ok' => false, 'error' => 'دست‌کم یک اپراتور انتخاب کنید.'];
     $polygons = lba_parse_polygons($polygonsJson);
     if (is_string($polygons)) return ['ok' => false, 'error' => $polygons];
-    $r = lba_pishgam_call($guard['gateway'], 'POST', 'CheckPolygonCells', [], ['mobileOperators' => $operators, 'polygon' => $polygons]);
-    if (!$r['ok']) return ['ok' => false, 'error' => lba_call_error($r)];
-    $rows = [];
-    foreach (lba_list_of($r['data']) as $row) {
-        $rows[] = ['operator' => (int)lba_field($row, 'mobileOperator'), 'valid' => (bool)lba_field($row, 'isValid'), 'valid_area' => (bool)lba_field($row, 'isValidArea')];
+    $g = $guard['gateway'];
+    $key = 'lba_check_shape.' . (int)$g['id'];
+    $saved = setting_fresh($key, 'list') === 'ring' ? 'ring' : 'list';
+    $shapes = $saved === 'ring' ? ['ring', 'list'] : ['list', 'ring'];
+    $first = null;
+    foreach ($shapes as $shape) {
+        $answers = [];
+        foreach ($shape === 'list' ? [$polygons] : $polygons as $polygon) {
+            $r = lba_pishgam_call($g, 'POST', 'CheckPolygonCells', [], ['mobileOperators' => $operators, 'polygon' => $polygon]);
+            if (!$r['ok']) break;
+            $answers[] = $r;
+        }
+        if ($r['ok']) {
+            if ($shape !== $saved) set_setting($key, $shape);
+            return ['ok' => true, 'rows' => lba_check_rows($answers)];
+        }
+        $first ??= $r;
+        if ($r['status_code'] !== 25) break; // a real refusal (token, IP, validation): the other shape would not help
     }
-    return ['ok' => true, 'rows' => $rows];
+    return ['ok' => false, 'error' => lba_call_error($first)];
+}
+
+/** The per-operator coverage of one or more CheckPolygonCells answers: covered only where every answer says so. */
+function lba_check_rows(array $answers): array {
+    $rows = [];
+    foreach ($answers as $r) {
+        foreach (lba_list_of($r['data']) as $row) {
+            $op = (int)lba_field($row, 'mobileOperator');
+            $valid = (bool)lba_field($row, 'isValid');
+            $area = (bool)lba_field($row, 'isValidArea');
+            $rows[$op] = isset($rows[$op])
+                ? ['operator' => $op, 'valid' => $rows[$op]['valid'] && $valid, 'valid_area' => $rows[$op]['valid_area'] && $area]
+                : ['operator' => $op, 'valid' => $valid, 'valid_area' => $area];
+        }
+    }
+    return array_values($rows);
 }
 
 /* ---------------------------------------------------------------- gray lists (campaigns) */

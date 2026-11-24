@@ -451,6 +451,32 @@ final class LbaTest extends IntegrationTestCase
         $this->assertSame(['mobileOperators', 'polygon'], array_keys($this->calls('CheckPolygonCells')[0]['body']));
     }
 
+    public function testCoverageCheckFallsBackToOneRingPerPolygon(): void
+    {
+        db()->exec("DELETE FROM ellsms_settings WHERE skey LIKE 'lba\\_check\\_shape.%'");
+        $this->patchState(['check_ring_only' => true]);
+        $two = json_encode([[[51.3753, 35.7448], [51.3760, 35.7440], [51.3745, 35.7432]], [[51.40, 35.70], [51.41, 35.70], [51.40, 35.69]]]);
+        $check = lba_check_polygons($this->user(), $this->line, ['1', '2'], $two);
+        $this->assertTrue($check['ok'], $check['error'] ?? '');
+        $this->assertSame([['operator' => 1, 'valid' => true, 'valid_area' => true], ['operator' => 2, 'valid' => false, 'valid_area' => true]], $check['rows']);
+        $calls = $this->calls('CheckPolygonCells');
+        $this->assertCount(3, $calls, 'the documented shape once, then one ring per polygon');
+        $this->assertIsArray($calls[0]['body']['polygon'][0][0], 'first: a list of polygons');
+        $this->assertSame([51.3753, 35.7448], $calls[1]['body']['polygon'][0], 'then: one ring');
+        $this->assertSame('ring', setting_fresh('lba_check_shape.' . $this->gatewayId));
+
+        // Next time the ring shape goes first: no failing call.
+        @file_put_contents(self::$recordFile, '');
+        $this->assertTrue(lba_check_polygons($this->user(), $this->line, ['1'], $this->square())['ok']);
+        $this->assertCount(1, $this->calls('CheckPolygonCells'));
+
+        // The remembered ring shape keeps working when the server takes both: still a single call.
+        $this->patchState(['check_ring_only' => false]);
+        @file_put_contents(self::$recordFile, '');
+        $this->assertTrue(lba_check_polygons($this->user(), $this->line, ['1'], $this->square())['ok']);
+        $this->assertCount(1, $this->calls('CheckPolygonCells'));
+    }
+
     public function testFailedCallsAreKeptForTheAdminWithoutTheToken(): void
     {
         $g = lba_gateway_get($this->gatewayId);

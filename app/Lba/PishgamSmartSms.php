@@ -328,15 +328,20 @@ function lba_debug_list(int $gatewayId, int $limit = 20): array {
     }
 }
 
-/** The newest failed call of a gateway and method since a moment, or null (CheckPolygonCells answers with it). */
+/** The newest failed call of a gateway and method since a moment, or null. */
 function lba_debug_last(int $gatewayId, string $method, int $sinceId = 0): ?array {
+    $rows = lba_debug_since($gatewayId, $method, $sinceId);
+    return $rows === [] ? null : $rows[count($rows) - 1];
+}
+
+/** @return list<array> the failed calls of a gateway and method since a moment, oldest first (at most 10) */
+function lba_debug_since(int $gatewayId, string $method, int $sinceId): array {
     try {
-        $st = db()->prepare('SELECT * FROM ellsms_lba_call_log WHERE gateway_id = ? AND method = ? AND id > ? ORDER BY id DESC LIMIT 1');
+        $st = db()->prepare('SELECT * FROM ellsms_lba_call_log WHERE gateway_id = ? AND method = ? AND id > ? ORDER BY id DESC LIMIT 10');
         $st->execute([$gatewayId, $method, $sinceId]);
-        $row = $st->fetch();
-        return $row ?: null;
+        return array_reverse($st->fetchAll());
     } catch (Throwable) {
-        return null;
+        return [];
     }
 }
 
