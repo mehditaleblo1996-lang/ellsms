@@ -239,7 +239,7 @@ final class LbaTest extends IntegrationTestCase
         $this->assertTrue($simple['ok'], $simple['error'] ?? '');
         $p = $simple['payload'];
         $this->assertSame([1, 2], $p['operators'], 'unknown operator dropped');
-        $this->assertSame([[51.3753, 35.7448], [51.3745, 35.7432], [51.376, 35.744], [51.3753, 35.7448]], $p['polygons'][0], 'closed, [lon, lat], drawn clockwise so sent reversed');
+        $this->assertSame([[51.3753, 35.7448], [51.376, 35.744], [51.3745, 35.7432], [51.3753, 35.7448]], $p['polygons'][0], 'closed, [lon, lat], clockwise as the guide\'s own example');
         $this->assertSame(25, $p['fromAge']);
         $this->assertSame('98912,98935', $p['numberprefixes']);
         $this->assertSame(1, $p['residenceState']);
@@ -449,6 +449,43 @@ final class LbaTest extends IntegrationTestCase
         $check = lba_check_polygons($this->user(), $this->line, ['1', '2'], $this->square());
         $this->assertSame([['operator' => 1, 'valid' => true, 'valid_area' => true], ['operator' => 2, 'valid' => false, 'valid_area' => true]], $check['rows']);
         $this->assertSame(['mobileOperators', 'polygon'], array_keys($this->calls('CheckPolygonCells')[0]['body']));
+    }
+
+    public function testFailedCallsAreKeptForTheAdminWithoutTheToken(): void
+    {
+        $g = lba_gateway_get($this->gatewayId);
+        db()->prepare('DELETE FROM ellsms_lba_call_log WHERE gateway_id = ?')->execute([$this->gatewayId]);
+        $mark = lba_debug_mark();
+        lba_lookup($g, 'GetProvinces');
+        $this->assertSame([], lba_debug_list($this->gatewayId), 'a successful call is not logged');
+
+        // An unknown gray list: the fake answers statusCode 58.
+        $r = lba_pishgam_call($g, 'GET', 'GetSmartSmsCampaignCreateStatus', ['smartSmsCampaignId' => 999999]);
+        $this->assertFalse($r['ok']);
+        $log = lba_debug_last($this->gatewayId, 'GetSmartSmsCampaignCreateStatus', $mark);
+        $this->assertNotNull($log);
+        $this->assertSame(58, (int)$log['status_code']);
+        $this->assertSame('GET', $log['http_method']);
+        $this->assertSame(['smartSmsCampaignId' => 999999], json_decode((string)$log['query_json'], true));
+        $this->assertStringContainsString('"statusCode":58', (string)$log['response_raw']);
+
+        $texts = lba_debug_texts($log, $g);
+        $this->assertStringContainsString('GET ' . self::$baseUrl . '/SmartSms/GetSmartSmsCampaignCreateStatus?smartSmsCampaignId=999999', $texts['request']);
+        $this->assertStringContainsString('Authorization: <token>', $texts['request']);
+        $this->assertStringNotContainsString('test-lba-token', json_encode(lba_debug_list($this->gatewayId)) . implode('', $texts), 'the token is never stored');
+
+        // A POST keeps its body; points stay one per line in the readable text.
+        lba_pishgam_call($g, 'POST', 'NoSuchMethod', [], ['polygon' => [[[51.1, 35.1], [51.2, 35.2]]]]);
+        $texts = lba_debug_texts(lba_debug_last($this->gatewayId, 'NoSuchMethod', $mark), $g);
+        $this->assertStringContainsString('[51.1, 35.1]', $texts['request']);
+        $this->assertStringContainsString('HTTP 404', $texts['response']);
+
+        // Only the newest LBA_DEBUG_KEEP calls of a gateway are kept.
+        for ($i = 0; $i < LBA_DEBUG_KEEP + 3; $i++) lba_debug_record($g, 'GET', 'X' . $i, [], null, ['http' => 500, 'status_code' => null, 'error' => 'e'], 'x', 1);
+        $st = db()->prepare('SELECT COUNT(*) FROM ellsms_lba_call_log WHERE gateway_id = ?');
+        $st->execute([$this->gatewayId]);
+        $this->assertSame(LBA_DEBUG_KEEP, (int)$st->fetchColumn());
+        $this->assertSame('X' . (LBA_DEBUG_KEEP + 2), lba_debug_list($this->gatewayId, 1)[0]['method']);
     }
 
     public function testJalaliParsing(): void

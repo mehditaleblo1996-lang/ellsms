@@ -26,6 +26,20 @@
     return [lon, lat];
   }
   function round(v) { return Math.round(v * 1e6) / 1e6; }
+  // Area of a [lon, lat] ring in m² (spherical approximation; plenty for a city-sized shape).
+  function ringArea(pts) {
+    var R = 6371008.8, sum = 0, rad = Math.PI / 180;
+    for (var i = 0; i < pts.length; i++) {
+      var a = pts[i], b = pts[(i + 1) % pts.length];
+      sum += (b[0] - a[0]) * rad * (2 + Math.sin(a[1] * rad) + Math.sin(b[1] * rad));
+    }
+    return Math.abs(sum * R * R / 2);
+  }
+  function areaText(m2) {
+    if (m2 < 1e6) return toFa(Math.round(m2 / 100) * 100).replace(/\B(?=([۰-۹]{3})+(?![۰-۹]))/g, '٬') + ' متر مربع';
+    return toFa((Math.round(m2 / 1e5) / 10).toString()).replace('.', '٫') + ' کیلومتر مربع';
+  }
+  function toFa(n) { return String(n).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
   function el(tag, attrs, parent, ns) {
     var e = ns ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
     Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
@@ -125,7 +139,9 @@
       if (readonly) return;
       var done = state.polys.filter(function (p) { return p.length >= 3; }).length;
       var cur = state.polys[state.polys.length - 1].length;
-      info.textContent = 'محدوده‌های کامل: ' + done + ' — نقاط محدوده‌ی در حال رسم: ' + cur;
+      var area = state.polys.filter(function (p) { return p.length >= 3; }).reduce(function (t, p) { return t + ringArea(p); }, 0);
+      info.textContent = 'محدوده‌های کامل: ' + toFa(done) + ' — نقاط محدوده‌ی در حال رسم: ' + toFa(cur) + (area > 0 ? ' — مساحت تقریبی: ' + areaText(area) : '');
+      info.classList.toggle('is-ready', done > 0);
     }
 
     function zoomAt(delta, px, py) {
@@ -140,14 +156,16 @@
       state.zoom = z; state.lon = nc[0]; state.lat = nc[1];
       render();
     }
-    function button(label, title, fn) {
-      var b = el('button', {type: 'button', 'class': 'btn btn-sm', title: title}, bar);
+    function button(label, title, fn, parent) {
+      var b = el('button', {type: 'button', 'class': 'btn btn-sm', title: title, 'aria-label': title}, parent || bar);
       b.textContent = label;
       b.addEventListener('click', fn);
       return b;
     }
-    button('+', 'بزرگ‌نمایی', function () { zoomAt(1); });
-    button('−', 'کوچک‌نمایی', function () { zoomAt(-1); });
+    // Zoom sits on the map itself; a press there is not a click that adds a point (see pointerdown).
+    var zoom = el('div', {'class': 'lba-map-zoom'}, view);
+    button('+', 'بزرگ‌نمایی', function () { zoomAt(1); }, zoom);
+    button('−', 'کوچک‌نمایی', function () { zoomAt(-1); }, zoom);
     var info = null;
     if (!readonly) {
       button('محدوده‌ی بعدی', 'پایان این محدوده و شروع محدوده‌ی تازه', function () {
@@ -173,7 +191,7 @@
     // Drag to pan; a press that does not move is a click (adds a point).
     var drag = null;
     view.addEventListener('pointerdown', function (ev) {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 || ev.target.closest('.lba-map-zoom, .lba-map-credit')) return;
       drag = {x: ev.clientX, y: ev.clientY, c: project(state.lon, state.lat, state.zoom), moved: false};
       view.setPointerCapture(ev.pointerId);
     });
