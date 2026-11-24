@@ -137,7 +137,9 @@ username/password, a fixed tariff per Persian and English part) and pins one to 
 LBA, on the same page or in the Numbers page's «درگاه LBA» column. The number's ordinary sends are not
 affected. The provider is PishgamRayan's smart SMS web service. Customers use **/messages/lba**: audiences
 of every kind the provider offers, gray lists, clubs, one-off and periodic sends, and statistics. Every
-message sent is charged. See [`docs/lba.md`](docs/lba.md).
+message sent is charged. Platform admins also get «جزئیات فنی» there: the latest failed provider calls as
+sent (without the token) and as answered, ready to copy to PishgamRayan's support (table `ellsms_lba_call_log`,
+migration `2026_11_27_lba_call_log.sql`). See [`docs/lba.md`](docs/lba.md).
 
 ## Aimed bulk — send by postal code (ارسال با کد پستی)
 

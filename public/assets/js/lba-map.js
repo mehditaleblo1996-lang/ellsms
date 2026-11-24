@@ -26,6 +26,7 @@
     return [lon, lat];
   }
   function round(v) { return Math.round(v * 1e6) / 1e6; }
+  function toFa(n) { return String(n).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
   function el(tag, attrs, parent, ns) {
     var e = ns ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
     Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
@@ -125,7 +126,8 @@
       if (readonly) return;
       var done = state.polys.filter(function (p) { return p.length >= 3; }).length;
       var cur = state.polys[state.polys.length - 1].length;
-      info.textContent = 'محدوده‌های کامل: ' + done + ' — نقاط محدوده‌ی در حال رسم: ' + cur;
+      info.textContent = 'محدوده‌های کامل: ' + toFa(done) + ' — نقاط محدوده‌ی در حال رسم: ' + toFa(cur);
+      info.classList.toggle('is-ready', done > 0);
     }
 
     function zoomAt(delta, px, py) {
@@ -140,14 +142,16 @@
       state.zoom = z; state.lon = nc[0]; state.lat = nc[1];
       render();
     }
-    function button(label, title, fn) {
-      var b = el('button', {type: 'button', 'class': 'btn btn-sm', title: title}, bar);
+    function button(label, title, fn, parent) {
+      var b = el('button', {type: 'button', 'class': 'btn btn-sm', title: title, 'aria-label': title}, parent || bar);
       b.textContent = label;
       b.addEventListener('click', fn);
       return b;
     }
-    button('+', 'بزرگ‌نمایی', function () { zoomAt(1); });
-    button('−', 'کوچک‌نمایی', function () { zoomAt(-1); });
+    // Zoom sits on the map itself; a press there is not a click that adds a point (see pointerdown).
+    var zoom = el('div', {'class': 'lba-map-zoom'}, view);
+    button('+', 'بزرگ‌نمایی', function () { zoomAt(1); }, zoom);
+    button('−', 'کوچک‌نمایی', function () { zoomAt(-1); }, zoom);
     var info = null;
     if (!readonly) {
       button('محدوده‌ی بعدی', 'پایان این محدوده و شروع محدوده‌ی تازه', function () {
@@ -173,7 +177,7 @@
     // Drag to pan; a press that does not move is a click (adds a point).
     var drag = null;
     view.addEventListener('pointerdown', function (ev) {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 || ev.target.closest('.lba-map-zoom, .lba-map-credit')) return;
       drag = {x: ev.clientX, y: ev.clientY, c: project(state.lon, state.lat, state.zoom), moved: false};
       view.setPointerCapture(ev.pointerId);
     });

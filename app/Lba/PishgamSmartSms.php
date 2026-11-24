@@ -240,30 +240,35 @@ function lba_pishgam_call(array $gateway, string $httpMethod, string $method, ar
             if (is_scalar($msg) && (string)$msg !== '') $validation[] = (is_string($k) ? $k . ': ' : '') . (string)$msg;
         }
     }
+    // A failed call is kept for the admin's «جزئیات فنی» (lba_debug_record): request without the token, raw answer.
+    $record = static function (array $result) use ($gateway, $httpMethod, $method, $query, $body, $raw, $started): array {
+        lba_debug_record($gateway, $httpMethod, $method, $query, $body, $result, is_string($raw) ? $raw : null, (int)round((microtime(true) - $started) * 1000));
+        return $result;
+    };
     if ($raw === false || $http === 0) {
         Logger::warning('lba.provider.no_answer', ['gateway_id' => (int)$gateway['id'], 'method' => $method]);
         Metrics::increment('lba.provider.calls', 1, ['method' => $method, 'result' => 'transport']);
-        return $fail('درگاه LBA پاسخ نداد.', 0, true);
+        return $record($fail('درگاه LBA پاسخ نداد.', 0, true));
     }
     if ($http < 200 || $http >= 300) {
         Logger::warning('lba.provider.http_error', ['gateway_id' => (int)$gateway['id'], 'method' => $method, 'http' => $http, 'status_code' => $code]);
         Metrics::increment('lba.provider.calls', 1, ['method' => $method, 'result' => 'http_' . $http]);
         // A 4xx that carries a statusCode is a definite refusal; anything else leaves the outcome unknown.
         if ($code !== null && $http >= 400 && $http < 500) {
-            return $fail(lba_status_message($code), $http, false, $data, $code, $validation);
+            return $record($fail(lba_status_message($code), $http, false, $data, $code, $validation));
         }
         if ($http === 401 || $http === 403) {
-            return $fail('درگاه LBA درخواست را نپذیرفت (HTTP ' . $http . '): توکن یا آی‌پی سرور را بررسی کنید.', $http, false, $data);
+            return $record($fail('درگاه LBA درخواست را نپذیرفت (HTTP ' . $http . '): توکن یا آی‌پی سرور را بررسی کنید.', $http, false, $data));
         }
-        return $fail('درگاه LBA خطا داد (HTTP ' . $http . ').', $http, $http >= 500, $data, $code, $validation);
+        return $record($fail('درگاه LBA خطا داد (HTTP ' . $http . ').', $http, $http >= 500, $data, $code, $validation));
     }
     if (!is_array($data)) {
         Metrics::increment('lba.provider.calls', 1, ['method' => $method, 'result' => 'unreadable']);
-        return $fail('پاسخ درگاه LBA قابل خواندن نبود.', $http, true);
+        return $record($fail('پاسخ درگاه LBA قابل خواندن نبود.', $http, true));
     }
     if ($code !== null && $code !== 0) {
         Metrics::increment('lba.provider.calls', 1, ['method' => $method, 'result' => 'status_' . $code]);
-        return $fail(lba_status_message($code), $http, false, $data, $code, $validation);
+        return $record($fail(lba_status_message($code), $http, false, $data, $code, $validation));
     }
     Metrics::increment('lba.provider.calls', 1, ['method' => $method, 'result' => 'ok']);
     return ['ok' => true, 'http' => $http, 'data' => $data, 'status_code' => $code, 'error' => null, 'validation_errors' => [], 'transport_error' => false];
@@ -280,6 +285,95 @@ function lba_call_error(array $r): string {
         $error .= ' (' . implode('؛ ', array_slice($r['validation_errors'], 0, 8)) . ')';
     }
     return $error;
+}
+
+/** How many failed calls «جزئیات فنی» keeps per gateway. */
+const LBA_DEBUG_KEEP = 50;
+
+/**
+ * Keeps one failed provider call for the admin's «جزئیات فنی» (ellsms_lba_call_log,
+ * db/migrations/2026_11_27_lba_call_log.sql): the method, query and JSON body as sent — the token is a
+ * header and is never stored — and the HTTP status, statusCode and raw answer. Never breaks the call:
+ * without the table (migration not applied) or on any database error it does nothing.
+ */
+function lba_debug_record(array $gateway, string $httpMethod, string $method, array $query, ?array $body, array $result, ?string $raw, int $durationMs): void {
+    try {
+        $gid = (int)$gateway['id'];
+        $uid = !empty($_SESSION['uid']) ? (int)$_SESSION['uid'] : null;
+        $json = static fn($v): ?string => $v === null || $v === [] ? null : (string)json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $bodyJson = $json($body);
+        db()->prepare('INSERT INTO ellsms_lba_call_log (gateway_id, user_id, http_method, method, query_json, body_json, http_status, status_code, error, response_raw, duration_ms)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+           ->execute([$gid, $uid, strtoupper($httpMethod), mb_substr($method, 0, 80), $json($query),
+               $bodyJson === null ? null : mb_strcut($bodyJson, 0, 2000000), (int)$result['http'], $result['status_code'],
+               mb_strimwidth((string)$result['error'], 0, 1000, '…'), $raw === null ? null : mb_strcut(mb_convert_encoding($raw, 'UTF-8', 'UTF-8'), 0, 200000), max(0, $durationMs)]);
+        $st = db()->prepare('SELECT id FROM ellsms_lba_call_log WHERE gateway_id = ? ORDER BY id DESC LIMIT 1 OFFSET ' . LBA_DEBUG_KEEP);
+        $st->execute([$gid]);
+        $oldest = $st->fetchColumn();
+        if ($oldest !== false) db()->prepare('DELETE FROM ellsms_lba_call_log WHERE gateway_id = ? AND id <= ?')->execute([$gid, (int)$oldest]);
+    } catch (Throwable) {
+        // The log is a convenience; the call's own result is what matters.
+    }
+}
+
+/** @return list<array> the newest failed calls of a gateway, newest first */
+function lba_debug_list(int $gatewayId, int $limit = 20): array {
+    try {
+        $st = db()->prepare('SELECT * FROM ellsms_lba_call_log WHERE gateway_id = ? ORDER BY id DESC LIMIT ' . max(1, min($limit, LBA_DEBUG_KEEP)));
+        $st->execute([$gatewayId]);
+        return $st->fetchAll();
+    } catch (Throwable) {
+        return [];
+    }
+}
+
+/** The newest failed call of a gateway and method since a moment, or null (CheckPolygonCells answers with it). */
+function lba_debug_last(int $gatewayId, string $method, int $sinceId = 0): ?array {
+    try {
+        $st = db()->prepare('SELECT * FROM ellsms_lba_call_log WHERE gateway_id = ? AND method = ? AND id > ? ORDER BY id DESC LIMIT 1');
+        $st->execute([$gatewayId, $method, $sinceId]);
+        $row = $st->fetch();
+        return $row ?: null;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+/** The highest log id so far (0 when empty, -1 without the table): taken before a call, it tells which entry the call wrote. */
+function lba_debug_mark(): int {
+    try {
+        return (int)db()->query('SELECT COALESCE(MAX(id), 0) FROM ellsms_lba_call_log')->fetchColumn();
+    } catch (Throwable) {
+        return -1;
+    }
+}
+
+/**
+ * A logged call as two texts to read or hand to PishgamRayan's support: the HTTP request (method, URL,
+ * JSON body — the Authorization header shown as a placeholder) and the answer (HTTP status, raw body).
+ *
+ * @return array{request:string, response:string}
+ */
+function lba_debug_texts(array $row, array $gateway): array {
+    $base = rtrim((string)($gateway['base_url'] ?: LBA_PISHGAM_DEFAULT_BASE_URL), '/');
+    $query = json_decode((string)($row['query_json'] ?? ''), true);
+    $url = $base . '/SmartSms/' . $row['method'] . (is_array($query) && $query !== [] ? '?' . http_build_query($query) : '');
+    $request = $row['http_method'] . ' ' . $url . "\nAuthorization: <token>\n";
+    if ($row['body_json'] !== null && $row['body_json'] !== '') {
+        $request .= "Content-Type: application/json\n\n" . lba_debug_pretty((string)$row['body_json']);
+    }
+    $response = (int)$row['http_status'] === 0 ? '(no answer — ' . $row['error'] . ')' : 'HTTP ' . (int)$row['http_status'] . "\n\n" . lba_debug_pretty($row['response_raw'] ?? '');
+    return ['request' => $request, 'response' => $response];
+}
+
+/** A JSON text pretty-printed for reading, or the text as it is when it is not JSON. */
+function lba_debug_pretty(?string $text): string {
+    if ($text === null || $text === '') return '';
+    $data = json_decode($text, true);
+    if (!is_array($data)) return $text;
+    $pretty = (string)json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    // A polygon point on one line: [51.38, 35.7] rather than four.
+    return (string)preg_replace('/\[\s*(-?[\d.]+),\s*(-?[\d.]+)\s*\]/', '[$1, $2]', $pretty);
 }
 
 /** The list a list method answered: a bare array, or the array under data / result / items. */
