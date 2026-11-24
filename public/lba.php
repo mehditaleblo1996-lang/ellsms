@@ -52,8 +52,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $mark = lba_debug_mark();
         $r = lba_check_polygons($me, $line, (array)($_POST['operators'] ?? []), (string)($_POST['polygons'] ?? ''));
         // Admins see what was sent and what PishgamRayan answered, right under the button.
-        if (!$r['ok'] && $isAdmin && $lineGateway && ($log = lba_debug_last((int)$lineGateway['id'], 'CheckPolygonCells', $mark)) !== null) {
-            $r['debug'] = lba_debug_texts($log, $lineGateway);
+        if (!$r['ok'] && $isAdmin && $lineGateway) {
+            // Every attempt (both shapes of `polygon`, see lba_check_polygons()).
+            $r['debug'] = array_map(static fn(array $log): array => lba_debug_texts($log, $lineGateway), lba_debug_since((int)$lineGateway['id'], 'CheckPolygonCells', $mark));
         }
         echo json_encode($r, JSON_UNESCAPED_UNICODE);
         exit;
@@ -757,12 +758,12 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
       out.replaceChildren();
       if (!d.ok) {
         out.appendChild(node('p', 'alert alert-error', d.error));
-        if (d.debug) {
-          var det = node('details', 'lba-log'), sum = node('summary', null, 'جزئیات فنی (فقط مدیر): درخواست و پاسخ خام پیشگام');
+        (d.debug || []).forEach(function (dbg, i, all) {
+          var det = node('details', 'lba-log'), sum = node('summary', null, 'جزئیات فنی (فقط مدیر): درخواست و پاسخ خام پیشگام' + (all.length > 1 ? ' — تلاش ' + fa(i + 1) + ' از ' + fa(all.length) : ''));
           var body = node('div', 'lba-log-body');
-          body.appendChild(codeBlock('درخواست ارسالی', d.debug.request)); body.appendChild(codeBlock('پاسخ پیشگام', d.debug.response));
-          det.appendChild(sum); det.appendChild(body); det.open = true; out.appendChild(det);
-        }
+          body.appendChild(codeBlock('درخواست ارسالی', dbg.request)); body.appendChild(codeBlock('پاسخ پیشگام', dbg.response));
+          det.appendChild(sum); det.appendChild(body); det.open = i === all.length - 1; out.appendChild(det);
+        });
         return;
       }
       var names = <?= json_encode($opLabels, JSON_UNESCAPED_UNICODE) ?>;
