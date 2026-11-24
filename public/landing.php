@@ -133,7 +133,6 @@ require __DIR__ . '/../app/views/public_header.php';
               </div>
               <div class="dx-orbit" aria-hidden="true">
                 <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
-                <span class="dx-beam" data-dx-beam="<?= $k ?>" style="--a:<?= $k * 72 ?>deg;--n:<?= $k ?>" aria-hidden="true"><i></i></span>
                 <span class="dx-node" style="--a:<?= $k * 72 ?>deg"><span class="dx-node-anchor" data-dx-anchor></span></span>
                 <?php endforeach; ?>
               </div>
@@ -147,6 +146,26 @@ require __DIR__ . '/../app/views/public_header.php';
           </div>
         </div>
         <div class="dx-core-faces" data-dx-faces role="group" aria-label="خدمات داتیس؛ برای توضیح هر خدمت روی آن بزنید، یا مدار را بکشید و بچرخانید">
+          <!-- The constellation links (docs/landing.md#the-constellation-links): drawn flat, in screen
+               pixels, from the projected positions the script measures each frame, so they stay crisp. -->
+          <svg class="dx-links" data-dx-links aria-hidden="true" focusable="false">
+            <defs>
+              <?php foreach ($dxLines as $k => $_): ?>
+              <linearGradient id="dxLinkGrad<?= $k ?>" gradientUnits="userSpaceOnUse" data-dx-grad><stop offset="0" stop-color="#11b8c5" stop-opacity=".15"/><stop offset=".5" stop-color="#11b8c5" stop-opacity=".6"/><stop offset="1" stop-color="#0b97a3" stop-opacity=".9"/></linearGradient>
+              <?php endforeach; ?>
+            </defs>
+            <path class="dx-web" data-dx-web/>
+            <?php foreach ($dxLines as $k => $_): ?>
+            <g class="dx-link" data-dx-link="<?= $k ?>" style="--n:<?= $k ?>">
+              <path class="dx-link-glow"/>
+              <path class="dx-link-line" stroke="url(#dxLinkGrad<?= $k ?>)"/>
+              <path class="dx-link-pulse" pathLength="100"/>
+              <path class="dx-link-pulse is-2" pathLength="100"/>
+              <circle class="dx-link-socket" r="2.5"/>
+              <circle class="dx-link-port" r="3.5"/>
+            </g>
+            <?php endforeach; ?>
+          </svg>
           <?php foreach ($dxLines as $k => [$id, $name, $ico]): ?>
           <button type="button" class="dx-node-face" data-dx-node="<?= $k ?>" style="--n:<?= $k ?>"
                   aria-controls="dxCoreInfo" aria-pressed="false">
@@ -402,35 +421,96 @@ require __DIR__ . '/../app/views/public_header.php';
   var tx = 0, ty = 0, px = 0, py = 0, raf = 0, last = 0;
   var drag = null, dragged = false;
 
-  // Read all projected points together. The SVG faces stay in the flat layer, sized in CSS pixels.
+  var links = core.querySelector('[data-dx-links]');
+  var web = links && links.querySelector('[data-dx-web]');
+  var grads = links ? links.querySelectorAll('[data-dx-grad]') : [];
+  var linkEls = links ? Array.from(links.querySelectorAll('[data-dx-link]'), function (g) {
+    return { g: g, paths: g.querySelectorAll('path'), socket: g.querySelector('.dx-link-socket'), port: g.querySelector('.dx-link-port') };
+  }) : [];
+
+  // Read all projected points together, then write. Everything in the flat layer (balls, icons,
+  // labels, links) is laid out in whole device pixels: a ball of an even pixel size centred on a
+  // snapped point keeps its SVG icon on the pixel grid, so it stays sharp while the orbit turns.
   function placeFaces() {
     var bounds = faces.getBoundingClientRect();
     var points = Array.from(anchors, function (anchor) { return anchor.getBoundingClientRect(); });
+    var dpr = window.devicePixelRatio || 1;
+    function snap(v) { return Math.round(v * dpr) / dpr; }
     // Compare projected scale with the responsive scale of the hub to order the faces by depth.
     var anchorWidth = anchors[0].offsetWidth;
     var hubScale = sphere.offsetWidth / 160;
+    var cx = snap(bounds.width / 2), cy = snap(bounds.height / 2), coreR = sphere.offsetWidth / 2;
+    var centres = [];
     points.forEach(function (point, index) {
       var scale = point.width / anchorWidth;
+      var ball = Math.max(24, Math.round(58 * scale / 2) * 2);   // even px
+      var ico = Math.round(ball * 0.21) * 2;                      // even px, ≈ 42 %
+      var x = snap(point.left + point.width / 2 - bounds.left), y = snap(point.top + point.height / 2 - bounds.top);
+      // A node passing behind the core fades out instead of being cut in half by the sphere's edge.
+      var dist = Math.hypot(x - cx, y - cy), behind = scale < hubScale;
+      var vis = behind ? Math.max(0, Math.min(1, (dist - coreR + ball * 0.15) / (ball * 0.9))) : 1;
       var style = nodes[index].style;
-      style.setProperty('--face-x', (point.left + point.width / 2 - bounds.left).toFixed(2) + 'px');
-      style.setProperty('--face-y', (point.top + point.height / 2 - bounds.top).toFixed(2) + 'px');
-      style.setProperty('--face-scale', scale.toFixed(4));
+      style.setProperty('--face-x', x + 'px');
+      style.setProperty('--face-y', y + 'px');
+      style.setProperty('--face-scale', scale.toFixed(3));
+      style.setProperty('--ball', ball + 'px');
+      style.setProperty('--ico', ico + 'px');
+      style.opacity = vis >= 1 ? '' : vis.toFixed(3);
+      nodes[index].classList.toggle('is-hidden', vis < 0.5);
       style.zIndex = String(Math.round(100 + (scale - hubScale) * 200));
+      centres.push({ x: x, y: y, r: ball / 2, vis: vis, depth: Math.max(0, Math.min(1, (scale - 0.8) / 0.4)) });
     });
+    if (links) drawLinks(centres, cx, cy, coreR);
     faces.style.setProperty('--px', px.toFixed(3));
     faces.style.setProperty('--py', py.toFixed(3));
     core.classList.add('is-in');
   }
 
+  // Each link is a gentle arc from a socket on the core's rim to a port on the node's ball, all bowed
+  // the same way like the arms of a spiral; a faint dashed web joins neighbouring services.
+  function drawLinks(c, cx, cy, coreR) {
+    var bend = 1;
+    c.forEach(function (n, k) {
+      var L = linkEls[k], dx = n.x - cx, dy = n.y - cy, d = Math.hypot(dx, dy) || 1;
+      var ux = dx / d, uy = dy / d;
+      var sx = cx + ux * (coreR + 3), sy = cy + uy * (coreR + 3);
+      var ex = n.x - ux * (n.r + 3), ey = n.y - uy * (n.r + 3);
+      var len = Math.hypot(ex - sx, ey - sy);
+      var show = n.vis > 0.35 && (ex - sx) * ux + (ey - sy) * uy > 6;   // the node is clear of the core
+      var mx = (sx + ex) / 2 - uy * len * 0.16 * bend, my = (sy + ey) / 2 + ux * len * 0.16 * bend;
+      var dAttr = 'M' + sx.toFixed(1) + ' ' + sy.toFixed(1) + 'Q' + mx.toFixed(1) + ' ' + my.toFixed(1) + ' ' + ex.toFixed(1) + ' ' + ey.toFixed(1);
+      L.paths.forEach(function (p) { p.setAttribute('d', dAttr); });
+      L.socket.setAttribute('cx', sx.toFixed(1)); L.socket.setAttribute('cy', sy.toFixed(1));
+      L.port.setAttribute('cx', ex.toFixed(1)); L.port.setAttribute('cy', ey.toFixed(1));
+      var gr = grads[k];
+      gr.setAttribute('x1', sx.toFixed(1)); gr.setAttribute('y1', sy.toFixed(1));
+      gr.setAttribute('x2', ex.toFixed(1)); gr.setAttribute('y2', ey.toFixed(1));
+      L.g.style.opacity = show ? ((0.45 + 0.55 * n.depth) * n.vis).toFixed(3) : '0';
+    });
+    if (web) {
+      // Neighbours on the ring (0-1-2-3-4-0); an edge fades with the nodes it joins.
+      var dw = '';
+      for (var k = 0; k < c.length; k++) {
+        var a = c[k], b = c[(k + 1) % c.length];
+        if (a.vis < 0.5 || b.vis < 0.5) continue;
+        dw += 'M' + a.x.toFixed(1) + ' ' + a.y.toFixed(1) + 'L' + b.x.toFixed(1) + ' ' + b.y.toFixed(1);
+      }
+      web.setAttribute('d', dw);
+    }
+  }
+
   // Node k sits at angle 72·k on the ring; with the ring tilted back, the point nearest the viewer
-  // is at +90°. Choose the turn that brings it there by the shortest way.
+  // is at +90°. A chosen service stops a little to the side of it (FRONT), large and in front but
+  // clear of the core, so its link stays visible. Choose the turn that gets there by the shortest way.
+  var FRONT = 90 - 38;
   function frontAngle(k) {
-    var t = 90 - k * 72, d = ((t - rot) % 360 + 540) % 360 - 180;
+    var t = FRONT - k * 72, d = ((t - rot) % 360 + 540) % 360 - 180;
     return rot + d;
   }
   function show(k) {
     sel = k;
     nodes.forEach(function (n) { n.setAttribute('aria-pressed', String(n.getAttribute('data-dx-node') === k)); });
+    linkEls.forEach(function (L, i) { L.g.classList.toggle('is-on', String(i) === k); });
     if (info) info.querySelectorAll('[data-dx-card]').forEach(function (c) { c.hidden = c.getAttribute('data-dx-card') !== k; });
     if (hint) hint.hidden = k !== null;
     core.classList.toggle('is-held', k !== null);
