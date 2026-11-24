@@ -15,7 +15,8 @@ Code:
 - `public/assets/js/lba-map.js`: the map.
 - `cron/lba-worker.php`: the worker.
 
-Schema: `db/migrations/2026_10_27_lba.sql`.
+Schema: `db/migrations/2026_10_27_lba.sql`, plus `db/migrations/2026_11_27_lba_call_log.sql` for
+«جزئیات فنی» (see [Technical details](#technical-details-admins)).
 
 ## LBA gateways are their own kind
 
@@ -101,10 +102,12 @@ gateway. Admins always see it. Menu roles can close it (`lba`).
   - Points are `[longitude, latitude]`, inside Iran (this also catches a swapped pair).
   - Each polygon has at least 3 distinct points and is closed. A point clicked twice in a row is dropped.
   - Its edges must not cross or touch (refused with «خطوط محدوده‌ی … یکدیگر را قطع می‌کنند»).
-  - It is sent **counter-clockwise** (RFC 7946 order); a clockwise drawing is reversed. PishgamRayan
-    answers a clockwise or self-crossing ring with a bare `statusCode 25` («ناموفق.») and a generic
-    «خطا» / «هنگام بررسی درخواست شما یک خطا رخ داده است» message, on `CheckPolygonCells` and on
-    every `Create*SmartSmsRequest` that takes polygons.
+  - It is sent **clockwise**, as in every example of the guide (pages 21–22); a counter-clockwise
+    drawing is reversed. The guide does not say whether direction matters. Sending one direction
+    keeps every request identical in shape to the documented example.
+  - The guide sets no area limit, but `CheckPolygonCells` «validates the polygon's area» and the
+    guide's examples are blocks of about 100 × 150 m (≈ 9,000 m²). The map shows the drawn area
+    («مساحت تقریبی») so an unusually large one (a whole city district) is visible before sending.
   - At most 20 polygons, of at most 500 points each.
 - A gray list or club must belong to the customer and to the same gateway as the line.
 - A periodic period is 10 minutes to 11 hours.
@@ -118,11 +121,51 @@ created is recovered by finding that title in the `GetCurrentOrganization*` list
 The polygon editor is self-contained JS (`lba-map.js`, no library) over OpenStreetMap tiles.
 
 - **Drawing:** click to add points, drag to pan, scroll to zoom. «محدوده‌ی بعدی» starts another
-  polygon. Points can go either way round; the server sends them counter-clockwise.
-- **Typed coordinates:** JSON or GeoJSON can be pasted instead.
-- **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells`.
+  polygon. Points can go either way round; the server sends them clockwise. The bar under the map
+  shows the number of polygons and points and the approximate area in m² / km².
+- **Typed coordinates:** JSON or GeoJSON can be pasted instead. «درج نمونه‌ی راهنمای پیشگام» puts the guide's own
+  example area (by Milad Tower, ≈ 9,000 m²) on the map, to tell a problem with the area from a problem with the account.
+- **Zoom:** the wheel, or the + / − buttons on the map's corner.
+- **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells` and shows one badge per operator
+  («پوشش دارد» / «پوشش ندارد»). On a failure an admin also sees the raw request and answer under the button.
 - **Tile server:** setting `lba_map_tile_url`, https only. Only `/messages/lba` adds the tile server's
   origin to its Content-Security-Policy `img-src` (`send_security_headers()` takes extra image origins).
+
+## Page layout
+
+`/messages/lba` (`public/lba.php`, styles in `public/assets/css/lba.css`) uses the panel's tokens:
+
+- **Header card:** the sender line, chips for the gateway and its per-part tariff, and the tabs
+  «درخواست‌ها و ارسال‌ها», «درخواست جدید», «لیست‌های خاکستری», «باشگاه‌ها».
+- **«درخواست جدید»:** numbered sections («مشخصات درخواست», «محدوده‌ی جغرافیایی», «فیلترهای مخاطب»,
+  «محل سکونت», …). Only the sections of the chosen request kind are shown, and numbered.
+  Operators and gender are toggle chips. «ثبت درخواست» sits in a bar that stays at the bottom of the screen.
+- **A request:** key facts as tiles (kind, line, audience size, created), a status badge, the
+  criteria, the map, the audience segments, then the send forms, the sends and the statistics.
+- **Lists:** requests, gray lists and clubs show their status as coloured badges.
+
+## Technical details (admins)
+
+PishgamRayan often answers a failure with a bare `statusCode 25` («ناموفق.») and a one-word message
+(«خطا»). Its support needs the exact request to say why. So every provider call that fails is kept, for
+platform admins only:
+
+- **Table:** `ellsms_lba_call_log`, from `db/migrations/2026_11_27_lba_call_log.sql`. Written by
+  `lba_debug_record()` from `lba_pishgam_call()`. Each row holds the method, the query and JSON body as
+  sent, the HTTP status, the `statusCode`, the error and the raw answer.
+- **The token is never stored.** It travels in a header that is not logged, and the request text shows
+  `Authorization: <token>` instead.
+- **Retention:** the newest 50 rows per gateway (`LBA_DEBUG_KEEP`). Older rows are deleted as new ones are
+  written, so no cleanup job is needed.
+- **Successful calls are not logged.**
+- **No migration, no log:** without the table nothing is logged, and LBA keeps working.
+- **Where admins see it:**
+  - The «جزئیات فنی» card at the bottom of `/messages/lba` (requests, new-request and request pages) lists
+    the line gateway's latest failures.
+  - Each failure shows «درخواست ارسالی» and «پاسخ پیشگام» side by side, with «کپی» buttons to paste the
+    text to PishgamRayan's support.
+  - A failed «بررسی پوشش اپراتورها» shows the same right under the button.
+  - Any other failed action's message ends with «… در «جزئیات فنی» پایین صفحه است».
 
 ## Money
 
@@ -153,7 +196,8 @@ Prices are in Rial, from the customer's wallet. Platform admins are not charged.
 `LBA_STATUS_MESSAGES` in `app/Lba/PishgamSmartSms.php` holds the guide's whole table, 0–69, in Persian.
 Requests also carry the provider's own `message`, and its `validationErrors` (61) when it sends them.
 
-- Request states: 0 completed, 1 pending, 2 failed, 3 not allowed, 4 expired, 5 active, 6 inactive.
+- Request states: 0 completed, 1 pending, 2 failed, 3 not allowed, 4 expired, 5 active, 6 inactive,
+  7 partly completed (still polled, like 1), 8 finished (a periodic request whose campaign is over).
 - Delivery states: 1 delivered, 2 not delivered, 3 sent to the operator, 4 not sent to the operator,
   5 blacklisted, 6 invalid line.
 
@@ -178,4 +222,6 @@ defers to its Swagger file.
   - Deletion.
   - Local checks: KYC, the line, the gateway, credit and tenancy.
   - Statistics, lookups and Jalali parsing.
+  - The failed-call log: no token, successes not kept, 50 rows per gateway.
+- `tests/Unit/LbaPolygonTest.php` covers ring direction, crossing edges and double clicks.
 - `tests/Integration/LbaHttpTest.php` covers the pages over HTTP.
