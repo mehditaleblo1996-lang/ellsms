@@ -8,6 +8,7 @@
  * to steer the server:
  *   drop_next: true       the next creating call does its work, then answers 502 (a lost answer)
  *   periodic_parts: {rid: n}  what GetPeriodicSmartSmsStatistics reports as sent for request rid
+ *   check_ring_only: true  CheckPolygonCells refuses a list of polygons (25) and takes one ring
  * A request is built (status 1 -> 0) on its second RefreshSmartSmsRequest.
  *
  *   php -S 127.0.0.1:PORT tests/fixtures/fake_pishgam_smartsms_server.php
@@ -231,6 +232,11 @@ switch ($method) {
         return;
     case 'CheckPolygonCells':
         if (!$expect('POST')) return;
+        // check_ring_only: answers like the real service did — 25 to a list of polygons, a single ring accepted.
+        if (!empty($state['check_ring_only']) && is_array($in['polygon'][0][0] ?? null)) {
+            $out(['message' => 'هنگام بررسی درخواست شما یک خطا رخ داده است.با مدیریت تماس بگیرید.', 'data' => [], 'statusCode' => 25]);
+            return;
+        }
         $out(['message' => 'اعتبارسنجی با موفقیت انجام شد', 'data' => array_map(static fn($op) => ['mobileOperator' => $op, 'isValid' => $op === 1, 'isValidArea' => true], (array)($in['mobileOperators'] ?? [])), 'statusCode' => 0]);
         return;
 }
