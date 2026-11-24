@@ -546,7 +546,7 @@ function lba_campaign_create(array $user, string $originator, string $title): ar
     $providerId = $r['ok'] && is_numeric(lba_field($r['data'], 'campaignId')) ? (int)lba_field($r['data'], 'campaignId') : null;
     if ($providerId === null && $r['transport_error']) $providerId = lba_recover_id($g, 'GetCurrentOrganizationSmartSmsCampaigns', $providerTitle);
     if ($providerId === null) {
-        $error = $r['ok'] ? 'پیشگام رایان شناسه‌ی لیست خاکستری را برنگرداند.' : lba_call_error($r);
+        $error = $r['ok'] ? 'سرویس ارسال منطقه‌ای شناسه‌ی لیست خاکستری را برنگرداند.' : lba_call_error($r);
         $db->prepare("UPDATE ellsms_lba_campaigns SET status = 'failed', error = ? WHERE id = ?")->execute([mb_strimwidth($error, 0, 480, '…'), $id]);
         return ['ok' => false, 'error' => $error];
     }
@@ -612,7 +612,7 @@ function lba_club_create(array $user, string $originator, string $title): array 
     $providerId = $r['ok'] && is_numeric(lba_field($r['data'], 'clubId')) ? (int)lba_field($r['data'], 'clubId') : null;
     if ($providerId === null && $r['transport_error']) $providerId = lba_recover_id($g, 'GetCurrentOrganizationSmartSmsClubs', $providerTitle);
     if ($providerId === null) {
-        $error = $r['ok'] ? 'پیشگام رایان شناسه‌ی باشگاه را برنگرداند.' : lba_call_error($r);
+        $error = $r['ok'] ? 'سرویس ارسال منطقه‌ای شناسه‌ی باشگاه را برنگرداند.' : lba_call_error($r);
         $db->prepare("UPDATE ellsms_lba_clubs SET status = 'failed', error = ? WHERE id = ?")->execute([mb_strimwidth($error, 0, 480, '…'), $id]);
         return ['ok' => false, 'error' => $error];
     }
@@ -810,7 +810,7 @@ function lba_request_create(array $user, string $originator, string $kind, array
     $providerId = $r['ok'] && is_numeric(lba_field($r['data'], 'smartSmsRequestId')) ? (int)lba_field($r['data'], 'smartSmsRequestId') : null;
     if ($providerId === null && $r['transport_error']) $providerId = lba_recover_id($g, 'GetCurrentOrganizationSmartSmsRequests', $providerTitle);
     if ($providerId === null) {
-        $error = $r['ok'] ? 'پیشگام رایان شناسه‌ی درخواست را برنگرداند.' : lba_call_error($r);
+        $error = $r['ok'] ? 'سرویس ارسال منطقه‌ای شناسه‌ی درخواست را برنگرداند.' : lba_call_error($r);
         $db->prepare("UPDATE ellsms_lba_requests SET status = 'failed', error = ? WHERE id = ?")->execute([mb_strimwidth($error, 0, 990, '…'), $id]);
         return ['ok' => false, 'id' => $id, 'error' => $error];
     }
@@ -876,7 +876,7 @@ function lba_request_refresh(int $id): array {
         in_array($state, [2, 3, 4], true) => 'failed',
         default => 'pending',
     };
-    $error = $local === 'failed' ? 'وضعیت در پیشگام رایان: ' . (LBA_REQUEST_STATES[$state] ?? (string)$state) : $row['error'];
+    $error = $local === 'failed' ? 'وضعیت در سرویس ارسال منطقه‌ای: ' . (LBA_REQUEST_STATES[$state] ?? (string)$state) : $row['error'];
     db()->prepare('UPDATE ellsms_lba_requests SET provider_status = ?, recipients_json = ?, total_count = ?, status = ?, error = ? WHERE id = ?')
        ->execute([$state, json_encode(['segments' => $segments, 'expire' => is_scalar($expire) ? (string)$expire : null], JSON_UNESCAPED_UNICODE),
            $local === 'pending' && $segments === [] ? null : $total, $local, $error === null ? null : mb_strimwidth((string)$error, 0, 990, '…'), $id]);
@@ -1038,7 +1038,7 @@ function lba_send_simple(array $user, int $requestId, array $in): array {
         // The provider may have queued it: keep the money reserved for an admin to settle.
         $db->prepare("UPDATE ellsms_lba_sends SET status = 'unknown', error = ? WHERE id = ?")->execute([mb_strimwidth(lba_call_error($r), 0, 990, '…'), $id]);
         Logger::warning('lba.send.outcome_unknown', ['id' => $id]);
-        return ['ok' => false, 'id' => $id, 'error' => 'پاسخ پیشگام رایان نرسید و معلوم نیست ارسال ثبت شده یا نه. هزینه رزرو ماند تا مدیر سامانه وضعیت را بررسی کند.'];
+        return ['ok' => false, 'id' => $id, 'error' => 'پاسخ سرویس ارسال منطقه‌ای نرسید و معلوم نیست ارسال ثبت شده یا نه. هزینه رزرو ماند تا مدیر سامانه وضعیت را بررسی کند.'];
     }
     if ($cost > 0) wallet_release_reservation('lba_send', (string)$id);
     lba_send_fail($id, lba_call_error($r));
@@ -1368,7 +1368,7 @@ function lba_worker_pass(int $limit = 50): array {
     $st->execute();
     foreach ($st->fetchAll() as $row) {
         if (strtotime($row['created_at'] . ' UTC') + LBA_REQUEST_PENDING_MAX_SECONDS < time()) {
-            $db->prepare("UPDATE ellsms_lba_requests SET status = 'failed', error = ? WHERE id = ? AND status = 'pending'")->execute(['ساخت مخاطبان در پیشگام رایان بیش از دو روز طول کشید.', (int)$row['id']]);
+            $db->prepare("UPDATE ellsms_lba_requests SET status = 'failed', error = ? WHERE id = ? AND status = 'pending'")->execute(['ساخت مخاطبان بیش از دو روز طول کشید.', (int)$row['id']]);
             continue;
         }
         lba_request_refresh((int)$row['id']);

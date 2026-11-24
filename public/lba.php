@@ -101,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $result = lba_request_create($me, $line, $kind, $_POST);
             if ($result['ok']) {
                 unset($_SESSION['lba_request_form']);
-                $ok = 'درخواست ثبت شد. پیشگام رایان مخاطبان را می‌سازد؛ وضعیت هر دقیقه به‌روز می‌شود.' . (($result['warnings'] ?? []) ? ' هشدار: ' . implode('؛ ', $result['warnings']) : '');
+                $ok = 'درخواست ثبت شد. مخاطبان در حال ساخته شدن هستند؛ وضعیت هر دقیقه به‌روز می‌شود.' . (($result['warnings'] ?? []) ? ' هشدار: ' . implode('؛ ', $result['warnings']) : '');
                 $to = $back('requests', ['request' => $result['id']]);
             } else {
                 $_SESSION['lba_request_form'] = array_diff_key($_POST, ['_csrf' => 1]);
@@ -167,7 +167,8 @@ if ($lineGateway && ($tab === 'new' || $request !== null)) {
 $names = static function (array $rows): array { $o = []; foreach ($rows as $r) $o[(int)$r['id']] = $r['name']; return $o; };
 
 $stats = null;
-if ($request !== null && in_array($_GET['stats'] ?? '', ['periodic', 'daily', 'financial'], true)) {
+// The provider's own account figures («آمار مالی») are for platform admins only.
+if ($request !== null && in_array($_GET['stats'] ?? '', $isAdmin ? ['periodic', 'daily', 'financial'] : ['periodic', 'daily'], true)) {
     $stats = ['type' => $_GET['stats']] + lba_request_statistics($me, $requestId, (string)$_GET['stats'], $_GET);
 }
 
@@ -216,7 +217,7 @@ $icon = static function (string $name): string {
 };
 $requestBadge = static fn(array $r): string => '<span class="badge badge-' . (['ready' => 'ok', 'pending' => 'pending', 'failed' => 'failed', 'deleted' => 'unknown'][$r['status']] ?? 'done') . '">' . e(lba_request_status_label($r)) . '</span>';
 $sendBadge = static fn(string $s): string => '<span class="badge badge-' . (['sending' => 'pending', 'unknown' => 'pending', 'accepted' => 'done', 'done' => 'done', 'active' => 'ok', 'inactive' => 'unknown', 'failed' => 'failed'][$s] ?? 'unknown') . '">' . e(lba_send_status_label($s)) . '</span>';
-$rowBadge = static fn(array $r): string => $r['status'] === 'active' ? '<span class="badge badge-ok">فعال</span>' : '<span class="badge badge-failed">ناموفق</span>' . ($r['error'] ? ' <span class="muted">' . e((string)$r['error']) . '</span>' : '');
+$rowBadge = static fn(array $r): string => $r['status'] === 'active' ? '<span class="badge badge-ok">فعال</span>' : '<span class="badge badge-failed">ناموفق</span>' . ($r['error'] ? ' <span class="muted">' . e(lba_public_text((string)$r['error'])) . '</span>' : '');
 // «جزئیات فنی» (admins): the gateway's latest failed provider calls, as sent and as answered.
 $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) : [];
 ?>
@@ -241,7 +242,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
       <noscript><button class="btn btn-sm">انتخاب</button></noscript>
     </form>
     <div class="lba-chips">
-      <span class="lba-chip"><?= $icon('signal') ?>درگاه <b><?= e($lineGateway['name'] ?? '—') ?></b></span>
+      <?php if ($isAdmin): ?><span class="lba-chip"><?= $icon('signal') ?>درگاه <b><?= e($lineGateway['name'] ?? '—') ?></b></span><?php endif; ?>
       <span class="lba-chip">هر پارت فارسی <b><?= $fmt($lineGateway['price_fa_part'] ?? 0) ?></b> ریال</span>
       <span class="lba-chip">هر پارت انگلیسی <b><?= $fmt($lineGateway['price_en_part'] ?? 0) ?></b> ریال</span>
       <?php if ($isAdmin): ?><span class="lba-chip lba-chip-accent">مدیر سامانه هزینه نمی‌دهد</span><?php endif; ?>
@@ -268,7 +269,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
     <h2><span class="lba-ico"><?= $icon('doc') ?></span><span>درخواست #<?= to_persian_digits((string)$request['id']) ?> — <?= e($request['title']) ?></span> <?= $requestBadge($request) ?></h2>
     <form method="post" class="lba-actions"><?= csrf_field() ?><input type="hidden" name="line" value="<?= e($line) ?>"><input type="hidden" name="id" value="<?= (int)$request['id'] ?>">
       <button class="btn btn-sm lba-btn-icon" name="do" value="request_refresh"><?= $icon('refresh') ?>به‌روزرسانی وضعیت</button>
-      <?php if ($request['status'] !== 'deleted'): ?><button class="btn btn-sm btn-danger lba-btn-icon" name="do" value="request_delete" onclick="return confirm('درخواست در پیشگام رایان هم حذف شود؟ ارسال دوره‌ای آن متوقف و تسویه می‌شود.')"><?= $icon('trash') ?>حذف درخواست</button><?php endif; ?>
+      <?php if ($request['status'] !== 'deleted'): ?><button class="btn btn-sm btn-danger lba-btn-icon" name="do" value="request_delete" onclick="return confirm('درخواست حذف شود؟ ارسال دوره‌ای آن متوقف و تسویه می‌شود.')"><?= $icon('trash') ?>حذف درخواست</button><?php endif; ?>
     </form>
   </div>
   <div class="lba-kv">
@@ -277,7 +278,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
     <div><span>مخاطبان</span><b><?= $request['total_count'] !== null ? $fmt($request['total_count']) : '—' ?></b></div>
     <div><span>زمان ثبت</span><b><?= jdate_from_utc((string)$request['created_at']) ?></b></div>
   </div>
-  <?php if ($request['error']): ?><p class="alert <?= $request['status'] === 'failed' ? 'alert-error' : 'alert-info' ?>"><?= e((string)$request['error']) ?></p><?php endif; ?>
+  <?php if ($request['error']): ?><p class="alert <?= $request['status'] === 'failed' ? 'alert-error' : 'alert-info' ?>"><?= e(lba_public_text((string)$request['error'])) ?></p><?php endif; ?>
   <details class="lba-details"><summary>معیارهای درخواست</summary>
     <ul class="lba-criteria">
       <li><span>اپراتورها</span><?= e(implode('، ', array_map(static fn($o) => $opLabels[$o] ?? $o, (array)($criteria['operators'] ?? [])))) ?></li>
@@ -300,14 +301,14 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
 
   <h3 class="lba-subtitle">بخش‌های مخاطبان</h3>
   <div class="table-wrap"><table>
-    <tr><th>شناسه‌ی بخش</th><th>اپراتور</th><th>تعداد</th><th>قیمت هر پارت فارسی (پیشگام)</th><th>قیمت هر پارت انگلیسی (پیشگام)</th></tr>
+    <tr><th>شناسه‌ی بخش</th><th>اپراتور</th><th>تعداد</th><?php if ($isAdmin): ?><th>قیمت پایه‌ی هر پارت فارسی</th><th>قیمت پایه‌ی هر پارت انگلیسی</th><?php endif; ?></tr>
     <?php foreach ($segments as $seg): ?>
       <tr><td class="num"><?= to_persian_digits((string)$seg['id']) ?></td><td><?= e($opLabels[$seg['operator']] ?? (string)$seg['operator']) ?></td>
-        <td class="num"><b><?= $fmt($seg['count']) ?></b></td><td class="num"><?= $fmt($seg['persian_price']) ?></td><td class="num"><?= $fmt($seg['english_price']) ?></td></tr>
+        <td class="num"><b><?= $fmt($seg['count']) ?></b></td><?php if ($isAdmin): ?><td class="num"><?= $fmt($seg['persian_price']) ?></td><td class="num"><?= $fmt($seg['english_price']) ?></td><?php endif; ?></tr>
     <?php endforeach; ?>
-    <?php if (!$segments): ?><tr><td colspan="5" class="empty"><?= $request['status'] === 'pending' ? 'پیشگام رایان هنوز مخاطبان را می‌سازد.' : 'بخشی گزارش نشده است.' ?></td></tr><?php endif; ?>
+    <?php if (!$segments): ?><tr><td colspan="<?= $isAdmin ? 5 : 3 ?>" class="empty"><?= $request['status'] === 'pending' ? 'مخاطبان هنوز در حال ساخته شدن هستند.' : 'بخشی گزارش نشده است.' ?></td></tr><?php endif; ?>
   </table></div>
-  <p class="hint">قیمت‌های بالا قیمت پیشگام رایان است؛ هزینه‌ی شما با تعرفه‌ی درگاه حساب می‌شود.</p>
+  <?php if ($isAdmin): ?><p class="hint">فقط مدیر: «قیمت پایه» قیمت سرویس‌دهنده (پیشگام رایان) است؛ هزینه‌ی مشتری با تعرفه‌ی درگاه حساب می‌شود.</p><?php endif; ?>
 </div>
 
 <?php if ($canSend && (int)$request['is_periodic'] === 0): ?>
@@ -409,7 +410,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
         <td class="num"><?= $fmt($s['recipient_count']) ?></td>
         <td class="num"><?= $fmt($s['parts']) ?></td>
         <td class="num"><?= $fmt($s['charged_credits']) ?><?= (int)$s['reserved_credits'] !== (int)$s['charged_credits'] && in_array($s['status'], ['active', 'inactive', 'unknown'], true) ? ' <span class="muted">(رزرو ' . $fmt($s['reserved_credits']) . ')</span>' : '' ?></td>
-        <td><?= $sendBadge($s['status']) ?><?php if ($s['error']): ?><div class="muted"><?= e(mb_strimwidth((string)$s['error'], 0, 120, '…')) ?></div><?php endif; ?></td>
+        <td><?= $sendBadge($s['status']) ?><?php if ($s['error']): ?><div class="muted"><?= e(lba_public_text(mb_strimwidth((string)$s['error'], 0, 120, '…'))) ?></div><?php endif; ?></td>
         <td><?php foreach ($rows as $r): ?><div class="muted"><?= e(($opLabels[$r['operator']] ?? '') . ' — ' . (LBA_DELIVERY_STATES[$r['status']] ?? $r['status']) . ': ' . to_persian_digits(number_format($r['sms']))) ?></div><?php endforeach; ?><?= $rows ? '' : '—' ?></td>
       </tr>
     <?php endforeach; ?>
@@ -427,7 +428,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
     <div class="lba-actions">
       <button class="btn btn-sm" name="stats" value="daily">آمار روزانه</button>
       <?php if ((int)$request['is_periodic'] === 1): ?><button class="btn btn-sm" name="stats" value="periodic">آمار کلی دوره‌ای</button><?php endif; ?>
-      <button class="btn btn-sm" name="stats" value="financial">آمار مالی پیشگام رایان</button>
+      <?php if ($isAdmin): ?><button class="btn btn-sm" name="stats" value="financial">آمار مالی سرویس‌دهنده (فقط مدیر)</button><?php endif; ?>
     </div>
   </form>
   <?php if ($stats !== null): ?>
@@ -438,7 +439,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
         <div><span>برگشتی (نرسیده‌ها)</span><b><?= $fmt($stats['financial']['refunded']) ?></b></div>
         <div><span>خالص</span><b><?= $fmt($stats['financial']['pure']) ?></b></div>
       </div>
-      <p class="hint">به ریال، از حساب پیشگام رایان.</p>
+      <p class="hint">به ریال، از حساب سرویس‌دهنده (پیشگام رایان)؛ فقط مدیر می‌بیند.</p>
     <?php else: ?>
       <div class="table-wrap"><table>
         <tr><?= $stats['type'] === 'daily' ? '<th>تاریخ</th>' : '' ?><th>اپراتور</th><th>وضعیت تحویل</th><th>تعداد پیامک</th><th>تعداد پارت</th></tr>
@@ -462,7 +463,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
   </div>
   <ol class="lba-steps">
     <li><span><b>تعریف مخاطبان</b>محدوده، شهر یا فهرست سلول‌ها را در «درخواست جدید» مشخص کنید.</span></li>
-    <li><span><b>ساخت مخاطبان</b>پیشگام رایان مخاطبان را می‌سازد و وضعیت «آماده‌ی ارسال» می‌شود.</span></li>
+    <li><span><b>ساخت مخاطبان</b>مخاطبان از سمت اپراتورها ساخته می‌شوند و وضعیت «آماده‌ی ارسال» می‌شود.</span></li>
     <li><span><b>ارسال</b>در جزئیات درخواست، ارسال یکباره یا دوره‌ای را انجام دهید.</span></li>
   </ol>
   <?php if ($requests): ?>
@@ -476,7 +477,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
         <td><?= e(LBA_KINDS[$r['kind']][0] ?? $r['kind']) ?></td>
         <td class="ltr"><?= e($r['originator']) ?></td>
         <td class="num"><?= $r['total_count'] !== null ? $fmt($r['total_count']) : '—' ?></td>
-        <td><?= $requestBadge($r) ?><?php if ($r['status'] === 'failed' && $r['error']): ?><div class="muted"><?= e(mb_strimwidth((string)$r['error'], 0, 90, '…')) ?></div><?php endif; ?></td>
+        <td><?= $requestBadge($r) ?><?php if ($r['status'] === 'failed' && $r['error']): ?><div class="muted"><?= e(lba_public_text(mb_strimwidth((string)$r['error'], 0, 90, '…'))) ?></div><?php endif; ?></td>
         <td><a class="btn btn-sm" href="<?= e('/lba.php?' . http_build_query(['line' => $r['originator'], 'request' => $r['id']])) ?>">جزئیات و ارسال</a></td>
       </tr>
     <?php endforeach; ?>
@@ -492,7 +493,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
 <div class="card">
   <div class="lba-card-head">
     <div><h2><span class="lba-ico"><?= $icon('plus') ?></span>درخواست جدید (تعریف مخاطبان)</h2>
-    <p class="hint">مشخص کنید پیام به چه کسانی برسد. بعد از ثبت، پیشگام رایان مخاطبان را می‌سازد و ارسال را از جزئیات درخواست انجام می‌دهید.</p></div>
+    <p class="hint">مشخص کنید پیام به چه کسانی برسد. بعد از ثبت، مخاطبان از سمت اپراتورها ساخته می‌شوند و ارسال را از جزئیات درخواست انجام می‌دهید.</p></div>
   </div>
   <?php foreach ($lookupErrors as $k => $err): ?><p class="alert alert-error">فهرست <?= e(['provinces' => 'استان‌ها', 'brands' => 'برندها', 'types' => 'نوع دستگاه‌ها', 'airports' => 'فرودگاه‌ها'][$k]) ?> دریافت نشد: <?= e($err) ?></p><?php endforeach; ?>
   <form method="post" id="lba-request-form" class="lba-form">
@@ -532,7 +533,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
       <details class="lba-details"><summary>ورود دستی مختصات (JSON یا GeoJSON)</summary>
         <textarea id="lba-polygons-raw" rows="3" class="ltr" placeholder='[[[51.3753,35.7448],[51.3760,35.7440],[51.3745,35.7432],[51.3753,35.7448]]]'></textarea>
         <div class="lba-actions"><button type="button" class="btn btn-sm" id="lba-polygons-apply">اعمال روی نقشه</button>
-          <button type="button" class="btn btn-sm btn-ghost" id="lba-polygons-sample" title="همان محدوده‌ی نمونه‌ی راهنمای پیشگام رایان (اطراف برج میلاد، حدود ۹ هزار متر مربع)">درج نمونه‌ی راهنمای پیشگام</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="lba-polygons-sample" title="یک محدوده‌ی کوچک نمونه (اطراف برج میلاد، حدود ۹ هزار متر مربع)">درج محدوده‌ی نمونه</button>
           <span class="hint">ترتیب هر نقطه [طول جغرافیایی، عرض جغرافیایی] است.</span></div>
       </details>
     </fieldset>
@@ -560,7 +561,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
         <label>ارسال به <select name="club_operation"><option value="0"<?= $fv('club_operation', '0') === '0' ? ' selected' : '' ?>>فقط اعضای باشگاه</option><option value="1"<?= $fv('club_operation') === '1' ? ' selected' : '' ?>>همه به جز اعضای باشگاه</option></select></label>
         <div class="lba-actions"><a class="btn btn-sm" href="<?= e($back('clubs')) ?>">مدیریت باشگاه‌ها</a></div>
       </div>
-      <p class="hint">پیشگام رایان به‌طور پیش‌فرض باشگاهی با کمتر از ۵۰۰ عضو را نمی‌پذیرد.</p>
+      <p class="hint">باشگاهی با کمتر از ۵۰۰ عضو به‌طور پیش‌فرض پذیرفته نمی‌شود.</p>
     </fieldset>
 
     <fieldset class="lba-section" data-kinds="welcome_city">
@@ -622,7 +623,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
   </form>
   <?php if ($campaigns): ?>
   <div class="table-wrap"><table>
-    <tr><th>#</th><th>عنوان</th><th>شناسه در پیشگام</th><th>وضعیت</th><th>زمان</th><th></th></tr>
+    <tr><th>#</th><th>عنوان</th><th>شناسه‌ی سرویس</th><th>وضعیت</th><th>زمان</th><th></th></tr>
     <?php foreach ($campaigns as $c): ?>
       <tr><td class="num"><?= to_persian_digits((string)$c['id']) ?></td><td><b><?= e($c['title']) ?></b></td><td class="num"><?= e(to_persian_digits((string)$c['provider_campaign_id'])) ?></td>
         <td><?= $rowBadge($c) ?></td><td class="num"><?= jdate_from_utc((string)$c['created_at']) ?></td>
@@ -647,7 +648,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
   </form>
   <?php if ($clubs): ?>
   <div class="table-wrap"><table>
-    <tr><th>#</th><th>عنوان</th><th>شناسه در پیشگام</th><th>شماره‌های فرستاده‌شده</th><th>وضعیت</th><th>افزودن شماره</th><th></th></tr>
+    <tr><th>#</th><th>عنوان</th><th>شناسه‌ی سرویس</th><th>شماره‌های فرستاده‌شده</th><th>وضعیت</th><th>افزودن شماره</th><th></th></tr>
     <?php foreach ($clubs as $c): ?>
       <tr><td class="num"><?= to_persian_digits((string)$c['id']) ?></td><td><b><?= e($c['title']) ?></b></td><td class="num"><?= e(to_persian_digits((string)$c['provider_club_id'])) ?></td>
         <td class="num"><?= $fmt($c['added_count']) ?></td><td><?= $rowBadge($c) ?></td>
@@ -662,7 +663,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
   <?php else: ?>
     <div class="lba-empty"><span class="lba-ico"><?= $icon('users') ?></span><p>باشگاهی ندارید.</p></div>
   <?php endif; ?>
-  <p class="hint">شماره‌ها در دسته‌های ۱۰۰تایی به پیشگام رایان فرستاده می‌شوند (محدودیت خود سرویس).</p>
+  <p class="hint">شماره‌ها در دسته‌های ۱۰۰تایی فرستاده می‌شوند (محدودیت خود سرویس).</p>
 </div>
 <?php endif; ?>
 
@@ -685,7 +686,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
       </summary>
       <div class="lba-log-body">
         <div><div class="lba-code-head"><span>درخواست ارسالی</span><button type="button" class="btn btn-sm lba-btn-icon" data-copy><?= $icon('copy') ?>کپی</button></div><pre class="lba-code"><?= e($texts['request']) ?></pre></div>
-        <div><div class="lba-code-head"><span>پاسخ پیشگام</span><button type="button" class="btn btn-sm lba-btn-icon" data-copy><?= $icon('copy') ?>کپی</button></div><pre class="lba-code"><?= e($texts['response']) ?></pre></div>
+        <div><div class="lba-code-head"><span>پاسخ سرویس‌دهنده</span><button type="button" class="btn btn-sm lba-btn-icon" data-copy><?= $icon('copy') ?>کپی</button></div><pre class="lba-code"><?= e($texts['response']) ?></pre></div>
       </div>
     </details>
   <?php endforeach; ?>
@@ -729,7 +730,7 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
     poly.value = raw.value; poly.dispatchEvent(new Event('lba:reload'));
   });
   if (poly && raw) poly.addEventListener('change', function () { raw.value = poly.value; });
-  // The example area of PishgamRayan's guide (CreateSimpleSmartSmsRequest), to tell a size problem from an account one.
+  // A small example area (the provider guide's own), to tell an area problem from an account one.
   var sample = document.getElementById('lba-polygons-sample');
   if (sample && raw && apply) sample.addEventListener('click', function () {
     raw.value = '[[[51.3753,35.7448],[51.3760,35.7440],[51.3745,35.7432],[51.3753,35.7448]]]';
@@ -759,9 +760,9 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
       if (!d.ok) {
         out.appendChild(node('p', 'alert alert-error', d.error));
         (d.debug || []).forEach(function (dbg, i, all) {
-          var det = node('details', 'lba-log'), sum = node('summary', null, 'جزئیات فنی (فقط مدیر): درخواست و پاسخ خام پیشگام' + (all.length > 1 ? ' — تلاش ' + fa(i + 1) + ' از ' + fa(all.length) : ''));
+          var det = node('details', 'lba-log'), sum = node('summary', null, 'جزئیات فنی (فقط مدیر): درخواست و پاسخ خام سرویس‌دهنده' + (all.length > 1 ? ' — تلاش ' + fa(i + 1) + ' از ' + fa(all.length) : ''));
           var body = node('div', 'lba-log-body');
-          body.appendChild(codeBlock('درخواست ارسالی', dbg.request)); body.appendChild(codeBlock('پاسخ پیشگام', dbg.response));
+          body.appendChild(codeBlock('درخواست ارسالی', dbg.request)); body.appendChild(codeBlock('پاسخ سرویس‌دهنده', dbg.response));
           det.appendChild(sum); det.appendChild(body); det.open = i === all.length - 1; out.appendChild(det);
         });
         return;
