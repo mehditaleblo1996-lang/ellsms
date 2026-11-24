@@ -239,7 +239,7 @@ final class LbaTest extends IntegrationTestCase
         $this->assertTrue($simple['ok'], $simple['error'] ?? '');
         $p = $simple['payload'];
         $this->assertSame([1, 2], $p['operators'], 'unknown operator dropped');
-        $this->assertSame([[51.3753, 35.7448], [51.3745, 35.7432], [51.376, 35.744], [51.3753, 35.7448]], $p['polygons'][0], 'closed, [lon, lat], drawn clockwise so sent reversed');
+        $this->assertSame([[51.3753, 35.7448], [51.376, 35.744], [51.3745, 35.7432], [51.3753, 35.7448]], $p['polygons'][0], 'closed, [lon, lat], clockwise as the guide\'s own example');
         $this->assertSame(25, $p['fromAge']);
         $this->assertSame('98912,98935', $p['numberprefixes']);
         $this->assertSame(1, $p['residenceState']);

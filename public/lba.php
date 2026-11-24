@@ -529,8 +529,10 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
         <div id="lba-check-result" class="lba-check-result" aria-live="polite"></div>
       </div>
       <details class="lba-details"><summary>ورود دستی مختصات (JSON یا GeoJSON)</summary>
-        <textarea id="lba-polygons-raw" rows="3" class="ltr" placeholder='[[[51.3753,35.7448],[51.3745,35.7432],[51.3760,35.7440],[51.3753,35.7448]]]'></textarea>
-        <div class="lba-actions"><button type="button" class="btn btn-sm" id="lba-polygons-apply">اعمال روی نقشه</button><span class="hint">ترتیب هر نقطه [طول جغرافیایی، عرض جغرافیایی] است.</span></div>
+        <textarea id="lba-polygons-raw" rows="3" class="ltr" placeholder='[[[51.3753,35.7448],[51.3760,35.7440],[51.3745,35.7432],[51.3753,35.7448]]]'></textarea>
+        <div class="lba-actions"><button type="button" class="btn btn-sm" id="lba-polygons-apply">اعمال روی نقشه</button>
+          <button type="button" class="btn btn-sm btn-ghost" id="lba-polygons-sample" title="همان محدوده‌ی نمونه‌ی راهنمای پیشگام رایان (اطراف برج میلاد، حدود ۹ هزار متر مربع)">درج نمونه‌ی راهنمای پیشگام</button>
+          <span class="hint">ترتیب هر نقطه [طول جغرافیایی، عرض جغرافیایی] است.</span></div>
       </details>
     </fieldset>
 
@@ -726,6 +728,12 @@ $debugRows = $isAdmin && $lineGateway ? lba_debug_list((int)$lineGateway['id']) 
     poly.value = raw.value; poly.dispatchEvent(new Event('lba:reload'));
   });
   if (poly && raw) poly.addEventListener('change', function () { raw.value = poly.value; });
+  // The example area of PishgamRayan's guide (CreateSimpleSmartSmsRequest), to tell a size problem from an account one.
+  var sample = document.getElementById('lba-polygons-sample');
+  if (sample && raw && apply) sample.addEventListener('click', function () {
+    raw.value = '[[[51.3753,35.7448],[51.3760,35.7440],[51.3745,35.7432],[51.3753,35.7448]]]';
+    apply.click();
+  });
 
   // CheckPolygonCells: one badge per operator; on failure the error (and, for admins, the raw request/answer).
   var check = document.getElementById('lba-check-polygon'), out = document.getElementById('lba-check-result');
