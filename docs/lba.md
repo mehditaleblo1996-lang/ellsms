@@ -102,10 +102,12 @@ gateway. Admins always see it. Menu roles can close it (`lba`).
   - Points are `[longitude, latitude]`, inside Iran (this also catches a swapped pair).
   - Each polygon has at least 3 distinct points and is closed. A point clicked twice in a row is dropped.
   - Its edges must not cross or touch (refused with «خطوط محدوده‌ی … یکدیگر را قطع می‌کنند»).
-  - It is sent **counter-clockwise** (RFC 7946 order); a clockwise drawing is reversed. PishgamRayan
-    answers a clockwise or self-crossing ring with a bare `statusCode 25` («ناموفق.») and a generic
-    «خطا» / «هنگام بررسی درخواست شما یک خطا رخ داده است» message, on `CheckPolygonCells` and on
-    every `Create*SmartSmsRequest` that takes polygons.
+  - It is sent **clockwise**, as in every example of the guide (pages 21–22); a counter-clockwise
+    drawing is reversed. The guide does not say whether direction matters. Sending one direction
+    keeps every request identical in shape to the documented example.
+  - The guide sets no area limit, but `CheckPolygonCells` «validates the polygon's area» and the
+    guide's examples are blocks of about 100 × 150 m (≈ 9,000 m²). The map shows the drawn area
+    («مساحت تقریبی») so an unusually large one (a whole city district) is visible before sending.
   - At most 20 polygons, of at most 500 points each.
 - A gray list or club must belong to the customer and to the same gateway as the line.
 - A periodic period is 10 minutes to 11 hours.
@@ -119,8 +121,10 @@ created is recovered by finding that title in the `GetCurrentOrganization*` list
 The polygon editor is self-contained JS (`lba-map.js`, no library) over OpenStreetMap tiles.
 
 - **Drawing:** click to add points, drag to pan, scroll to zoom. «محدوده‌ی بعدی» starts another
-  polygon. Points can go either way round; the server sends them counter-clockwise.
-- **Typed coordinates:** JSON or GeoJSON can be pasted instead.
+  polygon. Points can go either way round; the server sends them clockwise. The bar under the map
+  shows the number of polygons and points and the approximate area in m² / km².
+- **Typed coordinates:** JSON or GeoJSON can be pasted instead. «درج نمونه‌ی راهنمای پیشگام» puts the guide's own
+  example area (by Milad Tower, ≈ 9,000 m²) on the map, to tell a problem with the area from a problem with the account.
 - **Zoom:** the wheel, or the + / − buttons on the map's corner.
 - **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells` and shows one badge per operator
   («پوشش دارد» / «پوشش ندارد»). On a failure an admin also sees the raw request and answer under the button.
@@ -192,7 +196,8 @@ Prices are in Rial, from the customer's wallet. Platform admins are not charged.
 `LBA_STATUS_MESSAGES` in `app/Lba/PishgamSmartSms.php` holds the guide's whole table, 0–69, in Persian.
 Requests also carry the provider's own `message`, and its `validationErrors` (61) when it sends them.
 
-- Request states: 0 completed, 1 pending, 2 failed, 3 not allowed, 4 expired, 5 active, 6 inactive.
+- Request states: 0 completed, 1 pending, 2 failed, 3 not allowed, 4 expired, 5 active, 6 inactive,
+  7 partly completed (still polled, like 1), 8 finished (a periodic request whose campaign is over).
 - Delivery states: 1 delivered, 2 not delivered, 3 sent to the operator, 4 not sent to the operator,
   5 blacklisted, 6 invalid line.
 

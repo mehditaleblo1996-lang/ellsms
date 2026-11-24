@@ -340,8 +340,8 @@ function lba_opt_int(mixed $v): int|null|false {
 /**
  * Polygons from the map (or typed): a JSON list of polygons, each a list of [longitude, latitude]
  * points — the provider's own order. A GeoJSON Polygon / MultiPolygon / Feature(Collection) is read too.
- * Each polygon is closed (its first point repeated at the end) as the guide's examples are, its points
- * run counter-clockwise (a clockwise drawing is reversed), and its edges must not cross.
+ * Each polygon is closed (its first point repeated at the end) and runs clockwise, as the guide's
+ * examples do (a counter-clockwise drawing is reversed), and its edges must not cross.
  *
  * @return list<list<array{0:float,1:float}>>|string the polygons, or an error message
  */
@@ -382,9 +382,9 @@ function lba_parse_polygons(string $json): array|string {
         if (count(array_unique(array_map('json_encode', $points))) < 3) return 'هر محدوده دست‌کم سه نقطه‌ی متفاوت لازم دارد.';
         if (count($points) > 500) return 'هر محدوده حداکثر ۵۰۰ نقطه می‌تواند داشته باشد.';
         if (lba_ring_self_intersects($points)) return 'خطوط محدوده‌ی ' . to_persian_digits((string)($n + 1)) . ' یکدیگر را قطع می‌کنند؛ نقاط را به ترتیب دورتادور محدوده بزنید.';
-        // The provider's geography store reads a clockwise ring as "the whole earth except this area" and
-        // fails with a bare statusCode 25. Exterior rings go counter-clockwise (as RFC 7946 asks too).
-        if (lba_ring_signed_area($points) < 0) $points = array_reverse($points);
+        // One direction for every ring, whichever way it was drawn: clockwise, as in every example of the
+        // provider's guide (CreateSimpleSmartSmsRequest, CreateWelcomeSmartSmsRequest).
+        if (lba_ring_signed_area($points) > 0) $points = array_reverse($points);
         $out[] = $points;
     }
     if (count($out) > 20) return 'حداکثر ۲۰ محدوده در یک درخواست.';
@@ -832,7 +832,7 @@ function lba_request_refresh(int $id): array {
     $expire = lba_field($result, 'expireDate');
     // 0 completed (and 5/6, a periodic request's active/inactive) can be sent; 2 failed, 3 not allowed, 4 expired.
     $local = match (true) {
-        in_array($state, [0, 5, 6], true) => 'ready',
+        in_array($state, [0, 5, 6, 8], true) => 'ready', // 8: a periodic request whose campaign is over
         in_array($state, [2, 3, 4], true) => 'failed',
         default => 'pending',
     };
@@ -1368,7 +1368,7 @@ function lba_map_tile_origin(): string {
 function lba_request_status_label(array $row): string {
     return match ($row['status']) {
         'pending' => 'در حال ساخت مخاطبان',
-        'ready'   => (int)$row['is_periodic'] === 1 && in_array((int)$row['provider_status'], [5, 6], true)
+        'ready'   => (int)$row['is_periodic'] === 1 && in_array((int)$row['provider_status'], [5, 6, 8], true)
             ? LBA_REQUEST_STATES[(int)$row['provider_status']] : 'آماده‌ی ارسال',
         'failed'  => 'ناموفق',
         'deleted' => 'حذف شده',
