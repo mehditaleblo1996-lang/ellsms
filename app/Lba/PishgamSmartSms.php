@@ -61,7 +61,7 @@ const LBA_STATUS_MESSAGES = [
     32 => 'ارسال پیامک احراز هویت انجام شده است.',
     33 => 'توکن در هدر درخواست ارسال نشده است.',
     34 => 'توکن پیدا نشد، اشتباه است یا هنوز تأیید نشده است.',
-    35 => 'آی‌پی این سرور در پنل پیشگام رایان ثبت یا تأیید نشده است.',
+    35 => 'آی‌پی این سرور نزد سرویس‌دهنده ثبت یا تأیید نشده است.',
     36 => 'خطا در حذف لیست سیاه.',
     37 => 'تاریخ به اشتباه وارد شده است.',
     38 => 'خطا در بررسی استثناها.',
@@ -92,7 +92,7 @@ const LBA_STATUS_MESSAGES = [
     63 => 'درخواست ارسال هوشمند پیدا نشد.',
     64 => 'وضعیت درخواست ارسال هوشمند برای این کار معتبر نیست.',
     65 => 'اپراتور انتخابی معتبر نیست.',
-    66 => 'موجودی حساب پیشگام رایان کافی نیست.',
+    66 => 'سرویس ارسال منطقه‌ای موقتاً در دسترس نیست (موجودی سرویس‌دهنده)؛ با پشتیبانی تماس بگیرید.',
     67 => 'گروه صدا یافت نشد.',
     69 => 'فایل شبکه‌ی اجتماعی وجود ندارد، تأیید نشده یا متعلق به سازمان نیست.',
 ];
@@ -107,7 +107,7 @@ const LBA_DELIVERY_STATES = [1 => 'رسیده به گوشی', 2 => 'نرسیده
 class LbaSecretException extends AppException {}
 
 function lba_status_message(int $code): string {
-    return LBA_STATUS_MESSAGES[$code] ?? ('خطای پیشگام رایان (کد ' . $code . ')');
+    return LBA_STATUS_MESSAGES[$code] ?? ('خطای سرویس ارسال منطقه‌ای (کد ' . $code . ')');
 }
 
 /** The derived encryption key, or null without SMS_GATEWAY_MASTER_KEY (≥ 32 characters). */
@@ -285,7 +285,7 @@ function lba_call_error(array $r): string {
     if (($r['validation_errors'] ?? []) !== []) {
         $error .= ' (' . implode('؛ ', array_slice($r['validation_errors'], 0, 8)) . ')';
     }
-    return $error;
+    return lba_public_text($error);
 }
 
 /** How many failed calls «جزئیات فنی» keeps per gateway. */
@@ -380,6 +380,15 @@ function lba_debug_pretty(?string $text): string {
     $pretty = (string)json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     // A polygon point on one line: [51.38, 35.7] rather than four.
     return (string)preg_replace('/\[\s*(-?[\d.]+),\s*(-?[\d.]+)\s*\]/', '[$1, $2]', $pretty);
+}
+
+/**
+ * Text a customer may read, without the provider's name: customers see the service as «ارسال منطقه‌ای»
+ * only. Applied to every error shown on /messages/lba — also ones stored before the wording changed,
+ * and the provider's own `message`, which may name itself.
+ */
+function lba_public_text(string $text): string {
+    return (string)preg_replace('/پیشگام[\s\x{200C}]*رایان|پیشگام|pishgam[\s_-]*rayan|pishgam/iu', 'سرویس ارسال منطقه‌ای', $text);
 }
 
 /** The list a list method answered: a bare array, or the array under data / result / items. */
