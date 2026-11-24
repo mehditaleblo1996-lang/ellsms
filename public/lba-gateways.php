@@ -133,7 +133,7 @@ require __DIR__ . '/../app/views/header.php';
     <input type="hidden" name="do" value="save">
     <input type="hidden" name="gateway_id" value="<?= (int)($editing['id'] ?? 0) ?>">
     <div class="toolbar">
-      <label>نام <input type="text" name="name" required value="<?= e($fv('name', 'پیشگام رایان')) ?>"></label>
+      <label>نام <input type="text" name="name" required value="<?= e($fv('name', 'LBA')) ?>"></label>
       <label>شناسه (لاتین) <input type="text" name="code" class="ltr" <?= $editing ? 'disabled' : 'required' ?> pattern="[a-z0-9_]{2,40}" value="<?= e($fv('code', 'pishgamrayan')) ?>"></label>
       <label style="flex:1 1 320px">آدرس سرویس <input type="url" name="base_url" class="ltr" style="width:100%" value="<?= e($fv('base_url', LBA_PISHGAM_DEFAULT_BASE_URL)) ?>"></label>
       <label><input type="checkbox" name="enabled" value="1"<?= $fv('enabled', '0') === '1' ? ' checked' : '' ?>> فعال</label>
