@@ -127,7 +127,18 @@ The polygon editor is self-contained JS (`lba-map.js`, no library) over OpenStre
   example area (by Milad Tower, ≈ 9,000 m²) on the map, to tell a problem with the area from a problem with the account.
 - **Zoom:** the wheel, or the + / − buttons on the map's corner.
 - **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells` and shows one badge per operator
-  («پوشش دارد» / «پوشش ندارد»). On a failure an admin also sees the raw request and answer under the button.
+  («پوشش دارد» / «پوشش ندارد»). On a failure an admin also sees the raw request and answer of every
+  attempt under the button.
+  - **Two shapes of `polygon`.** The guide types `polygon` as "array of polygon" but has no request
+    example for this method. The live service answered that shape with a bare `statusCode 25`, even for
+    the guide's own example area, while `CreateSimpleSmartSmsRequest` accepted the same area.
+  - `lba_check_polygons()` therefore tries the documented shape (`polygon` = the list of polygons). On a
+    25 it tries one call per polygon (`polygon` = that polygon's points), and the reverse when that order
+    is the remembered one.
+  - The shape that worked is remembered per gateway (setting `lba_check_shape.<gateway id>`, `list` or
+    `ring`) and tried first next time. Any other refusal is not retried.
+  - With several polygons, an operator «پوشش دارد» only if it covers every one of them.
+  - The check is optional: a request can be created without it.
 - **Tile server:** setting `lba_map_tile_url`, https only. Only `/messages/lba` adds the tile server's
   origin to its Content-Security-Policy `img-src` (`send_security_headers()` takes extra image origins).
 
@@ -223,5 +234,6 @@ defers to its Swagger file.
   - Local checks: KYC, the line, the gateway, credit and tenancy.
   - Statistics, lookups and Jalali parsing.
   - The failed-call log: no token, successes not kept, 50 rows per gateway.
+  - The coverage check falling back to one ring per polygon (fake server's `check_ring_only`) and remembering it.
 - `tests/Unit/LbaPolygonTest.php` covers ring direction, crossing edges and double clicks.
 - `tests/Integration/LbaHttpTest.php` covers the pages over HTTP.
