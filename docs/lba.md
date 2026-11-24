@@ -123,7 +123,7 @@ The polygon editor is self-contained JS (`lba-map.js`, no library) over OpenStre
 - **Drawing:** click to add points, drag to pan, scroll to zoom. «محدوده‌ی بعدی» starts another
   polygon. Points can go either way round; the server sends them clockwise. The bar under the map
   shows the number of polygons and points and the approximate area in m² / km².
-- **Typed coordinates:** JSON or GeoJSON can be pasted instead. «درج نمونه‌ی راهنمای پیشگام» puts the guide's own
+- **Typed coordinates:** JSON or GeoJSON can be pasted instead. «درج محدوده‌ی نمونه» puts the guide's own
   example area (by Milad Tower, ≈ 9,000 m²) on the map, to tell a problem with the area from a problem with the account.
 - **Zoom:** the wheel, or the + / − buttons on the map's corner.
 - **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells` and shows one badge per operator
@@ -141,6 +141,22 @@ The polygon editor is self-contained JS (`lba-map.js`, no library) over OpenStre
   - The check is optional: a request can be created without it.
 - **Tile server:** setting `lba_map_tile_url`, https only. Only `/messages/lba` adds the tile server's
   origin to its Content-Security-Policy `img-src` (`send_security_headers()` takes extra image origins).
+
+## The provider's name stays hidden from customers
+
+Customers see the service only as «ارسال پیام منطقه‌ای (LBA)». Nothing a customer can see on
+`/messages/lba` names PishgamRayan, including the page source:
+
+- **Messages:** errors, flash messages, hints and confirmations say «سرویس ارسال منطقه‌ای» or nothing.
+- **Filter:** `lba_public_text()` replaces the name in every error shown on the page. This covers errors
+  stored before this rule and the provider's own `message`. `lba_call_error()` applies it.
+- **Admins only:**
+  - the gateway-name chip (an admin may name a gateway after the provider; the default name is now `LBA`);
+  - the provider's per-part base prices in «بخش‌های مخاطبان»;
+  - «آمار مالی سرویس‌دهنده» (the provider account's cost and refunds), also refused on the server for customers;
+  - «جزئیات فنی».
+- **Where the name stays:** the admin page `/admin/lba-gateways`, which only admins reach.
+- **Test:** `tests/Unit/LbaPublicTextTest.php`.
 
 ## Page layout
 
