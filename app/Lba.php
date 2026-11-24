@@ -340,7 +340,8 @@ function lba_opt_int(mixed $v): int|null|false {
 /**
  * Polygons from the map (or typed): a JSON list of polygons, each a list of [longitude, latitude]
  * points — the provider's own order. A GeoJSON Polygon / MultiPolygon / Feature(Collection) is read too.
- * Each polygon is closed (its first point repeated at the end) as the guide's examples are.
+ * Each polygon is closed (its first point repeated at the end) as the guide's examples are, its points
+ * run counter-clockwise (a clockwise drawing is reversed), and its edges must not cross.
  *
  * @return list<list<array{0:float,1:float}>>|string the polygons, or an error message
  */
@@ -374,15 +375,48 @@ function lba_parse_polygons(string $json): array|string {
             [$lon, $lat] = [round((float)$pt[0], 7), round((float)$pt[1], 7)];
             // Iran and its waters, roughly. Also catches swapped [lat, lon] pairs.
             if ($lon < 43.0 || $lon > 64.5 || $lat < 24.0 || $lat > 40.5) return 'نقطه‌ای از محدوده‌ی ' . to_persian_digits((string)($n + 1)) . ' خارج از ایران است (ترتیب باید [طول، عرض] باشد).';
-            $points[] = [$lon, $lat];
+            // A point clicked twice in a row adds nothing and would read as a crossing below.
+            if ($points === [] || $points[count($points) - 1] !== [$lon, $lat]) $points[] = [$lon, $lat];
         }
         if ($points !== [] && $points[0] !== $points[count($points) - 1]) $points[] = $points[0];
         if (count(array_unique(array_map('json_encode', $points))) < 3) return 'هر محدوده دست‌کم سه نقطه‌ی متفاوت لازم دارد.';
         if (count($points) > 500) return 'هر محدوده حداکثر ۵۰۰ نقطه می‌تواند داشته باشد.';
+        if (lba_ring_self_intersects($points)) return 'خطوط محدوده‌ی ' . to_persian_digits((string)($n + 1)) . ' یکدیگر را قطع می‌کنند؛ نقاط را به ترتیب دورتادور محدوده بزنید.';
+        // The provider's geography store reads a clockwise ring as "the whole earth except this area" and
+        // fails with a bare statusCode 25. Exterior rings go counter-clockwise (as RFC 7946 asks too).
+        if (lba_ring_signed_area($points) < 0) $points = array_reverse($points);
         $out[] = $points;
     }
     if (count($out) > 20) return 'حداکثر ۲۰ محدوده در یک درخواست.';
     return $out;
+}
+
+/** Twice the signed area of a closed [lon, lat] ring: positive when counter-clockwise (north up). */
+function lba_ring_signed_area(array $ring): float {
+    $sum = 0.0;
+    for ($i = 0, $n = count($ring) - 1; $i < $n; $i++) {
+        $sum += $ring[$i][0] * $ring[$i + 1][1] - $ring[$i + 1][0] * $ring[$i][1];
+    }
+    return $sum;
+}
+
+/** Whether two edges of a closed ring that do not share a corner cross or touch. */
+function lba_ring_self_intersects(array $ring): bool {
+    $orient = static fn(array $a, array $b, array $c): float => ($b[0] - $a[0]) * ($c[1] - $a[1]) - ($b[1] - $a[1]) * ($c[0] - $a[0]);
+    $onSegment = static fn(array $a, array $b, array $p): bool =>
+        min($a[0], $b[0]) <= $p[0] && $p[0] <= max($a[0], $b[0]) && min($a[1], $b[1]) <= $p[1] && $p[1] <= max($a[1], $b[1]);
+    $n = count($ring) - 1; // edges; the ring is closed
+    for ($i = 0; $i < $n; $i++) {
+        for ($j = $i + 1; $j < $n; $j++) {
+            if ($j === $i + 1 || ($i === 0 && $j === $n - 1)) continue; // neighbours share a corner
+            [$a, $b, $c, $d] = [$ring[$i], $ring[$i + 1], $ring[$j], $ring[$j + 1]];
+            [$o1, $o2, $o3, $o4] = [$orient($a, $b, $c), $orient($a, $b, $d), $orient($c, $d, $a), $orient($c, $d, $b)];
+            if ((($o1 > 0 && $o2 < 0) || ($o1 < 0 && $o2 > 0)) && (($o3 > 0 && $o4 < 0) || ($o3 < 0 && $o4 > 0))) return true;
+            if (($o1 == 0 && $onSegment($a, $b, $c)) || ($o2 == 0 && $onSegment($a, $b, $d))
+                || ($o3 == 0 && $onSegment($c, $d, $a)) || ($o4 == 0 && $onSegment($c, $d, $b))) return true;
+        }
+    }
+    return false;
 }
 
 /**
