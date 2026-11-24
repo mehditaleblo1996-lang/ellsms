@@ -578,9 +578,12 @@ function gateway_status_record(string $source, int $rowId, ?string $current, str
     // token and the canonical state it produced are always written together or not at all — a row
     // can never show a token that did not produce its current status. COALESCE keeps a previously
     // recorded token when this particular response carried none.
+    $terminal = gateway_state_is_terminal($next);
+    // Record receipt time separately from provider delivery time and poll claims.
+    $finalized = $terminal ? ', delivery_finalized_at = UTC_TIMESTAMP()' : '';
     $update = db()->prepare(
         "UPDATE {$table}
-         SET delivery_status = ?, delivered_at = COALESCE(?, delivered_at), provider_status = COALESCE(?, provider_status)
+         SET delivery_status = ?, delivered_at = COALESCE(?, delivered_at), provider_status = COALESCE(?, provider_status){$finalized}
          WHERE id = ?
            AND (delivery_status IS NULL OR delivery_status NOT IN (" . GATEWAY_TERMINAL_STORED_SQL . "))"
     );
@@ -595,7 +598,7 @@ function gateway_status_record(string $source, int $rowId, ?string $current, str
     // and a WebEngage message's DSN (app/WebEngage.php) fire here exactly once. Delivery-based billing
     // refunds an undelivered message from the same point (app/DeliveryRefunds.php); it is idempotent
     // on its own, so a missed call is swept later.
-    if (gateway_state_is_terminal($next)) {
+    if ($terminal) {
         webhook_emit_delivery_state($source, $rowId, $next, $deliveredAt);
         number_forward_enqueue_dlr($source, $rowId, $next, $deliveredAt);
         delivery_refund_on_terminal($source, $rowId, $next);
