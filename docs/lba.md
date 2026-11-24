@@ -15,7 +15,8 @@ Code:
 - `public/assets/js/lba-map.js`: the map.
 - `cron/lba-worker.php`: the worker.
 
-Schema: `db/migrations/2026_10_27_lba.sql`.
+Schema: `db/migrations/2026_10_27_lba.sql`, plus `db/migrations/2026_11_27_lba_call_log.sql` for
+«جزئیات فنی» (see [Technical details](#technical-details-admins)).
 
 ## LBA gateways are their own kind
 
@@ -120,9 +121,47 @@ The polygon editor is self-contained JS (`lba-map.js`, no library) over OpenStre
 - **Drawing:** click to add points, drag to pan, scroll to zoom. «محدوده‌ی بعدی» starts another
   polygon. Points can go either way round; the server sends them counter-clockwise.
 - **Typed coordinates:** JSON or GeoJSON can be pasted instead.
-- **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells`.
+- **Zoom:** the wheel, or the + / − buttons on the map's corner.
+- **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells` and shows one badge per operator
+  («پوشش دارد» / «پوشش ندارد»). On a failure an admin also sees the raw request and answer under the button.
 - **Tile server:** setting `lba_map_tile_url`, https only. Only `/messages/lba` adds the tile server's
   origin to its Content-Security-Policy `img-src` (`send_security_headers()` takes extra image origins).
+
+## Page layout
+
+`/messages/lba` (`public/lba.php`, styles in `public/assets/css/lba.css`) uses the panel's tokens:
+
+- **Header card:** the sender line, chips for the gateway and its per-part tariff, and the tabs
+  «درخواست‌ها و ارسال‌ها», «درخواست جدید», «لیست‌های خاکستری», «باشگاه‌ها».
+- **«درخواست جدید»:** numbered sections («مشخصات درخواست», «محدوده‌ی جغرافیایی», «فیلترهای مخاطب»,
+  «محل سکونت», …). Only the sections of the chosen request kind are shown, and numbered.
+  Operators and gender are toggle chips. «ثبت درخواست» sits in a bar that stays at the bottom of the screen.
+- **A request:** key facts as tiles (kind, line, audience size, created), a status badge, the
+  criteria, the map, the audience segments, then the send forms, the sends and the statistics.
+- **Lists:** requests, gray lists and clubs show their status as coloured badges.
+
+## Technical details (admins)
+
+PishgamRayan often answers a failure with a bare `statusCode 25` («ناموفق.») and a one-word message
+(«خطا»). Its support needs the exact request to say why. So every provider call that fails is kept, for
+platform admins only:
+
+- **Table:** `ellsms_lba_call_log`, from `db/migrations/2026_11_27_lba_call_log.sql`. Written by
+  `lba_debug_record()` from `lba_pishgam_call()`. Each row holds the method, the query and JSON body as
+  sent, the HTTP status, the `statusCode`, the error and the raw answer.
+- **The token is never stored.** It travels in a header that is not logged, and the request text shows
+  `Authorization: <token>` instead.
+- **Retention:** the newest 50 rows per gateway (`LBA_DEBUG_KEEP`). Older rows are deleted as new ones are
+  written, so no cleanup job is needed.
+- **Successful calls are not logged.**
+- **No migration, no log:** without the table nothing is logged, and LBA keeps working.
+- **Where admins see it:**
+  - The «جزئیات فنی» card at the bottom of `/messages/lba` (requests, new-request and request pages) lists
+    the line gateway's latest failures.
+  - Each failure shows «درخواست ارسالی» and «پاسخ پیشگام» side by side, with «کپی» buttons to paste the
+    text to PishgamRayan's support.
+  - A failed «بررسی پوشش اپراتورها» shows the same right under the button.
+  - Any other failed action's message ends with «… در «جزئیات فنی» پایین صفحه است».
 
 ## Money
 
@@ -178,4 +217,6 @@ defers to its Swagger file.
   - Deletion.
   - Local checks: KYC, the line, the gateway, credit and tenancy.
   - Statistics, lookups and Jalali parsing.
+  - The failed-call log: no token, successes not kept, 50 rows per gateway.
+- `tests/Unit/LbaPolygonTest.php` covers ring direction, crossing edges and double clicks.
 - `tests/Integration/LbaHttpTest.php` covers the pages over HTTP.
