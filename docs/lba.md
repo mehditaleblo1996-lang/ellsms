@@ -99,7 +99,12 @@ gateway. Admins always see it. Menu roles can close it (`lba`).
 - Dates are Jalali, `YYYY/MM/DD HH:MM:SS` in Tehran time. Persian digits are accepted.
 - Polygons:
   - Points are `[longitude, latitude]`, inside Iran (this also catches a swapped pair).
-  - Each polygon has at least 3 distinct points and is closed.
+  - Each polygon has at least 3 distinct points and is closed. A point clicked twice in a row is dropped.
+  - Its edges must not cross or touch (refused with «خطوط محدوده‌ی … یکدیگر را قطع می‌کنند»).
+  - It is sent **counter-clockwise** (RFC 7946 order); a clockwise drawing is reversed. PishgamRayan
+    answers a clockwise or self-crossing ring with a bare `statusCode 25` («ناموفق.») and a generic
+    «خطا» / «هنگام بررسی درخواست شما یک خطا رخ داده است» message, on `CheckPolygonCells` and on
+    every `Create*SmartSmsRequest` that takes polygons.
   - At most 20 polygons, of at most 500 points each.
 - A gray list or club must belong to the customer and to the same gateway as the line.
 - A periodic period is 10 minutes to 11 hours.
@@ -113,7 +118,7 @@ created is recovered by finding that title in the `GetCurrentOrganization*` list
 The polygon editor is self-contained JS (`lba-map.js`, no library) over OpenStreetMap tiles.
 
 - **Drawing:** click to add points, drag to pan, scroll to zoom. «محدوده‌ی بعدی» starts another
-  polygon.
+  polygon. Points can go either way round; the server sends them counter-clockwise.
 - **Typed coordinates:** JSON or GeoJSON can be pasted instead.
 - **Coverage:** «بررسی پوشش اپراتورها» calls `CheckPolygonCells`.
 - **Tile server:** setting `lba_map_tile_url`, https only. Only `/messages/lba` adds the tile server's

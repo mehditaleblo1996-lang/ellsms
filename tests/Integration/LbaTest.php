@@ -239,7 +239,7 @@ final class LbaTest extends IntegrationTestCase
         $this->assertTrue($simple['ok'], $simple['error'] ?? '');
         $p = $simple['payload'];
         $this->assertSame([1, 2], $p['operators'], 'unknown operator dropped');
-        $this->assertSame([[51.3753, 35.7448], [51.376, 35.744], [51.3745, 35.7432], [51.3753, 35.7448]], $p['polygons'][0], 'closed, [lon, lat]');
+        $this->assertSame([[51.3753, 35.7448], [51.3745, 35.7432], [51.376, 35.744], [51.3753, 35.7448]], $p['polygons'][0], 'closed, [lon, lat], drawn clockwise so sent reversed');
         $this->assertSame(25, $p['fromAge']);
         $this->assertSame('98912,98935', $p['numberprefixes']);
         $this->assertSame(1, $p['residenceState']);
@@ -253,6 +253,7 @@ final class LbaTest extends IntegrationTestCase
         $this->assertStringContainsString('حداکثر سه پیش‌شماره', $bad('simple', ['prefixes' => '98912 98935 98901 98990'] + $base));
         $this->assertStringContainsString('۱۱ ساعت', $bad('simple', $this->times(12) + $base));
         $this->assertStringContainsString('خارج از ایران', $bad('simple', ['polygons' => '[[[35.7,51.3],[35.8,51.3],[35.8,51.4]]]'] + $base), 'swapped lat/lon');
+        $this->assertStringContainsString('یکدیگر را قطع', $bad('simple', ['polygons' => '[[[51.25,35.78],[51.45,35.65],[51.50,35.77],[51.24,35.66]]]'] + $base), 'self-crossing');
         $this->assertStringContainsString('لیست خاکستری', $bad('welcome', $base + ['graylist_hours' => '24']));
         $this->assertStringContainsString('لیست خاکستری', $bad('welcome_city', ['cities' => ['401']] + $base));
 
