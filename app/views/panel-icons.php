@@ -60,6 +60,7 @@ function panel_icon(string $name): string {
         'tag' => '<path d="M3 12V3h9l9 9-9 9-9-9Z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
         'filter' => '<path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/>',
         'id-card' => '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16a3 3 0 0 1 6 0M14 10h4M14 14h3"/>',
+        'login' => '<path d="M15 4h5v16h-5M3 12h12m-4-4 4 4-4 4"/>',
         'eye-off' => '<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.6C3.8 8.4 2 12 2 12s3.6 6 10 6a9.6 9.6 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     ];
     $names = [

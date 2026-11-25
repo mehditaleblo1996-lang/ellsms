@@ -590,7 +590,7 @@ require __DIR__ . '/../app/views/header.php';
      */
     ?>
     <?php if (impersonation_target_refusal($editUser, (int)$me['id']) === null): ?>
-      <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>">ورود به پنل مشتری</a>
+      <a class="icon-act icon-act-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>" data-tip="ورود به پنل مشتری" aria-label="ورود به پنل مشتری"><?= panel_icon('login') ?></a>
     <?php endif; ?>
   </div>
 </div>
@@ -1103,17 +1103,17 @@ if ($editOrganizationId > 0) {
         <td class="num"><?= to_persian_digits(number_format((int)$u['sent_count'])) ?></td>
         <td><span class="badge badge-<?= $u['twofa_enabled'] ? 'ok' : 'off' ?>"><?= $u['twofa_enabled'] ? 'فعال' : 'غیرفعال' ?></span></td>
         <td><span class="badge badge-<?= ($u['active'] && !$u['deleted']) ? 'ok' : 'off' ?>"><?= ($u['active'] && !$u['deleted']) ? 'فعال' : 'غیرفعال' ?></span></td>
-        <td style="white-space:nowrap">
-          <a class="btn btn-sm" href="/users.php?edit=<?= $u['id'] ?>">ویرایش</a>
+        <td class="row-actions">
+          <a class="icon-act" href="/users.php?edit=<?= $u['id'] ?>" data-tip="ویرایش" aria-label="ویرایش <?= e($u['username']) ?>"><?= panel_icon('edit') ?></a>
           <?php if (impersonation_target_refusal($u, (int)$me['id']) === null): ?>
-            <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$u['id'] ?>&amp;from=list">ورود به پنل مشتری</a>
+            <a class="icon-act icon-act-primary" href="/impersonate.php?target=<?= (int)$u['id'] ?>&amp;from=list" data-tip="ورود به پنل مشتری" aria-label="ورود به پنل مشتری <?= e($u['username']) ?>"><?= panel_icon('login') ?></a>
           <?php endif; ?>
           <?php if ((int)$u['id'] !== (int)$me['id']): ?>
-          <form method="post" style="display:inline" onsubmit="return confirm('دسترسی داتیس رایان گستر ایرانیان برای <?= e($u['username']) ?> لغو شود؟')">
+          <form method="post" onsubmit="return confirm('دسترسی داتیس رایان گستر ایرانیان برای <?= e($u['username']) ?> لغو شود؟')">
             <?= csrf_field() ?>
             <input type="hidden" name="do" value="revoke">
             <input type="hidden" name="id" value="<?= $u['id'] ?>">
-            <button class="btn btn-sm btn-danger">لغو</button>
+            <button class="icon-act icon-act-danger" data-tip="لغو دسترسی" aria-label="لغو دسترسی <?= e($u['username']) ?>"><?= panel_icon('ban') ?></button>
           </form>
           <?php endif; ?>
         </td>
