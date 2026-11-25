@@ -328,6 +328,48 @@ function wallet_extend_reservation(int $userId, int $amount, string $refType, st
 }
 
 /**
+ * Hands an ACTIVE reservation over to another operation: the same row, the same money, only its
+ * (reference_type, reference_id) changes, in one transaction. No balance moves and no ledger row is
+ * written — the credit stays held exactly as it was.
+ *
+ * Exists for a file send (docs/large-import-architecture.md): the cost is reserved for the import
+ * when the file is analyzed and, on confirmation, the same reservation becomes the bulk job's, which
+ * then charges each message from it. Reserving the bulk job again and releasing the import's
+ * reservation (the old way) needed twice the cost in credit for a moment and wrote a misleading
+ * «برگشت رزرو» row as large as the whole send.
+ *
+ * Idempotent: if $from is gone and $to already holds an active reservation (a retried call), it
+ * replays. Returns reason 'no_reservation' when there is nothing active to move, 'target_exists'
+ * when $to already has a reservation of its own (nothing is changed then).
+ *
+ * @return array{ok:bool, moved:bool, reason:string, amount?:int, user_id?:int}
+ */
+function wallet_move_reservation(string $fromType, string $fromId, string $toType, string $toId): array {
+    return db_transaction(function (PDO $db) use ($fromType, $fromId, $toType, $toId): array {
+        $rst = $db->prepare('SELECT * FROM ellsms_wallet_reservations WHERE reference_type = ? AND reference_id = ? FOR UPDATE');
+        $rst->execute([$toType, $toId]);
+        $target = $rst->fetch();
+        $rst->execute([$fromType, $fromId]);
+        $res = $rst->fetch();
+
+        if (!$res || $res['status'] !== 'active') {
+            if ($target && $target['status'] === 'active') {
+                return ['ok' => true, 'moved' => false, 'reason' => 'replayed', 'amount' => (int)$target['remaining_amount'], 'user_id' => (int)$target['user_id']];
+            }
+            return ['ok' => false, 'moved' => false, 'reason' => 'no_reservation'];
+        }
+        if ($target) {
+            return ['ok' => false, 'moved' => false, 'reason' => 'target_exists'];
+        }
+        $db->prepare('UPDATE ellsms_wallet_reservations SET reference_type = ?, reference_id = ? WHERE id = ?')
+           ->execute([$toType, $toId, $res['id']]);
+        Logger::info('wallet.reservation.moved', ['user_id' => (int)$res['user_id'], 'amount' => (int)$res['remaining_amount'],
+            'from' => $fromType . ':' . $fromId, 'to' => $toType . ':' . $toId]);
+        return ['ok' => true, 'moved' => true, 'reason' => 'moved', 'amount' => (int)$res['remaining_amount'], 'user_id' => (int)$res['user_id']];
+    });
+}
+
+/**
  * Spend part (or all) of an active reservation. Moves reserved -> gone (a real ledger debit);
  * available_balance (and therefore currentcredit) does NOT change here — that credit already left
  * "available" the moment it was reserved. Can be called multiple times against the same

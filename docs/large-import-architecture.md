@@ -167,6 +167,38 @@ resolved server-side at one fixed instant (`analysis_started_at`), and pass 2 pr
 at that SAME instant — so the amount reserved, the amount shown to the user, and the amount actually
 charged per row can never drift apart.
 
+**The money on confirmation: one reservation, handed over.** The cost is reserved once, for the
+import (`reserve:import_job:{id}`), when `import_job_reserve_and_stage()` prices the file. On
+confirmation, `import_confirm_job()` hands **that same reservation** to the staged bulk job with
+`wallet_move_reservation('import_job', …, 'bulk_job', …)` (`app/wallet.php`): one transaction that
+only changes the reservation's reference — no balance moves and no ledger row is written. The bulk
+job then charges each sent message from it and releases only what it did not spend, exactly as for a
+bulk job that reserved for itself. Details:
+
+- If the loaded rows cost more than was reserved (should not happen — both are priced at the same
+  instant), the difference is added with `wallet_extend_reservation()`, or the confirmation fails
+  with «موجودی کیف پول برای این ارسال کافی نیست».
+- If the confirmation fails after the hand-over, the reservation is moved back to the import, so the
+  file stays «منتظر تأیید» with its credit still held and can be confirmed again (or cancelled, which
+  releases it).
+- An import with no reservation to hand over (analyzed before this change, or nothing was reserved)
+  falls back to reserving for the bulk job, as before.
+- A platform admin confirming **their own** file: not charged, as before (the import's reservation is
+  released). A platform admin confirming **a customer's** file: the customer's reservation is handed
+  over, so the customer pays for the send.
+- Organization message quota is unchanged: reserved for the bulk job and committed at confirmation,
+  then the import's quota reservation is released (quota reservations expire and are per day/month,
+  so they are not handed over).
+
+Before 2026-11 confirmation reserved the cost again for the bulk job and then released the import's
+reservation. That needed **twice the cost** in free credit at the moment of confirmation (a customer
+with enough credit could be refused) and wrote a «برگشت رزرو ارسال‌نشده — ارسال از فایل #…» row as
+large as the whole send in «تاریخچه مالی» ([`financial-log.md`](financial-log.md)). Those old rows
+stay in the ledger; they are correct, only noisy. Tests:
+`testConfirmingMovesTheImportReservationToTheBulkJobWithoutASecondOne`,
+`testAnAdminConfirmingACustomersFileKeepsTheCustomersReservation` (`LargeImportPipelineTest`),
+`testMovingAReservationKeepsTheMoneyHeldAndWritesNoLedgerRow` (`WalletIntegrationTest`).
+
 **Exception — P2P auto-send.** For a P2P import whose owner a platform admin gave «ارسال خودکار نظیر
 به نظیر», the worker calls the same `import_confirm_job()` on the owner's behalf the moment the import
 becomes `ready_for_confirmation`. Every other P2P import that reaches that state is announced to the

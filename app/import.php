@@ -368,9 +368,10 @@ function import_sync_max_recipients(): int {
 }
 
 /**
- * Confirm a ready import job: revalidate cost, reserve wallet/quota for the
- * linked bulk job, release the import-level reservations, and promote the bulk
- * job to 'pending' so the send worker takes over.
+ * Confirm a ready import job: hand the import's wallet reservation over to the
+ * linked bulk job (wallet_move_reservation()), reserve quota for it, release the
+ * import-level quota, and promote the bulk job to 'pending' so the send worker
+ * takes over.
  *
  * @return array{ok:bool, bulk_job_id:?int, error:?string}
  */
@@ -405,6 +406,17 @@ function import_confirm_job(int $jobId, array $user): array {
         return ['ok' => false, 'bulk_job_id' => null, 'error' => 'ردیف معتبری برای ارسال وجود ندارد.'];
     }
 
+    // A failed confirmation leaves the import confirmable later with its credit still held: a moved
+    // reservation goes back to the import; one made for the bulk job here is released.
+    $walletMoved = false;
+    $undoWallet = static function () use (&$walletMoved, $jobId, $bulkJobId): void {
+        if ($walletMoved) {
+            wallet_move_reservation('bulk_job', (string)$bulkJobId, 'import_job', (string)$jobId);
+        } else {
+            wallet_release_reservation('bulk_job', (string)$bulkJobId);
+        }
+    };
+
     try {
         if ($organizationId !== null && $organizationId > 0) {
             $quota = usage_reserve_messages($organizationId, $rowCount, 'bulk_job', (string)$bulkJobId);
@@ -414,10 +426,29 @@ function import_confirm_job(int $jobId, array $user): array {
             usage_commit_messages('bulk_job', (string)$bulkJobId, $rowCount);
         }
 
-        if (!$isAdmin && $totalCost > 0) {
-            $reservation = wallet_reserve($userId, $totalCost, 'bulk_job', (string)$bulkJobId, "reserve:bulk_job:{$bulkJobId}");
-            if (!$reservation['ok']) {
-                throw new WalletInsufficientBalanceException();
+        // The cost was reserved for the import when the file was analyzed (import_job_reserve_and_stage());
+        // that same reservation becomes the bulk job's, which charges each message from it. No second
+        // reservation, so confirming needs no extra credit and the log shows no «برگشت رزرو» for the
+        // hand-over. A platform admin's own file is free, as before: its reservation is released below.
+        $ownerId = (int)$job['user_id'];
+        $adminOwnFile = $isAdmin && $ownerId === $userId;
+        if (!$adminOwnFile && $totalCost > 0) {
+            $move = wallet_move_reservation('import_job', (string)$jobId, 'bulk_job', (string)$bulkJobId);
+            if ($move['ok']) {
+                $walletMoved = true;
+                // The loaded rows cost more than was reserved at analysis (should not happen: both are
+                // priced at the same instant) — hold the difference too, or refuse.
+                $short = $totalCost - (int)$move['amount'];
+                if ($short > 0 && !wallet_extend_reservation($ownerId, $short, 'bulk_job', (string)$bulkJobId)['ok']) {
+                    throw new WalletInsufficientBalanceException();
+                }
+            } else {
+                // No import reservation to hand over (a file analyzed before this change, or none was
+                // needed then): reserve for the bulk job, as before.
+                $reservation = wallet_reserve($ownerId, $totalCost, 'bulk_job', (string)$bulkJobId, "reserve:bulk_job:{$bulkJobId}");
+                if (!$reservation['ok']) {
+                    throw new WalletInsufficientBalanceException();
+                }
             }
         }
 
@@ -436,12 +467,12 @@ function import_confirm_job(int $jobId, array $user): array {
     } catch (QuotaExceededException) {
         return ['ok' => false, 'bulk_job_id' => null, 'error' => 'سهمیه‌ی سازمان برای این ارسال کافی نیست.'];
     } catch (WalletInsufficientBalanceException) {
-        wallet_release_reservation('bulk_job', (string)$bulkJobId);
+        $undoWallet();
         usage_release_messages('bulk_job', (string)$bulkJobId);
         return ['ok' => false, 'bulk_job_id' => null, 'error' => 'موجودی کیف پول برای این ارسال کافی نیست.'];
     } catch (Throwable $t) {
         Logger::error('import.confirm.failed', ['import_job_id' => $jobId, 'exception' => $t]);
-        wallet_release_reservation('bulk_job', (string)$bulkJobId);
+        $undoWallet();
         usage_release_messages('bulk_job', (string)$bulkJobId);
         return ['ok' => false, 'bulk_job_id' => null, 'error' => 'خطا در تأیید درخواست واردسازی.'];
     }

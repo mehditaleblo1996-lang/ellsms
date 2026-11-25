@@ -386,6 +386,59 @@ final class LargeImportPipelineTest extends IntegrationTestCase
         self::assertSame(0, (int)$after['reserved'], 'a failed import must release its wallet reservation, not strand it');
     }
 
+    // ------------------------------------------------------------------ 8b. confirmation hands the reservation over
+
+    private function bulkJobIdFor(int $importJobId): int
+    {
+        return (int)db()->query("SELECT id FROM ellsms_bulk_jobs WHERE source_import_job_id = {$importJobId}")->fetchColumn();
+    }
+
+    private function reservationOf(string $type, int $id): ?array
+    {
+        $st = db()->prepare('SELECT * FROM ellsms_wallet_reservations WHERE reference_type = ? AND reference_id = ?');
+        $st->execute([$type, (string)$id]);
+        return $st->fetch() ?: null;
+    }
+
+    public function testConfirmingMovesTheImportReservationToTheBulkJobWithoutASecondOne(): void
+    {
+        $jobId = $this->runFullPipeline($this->csvRows(20))['job_id'];
+        $bulkJobId = $this->bulkJobIdFor($jobId);
+        $held = wallet_balance($this->userId);
+        self::assertGreaterThan(0, $held['reserved']);
+        $reservation = $this->reservationOf('import_job', $jobId);
+        self::assertNotNull($reservation);
+
+        // Less free credit than the send costs: the old reserve-again-then-release needed it twice.
+        db()->prepare('UPDATE ellsms_wallet_accounts SET available_balance = 0 WHERE user_id = ?')->execute([$this->userId]);
+
+        $result = import_confirm_job($jobId, $this->user() + ['role' => 'user']);
+        self::assertTrue($result['ok'], (string)$result['error']);
+        self::assertSame($bulkJobId, (int)$result['bulk_job_id']);
+
+        self::assertNull($this->reservationOf('import_job', $jobId));
+        $moved = $this->reservationOf('bulk_job', $bulkJobId);
+        self::assertNotNull($moved);
+        self::assertSame((int)$reservation['id'], (int)$moved['id'], 'the same reservation, not a new one');
+        self::assertSame('active', (string)$moved['status']);
+        self::assertSame(0, wallet_balance($this->userId)['available']);
+        self::assertSame($held['reserved'], wallet_balance($this->userId)['reserved']);
+        self::assertSame(0, (int)db()->query("SELECT COUNT(*) FROM ellsms_wallet_transactions
+            WHERE reference_type = 'import_job' AND reference_id = '{$jobId}'")->fetchColumn(), 'no «برگشت رزرو» for the hand-over');
+    }
+
+    public function testAnAdminConfirmingACustomersFileKeepsTheCustomersReservation(): void
+    {
+        $jobId = $this->runFullPipeline($this->csvRows(10))['job_id'];
+        $reserved = wallet_balance($this->userId)['reserved'];
+        $adminId = $this->makeUser(['is_admin' => 1]);
+
+        $result = import_confirm_job($jobId, ['id' => $adminId, 'organization_id' => null, 'role' => 'admin']);
+        self::assertTrue($result['ok'], (string)$result['error']);
+        self::assertNotNull($this->reservationOf('bulk_job', (int)$result['bulk_job_id']), 'the customer still pays for their send');
+        self::assertSame($reserved, wallet_balance($this->userId)['reserved']);
+    }
+
     // ------------------------------------------------------------------ 9. cancellation
 
     public function testCancellingTheBulkJobStopsFurtherSending(): void

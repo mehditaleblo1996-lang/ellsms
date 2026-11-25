@@ -91,6 +91,12 @@ The summary cards above the table (`financial_log_totals()`):
   by sends still running (`wallet_balance()['reserved']`), already off the current credit but not
   charged yet.
 
+A file send («ارسال از فایل») used to add one such release as large as the whole send, because
+confirming it reserved the cost a second time for its bulk job and released the file's reservation.
+Since 2026-11 the reservation is handed over instead (`wallet_move_reservation()`,
+[`large-import-architecture.md`](large-import-architecture.md)), so a file send shows only its
+«هزینه‌ی ارسال گروهی» row; the old rows remain in the history.
+
 So, over an account's whole history: **جمع افزایش − جمع کاهش − در رزرو = اعتبار فعلی**. (Until
 2026-11 releases of non-bulk sends were counted in «جمع افزایش», so the increase total overshot the
 real credit by every such release — e.g. an account showing +3,230,241,548 / −1,221,264,264 against a

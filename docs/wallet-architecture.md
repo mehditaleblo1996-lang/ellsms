@@ -75,6 +75,12 @@ stateDiagram-v2
     released --> [*]
 ```
 
+**Handing a reservation over** — `wallet_move_reservation($fromType, $fromId, $toType, $toId)`
+changes an active reservation's `(reference_type, reference_id)` in one transaction; no balance
+moves, no ledger row. Used when a file send is confirmed: the import's reservation becomes the bulk
+job's (`docs/large-import-architecture.md`). Replays if already moved; refuses (`target_exists`) if
+the target already holds a reservation of its own.
+
 A reservation ends as exactly one of `committed` or `released`, never both (Invariant E) —
 `wallet_release_reservation()` on an already-`committed` row is a no-op (nothing left to give back);
 `wallet_commit_reservation()` requires `status = 'active'`. At most one reservation can ever exist

@@ -389,4 +389,43 @@ final class WalletIntegrationTest extends IntegrationTestCase
         db()->prepare('UPDATE user_ SET currentcredit = 40 WHERE id = ?')->execute([$noWallet]);
         $this->assertSame(40, (int)backend_find_user_by_id($noWallet)['credit'], 'no wallet yet: the amount it will open with');
     }
+
+    public function testMovingAReservationKeepsTheMoneyHeldAndWritesNoLedgerRow(): void
+    {
+        $userId = $this->makeUser();
+        $this->seedWallet($userId, 10000);
+        $this->assertTrue(wallet_reserve($userId, 4000, 'import_job', '900', 'reserve:import_job:900')['ok']);
+        $rows = static fn(): int => (int)db()->query("SELECT COUNT(*) FROM ellsms_wallet_transactions WHERE user_id = {$userId}")->fetchColumn();
+        $ledgerBefore = $rows();
+
+        $move = wallet_move_reservation('import_job', '900', 'bulk_job', '901');
+        $this->assertTrue($move['ok']);
+        $this->assertTrue($move['moved']);
+        $this->assertSame(4000, $move['amount']);
+        $this->assertSame(['available' => 6000, 'reserved' => 4000, 'total' => 10000], wallet_balance($userId));
+        $this->assertSame($ledgerBefore, $rows(), 'a hand-over is not a release');
+
+        // Retried: replays; the import has nothing left to release.
+        $again = wallet_move_reservation('import_job', '900', 'bulk_job', '901');
+        $this->assertTrue($again['ok']);
+        $this->assertFalse($again['moved']);
+        $this->assertSame('no_reservation', wallet_release_reservation('import_job', '900')['reason']);
+
+        // The bulk job charges from it and gives back the rest, like a reservation of its own.
+        $this->assertTrue(wallet_commit_reservation('bulk_job', '901', 1500, 'commit:test:901')['ok']);
+        wallet_release_reservation('bulk_job', '901');
+        $this->assertSame(['available' => 8500, 'reserved' => 0, 'total' => 8500], wallet_balance($userId));
+    }
+
+    public function testMovingOntoAnOperationThatAlreadyHasAReservationChangesNothing(): void
+    {
+        $userId = $this->makeUser();
+        $this->seedWallet($userId, 10000);
+        wallet_reserve($userId, 1000, 'import_job', '910', 'reserve:import_job:910');
+        wallet_reserve($userId, 2000, 'bulk_job', '911', 'reserve:bulk_job:911');
+
+        $this->assertSame('target_exists', wallet_move_reservation('import_job', '910', 'bulk_job', '911')['reason']);
+        $this->assertSame('no_reservation', wallet_move_reservation('import_job', '912', 'bulk_job', '913')['reason']);
+        $this->assertSame(['available' => 7000, 'reserved' => 3000, 'total' => 10000], wallet_balance($userId));
+    }
 }
