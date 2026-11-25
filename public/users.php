@@ -1105,6 +1105,7 @@ if ($editOrganizationId > 0) {
         <td><span class="badge badge-<?= ($u['active'] && !$u['deleted']) ? 'ok' : 'off' ?>"><?= ($u['active'] && !$u['deleted']) ? 'فعال' : 'غیرفعال' ?></span></td>
         <td class="row-actions">
           <a class="icon-act" href="/users.php?edit=<?= $u['id'] ?>" data-tip="ویرایش" aria-label="ویرایش <?= e($u['username']) ?>"><?= panel_icon('edit') ?></a>
+          <a class="icon-act" href="/financial-log.php?user_id=<?= (int)$u['id'] ?>" data-tip="شارژ اعتبار" aria-label="شارژ اعتبار <?= e($u['username']) ?>"><?= panel_icon('wallet') ?></a>
           <?php if (impersonation_target_refusal($u, (int)$me['id']) === null): ?>
             <a class="icon-act icon-act-primary" href="/impersonate.php?target=<?= (int)$u['id'] ?>&amp;from=list" data-tip="ورود به پنل مشتری" aria-label="ورود به پنل مشتری <?= e($u['username']) ?>"><?= panel_icon('login') ?></a>
           <?php endif; ?>

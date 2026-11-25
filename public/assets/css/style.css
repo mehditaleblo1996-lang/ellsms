@@ -1644,3 +1644,29 @@ tr.num-row > td { background: inherit; }
 .ui-tip { position: fixed; z-index: 200; font-family: var(--font-ui); font-weight: 500; max-width: 240px; padding: 5px 10px; border-radius: 7px; background: #1d1b2f; color: #fff; font-size: var(--fs-sm); line-height: 1.6; white-space: nowrap; pointer-events: none; box-shadow: 0 6px 18px rgba(11, 16, 35, .22); opacity: 0; transition: opacity .12s; }
 .ui-tip.is-on { opacity: 1; }
 .toolbar > .icon-act, .toolbar > form:has(> .icon-act) { align-self: center; }
+
+/* «مدیریت اعتبار» on تاریخچه مالی (financial-log.php?user_id=…): customer header + native <dialog>. */
+.credit-customer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.credit-customer h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+.credit-customer h2 .ui-icon { width: 20px; height: 20px; color: var(--indigo); }
+.credit-customer p { margin: 0; }
+.credit-customer .btn { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+.credit-customer .btn .ui-icon { width: 16px; height: 16px; flex: none; }
+.credit-dialog { width: min(560px, calc(100vw - 24px)); padding: 0; border: 0; border-radius: 16px; background: var(--card); color: var(--ink); box-shadow: 0 24px 60px rgba(11, 16, 35, .28); }
+.credit-dialog::backdrop { background: rgba(11, 16, 35, .5); backdrop-filter: blur(2px); }
+.credit-dialog[open] { animation: modal-in .18s ease; }
+.credit-form { display: grid; gap: 16px; padding: 0 22px 20px; }
+.credit-dialog-head { display: flex; align-items: center; justify-content: space-between; margin: 0 -22px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
+.credit-dialog-head h2 { margin: 0; font-size: var(--fs-lg, 1.1rem); }
+.credit-figures { display: grid; grid-template-columns: auto 1fr; gap: 8px 24px; margin: 0; padding-bottom: 14px; border-bottom: 1px dashed var(--line); }
+.credit-figures dt { color: var(--muted); }
+.credit-figures dd { margin: 0; font-weight: 700; }
+.credit-figures dd small { font-weight: 400; color: var(--muted); }
+.credit-figures dd.is-up { color: var(--ok); }
+.credit-figures dd.is-down { color: var(--err); }
+.credit-amount { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 20px; }
+.credit-amount > label { flex: 1 1 220px; margin: 0; }
+.credit-direction { display: flex; gap: 16px; padding-bottom: 10px; }
+.credit-direction label { display: inline-flex; align-items: center; gap: 6px; margin: 0; cursor: pointer; }
+.credit-form textarea { width: 100%; resize: vertical; }
+.credit-form .form-actions { margin: 0; justify-content: flex-start; }

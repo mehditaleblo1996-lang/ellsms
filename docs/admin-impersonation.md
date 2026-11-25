@@ -5,7 +5,7 @@ resetting, or touching that customer's password or 2FA.
 
 Code: `app/impersonation.php` · Endpoint: `public/impersonate.php` · Entry points: **مدیریت →
 کاربران → «ورود به پنل مشتری»** on each row of the accounts list (`/users.php`, an icon button —
-the row actions «ویرایش» / «ورود به پنل مشتری» / «لغو دسترسی» are icons whose name pops up on hover or
+the row actions «ویرایش» / «شارژ اعتبار» / «ورود به پنل مشتری» / «لغو دسترسی» are icons whose name pops up on hover or
 keyboard focus), or the same icon on a customer's detail page (`/users.php?edit=<id>`).
 
 **A platform administrator's support session has no functional restrictions.** Everything the

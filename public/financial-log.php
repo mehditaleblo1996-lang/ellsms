@@ -11,6 +11,55 @@ $isAdmin = $me['role'] === 'admin';
 $pageTitle = 'تاریخچه مالی';
 $active = 'financial_log';
 
+/*
+ * «مدیریت اعتبار» (platform admins only): increase or decrease one customer's credit from this page,
+ * opened from the «شارژ اعتبار» icon on مدیریت → کاربران. The same ledger path as the credit form on
+ * the user's edit page (wallet_manual_adjustment(): a manual_credit / manual_debit row, a decrease
+ * clamps at zero). The form carries a one-time token as the idempotency key, so a double-submit
+ * applies once while a deliberate second identical adjustment still goes through.
+ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'credit_adjust') {
+    $me = require_admin();
+    csrf_check();
+    $targetId = (int)($_POST['user_id'] ?? 0);
+    $back = '/financial-log.php?user_id=' . $targetId;
+    $target = resolve_ellsms_managed_user($targetId);
+    $amount = (int)preg_replace('/\D/', '', from_persian_digits((string)($_POST['amount'] ?? '')));
+    $direction = (string)($_POST['direction'] ?? '');
+    $token = (string)($_POST['token'] ?? '');
+    if ($target === null) {
+        flash('error', 'این حساب در پنل مدیریت نمی‌شود.');
+        redirect('/financial-log.php');
+    }
+    if ($amount <= 0 || $amount > 1_000_000_000_000 || !in_array($direction, ['in', 'out'], true) || !preg_match('/^[0-9a-f]{32}$/', $token)) {
+        flash('error', 'مبلغ معتبر (ریال) وارد کنید و «افزایش» یا «کاهش» را انتخاب کنید.');
+        redirect($back);
+    }
+    $signed = $direction === 'in' ? $amount : -$amount;
+    $reason = trim((string)($_POST['reason'] ?? '')) ?: ($direction === 'in' ? 'افزایش دستی اعتبار توسط مدیر' : 'کاهش دستی اعتبار توسط مدیر');
+    $reason = mb_substr($reason, 0, 190);
+    $before = (int)$target['credit'];
+    try {
+        $adj = wallet_manual_adjustment($targetId, $signed, (int)$me['id'], $reason, 'credit_dialog:' . $targetId . ':' . $token);
+    } catch (Throwable $e) {
+        Logger::error('user.credit_adjust_failed', ['target_id' => $targetId, 'error' => $e->getMessage()]);
+        $adj = ['ok' => false];
+    }
+    if (empty($adj['ok'])) {
+        flash('error', 'تغییر اعتبار انجام نشد؛ دوباره تلاش کنید.');
+        redirect($back);
+    }
+    if (empty($adj['replayed'])) {
+        audit((int)$me['id'], 'user.credit', "#{$targetId} " . ($signed >= 0 ? '+' : '') . $signed . ' — ' . $reason);
+        Logger::info('user.credit_adjusted', ['actor_id' => $me['id'], 'target_id' => $targetId, 'amount' => $signed, 'reason' => $reason, 'source' => 'financial_log']);
+    }
+    $after = (int)($adj['balance'] ?? max(0, $before + $signed));
+    flash('success', ($direction === 'in' ? 'اعتبار افزایش یافت' : 'اعتبار کاهش یافت')
+        . ($direction === 'out' && $amount > $before ? ' (تا صفر؛ بیش از اعتبار فعلی کم نمی‌شود)' : '')
+        . '. اعتبار جدید: ' . to_persian_digits(number_format($after)) . ' ریال.');
+    redirect($back);
+}
+
 $filters = financial_log_filters($_GET, $isAdmin ? null : (int)$me['id'],
     jalali_request_to_gregorian('from'), jalali_request_to_gregorian('to'));
 [$whereSql, $params] = financial_log_where($filters, $isAdmin ? financial_log_username_id($filters) : null);
@@ -66,9 +115,58 @@ foreach (['from', 'to'] as $f) {
     }
 }
 $money = static fn(int $v): string => to_persian_digits(number_format($v));
+// One customer in view (user_id or an exact username): an admin can change their credit from here.
+$customerId = $isAdmin ? ($filters['user_id'] > 0 ? $filters['user_id'] : (int)financial_log_username_id($filters)) : 0;
+$customer = $customerId > 0 && !is_impersonating() ? resolve_ellsms_managed_user($customerId) : null;
 
 require __DIR__ . '/../app/views/header.php';
 ?>
+<?php if ($customer !== null): $customerCredit = (int)$customer['credit']; $customerName = trim($customer['first_name'] . ' ' . $customer['last_name']); ?>
+<div class="card credit-customer">
+  <div>
+    <h2><?= panel_icon('wallet') ?> اعتبار <?= e($customerName !== '' ? $customerName : $customer['username']) ?> <span class="hint ltr"><?= e($customer['username']) ?></span></h2>
+    <p class="hint">اعتبار فعلی: <strong class="num"><?= $money($customerCredit) ?></strong> ریال</p>
+  </div>
+  <div class="toolbar" style="margin:0">
+    <a class="btn btn-sm" href="/users.php?edit=<?= (int)$customer['id'] ?>"><?= panel_icon('user') ?> ویرایش کاربر</a>
+    <button type="button" class="btn btn-sm btn-primary" data-dialog-open="creditDialog"><?= panel_icon('plus') ?> مدیریت اعتبار</button>
+  </div>
+</div>
+
+<dialog class="credit-dialog" id="creditDialog" aria-labelledby="creditDialogTitle">
+  <form method="post" class="credit-form" data-credit="<?= $customerCredit ?>">
+    <div class="credit-dialog-head">
+      <h2 id="creditDialogTitle">مدیریت اعتبار</h2>
+      <button type="button" class="icon-button" data-dialog-close aria-label="بستن"><?= panel_icon('close') ?></button>
+    </div>
+    <?= csrf_field() ?>
+    <input type="hidden" name="do" value="credit_adjust">
+    <input type="hidden" name="user_id" value="<?= (int)$customer['id'] ?>">
+    <input type="hidden" name="token" value="<?= bin2hex(random_bytes(16)) ?>">
+    <dl class="credit-figures">
+      <dt>اعتبار جاری</dt><dd class="num"><?= $money($customerCredit) ?> <small>ریال</small></dd>
+      <dt>اعتبار جدید</dt><dd class="num" data-credit-new><?= $money($customerCredit) ?> <small>ریال</small></dd>
+    </dl>
+    <div class="credit-amount">
+      <label>مبلغ موردنظر
+        <input type="text" name="amount" inputmode="numeric" autocomplete="off" placeholder="ریال" class="ltr" required data-credit-amount>
+      </label>
+      <div class="credit-direction" role="radiogroup" aria-label="نوع تغییر">
+        <label><input type="radio" name="direction" value="in" checked> افزایش</label>
+        <label><input type="radio" name="direction" value="out"> کاهش</label>
+      </div>
+    </div>
+    <p class="hint" data-credit-clamp hidden>بیش از اعتبار فعلی کم نمی‌شود؛ اعتبار به صفر می‌رسد.</p>
+    <label>توضیحات <textarea name="reason" rows="2" maxlength="190" placeholder="مثلاً: شارژ دستی پس از واریز به حساب"></textarea>
+      <span class="hint" style="display:block">در تاریخچه‌ی مالی ثبت می‌شود.</span></label>
+    <div class="form-actions">
+      <button class="btn btn-primary">ذخیره</button>
+      <button type="button" class="btn btn-ghost" data-dialog-close>انصراف</button>
+    </div>
+  </form>
+</dialog>
+<?php endif; ?>
+
 <div class="card">
   <h2>تاریخچه مالی</h2>
   <p class="hint">هر افزایش و کاهش اعتبار<?= $isAdmin ? ' حساب‌ها' : ' حساب شما' ?> با مانده‌ی قبل و بعد از آن اینجا ثبت می‌شود: خرید اعتبار، هزینه‌ی ارسال، بازگشت رزرو ارسال‌نشده، انتقال اعتبار، سود نمایندگی و تغییرات دستی مدیر. مبالغ به ریال است.
@@ -91,6 +189,7 @@ require __DIR__ . '/../app/views/header.php';
     <a class="btn" href="/financial-log.php?<?= e(http_build_query($query + ['export' => 'csv'])) ?>">خروجی CSV</a>
   </form>
 </div>
+
 
 <div class="card">
   <div class="summary-grid">

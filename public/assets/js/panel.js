@@ -444,3 +444,53 @@
   document.addEventListener('focusout', hide);
   window.addEventListener('scroll', hide, true);
 })();
+
+/* Native <dialog>s opened by [data-dialog-open="id"] and closed by [data-dialog-close] (Esc and a click
+   on the backdrop close them too). The «مدیریت اعتبار» form shows the resulting credit as you type. */
+(function () {
+  'use strict';
+  document.addEventListener('click', function (e) {
+    var opener = e.target.closest && e.target.closest('[data-dialog-open]');
+    if (opener) {
+      var d = document.getElementById(opener.getAttribute('data-dialog-open'));
+      if (d && d.showModal) { d.showModal(); var f = d.querySelector('input:not([type=hidden]), textarea'); if (f) f.focus(); }
+      return;
+    }
+    var closer = e.target.closest && e.target.closest('[data-dialog-close]');
+    if (closer) { var cd = closer.closest('dialog'); if (cd) cd.close(); return; }
+    if (e.target.tagName === 'DIALOG' && e.target.open) {
+      var r = e.target.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) e.target.close();
+    }
+  });
+
+  var fa = function (n) { return n.toLocaleString('en-US').replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); };
+  var toLatin = function (s) { return String(s).replace(/[۰-۹]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(d); }).replace(/[٠-٩]/g, function (d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d); }); };
+  document.querySelectorAll('form.credit-form').forEach(function (form) {
+    var current = parseInt(form.getAttribute('data-credit'), 10) || 0;
+    var amountInput = form.querySelector('[data-credit-amount]');
+    var out = form.querySelector('[data-credit-new]');
+    var clamp = form.querySelector('[data-credit-clamp]');
+    function update() {
+      var digits = toLatin(amountInput.value).replace(/\D/g, '');
+      var amount = digits ? parseInt(digits, 10) : 0;
+      if (digits) {
+        var caret = amountInput.value.length - amountInput.selectionEnd;
+        amountInput.value = fa(amount);
+        var pos = Math.max(0, amountInput.value.length - caret);
+        try { amountInput.setSelectionRange(pos, pos); } catch (_) {}
+      }
+      var down = form.querySelector('input[name=direction]:checked').value === 'out';
+      var next = down ? Math.max(0, current - amount) : current + amount;
+      out.innerHTML = fa(next) + ' <small>ریال</small>';
+      out.classList.toggle('is-up', amount > 0 && !down);
+      out.classList.toggle('is-down', amount > 0 && down);
+      if (clamp) clamp.hidden = !(down && amount > current);
+    }
+    amountInput.addEventListener('input', update);
+    form.querySelectorAll('input[name=direction]').forEach(function (r) { r.addEventListener('change', update); });
+    form.addEventListener('submit', function (e) {
+      if (!toLatin(amountInput.value).replace(/\D/g, '')) { e.preventDefault(); amountInput.focus(); }
+    });
+  });
+})();
