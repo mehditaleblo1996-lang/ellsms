@@ -3,7 +3,8 @@
  *  the logged-in app shell in app/views/header.php.
  *  Expects: $pageTitle, optional $metaDescription, optional $extraStyles (list of
  *  /assets/... stylesheet paths a single page adds after style.css), optional $lpNavCurrent
- *  ('about' | 'contact': the nav link marked aria-current="page"). */
+ *  ('about' | 'contact' | 'sms': the nav link marked aria-current="page"), optional $lpBodyClass (an
+ *  extra class on <body> for one page's own styling, e.g. 'ss-body' on /sms-services). */
 $loggedIn     = (bool) current_user();
 $primaryHref  = $loggedIn ? '/index.php' : '/login.php';
 $primaryLabel = $loggedIn ? 'بازگشت به داشبورد' : 'ورود به پنل پیامک';
@@ -36,7 +37,7 @@ $aboutMenu = [
 <?php foreach (($extraStyles ?? []) as $extraStyle): ?><link rel="stylesheet" href="<?= e(asset_url($extraStyle)) ?>">
 <?php endforeach; ?>
 </head>
-<body class="lp-body">
+<body class="lp-body<?= !empty($lpBodyClass) ? ' ' . e($lpBodyClass) : '' ?>">
 <?php
 // Animated page background (docs/landing.md#animated-background): two soft turquoise glows, two layers
 // of thin wave lines that drift sideways at different speeds, and fine glowing light streaks gliding across. Layer a's lines use a repeating gradient (period 1600,
@@ -72,6 +73,7 @@ $lpBgLayers = [
     </a>
     <nav class="lp-nav-links" id="lpNavLinks">
       <a href="/landing.php#product-sms">محصولات</a>
+      <a href="/sms-services"<?= $navCurrent === 'sms' ? ' aria-current="page"' : '' ?>>خدمات پیامک</a>
       <a href="/landing.php#faq">سوالات</a>
       <a href="/guide.php">راهنمای استفاده</a>
       <?php // «درباره ما» opens a submenu (hover, or the chevron button) with the parts of /about; ?>

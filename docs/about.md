@@ -38,7 +38,8 @@ values are the arrays `$abServices`, `$abSectors`, `$abPillars` and `$abValues` 
   menu (under 980 px) it opens in place under «درباره ما».
 - **Footer** (public site and panel): «درباره ما» before «تماس با ما».
 - The nav marks the current page with `aria-current="page"`: a page sets `$lpNavCurrent` before
-  including the public header (`about.php` sets `'about'`, `contact.php` sets `'contact'`).
+  including the public header (`about.php` sets `'about'`, `contact.php` sets `'contact'`,
+  `sms-services.php` sets `'sms'`).
 
 When a section of the page is added, removed or renamed, update both `$abSections` in `about.php`
 (the section bar) and `$aboutMenu` in `public_header.php` (the nav submenu).

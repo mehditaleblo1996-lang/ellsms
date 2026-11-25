@@ -199,8 +199,9 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
         <div class="dx-actions">
           <a href="<?= e($primaryHref) ?>" class="btn btn-primary"><?= e($primaryLabel) ?></a>
-          <a href="/guide.php" class="btn btn-ghost">راهنمای استفاده</a>
+          <a href="/sms-services" class="btn btn-ghost">همه‌ی خدمات پیامک</a>
         </div>
+        <a href="/guide.php" class="dx-link">راهنمای استفاده <?= $dxIcon('arrow') ?></a>
       </div>
       <div class="dx-show-visual lp-reveal" style="--i:1" data-dx-live aria-hidden="true">
         <div class="dx-ui dx-ui-template">

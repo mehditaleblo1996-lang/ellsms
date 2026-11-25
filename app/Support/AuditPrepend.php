@@ -70,6 +70,7 @@ if (PHP_SAPI !== 'cli') {
                 '/guide.php' => '/guide',
                 '/contact.php' => '/contact',
                 '/about.php' => '/about',
+                '/sms-services.php' => '/sms-services',
                 '/terms.php' => '/terms',
                 '/privacy.php' => '/privacy',
                 '/refund.php' => '/refund',

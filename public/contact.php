@@ -110,7 +110,7 @@ require __DIR__ . '/../app/views/public_header.php';
               </label>
             </div>
             <label>موضوع
-              <input type="text" name="subject" maxlength="190" value="<?= e($_POST['subject'] ?? '') ?>">
+              <input type="text" name="subject" maxlength="190" value="<?= e(mb_substr((string)($_POST['subject'] ?? $_GET['subject'] ?? ''), 0, 190)) ?>">
             </label>
             <label>پیام
               <textarea name="message" required<?= $errAttrs('message') ?>><?= e($_POST['message'] ?? '') ?></textarea>
