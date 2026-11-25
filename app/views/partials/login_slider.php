@@ -18,7 +18,7 @@ $total = count($slides);
 $fa = static fn (int $n): string => strtr((string)$n, ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹']);
 ?>
 <section class="auth-stage ls" id="loginSlider" aria-roledescription="carousel" aria-label="امکانات داتیس رایان گستر ایرانیان">
-  <div class="ls-ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+  <div class="ls-ambient" aria-hidden="true"><i></i><i></i><i></i><span class="ls-orbit"><span></span></span></div>
 
   <div class="ls-progress" role="tablist" aria-label="انتخاب اسلاید">
     <?php foreach ($slides as $i => $s): ?>

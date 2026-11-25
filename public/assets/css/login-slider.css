@@ -391,3 +391,41 @@
   .ls-caption { padding-inline: 22px; }
   .ls-title { font-size: 20px; }
 }
+
+/* ---------- Depth (docs/login.md): an orbit ring behind the scenes, a lit inner edge, glass captions ---------- */
+.ls {
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(19, 163, 176, .34), transparent 60%),
+    radial-gradient(70% 50% at 0% 100%, rgba(19, 163, 176, .16), transparent 70%),
+    linear-gradient(165deg, var(--ls-bg1) 0%, #25292b 55%, var(--ls-bg2) 100%);
+  box-shadow: 0 30px 60px -28px rgba(8, 30, 34, .7), inset 0 0 0 1px rgba(255, 255, 255, .07), inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+.ls-orbit {
+  position: absolute; left: 50%; top: 46%; width: 460px; height: 460px; margin: -230px 0 0 -230px;
+  transform: perspective(900px) rotateX(70deg); pointer-events: none;
+}
+.ls-orbit::before { /* brushed-metal ring like the home page's core */
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 20deg, #5b6669, #c9d2d4 14%, #3b4346 30%, #9aa6a9 48%, #2c3235 64%, #b3bec0 82%, #5b6669);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px), #000 calc(100% - 1px), transparent);
+          mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px), #000 calc(100% - 1px), transparent);
+  opacity: .22;
+}
+.ls-orbit > span { /* a spark running round the ring */
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 82%, rgba(111, 214, 223, .9) 92%, #fff 94%, transparent 95%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
+  opacity: .55;
+}
+.ls-tick i { height: 4px; background: rgba(255, 255, 255, .16); }
+.ls-tick.is-active i::after { background: linear-gradient(270deg, #fff, #6fd6df); box-shadow: 0 0 8px rgba(111, 214, 223, .7); }
+.ls-tag { padding: 3px 12px; border: 1px solid rgba(101, 220, 231, .3); background: rgba(101, 220, 231, .12); font-weight: 700; }
+.ls-title { font-size: 24px; font-weight: 800; }
+.ls-btn { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.ls-btn:hover { border-color: rgba(111, 214, 223, .55); }
+@media (prefers-reduced-motion: no-preference) {
+  .ls-orbit > span { animation: ls-orbit-spin 9s linear infinite; }
+  .ls.is-paused .ls-orbit > span { animation-play-state: paused; }
+}
+@keyframes ls-orbit-spin { to { transform: rotate(360deg); } }

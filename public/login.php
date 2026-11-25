@@ -106,7 +106,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="auth">
 <?php /* A light sign-in card using the panel brand: the form in its start half, a slider of the
          panel's features and a getting-started guide in its end half (hidden on narrow screens). */ ?>
-  <div class="auth-bg" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i></div>
+  <div class="auth-bg" aria-hidden="true">
+    <i class="b1"></i><i class="b2"></i><i class="b3"></i><i class="b4"></i>
+    <span class="auth-grid"></span>
+    <span class="auth-ring is-a"></span><span class="auth-ring is-b"></span>
+    <span class="auth-spark is-a"></span><span class="auth-spark is-b"></span><span class="auth-spark is-c"></span>
+  </div>
 
   <div class="auth-shell">
     <header class="auth-top rise" style="--d:0">
@@ -124,7 +129,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </header>
 
     <main class="auth-card rise" style="--d:1">
+      <?php if ($hostBrand === null): /* Narrow screens only (the slider is hidden there): a small graphite band with the core. */ ?>
+      <div class="auth-mhero" aria-hidden="true">
+        <span class="auth-mhero-ring"></span>
+        <span class="auth-mhero-core"><img src="<?= e(asset_url('/assets/img/brand/mark-light.svg')) ?>" alt="" width="40" height="26"></span>
+        <span class="auth-mhero-dot is-a"></span><span class="auth-mhero-dot is-b"></span><span class="auth-mhero-dot is-c"></span>
+      </div>
+      <?php endif; ?>
       <section class="auth-form-side" aria-labelledby="authTitle">
+        <p class="auth-eyebrow"><span aria-hidden="true"></span>خوش آمدید</p>
         <h1 class="auth-title lines" id="authTitle"><span class="line"><span data-line style="--i:0">ورود به حساب کاربری</span></span></h1>
         <p class="auth-lede"><?= $hostBrand !== null && $brand['login_note'] !== '' ? e($brand['login_note']) : 'برای مدیریت ارسال‌ها، گزارش تحویل و اعتبار حساب وارد شوید.' ?></p>
 
@@ -135,17 +148,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <?= csrf_field() ?>
           <div class="auth-field">
             <label for="authUsername">نام کاربری</label>
+            <span class="auth-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg></span>
             <input type="text" name="username" id="authUsername" autocomplete="username" required autofocus autocapitalize="off" spellcheck="false" dir="ltr" value="<?= e($_POST['username'] ?? '') ?>">
           </div>
           <div class="auth-field">
             <label for="authPassword">رمز عبور</label>
             <div class="auth-pass">
+              <span class="auth-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10.5" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 15v2"/></svg></span>
               <input type="password" name="password" id="authPassword" autocomplete="current-password" required dir="ltr">
               <button type="button" class="auth-reveal" id="authReveal" aria-controls="authPassword" aria-pressed="false" hidden>نمایش</button>
             </div>
+            <p class="auth-caps" id="authCaps" role="status" hidden>کلید Caps Lock روشن است.</p>
           </div>
-          <button type="submit" class="auth-submit">ورود</button>
+          <button type="submit" class="auth-submit" id="authSubmit"><span class="auth-submit-label">ورود</span><svg class="auth-submit-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg><span class="auth-spinner" aria-hidden="true"></span></button>
         </form>
+        <p class="auth-secure"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 3 8.4 7 10 4-1.6 7-5.4 7-10V6Z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>اگر ورود دومرحله‌ای برای حساب شما فعال باشد، در مرحله‌ی بعد کد تأیید خواسته می‌شود.</p>
 
         <?php if ($hostBrand !== null ? $hostBrand['signup_enabled'] : setting('registration_mode', 'approval') !== 'closed'): ?>
           <p class="auth-register">حساب کاربری ندارید؟ <a href="/register">ثبت‌نام کنید</a></p>
