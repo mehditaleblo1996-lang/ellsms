@@ -283,8 +283,8 @@ Operationally:
 - **A reason is optional.** When entered (e.g. the ticket number) it is stored in the audit trail;
   without one the start is still audited with `reason=-`.
 - The session is bounded to **60 minutes** and then returns the operator to the admin panel.
-- The «ورود به پنل مشتری» button is on every row of مدیریت → کاربران as well as on the customer's
-  detail page.
+- The «ورود به پنل مشتری» button is on every row of مدیریت → کاربران (the indigo «enter» icon; its
+  name shows as a tooltip on hover) as well as on the customer's detail page.
 - **No functional restrictions for a platform admin**: real sends, password/2FA, API keys, webhooks,
   billing and deletions all work and really affect the customer's account. Each action is audited
   with the admin as `impersonator_user_id`. (Reseller/parent sessions into a child keep the blocked

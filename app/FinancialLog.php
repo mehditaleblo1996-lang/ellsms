@@ -30,6 +30,9 @@ function financial_log_type_labels(): array {
         'transfer_out'              => 'انتقال اعتبار (پرداخت)',
         'reseller_profit'           => 'سود نمایندگی',
         'reseller_package_sale'     => 'تسویه‌ی فروش بسته',
+        'number_purchase'           => 'خرید شماره',
+        'number_renewal'            => 'تمدید شماره',
+        'number_refund'             => 'بازگشت وجه خرید شماره',
         'delivery_refund'           => 'بازگشت هزینه‌ی پیام تحویل‌نشده',
         'migration_opening_balance' => 'موجودی اولیه',
         'currency_conversion'       => 'تبدیل واحد پول به ریال',
@@ -353,6 +356,7 @@ function financial_log_reference_labels(): array {
         'shared_otp'        => 'کد تایید اشتراکی',
         'shared_service'    => 'سرویس ارسال اشتراکی',
         'reseller_package'  => 'بسته‌ی نماینده',
+        'number_order'      => 'سفارش شماره',
     ];
 }
 

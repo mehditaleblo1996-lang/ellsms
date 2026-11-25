@@ -89,37 +89,63 @@ invented: the one number on the page (۱۲٬۴۸۰ in the report mock-up) is lab
 ### The signature core (hero)
 
 A graphite sphere with a glass shell and the DATIS mark, a brushed-metal ring and a wide second ring in
-tilted planes, and the five service lines orbiting on the main ring. It is **pure CSS 3D**
-(`.dx-core-*` in `home.css`, one `preserve-3d` context, so the browser depth-sorts the nodes in front of
-or behind the sphere); no WebGL or library, so it looks the same with or without a GPU. Each node face
-counter-rotates and un-tilts, so it always faces the viewer. Scaled per breakpoint with `--k`.
+tilted planes, and the five service lines orbiting on the main ring. CSS 3D draws the rings and light
+effects. The hub and product buttons live on a separate flat layer so text and SVG glyphs are painted
+at their display size. Invisible anchors on the main ring supply each button's screen position, size
+and stacking order. The scene scales per breakpoint with `--k`.
+
+**Sharp icons.** Every frame the script snaps each button's position to whole device pixels and gives
+its ball an even whole-pixel size (`--ball`) and its icon an even whole-pixel size (`--ico`, ≈ 42 % of
+the ball), so the 24-unit SVG glyphs sit on the pixel grid and stay sharp while the orbit turns and
+after it stops. Nothing in the flat layer is scaled with `transform` (the core no longer grows on
+hover; its rim lights up instead). A node passing behind the core fades out (and stops taking clicks)
+instead of being cut in half by the sphere's edge.
 
 **Graphics.**
 - The core: a turquoise halo that breathes behind it; three energy pulses that ripple outwards, one
   after another; a soft light sweep turning inside the graphite; a glassy highlight that slides opposite
   the pointer (`--px`/`--py`), so the core reads as round.
-- Energy beams (`.dx-beam`): a spoke from the core to each service in the ring's plane, with a light
-  flowing outwards along it (staggered per service).
+- Constellation links (`svg.dx-links`, see below): an arc from the core to each service with light
+  running along it, and a faint dotted web between neighbouring services.
 - Sparks (`.dx-dust`): fifteen tiny twinkling lights on a second, slower orbit turning the other way.
 - Entrance: the services pop out of the core one after another.
 
 **Interaction (the inline script after the hero).** One rAF loop sets `--rot` (the orbit angle, in
-degrees) on `.dx-core-world`; `.dx-orbit` turns by it and every node face turns back by it.
+degrees) on `.dx-core-world`; `.dx-orbit` turns by it and the buttons follow their projected anchors.
 - It turns slowly on its own (360° per 56 s) and slows to a fifth while a service is hovered or
   focused.
 - **Drag / swipe** anywhere on the core to spin it, with momentum that eases back to the slow turn.
   Only horizontal drags count (`touch-action: pan-y`), so vertical swipes still scroll the page. The
   click that ends a drag is ignored.
-- **Click a service:** the orbit turns the shortest way to bring it to the front (+90° on the tilted
-  ring), its ball turns turquoise with a ripple, its beam brightens and flows faster, the core swaps the
-  DATIS mark for that service's icon (`.dx-core[data-sel]`) and its card opens below (see
-  «Click-to-explain»). Clicking it again or «×» releases the orbit.
+- **Click a service:** the orbit turns the shortest way to bring it to the front, a little to the side
+  of the nearest point (`FRONT` = 52° on the tilted ring, so it stays clear of the core and its link
+  shows); its white ball gets a turquoise rim, a halo, a light running round the rim and a ripple —
+  the icon keeps its colour family and stroke weight; its link thickens, glows and flows faster while
+  the other links thin out and stop; the core swaps the DATIS mark for that service's icon (48 px at
+  `--k` 1, thin stroke; `.dx-core[data-sel]`) and its card opens below (see «Click-to-explain»).
+  Clicking it again or «×» releases the orbit.
 - **Click the core** (a `<button>`): a shockwave ring, a thump, the card closes and the orbit gets a spin
   boost that decays back.
 - The loop runs only while the core is on screen and the tab is visible; off screen the CSS animations
   pause too (`.is-paused`).
 - `prefers-reduced-motion`: no auto-turn, no pulses, sparks, sweep or flowing light; a click still selects
   and the service jumps to the front.
+
+### The constellation links
+
+`<svg class="dx-links" data-dx-links>` is the first child of the flat `.dx-core-faces` layer (z-index 0:
+under every button and under the core). Its geometry is written by the same rAF loop from the projected
+node positions, in screen pixels, so it is as sharp as the buttons:
+- per service (`g.dx-link[data-dx-link]`): a quadratic arc from a socket dot on the core's rim to a port
+  dot on the ball's edge, all bowed the same way like the arms of a spiral; a turquoise gradient
+  (`#dxLinkGrad<k>`, user-space, re-aimed every frame) fading towards the core; a soft wide glow path;
+  and two light pulses (a turquoise one and a small white one, `pathLength="100"`, dash-offset animation,
+  staggered per service) that run from the core out to the service;
+- a link fades with its node's depth, and hides when the node is behind or too close to the core;
+- `path.dx-web`: a dotted line between neighbouring services on the ring (0-1-2-3-4-0), skipping a node
+  that is hidden behind the core;
+- selected (`.dx-link.is-on`): thicker line, brighter glow, pulses about three times as fast, a beating
+  port; the other links thin out and their pulses stop.
 
 **Rendering rule.** A translucent layer that crosses the tilted ring's plane is split there by the
 browser and shows a seam. So the core's soft glows (`.dx-core-light`, `.dx-sphere-halo`) sit behind the
@@ -131,12 +157,12 @@ rather than across it.
 
 Each of the five nodes is a `<button data-dx-node>` (`$dxLines` in `landing.php` holds its anchor, short
 name, icon, title, one-paragraph explanation and three main services). A click turns the orbit to bring the node to the front and holds it there
-(`.dx-core.is-held`), highlights the node (`aria-pressed="true"`, turquoise ball, graphite label) and shows
+(`.dx-core.is-held`), highlights the node (`aria-pressed="true"`, turquoise rim and glow, graphite label) and shows
 its card in `#dxCoreInfo` under the core: title, explanation, the three services as
 chips and «جزئیات …» linking to its showcase (`#product-*`). Clicking the same node again, «×» or the core closes the
 card and the orbit turns again. The decorative 3D layers have `pointer-events: none` so only the nodes
-take clicks (plus the core and dragging on the core itself); nodes behind the sphere are not clickable
-until they come round. The card region is
+take clicks (plus the core and dragging on the core itself); nodes behind the sphere (faded out,
+`.is-hidden`) are not clickable until they come round. The card region is
 `aria-live="polite"`.
 
 The «محصولات و خدمات» bento grid (`#products`, «پنج خدمت، یک تیم») that used to sit between the hero and

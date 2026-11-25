@@ -415,3 +415,335 @@
   window.addEventListener('resize', function () { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(labelScrollableTables); });
   if (document.fonts) document.fonts.ready.then(labelScrollableTables);
 })();
+
+// Runs on every panel page, sidebar or not.
+(function () {
+  'use strict';
+  // File inputs become drop zones. The native <input type=file> is kept in place (same id, name,
+  // required, listeners) and stretched invisibly over the zone, so clicking and dropping a file are
+  // handled by the browser itself; the script only mirrors the chosen file into the zone's text.
+  var FILE_ICON_UP = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5"/><path d="M12 12v8"/><path d="m8.5 15.5 3.5-3.5 3.5 3.5"/></svg>';
+  var FILE_ICON_DOC = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>';
+  function faDigits(value) { return String(value).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
+  function fileSize(bytes) {
+    if (bytes < 1024) return faDigits(bytes) + ' بایت';
+    if (bytes < 1048576) return faDigits(Math.round(bytes / 1024)) + ' کیلوبایت';
+    return faDigits((bytes / 1048576).toFixed(1)) + ' مگابایت';
+  }
+  function acceptedFormats(accept) {
+    var seen = [];
+    (accept || '').split(',').forEach(function (part) {
+      part = part.trim().toLowerCase();
+      if (!part) return;
+      var name = part.charAt(0) === '.' ? part.slice(1) : (part.split('/')[1] || part);
+      name = ({ '*': part.split('/')[0], plain: 'txt', mpeg: 'mp3', jpg: 'jpeg' })[name] || name;
+      name = name === 'image' ? 'تصویر' : name === 'video' ? 'ویدیو' : name === 'audio' ? 'صوت' : name.toUpperCase();
+      if (seen.indexOf(name) < 0) seen.push(name);
+    });
+    return seen;
+  }
+  function dressFileInput(input) {
+    if (input.dataset.fdrop || input.closest('.file-picker, .fdrop')) return;
+    input.dataset.fdrop = '1';
+    var compact = !!input.closest('.lba-actions, .toolbar, td, [data-file-compact]');
+    var zone = document.createElement('span');
+    zone.className = 'fdrop' + (compact ? ' fdrop-compact' : '');
+    var formats = acceptedFormats(input.getAttribute('accept'));
+    zone.innerHTML =
+      '<span class="fdrop-icon">' + FILE_ICON_UP + '</span>' +
+      '<span class="fdrop-text">' +
+        '<span class="fdrop-title">' + (compact ? 'انتخاب فایل' : 'فایل را اینجا رها کنید یا <u>انتخاب کنید</u>') + '</span>' +
+        '<span class="fdrop-sub">' + (formats.length ? formats.map(function (f) { return '<span class="fdrop-chip">' + f + '</span>'; }).join('') : 'همه‌ی فرمت‌ها') + '</span>' +
+      '</span>' +
+      '<button type="button" class="fdrop-clear" aria-label="حذف فایل انتخاب‌شده" hidden>' +
+        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+    input.parentNode.insertBefore(zone, input);
+    zone.appendChild(input);
+    var icon = zone.querySelector('.fdrop-icon');
+    var title = zone.querySelector('.fdrop-title');
+    var sub = zone.querySelector('.fdrop-sub');
+    var clear = zone.querySelector('.fdrop-clear');
+    var emptyIcon = icon.innerHTML, emptyTitle = title.innerHTML, emptySub = sub.innerHTML, preview = null;
+    function sync() {
+      var files = input.files ? Array.prototype.slice.call(input.files) : [];
+      if (preview) { URL.revokeObjectURL(preview); preview = null; }
+      zone.classList.toggle('has-file', files.length > 0);
+      clear.hidden = files.length === 0 || input.disabled;
+      if (!files.length) { icon.innerHTML = emptyIcon; title.innerHTML = emptyTitle; sub.innerHTML = emptySub; return; }
+      var first = files[0];
+      if (/^image\//.test(first.type) && window.URL && URL.createObjectURL) {
+        preview = URL.createObjectURL(first);
+        icon.innerHTML = '<img alt="" src="' + preview + '">';
+      } else {
+        var ext = (first.name.split('.').pop() || '').slice(0, 4).toLowerCase();
+        var kind = /^(xlsx?|csv|ods)$/.test(ext) ? 'sheet' : /^pdf$/.test(ext) ? 'pdf' : /^(docx?|odt|rtf|md|txt)$/.test(ext) ? 'doc'
+          : /^audio\//.test(first.type) ? 'audio' : /^video\//.test(first.type) ? 'video' : 'other';
+        icon.innerHTML = ext && first.name.indexOf('.') > 0
+          ? '<span class="fdrop-ext" data-kind="' + kind + '">' + ext.toUpperCase().replace(/[^A-Z0-9]/g, '') + '</span>'
+          : FILE_ICON_DOC;
+      }
+      title.textContent = files.length > 1 ? faDigits(files.length) + ' فایل انتخاب شد' : first.name;
+      title.title = first.name;
+      var total = files.reduce(function (sum, f) { return sum + f.size; }, 0);
+      sub.textContent = fileSize(total) + ' · آماده‌ی بارگذاری';
+    }
+    input.addEventListener('change', sync);
+    clear.addEventListener('click', function (event) {
+      event.preventDefault();
+      input.value = '';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.focus();
+    });
+    ['dragenter', 'dragover'].forEach(function (type) {
+      input.addEventListener(type, function () { zone.classList.add('is-dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(function (type) {
+      input.addEventListener(type, function () { zone.classList.remove('is-dragover'); });
+    });
+    if (input.form) input.form.addEventListener('reset', function () { setTimeout(sync, 0); });
+    sync();
+  }
+  function dressFileInputs(root) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('input[type=file]'), dressFileInput);
+  }
+  dressFileInputs(document);
+  document.addEventListener('lazy-part:inserted', function (event) { dressFileInputs(event.target); });
+  window.panelDressFileInputs = dressFileInputs;
+})();
+
+// Dropdowns: on a mouse/trackpad device a <select> opens a styled list instead of the OS one. The
+// <select> stays the real control (value, name, form submission, change listeners, keyboard arrows);
+// the list only sets its value and fires input/change. Touch devices keep the native picker.
+(function () {
+  'use strict';
+  var fine = window.matchMedia('(pointer: fine)');
+  var CHECK = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
+  var open = null; // { select, pop, list, search, items, active }
+  var uid = 0;
+
+  function eligible(select) {
+    return select && select.tagName === 'SELECT' && !select.multiple && !(select.size > 1) && !select.disabled
+      && fine.matches && select.closest('.panel') && !select.closest('[data-native-select]');
+  }
+  function norm(text) {
+    return String(text || '').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/[‌\s]+/g, ' ')
+      .replace(/[۰-۹]/g, function (d) { return String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)); }).trim().toLowerCase();
+  }
+  function close(restoreFocus) {
+    if (!open) return;
+    var o = open; open = null;
+    o.select.setAttribute('aria-expanded', 'false');
+    o.select.classList.remove('is-open');
+    o.pop.classList.add('is-leaving');
+    setTimeout(function () { o.pop.remove(); }, 120);
+    if (restoreFocus) o.select.focus({ preventScroll: true });
+  }
+  function setActive(index, scroll) {
+    var items = open.items.filter(function (it) { return !it.el.hidden && !it.disabled; });
+    if (!items.length) { open.active = null; return; }
+    var cur = open.active ? items.indexOf(open.active) : -1;
+    var next = index === 'first' ? 0 : index === 'last' ? items.length - 1 : Math.max(0, Math.min(items.length - 1, cur + index));
+    if (open.active) open.active.el.classList.remove('is-active');
+    open.active = items[next];
+    open.active.el.classList.add('is-active');
+    open.list.setAttribute('aria-activedescendant', open.active.el.id);
+    if (scroll) open.active.el.scrollIntoView({ block: 'nearest' });
+  }
+  function choose(item) {
+    var select = open.select;
+    var changed = select.selectedIndex !== item.index;
+    select.selectedIndex = item.index;
+    close(true);
+    if (changed) {
+      select.dispatchEvent(new Event('input', { bubbles: true }));
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  }
+  function place(select, pop) {
+    var r = select.getBoundingClientRect();
+    var vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    var width = Math.min(Math.max(r.width, 200), 440, vw - 16);
+    pop.style.width = width + 'px';
+    var rtl = getComputedStyle(select).direction === 'rtl';
+    var left = rtl ? r.right - width : r.left;
+    pop.style.left = Math.max(8, Math.min(left, vw - width - 8)) + 'px';
+    var below = vh - r.bottom - 12, above = r.top - 12;
+    var up = below < 220 && above > below;
+    var max = Math.max(140, Math.min(340, up ? above : below));
+    pop.style.maxHeight = max + 'px';
+    pop.classList.toggle('is-up', up);
+    if (up) { pop.style.top = ''; pop.style.bottom = (vh - r.top + 6) + 'px'; }
+    else { pop.style.bottom = ''; pop.style.top = (r.bottom + 6) + 'px'; }
+  }
+  function filter(query) {
+    var q = norm(query), shown = 0;
+    open.items.forEach(function (it) { it.el.hidden = q !== '' && it.key.indexOf(q) < 0; if (!it.el.hidden) shown++; });
+    open.groups.forEach(function (g) { g.hidden = !g.nextItems.some(function (it) { return !it.el.hidden; }); });
+    open.empty.hidden = shown > 0;
+    if (open.active && open.active.el.hidden) open.active = null;
+    if (!open.active) setActive('first', true);
+  }
+  function build(select) {
+    close(false);
+    var pop = document.createElement('div');
+    pop.className = 'csel-pop';
+    pop.dir = getComputedStyle(select).direction;
+    var list = document.createElement('div');
+    list.className = 'csel-list';
+    list.setAttribute('role', 'listbox');
+    list.tabIndex = -1;
+    var label = select.getAttribute('aria-label') || (select.labels && select.labels[0] ? select.labels[0].textContent.trim().split('\n')[0] : '');
+    if (label) list.setAttribute('aria-label', label);
+    var items = [], groups = [], lastGroup = null, base = 'csel-' + (++uid);
+    Array.prototype.forEach.call(select.options, function (opt, index) {
+      if (opt.hidden) return;
+      var parent = opt.parentNode;
+      if (parent.tagName === 'OPTGROUP' && parent !== lastGroup) {
+        lastGroup = parent;
+        var g = document.createElement('div');
+        g.className = 'csel-group'; g.textContent = parent.label; g.nextItems = [];
+        list.appendChild(g); groups.push(g);
+      }
+      var el = document.createElement('div');
+      el.className = 'csel-opt';
+      el.id = base + '-' + index;
+      el.setAttribute('role', 'option');
+      var selected = index === select.selectedIndex;
+      el.setAttribute('aria-selected', selected ? 'true' : 'false');
+      var disabled = opt.disabled || (parent.tagName === 'OPTGROUP' && parent.disabled);
+      if (disabled) el.setAttribute('aria-disabled', 'true');
+      var text = document.createElement('span');
+      text.className = 'csel-text';
+      text.textContent = opt.text.trim() || ' ';
+      el.appendChild(text);
+      var mark = document.createElement('span');
+      mark.className = 'csel-check';
+      if (selected) mark.innerHTML = CHECK;
+      el.appendChild(mark);
+      var item = { el: el, index: index, disabled: disabled, key: norm(opt.text) };
+      if (parent.tagName === 'OPTGROUP') lastGroup.nextItems.push(item);
+      items.push(item);
+      list.appendChild(el);
+    });
+    var search = null;
+    if (items.length > 9) {
+      var box = document.createElement('div');
+      box.className = 'csel-search';
+      search = document.createElement('input');
+      search.type = 'search';
+      search.placeholder = 'جست‌وجو…';
+      search.setAttribute('aria-label', 'جست‌وجو در گزینه‌ها');
+      search.autocomplete = 'off';
+      box.appendChild(search);
+      pop.appendChild(box);
+    }
+    var empty = document.createElement('div');
+    empty.className = 'csel-empty'; empty.textContent = 'گزینه‌ای پیدا نشد'; empty.hidden = true;
+    list.appendChild(empty);
+    pop.appendChild(list);
+    document.body.appendChild(pop);
+    open = { select: select, pop: pop, list: list, search: search, items: items, groups: groups, empty: empty, active: null };
+    select.setAttribute('aria-expanded', 'true');
+    select.classList.add('is-open');
+    place(select, pop);
+    var current = items.filter(function (it) { return it.index === select.selectedIndex; })[0];
+    if (current && !current.disabled) { open.active = current; current.el.classList.add('is-active'); list.setAttribute('aria-activedescendant', current.el.id); }
+    else setActive('first', false);
+    if (open.active) open.active.el.scrollIntoView({ block: 'center' });
+    list.addEventListener('mousemove', function (event) {
+      var el = event.target.closest('.csel-opt');
+      if (!el || !open || (open.active && open.active.el === el)) return;
+      var it = open.items.filter(function (x) { return x.el === el; })[0];
+      if (!it || it.disabled) return;
+      if (open.active) open.active.el.classList.remove('is-active');
+      open.active = it; el.classList.add('is-active');
+    });
+    list.addEventListener('click', function (event) {
+      var el = event.target.closest('.csel-opt');
+      var it = el && open && open.items.filter(function (x) { return x.el === el; })[0];
+      if (it && !it.disabled) choose(it);
+    });
+    pop.addEventListener('keydown', onKey);
+    if (search) {
+      search.addEventListener('input', function () { filter(search.value); });
+      search.focus({ preventScroll: true });
+    } else {
+      list.focus({ preventScroll: true });
+    }
+  }
+  var typed = '', typedAt = 0;
+  function onKey(event) {
+    if (!open) return;
+    var k = event.key;
+    if (k === 'Escape') { event.preventDefault(); close(true); }
+    else if (k === 'Tab') { close(true); }
+    else if (k === 'ArrowDown') { event.preventDefault(); setActive(1, true); }
+    else if (k === 'ArrowUp') { event.preventDefault(); setActive(-1, true); }
+    else if (k === 'Home' && !open.search) { event.preventDefault(); setActive('first', true); }
+    else if (k === 'End' && !open.search) { event.preventDefault(); setActive('last', true); }
+    else if (k === 'PageDown') { event.preventDefault(); setActive(8, true); }
+    else if (k === 'PageUp') { event.preventDefault(); setActive(-8, true); }
+    else if (k === 'Enter' || (k === ' ' && !open.search)) { event.preventDefault(); if (open.active) choose(open.active); }
+    else if (!open.search && k.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      var now = Date.now();
+      typed = (now - typedAt > 700 ? '' : typed) + norm(k); typedAt = now;
+      var hit = open.items.filter(function (it) { return !it.disabled && it.key.indexOf(typed) === 0; })[0];
+      if (hit) { if (open.active) open.active.el.classList.remove('is-active'); open.active = hit; hit.el.classList.add('is-active'); hit.el.scrollIntoView({ block: 'nearest' }); }
+    }
+  }
+
+  document.addEventListener('mousedown', function (event) {
+    if (open && open.pop.contains(event.target)) return;
+    var select = event.target.closest && event.target.closest('select');
+    if (event.button === 0 && eligible(select)) {
+      event.preventDefault();
+      if (open && open.select === select) { close(true); return; }
+      select.focus({ preventScroll: true });
+      build(select);
+      return;
+    }
+    close(false);
+  }, true);
+  document.addEventListener('keydown', function (event) {
+    var select = event.target;
+    if (open || !eligible(select)) return;
+    if (event.key === ' ' || event.key === 'F4' || (event.altKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp'))) {
+      event.preventDefault();
+      build(select);
+    }
+  }, true);
+  window.addEventListener('scroll', function (event) {
+    if (open && !open.pop.contains(event.target)) close(false);
+  }, true);
+  window.addEventListener('resize', function () { close(false); });
+  window.addEventListener('blur', function () { close(false); });
+})();
+
+/* Tooltip for icon-only buttons: any element with data-tip shows its text in a small popup above it
+   on hover or keyboard focus. Fixed-positioned so a scrolling .table-wrap never clips it. */
+(function () {
+  'use strict';
+  var tip = null, owner = null;
+  function show(el) {
+    var text = el.getAttribute('data-tip');
+    if (!text) return;
+    if (!tip) { tip = document.createElement('div'); tip.className = 'ui-tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    owner = el;
+    tip.textContent = text;
+    var r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = Math.max(6, Math.min(window.innerWidth - w - 6, r.left + r.width / 2 - w / 2));
+    var top = r.top - h - 8;
+    if (top < 6) top = r.bottom + 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    tip.classList.add('is-on');
+  }
+  function hide() { owner = null; if (tip) tip.classList.remove('is-on'); }
+  document.addEventListener('mouseover', function (e) {
+    var el = e.target.closest && e.target.closest('[data-tip]');
+    if (el && el !== owner) show(el); else if (!el && owner) hide();
+  });
+  document.addEventListener('focusin', function (e) { var el = e.target.closest && e.target.closest('[data-tip]'); if (el) show(el); });
+  document.addEventListener('focusout', hide);
+  window.addEventListener('scroll', hide, true);
+})();

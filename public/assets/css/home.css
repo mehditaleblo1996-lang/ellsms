@@ -61,8 +61,8 @@
 /* ---------- the signature core (pure CSS 3D) ----------
    .dx-core-world holds one 3D rendering context: the graphite sphere (a billboard at z=0), a
    brushed-metal ring and a thin second ring lying in tilted planes, and five nodes on the main ring.
-   The orbit turns by --rot (set by the script); each node face counter-turns and un-tilts, so it always faces the viewer
-   while the browser depth-sorts it in front of or behind the sphere. --px/--py (−1…1) come from the
+   The orbit turns by --rot (set by the script); invisible anchors counter-turn and un-tilt to measure
+   screen positions and depth for the flat button layer. --px/--py (−1…1) come from the
    pointer, damped in JS. Sizes are in px at --k = 1 and the whole world is scaled per breakpoint. */
 .dx-core { --k: 1; --tilt: 70deg; position: relative; width: 100%; aspect-ratio: 1 / 1; max-width: 580px; margin-inline: auto; }
 .dx-core-stage { position: absolute; inset: 0; perspective: 1400px; }
@@ -78,7 +78,9 @@
 .dx-core.is-in .dx-core-world { opacity: 1; }
 .dx-core-floor {
   position: absolute; left: 50%; top: 86%; width: 360px; height: 60px; margin: -30px 0 0 -180px;
-  background: radial-gradient(closest-side, rgba(37, 41, 43, .2), rgba(37, 41, 43, 0));
+  background:
+    radial-gradient(ellipse at 50% 52%, rgba(37, 41, 43, .19), transparent 57%),
+    radial-gradient(closest-side, rgba(37, 41, 43, .12), transparent);
   transform: translateZ(-200px);
 }
 .dx-core-light {
@@ -93,40 +95,70 @@
 /* Wide and gently tilted so its front arc passes around the core (minor semi-axis ≈ 100px > the 80px
    core) instead of slicing across it edge-on. */
 .dx-ring-b { width: 400px; height: 400px; margin: -200px 0 0 -200px; transform: rotateX(54deg) rotateY(32deg); }
-/* Brushed metal: a conic sweep of silvers, masked to a 7px band. */
+/* Two polished edges frame the brushed face of the main silver ring. */
 .dx-ring-band {
   position: absolute; inset: 0; border-radius: 50%;
   background: conic-gradient(from 20deg, #9aa7aa, #f4f7f7 12%, #6c787b 26%, #d9e0e1 40%, #505b5e 55%, #eef2f2 68%, #7f8b8e 82%, #9aa7aa);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
-          mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
-  box-shadow: 0 0 0 1px rgba(37, 41, 43, .06);
+  mask-image: radial-gradient(farthest-side, transparent calc(100% - 12px), #000 calc(100% - 10px), #000 calc(100% - 1px), transparent);
 }
-.dx-ring-line { position: absolute; inset: 16px; border-radius: 50%; border: 1px solid rgba(17, 184, 197, .5); }
-.dx-ring-b .dx-ring-line { inset: 0; border: 1px dashed rgba(37, 41, 43, .2); animation: dx-spin 90s linear infinite reverse; }
+.dx-ring-band::before, .dx-ring-band::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+}
+.dx-ring-band::before {
+  background: radial-gradient(farthest-side,
+    transparent calc(100% - 12px), #ffffffb8 calc(100% - 10px), transparent calc(100% - 8px),
+    transparent calc(100% - 4px), #1a1e205c calc(100% - 2px), #ffffffbf calc(100% - 1px), transparent);
+}
+.dx-ring-band::after {
+  background: conic-gradient(from 45deg, transparent 12%, #fff 17%, transparent 25%, transparent 61%, #fff9 65%, transparent 72%);
+  animation: dx-spin 16s linear infinite;
+}
+.dx-ring-line {
+  position: absolute; inset: 18px; border-radius: 50%;
+  border: 1px solid rgba(17, 184, 197, .5);
+  box-shadow: inset 0 0 6px rgba(17, 184, 197, .12), 0 0 6px rgba(17, 184, 197, .18);
+}
+.dx-ring-b .dx-ring-line {
+  inset: 0; border: 1px dashed rgba(37, 41, 43, .28);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .44);
+  animation: dx-spin 90s linear infinite reverse;
+}
 .dx-orbit { position: absolute; inset: 0; transform-style: preserve-3d; transform: rotateZ(calc(var(--rot, 0) * 1deg)); }
 .dx-node {
   position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-style: preserve-3d;
   transform: rotateZ(var(--a)) translateX(260px) rotateZ(calc(var(--a) * -1));
 }
-.dx-node-face {
-  position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 8px;
-  /* The un-tilt comes first and the centring translate last, so the rotations cancel exactly. */
-  /* --rot (degrees, from the script) turns the orbit; the face turns back by the same amount. */
-  transform: rotateZ(calc(var(--rot, 0) * -1deg)) rotateY(8deg) rotateX(calc(var(--tilt) * -1)) translate(-50%, -29px);
-  transform-origin: 0 0;
+.dx-node-anchor {
+  position: absolute; left: 0; top: 0; width: 20px; height: 0; transform-origin: 0 0;
+  transform: rotateZ(calc(var(--rot, 0) * -1deg)) rotateY(8deg) rotateX(calc(var(--tilt) * -1)) translateX(-50%);
 }
+/* Keep button surfaces, labels and vector strokes out of the perspective compositor. */
+.dx-core-faces {
+  position: absolute; inset: 0; isolation: isolate; pointer-events: none;
+  opacity: 0; transition: opacity 1.2s var(--ease);
+}
+.dx-core.is-in .dx-core-faces { opacity: 1; }
+/* A zero-width column whose ball is centred on the projected point: --ball and --ico are even whole
+   pixels and --face-x/--face-y are snapped to device pixels by the script, so the icon stays sharp. */
+.dx-node-face {
+  --ball: 58px; --ico: 24px;
+  position: absolute; left: var(--face-x); top: calc(var(--face-y) - var(--ball) / 2); width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: calc(8px * var(--face-scale));
+  transition: opacity .25s linear;
+}
+.dx-node-face.is-hidden { pointer-events: none !important; }
 @keyframes dx-spin { to { transform: rotateZ(360deg); } }
 .dx-node-ball {
-  display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; color: var(--primary-hover);
+  flex: none; display: grid; place-items: center; width: var(--ball); height: var(--ball); border-radius: 50%; color: var(--primary-hover);
   background:
     radial-gradient(circle at 32% 26%, rgba(255, 255, 255, .95), rgba(255, 255, 255, 0) 42%),
     linear-gradient(160deg, #ffffff, #e6eced 62%, #d3dcde);
   border: 1px solid rgba(255, 255, 255, .9);
   box-shadow: 0 14px 26px -14px rgba(37, 41, 43, .55), inset 0 -4px 10px rgba(37, 41, 43, .08), 0 0 0 1px rgba(37, 41, 43, .05);
 }
-.dx-node-ball svg { width: 24px; height: 24px; }
+.dx-node-ball svg { width: var(--ico); height: var(--ico); display: block; stroke-width: 1.8; transition: color .25s var(--ease); }
 .dx-node-label {
-  padding: 4px 11px; border-radius: 999px; white-space: nowrap; font-size: 12.5px; font-weight: 700; color: var(--foreground);
+  padding: calc(4px * var(--face-scale)) calc(11px * var(--face-scale)); border-radius: 999px; white-space: nowrap; font-size: calc(12.5px * var(--face-scale)); font-weight: 700; color: var(--foreground);
   background: rgba(255, 255, 255, .86); border: 1px solid var(--border); box-shadow: 0 6px 14px -10px rgba(37, 41, 43, .4);
 }
 /* The sphere: graphite body with a soft studio key light, a turquoise rim from below and a glass shell. */
@@ -154,31 +186,48 @@
 @keyframes dx-wave { 0% { transform: scale(.9); opacity: 1; } 100% { transform: scale(3.4); opacity: 0; } }
 .dx-sphere-shell {
   position: absolute; left: 0; top: 0; width: 212px; height: 212px; margin: -106px 0 0 -106px; border-radius: 50%;
+  --rim-glow: .21;
   background:
-    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 30%),
-    radial-gradient(circle, rgba(255, 255, 255, 0) 58%, rgba(255, 255, 255, .55) 70%, rgba(214, 228, 230, .35) 100%);
+    radial-gradient(circle at 50% 50%, transparent 55%, rgba(255, 255, 255, .34) 61%, transparent 66%),
+    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, .85), transparent 31%),
+    radial-gradient(circle, transparent 58%, rgba(255, 255, 255, .44) 69%, rgba(214, 228, 230, .35) 100%);
   border: 1px solid rgba(255, 255, 255, .95);
-  box-shadow: 0 30px 60px -30px rgba(37, 41, 43, .45), inset 0 -8px 20px rgba(17, 184, 197, .12), inset 0 0 0 2px rgba(17, 184, 197, 0);
+  box-shadow:
+    0 30px 60px -30px rgba(37, 41, 43, .45),
+    inset 0 0 0 2px rgba(17, 184, 197, var(--rim-glow)),
+    inset 0 0 0 6px rgba(255, 255, 255, .19),
+    inset 0 -12px 26px rgba(17, 184, 197, var(--rim-glow));
   transition: box-shadow .5s var(--ease), transform .5s var(--ease);
 }
-/* Selected: the glass fills with turquoise from inside and the halo (behind the ring) brightens; no outer
-   glow on the shell itself, which crosses the ring's plane and would show a seam. */
-.dx-core.is-held .dx-sphere-shell { box-shadow: 0 30px 60px -30px rgba(37, 41, 43, .45), inset 0 -10px 30px rgba(17, 184, 197, .32), inset 0 0 0 2px rgba(17, 184, 197, .25); }
+.dx-core.is-held .dx-sphere-shell { --rim-glow: .34; }
 .dx-core.is-held .dx-sphere-halo { background: radial-gradient(closest-side, rgba(17, 184, 197, .42), rgba(17, 184, 197, .12) 55%, rgba(17, 184, 197, 0)); }
 .dx-core.is-burst .dx-sphere-shell { animation: dx-thump .6s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes dx-thump { 30% { transform: scale(.94); } 100% { transform: none; } }
 /* The graphite core is a button: a click sends a shockwave, closes the card and spins the orbit. */
 .dx-sphere-body {
-  position: absolute; left: 0; top: 0; width: 160px; height: 160px; margin: -80px 0 0 -80px; border-radius: 50%; display: grid; place-items: center;
+  position: absolute; z-index: 100; left: 50%; top: 50%; translate: -50% -50%;
+  width: calc(160px * var(--k)); height: calc(160px * var(--k)); border-radius: 50%; display: grid; place-items: center;
   padding: 0; border: 0; font: inherit; cursor: pointer; overflow: hidden; isolation: isolate; pointer-events: auto; -webkit-tap-highlight-color: transparent;
   background:
-    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, .34), rgba(255, 255, 255, 0) 34%),
+    radial-gradient(ellipse at 34% 20%, rgba(255, 255, 255, .22), transparent 41%),
+    radial-gradient(circle at 54% 53%, transparent 52%, rgba(255, 255, 255, .11) 68%, transparent 72%),
     radial-gradient(circle at 50% 118%, rgba(17, 184, 197, .55), rgba(17, 184, 197, 0) 46%),
     radial-gradient(circle at 42% 36%, #4b5558 0%, #2b3134 46%, #1a1e20 78%, #121516 100%);
-  box-shadow: inset 0 2px 1px rgba(255, 255, 255, .18), inset 0 -12px 24px rgba(0, 0, 0, .35), 0 24px 40px -22px rgba(37, 41, 43, .8);
-  transition: transform .35s var(--ease);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .23),
+    inset 0 2px 3px rgba(255, 255, 255, .26),
+    inset 0 -10px 24px rgba(0, 0, 0, .35),
+    0 24px 40px -22px rgba(37, 41, 43, .8);
+  transition: box-shadow .35s var(--ease);
 }
-.dx-sphere-body:hover { transform: scale(1.04); }
+.dx-sphere-body:hover {
+  box-shadow:
+    inset 0 0 0 1px rgba(111, 214, 223, .55),
+    inset 0 2px 3px rgba(255, 255, 255, .26),
+    inset 0 -10px 24px rgba(0, 0, 0, .35),
+    0 0 0 6px rgba(17, 184, 197, .12),
+    0 24px 40px -22px rgba(37, 41, 43, .8);
+}
 .dx-sphere-body:focus-visible { outline: 2px solid var(--primary-hover); outline-offset: 6px; }
 .dx-core.is-burst .dx-sphere-body { animation: dx-thump .6s cubic-bezier(.3, 1.6, .5, 1); }
 /* A slow light sweep inside the graphite, like a scanner. */
@@ -189,34 +238,24 @@
   animation: dx-spin 5.5s linear infinite;
 }
 .dx-core.is-held .dx-sphere-sweep { animation-duration: 2.2s; }
-.dx-sphere-mark, .dx-sphere-icon { grid-area: 1 / 1; transition: opacity .45s var(--ease), transform .55s cubic-bezier(.3, 1.4, .5, 1); }
-.dx-sphere-mark { width: 76px; height: auto; display: block; opacity: .96; }
-.dx-core[data-sel] .dx-sphere-mark { opacity: 0; transform: scale(.5) rotate(-20deg); }
+.dx-sphere-mark, .dx-sphere-icon { grid-area: 1 / 1; transition: opacity .35s var(--ease); }
+.dx-sphere-mark { width: calc(76px * var(--k)); height: auto; display: block; opacity: .96; }
+.dx-core[data-sel] .dx-sphere-mark { opacity: 0; }
 /* The selected service's icon takes the mark's place on the core. */
-.dx-sphere-icon { color: #9de9ef; opacity: 0; transform: scale(.4) rotate(25deg); filter: drop-shadow(0 0 10px rgba(17, 184, 197, .8)); }
-.dx-sphere-icon svg { width: 58px; height: 58px; display: block; }
+.dx-sphere-icon { color: #b9f1f5; opacity: 0; }
+/* 24-unit glyph drawn at a whole-pixel size with a stroke that lands near 2px, the same visual weight
+   as the node icons (a thicker stroke on the dark core looked bold and soft). */
+.dx-sphere-icon svg {
+  display: block; stroke-width: 1; width: calc(48px * var(--k)); height: calc(48px * var(--k));
+  width: round(calc(48px * var(--k)), 2px); height: round(calc(48px * var(--k)), 2px);
+}
 /* A glassy highlight that slides opposite the pointer, so the core feels round. */
 .dx-sphere-spec {
   position: absolute; left: 22%; top: 14%; width: 46%; height: 34%; border-radius: 50%; pointer-events: none;
-  background: radial-gradient(closest-side, rgba(255, 255, 255, .42), rgba(255, 255, 255, 0));
+  background: radial-gradient(closest-side, rgba(255, 255, 255, .28), transparent);
   transform: translate(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -14px));
 }
 
-/* Energy beams: a spoke from the core to each service, in the ring's plane, with light flowing out. */
-.dx-beam {
-  position: absolute; left: 50%; top: 50%; width: 182px; height: 2px; margin-top: -1px; border-radius: 2px;
-  transform-origin: 0 50%; transform: rotateZ(var(--a)) translateX(78px);
-  background: linear-gradient(90deg, rgba(17, 184, 197, .04), rgba(17, 184, 197, .32));
-  transition: background .4s var(--ease), box-shadow .4s var(--ease);
-}
-.dx-beam i {
-  position: absolute; left: 0; top: -1px; width: 40px; height: 4px; border-radius: 4px;
-  background: linear-gradient(90deg, rgba(111, 214, 223, 0), #6fd6df 70%, #fff);
-  animation: dx-flow 2.8s linear infinite; animation-delay: calc(var(--n) * -.56s);
-}
-@keyframes dx-flow {
-  0% { transform: translateX(-20px); opacity: 0; } 15%, 80% { opacity: 1; } 100% { transform: translateX(170px); opacity: 0; }
-}
 /* Sparks: a second, slower orbit of tiny lights on the ring, turning the other way. */
 .dx-dust { position: absolute; inset: 0; transform-style: preserve-3d; animation: dx-spin 80s linear infinite reverse; }
 .dx-dust i {
@@ -228,21 +267,35 @@
 .dx-dust i.is-1 { width: 3px; height: 3px; margin: -1.5px; background: #fff; animation-delay: -1.3s; }
 .dx-dust i.is-2 { opacity: .5; animation-duration: 3.4s; animation-delay: -.7s; }
 @keyframes dx-twinkle { from { opacity: .15; } to { opacity: 1; } }
-.dx-core[data-sel="0"] .dx-sphere-icon[data-k="0"] { opacity: 1; transform: none; }
-.dx-core[data-sel="0"] .dx-beam[data-dx-beam="0"] { height: 3px; margin-top: -1.5px; background: linear-gradient(90deg, rgba(17, 184, 197, .25), rgba(17, 184, 197, .85)); box-shadow: 0 0 12px rgba(17, 184, 197, .6); }
-.dx-core[data-sel="0"] .dx-beam[data-dx-beam="0"] i { animation-duration: 1.1s; }
-.dx-core[data-sel="1"] .dx-sphere-icon[data-k="1"] { opacity: 1; transform: none; }
-.dx-core[data-sel="1"] .dx-beam[data-dx-beam="1"] { height: 3px; margin-top: -1.5px; background: linear-gradient(90deg, rgba(17, 184, 197, .25), rgba(17, 184, 197, .85)); box-shadow: 0 0 12px rgba(17, 184, 197, .6); }
-.dx-core[data-sel="1"] .dx-beam[data-dx-beam="1"] i { animation-duration: 1.1s; }
-.dx-core[data-sel="2"] .dx-sphere-icon[data-k="2"] { opacity: 1; transform: none; }
-.dx-core[data-sel="2"] .dx-beam[data-dx-beam="2"] { height: 3px; margin-top: -1.5px; background: linear-gradient(90deg, rgba(17, 184, 197, .25), rgba(17, 184, 197, .85)); box-shadow: 0 0 12px rgba(17, 184, 197, .6); }
-.dx-core[data-sel="2"] .dx-beam[data-dx-beam="2"] i { animation-duration: 1.1s; }
-.dx-core[data-sel="3"] .dx-sphere-icon[data-k="3"] { opacity: 1; transform: none; }
-.dx-core[data-sel="3"] .dx-beam[data-dx-beam="3"] { height: 3px; margin-top: -1.5px; background: linear-gradient(90deg, rgba(17, 184, 197, .25), rgba(17, 184, 197, .85)); box-shadow: 0 0 12px rgba(17, 184, 197, .6); }
-.dx-core[data-sel="3"] .dx-beam[data-dx-beam="3"] i { animation-duration: 1.1s; }
-.dx-core[data-sel="4"] .dx-sphere-icon[data-k="4"] { opacity: 1; transform: none; }
-.dx-core[data-sel="4"] .dx-beam[data-dx-beam="4"] { height: 3px; margin-top: -1.5px; background: linear-gradient(90deg, rgba(17, 184, 197, .25), rgba(17, 184, 197, .85)); box-shadow: 0 0 12px rgba(17, 184, 197, .6); }
-.dx-core[data-sel="4"] .dx-beam[data-dx-beam="4"] i { animation-duration: 1.1s; }
+/* The constellation links (flat SVG in .dx-core-faces, geometry written by the script every frame):
+   an arc from a socket on the core's rim to a port on each service, a light that runs along it, and a
+   faint dashed web between neighbouring services. Under the faces and the core (z-index 0 < 100). */
+.dx-links { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; z-index: 0; pointer-events: none; }
+.dx-web { fill: none; stroke: rgba(8, 127, 140, .34); stroke-width: 1.1; stroke-dasharray: 1 6; stroke-linecap: round; }
+.dx-link { transition: opacity .3s linear; }
+.dx-link path { fill: none; stroke-linecap: round; }
+.dx-link-line { stroke-width: 2; transition: stroke-width .3s var(--ease); }
+.dx-link-glow { stroke: rgba(17, 184, 197, .07); stroke-width: 8; transition: stroke .4s var(--ease); }
+.dx-link-pulse {
+  stroke: #3fd3de; stroke-width: 3; stroke-dasharray: 9 140; stroke-dashoffset: 9;
+  animation: dx-link-flow 3.2s cubic-bezier(.45, 0, .3, 1) infinite; animation-delay: calc(var(--n) * -.64s);
+}
+.dx-link-pulse.is-2 { stroke: #fff; stroke-width: 1.5; stroke-dasharray: 3 140; animation-delay: calc(var(--n) * -.64s - 1.6s); opacity: .9; }
+@keyframes dx-link-flow { 0% { stroke-dashoffset: 9; opacity: 0; } 12%, 85% { opacity: 1; } 100% { stroke-dashoffset: -100; opacity: 0; } }
+.dx-link-socket { fill: #3fd3de; stroke: rgba(255, 255, 255, .8); stroke-width: 1; }
+.dx-link-port { fill: #fff; stroke: #11b8c5; stroke-width: 1.5; }
+.dx-core[data-sel] .dx-link:not(.is-on) .dx-link-line { stroke-width: 1.25; }
+.dx-core[data-sel] .dx-link:not(.is-on) .dx-link-pulse { animation-play-state: paused; opacity: 0; }
+.dx-link.is-on .dx-link-line { stroke-width: 3; }
+.dx-link.is-on .dx-link-glow { stroke: rgba(17, 184, 197, .22); stroke-width: 12; }
+.dx-link.is-on .dx-link-pulse { animation-duration: 1.15s; }
+.dx-link.is-on .dx-link-port { fill: #11b8c5; stroke: #fff; animation: dx-port 1.15s ease-out infinite; }
+@keyframes dx-port { 0%, 100% { r: 3.5; } 40% { r: 5; } }
+.dx-core[data-sel="0"] .dx-sphere-icon[data-k="0"] { opacity: 1; }
+.dx-core[data-sel="1"] .dx-sphere-icon[data-k="1"] { opacity: 1; }
+.dx-core[data-sel="2"] .dx-sphere-icon[data-k="2"] { opacity: 1; }
+.dx-core[data-sel="3"] .dx-sphere-icon[data-k="3"] { opacity: 1; }
+.dx-core[data-sel="4"] .dx-sphere-icon[data-k="4"] { opacity: 1; }
 
 /* Entrance: the services pop out of the core one after another. */
 .dx-core.is-in .dx-node-ball, .dx-core.is-in .dx-node-label { animation: dx-pop .8s cubic-bezier(.3, 1.5, .5, 1) backwards; animation-delay: calc(.45s + var(--n, 0) * .13s); }
@@ -261,8 +314,23 @@ button.dx-node-face { background: none; border: 0; padding: 0; margin: 0; font: 
 button.dx-node-face:focus-visible { outline: none; }
 button.dx-node-face:focus-visible .dx-node-ball { outline: 2px solid var(--primary-hover); outline-offset: 3px; }
 .dx-node-ball, .dx-node-label { transition: transform .25s var(--ease), box-shadow .25s var(--ease), background .25s var(--ease), color .25s var(--ease); }
-button.dx-node-face:hover .dx-node-ball { transform: scale(1.08); }
-button.dx-node-face[aria-pressed="true"] .dx-node-ball { transform: scale(1.14); color: #fff; background: var(--primary-hover); border-color: var(--primary-hover); box-shadow: 0 0 0 6px rgba(17, 184, 197, .18), 0 14px 26px -14px rgba(8, 127, 140, .7); }
+button.dx-node-face:hover .dx-node-ball { border-color: var(--primary-border); }
+/* Selected: the ball stays white glass and the icon keeps its weight (a white glyph on solid
+   turquoise read as bold); a turquoise rim, a soft halo and a slow light running round the rim. */
+button.dx-node-face[aria-pressed="true"] .dx-node-ball {
+  color: #087f8c; border-color: #fff;
+  background:
+    radial-gradient(circle at 32% 26%, #fff, rgba(255, 255, 255, 0) 46%),
+    linear-gradient(160deg, #ffffff, #e3f7f8 62%, #c9edf0);
+  box-shadow: 0 0 0 2px #11b8c5, 0 0 0 7px rgba(17, 184, 197, .16), 0 0 28px 4px rgba(17, 184, 197, .35), 0 14px 26px -14px rgba(8, 127, 140, .7);
+}
+.dx-node-ball::before {
+  content: ""; position: absolute; inset: -5px; border-radius: 50%; opacity: 0; pointer-events: none;
+  background: conic-gradient(from 0deg, transparent 0 70%, rgba(17, 184, 197, .9) 88%, #fff 92%, transparent 94%);
+  mask-image: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  transition: opacity .3s var(--ease);
+}
+button.dx-node-face[aria-pressed="true"] .dx-node-ball::before { opacity: 1; animation: dx-spin 2.4s linear infinite; }
 button.dx-node-face[aria-pressed="true"] .dx-node-label { background: var(--ink); color: #fff; border-color: var(--ink); }
 /* The selected node: a turquoise ball with a ripple, and a graphite label. */
 .dx-node-ball { position: relative; }
@@ -460,10 +528,11 @@ button.dx-node-face:hover .dx-node-label { border-color: var(--primary-border); 
 
 /* ---------- reduced motion: still composition, everything visible ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .dx-rise, .dx-core-card, .dx-ring-b .dx-ring-line, .dx-dust, .dx-dust i, .dx-beam i, .dx-sphere-halo, .dx-sphere-pulse, .dx-sphere-wave,
+  .dx-rise, .dx-core-card, .dx-ring-band::after, .dx-ring-b .dx-ring-line, .dx-dust, .dx-dust i, .dx-link-pulse, .dx-link-port, .dx-node-ball::before, .dx-sphere-halo, .dx-sphere-pulse, .dx-sphere-wave,
   .dx-sphere-sweep, .dx-sphere-shell, .dx-sphere-body, .dx-node-ball, .dx-node-label, .dx-node-ball::after { animation: none !important; }
   .dx-sphere-pulse { opacity: 0; }
-  .dx-beam i { opacity: 0; }
-  .dx-core-world { transition: none; opacity: 1; }
+  .dx-link-pulse { opacity: 0; }
+  .dx-core-world, .dx-core-faces, .dx-sphere-mark, .dx-sphere-icon { transition: none; }
+  .dx-core-world { opacity: 1; }
   [data-dx-live] .dx-ui-out p, [data-dx-live] .dx-ui-bars i, [data-dx-live] .dx-ui-row { opacity: 1; animation: none !important; }
 }

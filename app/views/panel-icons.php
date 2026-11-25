@@ -55,7 +55,12 @@ function panel_icon(string $name): string {
         'trash' => '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
         'restore' => '<path d="M4 12a8 8 0 1 0 2.3-5.7M4 4v5h5"/><path d="M12 8v4l3 2"/>',
         'renew' => '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/>',
+        'cart' => '<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.6 12.2a1 1 0 0 0 1 .8h9.7a1 1 0 0 0 1-.8L21 7H6"/>',
+        'star' => '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9L12 3Z"/>',
+        'tag' => '<path d="M3 12V3h9l9 9-9 9-9-9Z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+        'filter' => '<path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z"/>',
         'id-card' => '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16a3 3 0 0 1 6 0M14 10h4M14 14h3"/>',
+        'login' => '<path d="M15 4h5v16h-5M3 12h12m-4-4 4 4-4 4"/>',
         'eye-off' => '<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6.4 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.6C3.8 8.4 2 12 2 12s3.6 6 10 6a9.6 9.6 0 0 0 4.4-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
     ];
     $names = [
@@ -68,7 +73,7 @@ function panel_icon(string $name): string {
         'number_forwards'=>'send', 'billing'=>'wallet', 'subaccounts'=>'users', 'menu_roles'=>'shield',
         'reseller_profits'=>'chart', 'user_send_policies'=>'shield', 'registration_requests'=>'user',
         'kyc_review'=>'shield', 'kyc_gates'=>'key', 'analytics'=>'chart', 'logs'=>'receipt',
-        'numbers'=>'phone', 'number_categories'=>'folder', 'landing_videos'=>'folder', 'pricing'=>'wallet',
+        'numbers'=>'phone', 'my_numbers'=>'phone', 'number_shop_admin'=>'cart', 'number_categories'=>'folder', 'landing_videos'=>'folder', 'pricing'=>'wallet',
         'price_quote'=>'receipt', 'sms_pricing'=>'wallet', 'sms_gateways'=>'link', 'ai_engines'=>'spark', 'prohibited_words'=>'ban',
         'queue_cancellation'=>'ban', 'queue_monitor'=>'chart', 'alerts'=>'bell', 'bulk_archive'=>'folder', 'sms_gateway_clone'=>'copy',
         'guide_admin'=>'book', 'billing_admin'=>'wallet', 'financial_admin'=>'receipt',

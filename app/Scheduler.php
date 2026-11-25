@@ -71,6 +71,8 @@ function scheduler_jobs(): array {
         // at the next run.
         'daily-report' => ['title' => 'گزارش روزانه‌ی تلگرام مدیر', 'every' => 600,
             'steps' => [['daily-report.php']], 'timeout' => 600],
+        'gateway-delivery-monitor' => ['title' => 'پایش نرخ دلیوری درگاه‌ها', 'every' => 4 * 3600,
+            'steps' => [['gateway-delivery-monitor.php']], 'timeout' => 600],
         // Scheduled price changes (app/PriceChanges.php): applies every change whose time has come.
         'price-changes' => ['title' => 'اعمال تغییرات زمان‌بندی‌شده‌ی تعرفه', 'every' => 60,
             'steps' => [['price-changes.php']], 'timeout' => 300],
