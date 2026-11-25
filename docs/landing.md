@@ -49,7 +49,7 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
   fluid type scale, radii, shadows and the `--ease` timing). The graphite bands re-declare `--ink`,
   `--muted`, `--line`, `--card` light-on-dark in the rule just below it (the `.lp-dark` utility class
   was removed with the last graphite band on the home page). The sign-in page's tokens are the `.auth` block of
-  `public/assets/css/login.css` (slider: `.ls` in `login-slider.css`); the pages around sign-in get
+  `public/assets/css/login.css` (slider: `.ls` in `login-slider.css`; see [login.md](login.md)); the pages around sign-in get
   theirs from `.login-body` in `style.css`.
 - **Type:** Estedad (self-hosted, OFL) on the public and sign-in pages, with Vazirmatn as fallback;
   headings use `clamp()` sizes. The panel still uses Vazirmatn ([font-integration.md](font-integration.md)).
