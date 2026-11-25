@@ -590,7 +590,7 @@ require __DIR__ . '/../app/views/header.php';
      */
     ?>
     <?php if (impersonation_target_refusal($editUser, (int)$me['id']) === null): ?>
-      <a class="btn btn-sm btn-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>">ورود به پنل مشتری</a>
+      <a class="icon-act icon-act-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>" data-tip="ورود به پنل مشتری" aria-label="ورود به پنل مشتری"><?= panel_icon('login') ?></a>
     <?php endif; ?>
   </div>
 </div>

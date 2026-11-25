@@ -116,7 +116,8 @@ existing send-only `ellsms_number_shares` (`docs/shared-numbers.md`).
 - Set the child's menu access.
 - See the child's sending report: today's counts, 14 days of daily sends, recent bulk jobs.
 - See the reseller's own daily profit.
-- **Enter the child's panel.** This is the existing support impersonation
+- **Enter the child's panel** (the indigo «enter» icon in the customer's toolbar; its name
+  «ورود به پنل مشتری» pops up on hover). This is the existing support impersonation
   (`docs/admin-impersonation.md`), now also open to an ancestor of the target and re-validated on
   every request (`impersonation_resolve_actor()`). It is read-mostly: sending, credentials and the
   other sensitive actions stay blocked, and the session is audited.

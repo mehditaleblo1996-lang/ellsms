@@ -159,7 +159,7 @@ require __DIR__ . '/../app/views/reseller_header.php';
       <?= csrf_field() ?>
       <input type="hidden" name="id" value="<?= $childId ?>">
       <input type="hidden" name="do" value="impersonate">
-      <button class="btn btn-sm btn-primary">ورود به پنل مشتری</button>
+      <button class="icon-act icon-act-primary" data-tip="ورود به پنل مشتری" aria-label="ورود به پنل مشتری"><?= panel_icon('login') ?></button>
     </form>
     <?php endif; ?>
   </div>

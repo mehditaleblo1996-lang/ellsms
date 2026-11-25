@@ -1643,3 +1643,4 @@ tr.num-row > td { background: inherit; }
 .icon-act-danger:hover, .icon-act-danger:focus-visible { background: var(--err-bg); border-color: var(--err); color: var(--err); }
 .ui-tip { position: fixed; z-index: 200; max-width: 240px; padding: 5px 10px; border-radius: 7px; background: #1d1b2f; color: #fff; font-size: var(--fs-sm); line-height: 1.6; white-space: nowrap; pointer-events: none; box-shadow: 0 6px 18px rgba(11, 16, 35, .22); opacity: 0; transition: opacity .12s; }
 .ui-tip.is-on { opacity: 1; }
+.toolbar > .icon-act, .toolbar > form:has(> .icon-act) { align-self: center; }
