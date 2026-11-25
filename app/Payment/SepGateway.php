@@ -548,7 +548,9 @@ function sep_fulfill(array $payment, string $refId): array {
             'gateway' => 'sep',
             'replayed' => $txResult['credit']['replayed'] ?? false,
         ]);
-        return ['ok' => true, 'message' => 'پرداخت با موفقیت انجام شد و اعتبار شما افزایش یافت.', 'claimed' => true,
+        return ['ok' => true, 'message' => !empty($payment['number_order_id'])
+                ? 'پرداخت با موفقیت انجام شد. وضعیت سفارش شماره را در «شماره‌ها ← سفارش‌های من» ببینید.'
+                : 'پرداخت با موفقیت انجام شد و اعتبار شما افزایش یافت.', 'claimed' => true,
             'notify' => $notify('payment.success', 'پرداخت موفق', 'پرداخت #' . $paymentId . ' با موفقیت انجام شد و اعتبار حساب افزایش یافت.', 'success')];
     }
     Logger::info('payment.replayed_already_paid', ['payment_id' => $paymentId, 'user_id' => $payment['user_id']]);
@@ -649,8 +651,8 @@ function sep_complete_payment(array $payment, string $refNum): array {
     $final = !empty($verify['final']);
     if (!$verify['ok']) {
         sep_mark_status($paymentId, $final ? 'failed' : 'verification_failed');
-        if ($final && !empty($payment['reseller_order_id'])) {
-            reseller_package_order_fail_for_payment($paymentId);
+        if ($final) {
+            payment_purchase_order_fail($payment);
         }
         Logger::error('sep.verify_failed', ['payment_id' => $paymentId, 'info' => $verify['message'], 'final' => $final]);
         $message = $final
@@ -676,8 +678,8 @@ function sep_complete_payment(array $payment, string $refNum): array {
         // Failed reverse stays verification_failed so the next reconcile retries ReverseTransaction
         // inside SEP's 50-minute window. A successful reverse is final.
         sep_mark_status($paymentId, $reverse['ok'] ? 'failed' : 'verification_failed');
-        if ($reverse['ok'] && !empty($payment['reseller_order_id'])) {
-            reseller_package_order_fail_for_payment($paymentId);
+        if ($reverse['ok']) {
+            payment_purchase_order_fail($payment);
         }
         Logger::critical('payment.amount_mismatch', [
             'payment_id' => $paymentId,
@@ -736,9 +738,7 @@ function sep_handle_callback(array $params): array {
         // Only the states in SEP's table close the payment. A truncated callback must not.
         if (sep_state_is_final_failure($params['state'])) {
             sep_mark_status((int)$payment['id'], 'failed');
-            if (!empty($payment['reseller_order_id'])) {
-                reseller_package_order_fail_for_payment((int)$payment['id']);
-            }
+            payment_purchase_order_fail($payment);
             Logger::warning('payment.cancelled_or_failed_at_gateway', [
                 'payment_id' => $payment['id'],
                 'user_id' => $payment['user_id'],
@@ -763,9 +763,7 @@ function sep_handle_callback(array $params): array {
     }
     if ($params['ref_num'] === '') {
         sep_mark_status((int)$payment['id'], 'failed');
-        if (!empty($payment['reseller_order_id'])) {
-            reseller_package_order_fail_for_payment((int)$payment['id']);
-        }
+        payment_purchase_order_fail($payment);
         return [
             'ok' => false,
             'message' => 'بانک رسید تراکنش را برنگرداند.',

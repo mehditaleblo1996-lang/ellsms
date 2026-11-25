@@ -47,7 +47,7 @@ if ($owns) {
 <div class="card">
   <div class="flash flash-<?= $result['ok'] ? 'success' : 'error' ?>"><?= e($result['message']) ?></div>
   <table>
-    <tr><th>اعتبار افزوده‌شده</th><td><span class="num"><?= to_persian_digits(number_format((int)$payment['credits'])) ?></span> ریال</td></tr>
+    <?php if (empty($payment['number_order_id'])): ?><tr><th>اعتبار افزوده‌شده</th><td><span class="num"><?= to_persian_digits(number_format((int)$payment['credits'])) ?></span> ریال</td></tr><?php else: ?><tr><th>بابت</th><td>خرید یا تمدید شماره (پس از پرداخت از کیف پول برداشت می‌شود)</td></tr><?php endif; ?>
     <tr><th>مبلغ</th><td><span class="num"><?= to_persian_digits(number_format((int)$payment['amount_rial'])) ?></span> ریال</td></tr>
     <?php if ($params['trace_no'] !== ''): ?>
     <tr><th>شماره پیگیری</th><td class="ltr"><?= e($params['trace_no']) ?></td></tr>
@@ -56,6 +56,8 @@ if ($owns) {
   <div class="toolbar" style="margin-top:14px">
     <?php if (!empty($payment['reseller_order_id'])): ?>
       <a class="btn btn-primary" href="/billing/packages">بازگشت به بسته‌ها</a>
+    <?php elseif (!empty($payment['number_order_id'])): ?>
+      <a class="btn btn-primary" href="/my-numbers.php?tab=orders">پیگیری سفارش شماره</a>
     <?php else: ?>
       <a class="btn btn-primary" href="/buy-credit.php">بازگشت به خرید اعتبار</a>
     <?php endif; ?>

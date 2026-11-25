@@ -77,7 +77,7 @@ if ($invoiceId > 0) {
         redirect('/invoices.php');
     }
     require __DIR__ . '/../app/views/header.php';
-    $purposeFa = ['credit'=>'خرید اعتبار','subscription'=>'اشتراک'];
+    $purposeFa = ['credit'=>'خرید اعتبار','subscription'=>'اشتراک','number'=>'خرید/تمدید شماره'];
     $adminState = invoice_admin_state($invoice);
     $manual = $invoice['payment'] ? manual_payment_for_payment((int)$invoice['payment']['id']) : null;
     [$statusLabel, $statusBadge] = manual_payment_invoice_status($invoice, $manual);
@@ -178,7 +178,7 @@ if ($invoices) {
     $gwSt->execute(array_map('intval',array_column($invoices,'payment_id')));
     foreach ($gwSt->fetchAll() as $gw) $invoiceGateways[(int)$gw['id']]=(string)$gw['gateway'];
 }
-$purposeFa=['credit'=>'خرید اعتبار','subscription'=>'اشتراک'];
+$purposeFa=['credit'=>'خرید اعتبار','subscription'=>'اشتراک','number'=>'خرید/تمدید شماره'];
 require __DIR__ . '/../app/views/header.php';
 ?>
 <div class="card"><h2>فاکتورها</h2><div class="table-wrap"><table>

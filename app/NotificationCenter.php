@@ -32,6 +32,8 @@ const NOTIFICATION_EVENTS = [
     'shared_service.rejected'       => 'رد پیام سرویس اشتراکی',
     'ai.handoff'                    => 'ارجاع گفتگوی منشی هوشمند به اپراتور',
     'billing.bulk_mismatch'         => 'مغایرت مالی ارسال گروهی',
+    'number_shop.order'             => 'سفارش خرید شماره (به مدیر)',
+    'number_shop.decision'          => 'نتیجه‌ی خرید یا تمدید شماره (به کاربر)',
 ];
 
 const NOTIFICATION_CHANNELS = ['panel', 'sms', 'email', 'telegram'];

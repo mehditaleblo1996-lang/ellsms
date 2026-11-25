@@ -396,6 +396,7 @@ The panel is Persian (Farsi) and right-to-left throughout — every menu, label,
 ## Numbers, bulk categories, KYC profiles, and SMS 2FA
 
 - **Numbers pool** (admin, Numbers page) — create sender lines and assign each to one panel user. A user with assigned numbers gets a dropdown instead of free-text entry when sending or setting up منشی پیامک rules; a user with none falls back to the legacy single `originator` field for backward compatibility.
+- **Number shop** («فروش شماره» / «خرید شماره») — admins list unassigned lines for sale on `/admin/numbers/shop` (`number-shop-admin.php`) with a required purchase price, yearly renewal price and description, plus category, features and a «ویژه» badge (live customer-card preview). Customers browse, filter and buy them on `/billing/numbers` (`my-numbers.php`, «مالی ← شماره‌ها»), paying from the wallet or online; an invoice (`purpose = 'number'`) is issued either way. A paid purchase waits for an admin's approval: approval assigns the line for one Jalali year, rejection refunds the wallet. Renewal (one year, no approval) is on the same page. No API route or setting; migration `db/migrations/2026_11_28_number_shop.sql`. See [`docs/number-shop.md`](docs/number-shop.md).
 - **Bulk number categories** (admin, Number Categories page) — upload a newline-separated `.txt` file of numbers under a name. Every panel user (not just admins) sees these as a selectable option on Send, alongside their own private Contacts groups.
 - **KYC profile layer** (Users page for admins, Profile page for self-service) — father's name, address, and two document photo uploads (ID card + a second document such as a passport) live entirely in ELLSMS's own tables, layered on top of a granted-access account. ELLSMS does not create or edit the backend's own `user_` row for this — see "Login model" above for why. Photos are stored outside the web root (`storage/kyc/`, gitignored) and served only through `public/kyc-photo.php`, which checks the viewer is either that user or an admin before streaming anything.
 - **SMS-based 2FA** — admin can enable it per user (Users → edit) or for everyone at once (Users → "فعال‌سازی ورود دومرحله‌ای برای همه"). When enabled, a correct password redirects to a 6-digit code sent to the account's `user_.mobile` (5-minute expiry, 5 wrong attempts before being sent back to login, 60-second resend cooldown) before a session is actually created.
@@ -748,6 +749,7 @@ updated in the same change** — see `CLAUDE.md`.
 
 **Lines & services**
 [numbers](docs/numbers.md) ·
+[number-shop](docs/number-shop.md) ·
 [shared-numbers](docs/shared-numbers.md) ·
 [service-lines](docs/service-lines.md) ·
 [number-forwarding](docs/number-forwarding.md) ·

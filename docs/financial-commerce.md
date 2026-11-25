@@ -35,6 +35,10 @@ exactly as before — none of their existing, tested behavior changed.
 
 ## The invoice layer (FIN-1)
 
+Invoice `purpose` is `credit`, `subscription` or `number` (a number-shop purchase or renewal, items
+`number_purchase` / `number_renewal`; wallet-paid ones hang off a payment row with `gateway = 'wallet'` — see
+`docs/number-shop.md`).
+
 `ellsms_invoices`: one row per `ellsms_payments` row (`UNIQUE(payment_id)`), `status`
 `issued`→`paid`/`cancelled`/`expired`/`refunded`. `ellsms_invoice_items`: one or more line items,
 always present even for today's single-line purchases (schema is future-proof, not

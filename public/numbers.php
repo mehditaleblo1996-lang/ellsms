@@ -1116,6 +1116,7 @@ document.querySelectorAll('.num-add').forEach(function (form) {
     <div class="num-tools">
       <a class="btn btn-sm" href="/numbers.php?<?= e(http_build_query($f + ['export' => 'csv'])) ?>"><?= panel_icon('download') ?> خروجی Excel</a>
       <?php if ($extrasReady): ?><a class="btn btn-sm" href="/numbers.php?tab=owners"><?= panel_icon('id-card') ?> مالکان شماره‌ها</a><?php endif; ?>
+      <?php if (number_shop_ready()): ?><a class="btn btn-sm" href="/number-shop-admin.php"><?= panel_icon('cart') ?> فروش شماره</a><?php endif; ?>
     </div>
   </div>
   <?php if (!$detailsReady): ?>

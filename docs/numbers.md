@@ -35,6 +35,12 @@ Recorded and shown only: priority, bandwidth (other than the ceiling check), con
 inbound cost, the commitment letter (`storage/number-commitments/`), the block/deactivation reason
 and date, and owner info (nothing is sent to the regulator).
 
+## Selling lines
+
+Unassigned lines can be put up for sale with a price, a yearly renewal price and a description on
+«فروش شماره» (`/number-shop-admin.php`); customers buy them on «شماره‌ها» (`/my-numbers.php`). An approved
+purchase assigns the line here with a one-year expiry. See `docs/number-shop.md`.
+
 ## Quick actions
 
 Deactivate / block (with an optional reason, stored with the date), unblock / activate, one-year
