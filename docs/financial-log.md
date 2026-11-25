@@ -11,6 +11,25 @@ messages per operator and a PDF, is **«صورت‌حساب ماهانه»** (`/
 [`statement.md`](statement.md)); each message's own charge and refund is in its detail drawer
 ([`message-cost.md`](message-cost.md)).
 
+## «مدیریت اعتبار» — charging a customer (admins)
+
+On **مدیریت → کاربران** each row has a **«شارژ اعتبار»** icon (wallet; its name pops up on hover). It
+opens this page filtered to that customer (`/financial-log.php?user_id=<id>`), headed by a card with
+their name, current credit, «ویرایش کاربر» and **«مدیریت اعتبار»**. The button opens a dialog:
+«اعتبار جاری», «اعتبار جدید» (recomputed as you type), «مبلغ موردنظر» (rial; Persian or Latin digits,
+thousands separators are added), «افزایش» / «کاهش» and «توضیحات» (optional, stored as the ledger
+row's reason; a default is used when empty). «ذخیره» posts `do=credit_adjust`.
+
+- Platform admins only (`require_admin()`, so not during a support session); CSRF-checked; the target
+  must be a panel account (`resolve_ellsms_managed_user()`).
+- Goes through `wallet_manual_adjustment()` — the same path as the credit form on the user's edit
+  page: a `manual_credit` / `manual_debit` ledger row with `actor_user_id`, plus `user.credit` in the
+  audit log. A decrease larger than the balance stops at zero (the dialog warns).
+- Each rendered dialog carries a one-time token used as the idempotency key
+  (`credit_dialog:<user>:<token>`), so a double-submit applies once while a new, identical
+  adjustment from a freshly opened dialog applies again.
+- No migration, no API route. Test: `tests/Integration/FinancialLogCreditDialogHttpTest.php`.
+
 ## A bulk send is one row
 
 How a bulk send (p2p, smart, gradual, imports, regional, aimed — `ellsms_bulk_jobs`) is charged:
