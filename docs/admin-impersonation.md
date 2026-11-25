@@ -4,8 +4,9 @@ A platform administrator can open a customer's panel to reproduce a support issu
 resetting, or touching that customer's password or 2FA.
 
 Code: `app/impersonation.php` · Endpoint: `public/impersonate.php` · Entry points: **مدیریت →
-کاربران → «ورود به پنل مشتری»** on each row of the accounts list (`/users.php`), or the same button on
-a customer's detail page (`/users.php?edit=<id>`).
+کاربران → «ورود به پنل مشتری»** on each row of the accounts list (`/users.php`, an icon button —
+the row actions «ویرایش» / «ورود به پنل مشتری» / «لغو دسترسی» are icons whose name pops up on hover or
+keyboard focus), or the full-text button on a customer's detail page (`/users.php?edit=<id>`).
 
 **A platform administrator's support session has no functional restrictions.** Everything the
 customer can do in their own panel — sending, schedules, API keys, webhooks, password/2FA, billing,

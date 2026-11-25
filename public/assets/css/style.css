@@ -1628,3 +1628,18 @@ tr.num-row > td { background: inherit; }
 .num-owner[data-owner-type="real"] [data-for="legal"], .num-owner[data-owner-type="legal"] [data-for="real"] { display: none; }
 .num-owner .field .jdate { display: flex; width: 100%; margin-top: var(--sp-1); }
 .num-table td:has(> .num-status-note) { min-width: 170px; }
+
+/* Icon-only row actions (users list): the label shows as a tooltip on hover / keyboard focus
+   (panel.js «data-tip»), and is also the button's aria-label. */
+.row-actions { white-space: nowrap; }
+.row-actions > * { display: inline-flex; vertical-align: middle; margin: 0 2px; }
+.row-actions form { margin: 0 2px; }
+.icon-act { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; text-decoration: none; font: inherit; }
+.icon-act .ui-icon { width: 18px; height: 18px; }
+.icon-act:hover, .icon-act:focus-visible { border-color: var(--indigo); color: var(--indigo); background: var(--tint); }
+.icon-act-primary { background: var(--indigo); border-color: var(--indigo); color: #fff; }
+.icon-act-primary:hover, .icon-act-primary:focus-visible { background: var(--indigo); color: #fff; filter: brightness(1.12); }
+.icon-act-danger { background: var(--err-bg); border-color: #f4c9d1; color: var(--err); }
+.icon-act-danger:hover, .icon-act-danger:focus-visible { background: var(--err-bg); border-color: var(--err); color: var(--err); }
+.ui-tip { position: fixed; z-index: 200; max-width: 240px; padding: 5px 10px; border-radius: 7px; background: #1d1b2f; color: #fff; font-size: var(--fs-sm); line-height: 1.6; white-space: nowrap; pointer-events: none; box-shadow: 0 6px 18px rgba(11, 16, 35, .22); opacity: 0; transition: opacity .12s; }
+.ui-tip.is-on { opacity: 1; }

@@ -415,3 +415,32 @@
   window.addEventListener('resize', function () { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(labelScrollableTables); });
   if (document.fonts) document.fonts.ready.then(labelScrollableTables);
 })();
+
+/* Tooltip for icon-only buttons: any element with data-tip shows its text in a small popup above it
+   on hover or keyboard focus. Fixed-positioned so a scrolling .table-wrap never clips it. */
+(function () {
+  'use strict';
+  var tip = null, owner = null;
+  function show(el) {
+    var text = el.getAttribute('data-tip');
+    if (!text) return;
+    if (!tip) { tip = document.createElement('div'); tip.className = 'ui-tip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    owner = el;
+    tip.textContent = text;
+    var r = el.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = Math.max(6, Math.min(window.innerWidth - w - 6, r.left + r.width / 2 - w / 2));
+    var top = r.top - h - 8;
+    if (top < 6) top = r.bottom + 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    tip.classList.add('is-on');
+  }
+  function hide() { owner = null; if (tip) tip.classList.remove('is-on'); }
+  document.addEventListener('mouseover', function (e) {
+    var el = e.target.closest && e.target.closest('[data-tip]');
+    if (el && el !== owner) show(el); else if (!el && owner) hide();
+  });
+  document.addEventListener('focusin', function (e) { var el = e.target.closest && e.target.closest('[data-tip]'); if (el) show(el); });
+  document.addEventListener('focusout', hide);
+  window.addEventListener('scroll', hide, true);
+})();
