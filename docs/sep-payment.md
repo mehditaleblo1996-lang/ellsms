@@ -8,6 +8,11 @@ Migration: `db/migrations/2026_11_25_sep_payment_gateway.sql` (`gateway_resnum`,
 
 ## What the buyer does
 
+On «خرید اعتبار» the active gateway is shown as a card in step ۳ «درگاه پرداخت» with its label
+(`payment_gateway_label()`, «پرداخت الکترونیک سامان») and a secure-gateway shield icon. To show the
+official logo instead, drop `public/assets/img/gateways/sep.svg` (or `.png`) — the page uses it when
+the file exists (`zarinpal.svg` / `.png` works the same way).
+
 `/buy-credit.php`, paying an invoice, buying a subscription, and a reseller package all call
 `payment_gateway_name()`. When that returns `sep`:
 
