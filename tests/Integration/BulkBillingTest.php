@@ -115,4 +115,27 @@ final class BulkBillingTest extends IntegrationTestCase
         }
         $this->assertSame(['job' . $c, 'job' . $b, 'manual_credit', 'job' . $a, 'purchase'], $seen);
     }
+
+    public function testAReleaseOfAnyOtherSendIsNotAnIncrease(): void
+    {
+        // A direct send: reserve the worst case (no ledger row), charge part of it, give back the rest.
+        $res = \wallet_reserve($this->userId, 5000, 'direct_send', 'fl-' . $this->userId, 'reserve:direct_send:fl-' . $this->userId);
+        $this->assertTrue($res['ok']);
+        \wallet_commit_reservation('direct_send', 'fl-' . $this->userId, 1200, 'commit:direct_send:fl-' . $this->userId);
+        \wallet_release_reservation('direct_send', 'fl-' . $this->userId);
+        // A cancelled send: reserved, nothing charged, all of it given back.
+        \wallet_reserve($this->userId, 7000, 'regional_bulk', 'fl-' . $this->userId, 'reserve:regional_bulk:fl-' . $this->userId);
+        \wallet_release_reservation('regional_bulk', 'fl-' . $this->userId);
+
+        $filters = \financial_log_filters([], $this->userId);
+        [$where, $params] = \financial_log_where($filters);
+        foreach ([true, false] as $grouped) {
+            $totals = \financial_log_totals($where, $params, $grouped);
+            $this->assertSame(100000, $totals['increase'], 'only the purchase is an increase');
+            $this->assertSame(1200, $totals['decrease']);
+            $this->assertSame(3800 + 7000, $totals['released']);
+            $this->assertSame(\wallet_balance($this->userId)['available'], $totals['increase'] - $totals['decrease'],
+                'increase − decrease is the balance');
+        }
+    }
 }

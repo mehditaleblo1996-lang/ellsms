@@ -118,6 +118,8 @@ $money = static fn(int $v): string => to_persian_digits(number_format($v));
 // One customer in view (user_id or an exact username): an admin can change their credit from here.
 $customerId = $isAdmin ? ($filters['user_id'] > 0 ? $filters['user_id'] : (int)financial_log_username_id($filters)) : 0;
 $customer = $customerId > 0 && !is_impersonating() ? resolve_ellsms_managed_user($customerId) : null;
+// Credit still held by sends in progress: not in the ledger yet, but already off «اعتبار فعلی».
+$reservedNow = $isAdmin ? ($customerId > 0 ? wallet_balance($customerId)['reserved'] : 0) : wallet_balance((int)$me['id'])['reserved'];
 
 require __DIR__ . '/../app/views/header.php';
 ?>
@@ -170,6 +172,7 @@ require __DIR__ . '/../app/views/header.php';
 <div class="card">
   <h2>تاریخچه مالی</h2>
   <p class="hint">هر افزایش و کاهش اعتبار<?= $isAdmin ? ' حساب‌ها' : ' حساب شما' ?> با مانده‌ی قبل و بعد از آن اینجا ثبت می‌شود: خرید اعتبار، هزینه‌ی ارسال، بازگشت رزرو ارسال‌نشده، انتقال اعتبار، سود نمایندگی و تغییرات دستی مدیر. مبالغ به ریال است.
+    هر ارسال ابتدا هزینه‌ی احتمالی‌اش را از اعتبار رزرو می‌کند و بخش خرج‌نشده بعداً «برگشت رزرو» می‌شود؛ برای همین برگشت رزرو در «جمع افزایش» حساب نمی‌شود و جمع افزایش منهای جمع کاهش با اعتبار می‌خواند.
     هر ارسال گروهی (نظیر به نظیر، هوشمند، تدریجی، …) یک ردیف «هزینه‌ی ارسال گروهی» است: جمع هزینه‌ی پیامک‌های ارسال‌شده‌ی آن، و مانده‌ی قبل و بعد از آن ارسال.</p>
   <form method="get" class="toolbar">
     <?php if ($isAdmin): ?>
@@ -196,6 +199,13 @@ require __DIR__ . '/../app/views/header.php';
     <div class="summary-item"><div class="summary-label">تعداد رکورد</div><div class="summary-value num"><?= $money($totals['count']) ?></div></div>
     <div class="summary-item"><div class="summary-label">جمع افزایش (ریال)</div><div class="summary-value num" style="color:var(--ok)">+<?= $money($totals['increase']) ?></div></div>
     <div class="summary-item"><div class="summary-label">جمع کاهش (ریال)</div><div class="summary-value num" style="color:var(--err)">−<?= $money($totals['decrease']) ?></div></div>
+    <?php if ($totals['released'] > 0): ?>
+      <div class="summary-item"><div class="summary-label">برگشت رزرو ارسال‌نشده (ریال)</div><div class="summary-value num">+<?= $money($totals['released']) ?></div>
+        <div class="hint">جزو «جمع افزایش» نیست: فقط بخشِ خرج‌نشده‌ی مبلغی است که هنگام ارسال رزرو شده بود.</div></div>
+    <?php endif; ?>
+    <?php if ($reservedNow > 0): ?>
+      <div class="summary-item"><div class="summary-label">در رزرو ارسال‌های در جریان (ریال)</div><div class="summary-value num"><?= $money($reservedNow) ?></div></div>
+    <?php endif; ?>
     <?php if (!$isAdmin): ?>
       <div class="summary-item"><div class="summary-label">اعتبار فعلی (ریال)</div><div class="summary-value num"><?= $money(wallet_balance((int)$me['id'])['available']) ?></div></div>
     <?php endif; ?>

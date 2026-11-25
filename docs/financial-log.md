@@ -74,9 +74,29 @@ bulk rows. No extra index is needed; the existing primary key, `(reference_type,
 `uniq_idempotency` are used. A group is identified by `reference_type = 'bulk_job'` alone: charges and
 releases are the only ledger rows written with it.
 
-The release is folded into the row, so it is not counted in «جمع افزایش»; «جمع کاهش» is unchanged.
 A filter for «برگشت رزرو ارسال‌نشده» or «فقط افزایش» lists the raw ledger rows instead
 (`financial_log_grouped()`). Direct, scheduled, API and other sends were always one row each and stay so.
+
+## Totals: a reservation release is not an increase
+
+The summary cards above the table (`financial_log_totals()`):
+
+- **«جمع افزایش»** — every positive row **except `reservation_release`**, grouped or not.
+- **«جمع کاهش»** — every negative row (charges, transfers out, admin decreases, …).
+- **«برگشت رزرو ارسال‌نشده»** — shown only when not zero: the sum of the `reservation_release` rows,
+  kept apart. Every kind of send (direct, API, scheduled, file, regional, voice, Telegram, LBA, bulk)
+  reserves its worst-case cost first — the balance drops with **no ledger row** — and the release only
+  gives back the unspent part of that reservation, so it is not income.
+- **«در رزرو ارسال‌های در جریان»** — shown only when not zero, when one account is in view: credit held
+  by sends still running (`wallet_balance()['reserved']`), already off the current credit but not
+  charged yet.
+
+So, over an account's whole history: **جمع افزایش − جمع کاهش − در رزرو = اعتبار فعلی**. (Until
+2026-11 releases of non-bulk sends were counted in «جمع افزایش», so the increase total overshot the
+real credit by every such release — e.g. an account showing +3,230,241,548 / −1,221,264,264 against a
+credit of 778,735,736.) The monthly statement already treated releases the same way
+([`statement.md`](statement.md)). Test: `tests/Integration/BulkBillingTest.php`
+(`testAReleaseOfAnyOtherSendIsNotAnIncrease`).
 
 ## Mismatch check (مغایرت مالی ارسال گروهی)
 

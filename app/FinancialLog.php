@@ -116,17 +116,25 @@ function financial_log_grouped(array $filters): bool {
  */
 const FINANCIAL_LOG_BULK_SQL = "t.reference_type = 'bulk_job'";
 
-/** @return array{count:int, increase:int, decrease:int} decrease is a positive total */
+/**
+ * @return array{count:int, increase:int, decrease:int, released:int} decrease is a positive total
+ *
+ * «جمع افزایش» never includes 'reservation_release' rows. A send RESERVES its worst-case cost first,
+ * which lowers the balance with no ledger row, and the release only gives back the unspent part of
+ * that reservation — so counting it as an increase made «افزایش − کاهش» overshoot the real balance by
+ * every release ever written (direct, scheduled, file, regional, voice, Telegram, … sends; bulk sends
+ * were already folded). Their sum is returned separately as 'released' for the page to show on its own.
+ * With releases left out, increase − decrease = the balance change, less what is still reserved.
+ */
 function financial_log_totals(string $whereSql, array $params, bool $grouped = false): array {
-    // Grouped, a bulk job's release is folded into its row (it only returns unspent reservation), so
-    // it is not an increase of its own; the job's charges stay in the decrease total. The row count is
-    // the other rows plus one per bulk job — counted in a second, index-friendly query rather than a
-    // COUNT(DISTINCT CASE …) over every row.
+    // Grouped, a bulk job's rows are one row; the row count is the other rows plus one per bulk job —
+    // counted in a second, index-friendly query rather than a COUNT(DISTINCT CASE …) over every row.
     $bulk = FINANCIAL_LOG_BULK_SQL;
-    $st = db()->prepare('SELECT COUNT(*) n, ' . ($grouped ? "COALESCE(SUM({$bulk}), 0)" : '0') . ' n_bulk,
-                                COALESCE(SUM(CASE WHEN t.amount > 0' . ($grouped ? " AND NOT {$bulk}" : '') . ' THEN t.amount ELSE 0 END), 0) inc,
+    $st = db()->prepare('SELECT COUNT(*) n, ' . ($grouped ? "COALESCE(SUM({$bulk}), 0)" : '0') . " n_bulk,
+                                COALESCE(SUM(CASE WHEN t.amount > 0 AND t.type <> 'reservation_release' THEN t.amount ELSE 0 END), 0) inc,
+                                COALESCE(SUM(CASE WHEN t.amount > 0 AND t.type = 'reservation_release' THEN t.amount ELSE 0 END), 0) rel,
                                 COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) dec_
-                         FROM ellsms_wallet_transactions t' . $whereSql);
+                         FROM ellsms_wallet_transactions t" . $whereSql);
     $st->execute($params);
     $row = $st->fetch() ?: [];
     $count = (int)($row['n'] ?? 0);
@@ -136,7 +144,8 @@ function financial_log_totals(string $whereSql, array $params, bool $grouped = f
         $jobs->execute($params);
         $count = $count - (int)$row['n_bulk'] + (int)$jobs->fetchColumn();
     }
-    return ['count' => $count, 'increase' => (int)($row['inc'] ?? 0), 'decrease' => (int)($row['dec_'] ?? 0)];
+    return ['count' => $count, 'increase' => (int)($row['inc'] ?? 0), 'decrease' => (int)($row['dec_'] ?? 0),
+            'released' => (int)($row['rel'] ?? 0)];
 }
 
 const FINANCIAL_LOG_COLUMNS = 't.id, t.user_id, t.type, t.amount, t.balance_before, t.balance_after, t.reference_type,
