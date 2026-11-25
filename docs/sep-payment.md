@@ -18,6 +18,9 @@ Migration: `db/migrations/2026_11_25_sep_payment_gateway.sql` (`gateway_resnum`,
 2. `public/sep-redirect.php` auto-submits a form to that same URL with `Token` and `GetMethod=true`.
    SEP rejects a plain `Location` redirect: the browser must send this site as `Referer`.
    `GetMethod=true` makes SEP return with GET, so the `SameSite=Lax` session cookie still arrives.
+   The CSP's `form-action` must list `https://sep.shaparak.ir` (`send_security_headers()` in
+   `app/bootstrap.php` and the override in `app/Support/AuditPrepend.php`); otherwise the browser
+   blocks the auto-submit and the page stays on «در حال انتقال به پرداخت الکترونیک سامان».
 3. `public/sep-callback.php` (also `/payments/sep/callback`) reads `State`, `Status`, `ResNum`,
    `Token`, `RefNum`. POST is accepted too. The callback does not require a login — SEP says the
    session may already have expired — and it is exempt from maintenance mode. The payment is found
