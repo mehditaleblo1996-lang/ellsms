@@ -18,6 +18,8 @@ require_once dirname(__DIR__, 2) . '/app/Reports/OperatorReport.php';
 final class OperatorReportHttpTest extends TestCase
 {
     private const DAY_UTC = '2020-03-02';
+    /** No such gateway row is needed: the report reads gateway_id off the messages. */
+    private const GATEWAY_ID = 987001;
 
     private $serverProc = null;
     private int $port;
@@ -104,7 +106,8 @@ final class OperatorReportHttpTest extends TestCase
 
     /**
      * MCI (0912…): bulk delivered «سلام», bulk sent «hello…» (161 Latin characters: 2 SMS parts), bulk
-     * cancelled, bulk pending, 3 gateway sends delivered «سلام» from line 5000, 1 legacy sent «x» (0919…).
+     * cancelled, bulk pending, 3 gateway sends delivered «سلام» from line 5000 through gateway GATEWAY_ID,
+     * 1 legacy sent «x» (0919…).
      * MTN (0935…): bulk rejected at submission «hi», bulk undelivered «x».
      * => MCI total 6 / received 6 (parts 7 / 7), MTN total 2 / received 0 (parts 2 / 0);
      *    Persian 4 (parts 4), English 4 (parts 5). Every other text is 1 part.
@@ -129,10 +132,10 @@ final class OperatorReportHttpTest extends TestCase
         foreach ($items as [$mobile, $content, $status, $delivery]) {
             $st->execute([$this->jobId, $mobile, $content, $status, $delivery, $at]);
         }
-        $st = $db->prepare("INSERT INTO ellsms_message_attempts (user_id, reference_type, reference_id, status, destination, delivery_status, attempted_at, originator, content)
-                            VALUES (?, 'direct_send', ?, 'accepted', '989122222222', 'delivered', ?, '5000', 'سلام')");
+        $st = $db->prepare("INSERT INTO ellsms_message_attempts (user_id, reference_type, reference_id, status, destination, delivery_status, attempted_at, originator, content, gateway_id)
+                            VALUES (?, 'direct_send', ?, 'accepted', '989122222222', 'delivered', ?, '5000', 'سلام', ?)");
         for ($i = 0; $i < 3; $i++) {
-            $st->execute([$this->customerId, 'opr-' . bin2hex(random_bytes(6)), $at]);
+            $st->execute([$this->customerId, 'opr-' . bin2hex(random_bytes(6)), $at, self::GATEWAY_ID]);
             $this->attemptIds[] = (int)$db->lastInsertId();
         }
         $db->prepare("INSERT INTO outbound_message (sender_user_id, originator, destination, content, status, sent_at) VALUES (?, '1000', '09191111111', 'x', 'sent', ?)")
@@ -226,15 +229,24 @@ final class OperatorReportHttpTest extends TestCase
         $this->assertStringContainsString('<td class="num op-key">' . self::n(3) . '</td>', $r['body'], 'line 5000 sent 3');
         $this->assertStringNotContainsString('سهم هر اپراتور', $r['body'], 'the number view shows only the status table');
 
-        // An unknown provider: nothing, and legacy sends (no route) are left out too.
-        $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'route', 'provider_id' => 987654, 'user_id' => $this->customerId, '_part' => 'report']), $session);
+        // A gateway: only the messages that left through it (the 3 direct sends).
+        $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'route', 'gateway_id' => self::GATEWAY_ID, 'user_id' => $this->customerId, '_part' => 'report']), $session);
+        $this->assertSame(200, $r['code'], substr($r['body'], 0, 300));
+        $this->assertStringContainsString('<td class="num op-key">' . self::n(3) . '</td>', $r['body'], 'gateway sent 3');
+
+        // An unknown gateway: nothing, and legacy sends (no gateway) are left out too.
+        $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'route', 'gateway_id' => 987654, 'user_id' => $this->customerId, '_part' => 'report']), $session);
         $this->assertSame(200, $r['code']);
         $this->assertStringContainsString('<td class="num op-key">' . self::n(0) . '</td><td class="num">' . self::n(0) . '</td><td class="num op-key">' . self::n(0) . '</td>', $r['body']);
+
+        // The picker lists the SMS gateways.
+        $r = $this->request('/operator-reports.php?view=route', $session);
+        $this->assertStringContainsString('name="gateway_id"', $r['body']);
 
         // A customer asking for the route view gets the general report.
         $r = $this->request('/operator-reports.php?view=route', $this->sessionFor($this->customerId));
         $this->assertSame(200, $r['code']);
-        $this->assertStringNotContainsString('name="provider_id"', $r['body']);
+        $this->assertStringNotContainsString('name="gateway_id"', $r['body']);
     }
 
     public function testABuiltDayIsReadFromTheSummaryWithTheSameNumbers(): void
@@ -268,8 +280,11 @@ final class OperatorReportHttpTest extends TestCase
         $this->assertSame($strip($liveAdmin), $strip($fromSummary), 'summary and live counts differ (admin)');
         $this->assertSame($strip($liveCustomer), $strip($this->request($customerQuery, $customer)['body']), 'summary and live counts differ (customer)');
 
-        // Filters work on the summary too: line 5000 sent 3; an unknown route nothing.
+        // Filters work on the summary too: line 5000 sent 3, and so did the gateway.
         $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'number', 'sender' => '5000', 'user_id' => $this->customerId, '_part' => 'report']), $admin);
+        $this->assertStringContainsString('<td class="num op-key">' . self::n(3) . '</td>', $r['body']);
+        $r = $this->request('/operator-reports.php?' . $this->dayQuery(['view' => 'route', 'gateway_id' => self::GATEWAY_ID, 'user_id' => $this->customerId, '_part' => 'report']), $admin);
+        $this->assertStringContainsString('آخرین به‌روزرسانی', $r['body'], 'the gateway view reads the summary');
         $this->assertStringContainsString('<td class="num op-key">' . self::n(3) . '</td>', $r['body']);
 
         operator_report_rebuild_day(self::DAY_UTC);

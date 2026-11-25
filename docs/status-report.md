@@ -184,7 +184,8 @@ The status report shares the operator report's summary, so the operator report c
 1. `send_channel` on `ellsms_message_attempts` and `ellsms_bulk_jobs`.
 2. `channel` and `parts` on `ellsms_operator_report_daily`, in its primary key, and `layout` on
    `ellsms_operator_report_days`. Only a day built with the current layout
-   (`OPERATOR_REPORT_SUMMARY_LAYOUT` = 2, `operator_report_built_days()`) is read from the summary, so a
+   (layout 2, `operator_report_built_days()`; layout 3 later added the gateway column —
+   [operator-reports](operator-reports.md)) is read from the summary, so a
    day an old worker rebuilds while the deploy migrates is simply rebuilt again. The summary is
    **emptied** (`ellsms_operator_report_days` and the daily rows) so every day is rebuilt with the new
    dimensions; `report-summary-worker` rebuilds today and yesterday first, then the last

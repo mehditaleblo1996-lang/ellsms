@@ -295,6 +295,17 @@ public API route. Migration:
 `db/migrations/2026_11_11_status_report.sql` (empties the operator summary; `report-summary-worker`
 rebuilds it). See [`docs/status-report.md`](docs/status-report.md).
 
+## Operator reports (گزارش اپراتورها)
+
+**«گزارش و دریافت» → «گزارش اپراتورها»** (`/operator-reports.php`) counts the messages per mobile operator
+over a Jalali range: each operator's share, Persian/English, and the status table. Two more views:
+**«بر اساس شماره»** (`?view=number`, one sender line) and, for admins, **«بر اساس تأمین‌کننده»**
+(`?view=route&gateway_id=…`), which lists the SMS gateways («درگاه‌های پیامک») and counts the messages
+that left through the chosen one (legacy backend sends and queued messages have no gateway). Reads the
+daily summary `ellsms_operator_report_daily` that `report-summary-worker` builds; migration
+`db/migrations/2026_11_25_operator_report_gateway.sql` adds its gateway column (the worker then upgrades
+old days newest first). No public API route. See [`docs/operator-reports.md`](docs/operator-reports.md).
+
 ## VIP customers (مشتری ویژه)
 
 A platform admin ticks **«مشتری ویژه»** on a user (**Users → user**, or on «ساخت حساب تازه»). VIP
@@ -832,6 +843,7 @@ updated in the same change** — see `CLAUDE.md`.
 **Panel reports**
 [dashboard](docs/dashboard.md) ·
 [status-report](docs/status-report.md) ·
+[operator-reports](docs/operator-reports.md) ·
 [reporting-scalability](docs/reporting-scalability.md) ·
 [daily-metadata-aggregation](docs/daily-metadata-aggregation.md)
 
