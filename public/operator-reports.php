@@ -11,7 +11,8 @@ if (!is_admin()) {
  * Three views of the same report (app/Reports/OperatorReport.php), each its own sidebar entry:
  *   all    — every message in the range: operator share, encoding, status
  *   number — the status table for one sender line
- *   route  — the status table for one provider, over all its routes (admins only: providers are platform configuration)
+ *   route  — the status table for one SMS gateway («تأمین‌کننده», ellsms_sms_gateways): the messages that left
+ *            through it (admins only: gateways are platform configuration)
  * A customer sees only the two summary columns of the status table (مجموع ارسال‌شده / تحویل گرفته‌شده),
  * and the delivery one only when on delivery-based billing (delivery_status_visible()).
  */
@@ -32,20 +33,13 @@ $userId = $admin ? (int)($_GET['user_id'] ?? 0) : 0;
 $vip = $admin ? vip_filter_from($_GET) : '';
 $senderRaw = $view === 'number' ? trim((string)($_GET['sender'] ?? '')) : '';
 $sender = $senderRaw !== '' ? normalize_originator($senderRaw) : null;
-$providerId = $view === 'route' ? (int)($_GET['provider_id'] ?? 0) : 0;
-$routeIds = null;
-if ($providerId > 0) {
-    try {
-        $st = db()->prepare('SELECT id FROM ellsms_sms_routes WHERE provider_id = ?');
-        $st->execute([$providerId]);
-        $routeIds = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
-    } catch (Throwable) {
-        $routeIds = [];
-    }
-}
+$gatewayId = $view === 'route' ? (int)($_GET['gateway_id'] ?? 0) : 0;
+$gateways = $view === 'route' ? operator_report_gateway_options() : [];
+$gatewayName = '';
+foreach ($gateways as $g) if ($g['id'] === $gatewayId) $gatewayName = $g['name'];
 
 if (lazy_part_begin('report')) {
-    $counts = operator_report_counts(['vip' => $vip] + operator_report_scope($me, $admin, $userId), $from, $to, $sender, $routeIds, hidden_messages_apply_to_viewer(), $asOf, $partsMap);
+    $counts = operator_report_counts(['vip' => $vip] + operator_report_scope($me, $admin, $userId), $from, $to, $sender, $gatewayId > 0 ? $gatewayId : null, hidden_messages_apply_to_viewer(), $asOf, $partsMap);
     $operators = operator_report_operator_order($counts);
     // Every count has its SMS part total beside it (docs/message-parts.md): the same maps over $partsMap.
     $statusByOp = [];
@@ -135,7 +129,7 @@ if (lazy_part_begin('report')) {
 
     $statusTitle = match ($view) {
         'number' => 'وضعیت پیام‌های ارسالی' . ($sender !== null ? ' از شماره‌ی ' . $sender : '') . ' به تفکیک اپراتور',
-        'route'  => 'وضعیت پیام‌های ارسالی' . ($providerId > 0 ? ' از این تأمین‌کننده' : '') . ' به تفکیک اپراتور',
+        'route'  => 'وضعیت پیام‌های ارسالی' . ($gatewayId > 0 ? ' از تأمین‌کننده‌ی ' . ($gatewayName !== '' ? $gatewayName : '#' . $gatewayId) : '') . ' به تفکیک اپراتور',
         default  => 'وضعیت پیام‌های ارسالی به تفکیک اپراتور',
     };
     ?>
@@ -228,14 +222,6 @@ if (lazy_part_begin('report')) {
 }
 
 $users = $admin ? backend_list_users_summary() : [];
-$providers = [];
-if ($view === 'route') {
-    try {
-        $providers = db()->query('SELECT id, name FROM ellsms_sms_providers ORDER BY name')->fetchAll();
-    } catch (Throwable) {
-        // pricing catalog not migrated: no providers to pick
-    }
-}
 $myLines = (!$admin && $view === 'number') ? array_values(array_filter(allowed_originators($me), static fn($n) => $n !== '*')) : [];
 $extraStyles = ['/assets/css/operator-reports.css'];
 require __DIR__ . '/../app/views/header.php';
@@ -270,8 +256,8 @@ require __DIR__ . '/../app/views/header.php';
     <?php endif; ?>
     <?php if ($view === 'route'): ?>
       <label>تأمین‌کننده
-        <select name="provider_id"><option value="0">همه‌ی تأمین‌کننده‌ها</option>
-          <?php foreach ($providers as $pr): ?><option value="<?= (int)$pr['id'] ?>" <?= $providerId === (int)$pr['id'] ? 'selected' : '' ?>><?= e($pr['name']) ?></option><?php endforeach; ?>
+        <select name="gateway_id"><option value="0">همه‌ی تأمین‌کننده‌ها</option>
+          <?php foreach ($gateways as $g): ?><option value="<?= $g['id'] ?>" <?= $gatewayId === $g['id'] ? 'selected' : '' ?>><?= e($g['name'] . ($g['status'] === 'archived' ? ' (بایگانی‌شده)' : '')) ?></option><?php endforeach; ?>
         </select>
       </label>
     <?php endif; ?>
@@ -280,7 +266,7 @@ require __DIR__ . '/../app/views/header.php';
     <button class="btn btn-primary">جست‌وجو</button>
   </form>
   <?php if ($view === 'number' && $sender === null): ?><p class="hint">شماره‌ای انتخاب نشده؛ همه‌ی شماره‌ها نمایش داده می‌شوند.</p><?php endif; ?>
-  <?php if ($view === 'route'): ?><p class="hint">ارسال‌های قدیمی از طریق API بک‌اند مسیر ندارند؛ با انتخاب یک تأمین‌کننده در این گزارش حساب نمی‌شوند.</p><?php endif; ?>
+  <?php if ($view === 'route'): ?><p class="hint">تأمین‌کننده‌ها همان درگاه‌های پیامک‌اند («درگاه‌های پیامک»). با انتخاب یک تأمین‌کننده فقط پیام‌هایی شمرده می‌شوند که از آن درگاه رفته‌اند؛ ارسال‌های قدیمی API بک‌اند و پیام‌هایی که هنوز در صف‌اند درگاه ندارند و حساب نمی‌شوند.</p><?php endif; ?>
 </div>
 
 <?= lazy_part_placeholder('report', 420, 'در حال آماده‌سازی گزارش…') ?>

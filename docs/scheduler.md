@@ -60,7 +60,9 @@ daily summary behind the operator report and the status report (`ellsms_operator
 last week hourly, the last five weeks daily, never-built days back to `OPERATOR_REPORT_BACKFILL_DAYS`
 (400) newest first, `OPERATOR_REPORT_PASS_SECONDS` (40) per pass. Each day now carries the send channel
 and the per-message part count; days built before `2026_11_11_status_report.sql` are rebuilt
-(`docs/status-report.md`).
+(`docs/status-report.md`). Since `2026_11_25_operator_report_gateway.sql` each day also carries the SMS
+gateway, and days built before it are upgraded newest first after today and yesterday — an upgrade never
+shrinks a day whose messages were archived (`docs/operator-reports.md`).
 
 **Maintenance mode** pauses the scheduler entirely, like the workers.
 

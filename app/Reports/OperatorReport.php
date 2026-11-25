@@ -141,12 +141,26 @@ function operator_report_scope(array $me, bool $admin, int $adminUserId): array 
         : ['members' => array_map('intval', $members), 'bulk_org' => 0, 'bulk_user' => (int)$me['id']];
 }
 
-/** SQL narrowing $col to $routeIds (null = no filter, [] = no rows), its values appended to $p. */
-function operator_report_route_filter(string $col, ?array $routeIds, array &$p): string {
-    if ($routeIds === null) return '';
-    if ($routeIds === []) return ' AND 1=0';
-    array_push($p, ...array_map('intval', $routeIds));
-    return " AND {$col} IN (" . implode(',', array_fill(0, count($routeIds), '?')) . ')';
+/** SQL narrowing $col to one SMS gateway (null = no filter), its value appended to $p. */
+function operator_report_gateway_filter(string $col, ?int $gatewayId, array &$p): string {
+    if ($gatewayId === null) return '';
+    $p[] = $gatewayId;
+    return " AND {$col} = ?";
+}
+
+/**
+ * The SMS gateways («تأمین‌کننده», ellsms_sms_gateways — the connectors a message actually leaves
+ * through) the «بر اساس تأمین‌کننده» view can pick, archived ones last. Empty when not migrated.
+ *
+ * @return list<array{id:int,name:string,status:string}>
+ */
+function operator_report_gateway_options(): array {
+    try {
+        $rows = db()->query("SELECT id, name, status FROM ellsms_sms_gateways ORDER BY status = 'archived', name, id")->fetchAll();
+    } catch (Throwable) {
+        return [];
+    }
+    return array_map(static fn(array $r): array => ['id' => (int)$r['id'], 'name' => (string)$r['name'], 'status' => (string)$r['status']], $rows);
 }
 
 /**
@@ -158,16 +172,18 @@ function operator_report_route_filter(string $col, ?array $routeIds, array &$p):
  * live from the message tables. $asOf receives when the newest built day in the range was built (UTC),
  * or null when nothing came from the summary.
  *
- * $sender narrows to one sender line (normalized digits); $routeIds to those routes (a provider's
- * routes; null = no filter, [] = nothing) — legacy backend sends have no route, so a route filter
- * leaves them out.
+ * $sender narrows to one sender line (normalized digits); $gatewayId to the messages that went
+ * through that SMS gateway (null = no filter) — legacy backend sends, and messages still in queue,
+ * have no gateway, so a gateway filter leaves them out. A gateway-filtered count reads only days
+ * built with the gateway column (layout 3); older days are counted live until rebuilt.
  *
  * @param array{members:?list<int>,bulk_org:int,bulk_user:int} $scope
  * @return array<string,array<string,array<string,int>>>
  */
-function operator_report_counts(array $scope, string $from, string $to, ?string $sender, ?array $routeIds, bool $hideRemoved, ?string &$asOf = null, ?array &$parts = null): array {
+function operator_report_counts(array $scope, string $from, string $to, ?string $sender, ?int $gatewayId, bool $hideRemoved, ?string &$asOf = null, ?array &$parts = null): array {
     $asOf = null;
-    $built = operator_report_built_days($from, $to);
+    $built = $gatewayId === null ? operator_report_built_days($from, $to)
+        : (operator_report_summary_has_gateway() ? operator_report_built_days($from, $to, OPERATOR_REPORT_SUMMARY_LAYOUT) : []);
 
     $rows = [];
     if ($built !== []) {
@@ -178,7 +194,7 @@ function operator_report_counts(array $scope, string $from, string $to, ?string 
         $w .= $scopeSql;
         array_push($p, ...$scopeParams);
         if ($sender !== null) { $w .= ' AND sender = ?'; $p[] = $sender; }
-        $w .= operator_report_route_filter('route_id', $routeIds, $p);
+        $w .= operator_report_gateway_filter('gateway_id', $gatewayId, $p);
         if ($hideRemoved) $w .= ' AND hidden = 0';
         $st = db()->prepare("SELECT operator name, encoding enc, status st, SUM(message_count) c, SUM(message_count * parts) p FROM ellsms_operator_report_daily
                              WHERE {$w} GROUP BY operator, encoding, status");
@@ -189,7 +205,7 @@ function operator_report_counts(array $scope, string $from, string $to, ?string 
     // Days not in the summary, counted live one contiguous span at a time.
     foreach (operator_report_unbuilt_spans($from, $to, array_keys($built)) as [$spanFrom, $spanTo]) {
         [$fromUtc, $toUtcExclusive] = local_day_range_to_utc($spanFrom, $spanTo);
-        array_push($rows, ...operator_report_raw_rows($fromUtc, $toUtcExclusive, $scope, $sender, $routeIds, $hideRemoved, false));
+        array_push($rows, ...operator_report_raw_rows($fromUtc, $toUtcExclusive, $scope, $sender, $gatewayId, $hideRemoved, false));
     }
 
     return operator_report_fold($rows, operator_report_operator_names(), $parts);
@@ -269,11 +285,33 @@ function operator_report_unbuilt_spans(string $from, string $to, array $builtDay
 }
 
 /**
- * The summary's layout. A day is only read from the summary when it was built with this layout (or a
- * later one): a day an older build wrote — before 2026_11_11_status_report.sql added channel and parts,
+ * The summary's layout. A day is only read from the summary when it was built with a layout the reader
+ * accepts: a day an older build wrote — before 2026_11_11_status_report.sql added channel and parts,
  * or by an old worker still running while a deploy migrates — counts live and is rebuilt.
+ *   2  channel and parts (OPERATOR_REPORT_SUMMARY_READABLE_LAYOUT: enough for every unfiltered count)
+ *   3  + gateway_id (2026_11_25_operator_report_gateway.sql), which the «بر اساس تأمین‌کننده» view needs
  */
-const OPERATOR_REPORT_SUMMARY_LAYOUT = 2;
+const OPERATOR_REPORT_SUMMARY_LAYOUT = 3;
+const OPERATOR_REPORT_SUMMARY_READABLE_LAYOUT = 2;
+
+/** Whether the summary has its gateway column (2026_11_25_operator_report_gateway.sql). */
+function operator_report_summary_has_gateway(): bool {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = (int)db()->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE()
+                                     AND table_name = 'ellsms_operator_report_daily' AND column_name = 'gateway_id'")->fetchColumn() === 1;
+        } catch (Throwable) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
+/** The layout this install writes: 3 once the gateway column exists, else 2. */
+function operator_report_summary_write_layout(): int {
+    return operator_report_summary_has_gateway() ? OPERATOR_REPORT_SUMMARY_LAYOUT : OPERATOR_REPORT_SUMMARY_READABLE_LAYOUT;
+}
 
 /** Whether the summary tables exist with the current layout (2026_10_26_operator_report_daily.sql + 2026_11_11_status_report.sql). */
 function operator_report_summary_available(): bool {
@@ -299,11 +337,11 @@ function operator_report_summary_available(): bool {
  *
  * @return array<string,string>
  */
-function operator_report_built_days(string $from, string $to): array {
+function operator_report_built_days(string $from, string $to, int $minLayout = OPERATOR_REPORT_SUMMARY_READABLE_LAYOUT): array {
     if (!operator_report_summary_available()) return [];
     $st = db()->prepare('SELECT period_date, built_at FROM ellsms_operator_report_days
                          WHERE period_date BETWEEN ? AND ? AND layout >= ?' . (operator_report_summary_has_parts() ? ' AND parts_built <> 0' : '') . ' ORDER BY period_date');
-    $st->execute([$from, $to, OPERATOR_REPORT_SUMMARY_LAYOUT]);
+    $st->execute([$from, $to, $minLayout]);
     $built = [];
     foreach ($st->fetchAll() as $r) $built[(string)$r['period_date']] = (string)$r['built_at'];
     return $built;
@@ -312,8 +350,9 @@ function operator_report_built_days(string $from, string $to): array {
 /**
  * Grouped counts straight from the three message tables for [$fromUtc, $toUtcExclusive): one row per
  * (operator id, number prefix, encoding, parts, status, refusal key) — plus source, user,
- * organization, sender, route, channel and hidden when $withDimensions, which is what a summary day
- * stores. $scope null = every account.
+ * organization, sender, route, gateway (gwy), channel and hidden when $withDimensions, which is what a
+ * summary day stores. $scope null = every account. $gatewayId narrows to one SMS gateway: a bulk item's
+ * own gateway, else (a refusal) the one its provider answer names; legacy sends are left out.
  *
  * Every row carries:
  *   st   the stored status before refinement (OPERATOR_REPORT_STORED_STATUSES)
@@ -331,7 +370,7 @@ function operator_report_built_days(string $from, string $to): array {
  * @param array{members:?list<int>,bulk_org:int,bulk_user:int}|null $scope
  * @return list<array<string,mixed>>
  */
-function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?array $scope, ?string $sender, ?array $routeIds, bool $hideRemoved, bool $withDimensions, ?int $dayOffset = null): array {
+function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?array $scope, ?string $sender, ?int $gatewayId, bool $hideRemoved, bool $withDimensions, ?int $dayOffset = null): array {
     $encodingSql = static fn(string $col): string =>
         "CASE WHEN {$col} IS NULL OR {$col} = '' THEN 'na' WHEN CHAR_LENGTH({$col}) <> LENGTH({$col}) THEN 'fa' ELSE 'en' END";
     $deliverySql = static fn(string $col): string =>
@@ -348,8 +387,8 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         ? "EXISTS (SELECT 1 FROM ellsms_hidden_messages hm WHERE hm.source = '{$source}' AND hm.message_id = {$idCol})" : '0';
     // The summary stores every dimension, so it never filters by viewer; a live count does.
     $exclude = static fn(string $source, string $idCol): string => $withDimensions ? '' : hidden_messages_exclude_sql($source, $idCol, $hideRemoved);
-    $dims = static fn(string $src, string $uid, string $org, string $snd, string $rt, string $hid, string $ch): array => $withDimensions
-        ? ["'{$src}' src, {$uid} uid, {$org} org, {$snd} snd, {$rt} rt, {$hid} hid, {$ch} ch, ", ', src, uid, org, snd, rt, hid, ch']
+    $dims = static fn(string $src, string $uid, string $org, string $snd, string $rt, string $gwy, string $hid, string $ch): array => $withDimensions
+        ? ["'{$src}' src, {$uid} uid, {$org} org, {$snd} snd, {$rt} rt, {$gwy} gwy, {$hid} hid, {$ch} ch, ", ', src, uid, org, snd, rt, gwy, hid, ch']
         : ['', ''];
     $q = static fn(string $v): string => db()->quote($v);
     // «مشتری ویژه» filter (app/VipCustomers.php) of a scoped count; the summary (no scope) stores every user.
@@ -381,15 +420,17 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
     if (send_channel_column_available('ellsms_bulk_jobs')) {
         $bulkChannel = "CASE WHEN bj.send_channel = 'api' THEN 'api' ELSE {$bulkChannel} END";
     }
+    // The gateway a bulk item went through: its own, else (a refusal) the one its provider answer names.
+    $bulkGateway = 'COALESCE(bi.gateway_id, ' . ($withAudit ? 'pra.gateway_id, ' : '') . '0)';
     $p = [$fromUtc, $toUtcExclusive];
     $w = 'bi.created_at >= ? AND bi.created_at < ?';
     if ($scope !== null && $scope['bulk_org'] > 0) { $w .= ' AND bj.organization_id = ?'; $p[] = $scope['bulk_org']; }
     elseif ($scope !== null && $scope['bulk_user'] > 0) { $w .= ' AND bj.user_id = ?'; $p[] = $scope['bulk_user']; }
     $w .= vip_user_condition($vipFilter, 'bj.user_id', $p);
     if ($sender !== null) { $w .= ' AND bj.originator = ?'; $p[] = $sender; }
-    $w .= operator_report_route_filter('bi.route_id', $routeIds, $p);
+    $w .= operator_report_gateway_filter($bulkGateway, $gatewayId, $p);
     $w .= $exclude('bulk_job', 'bj.id');
-    [$sel, $grp] = $dims('bulk', 'bj.user_id', 'COALESCE(bj.organization_id, 0)', 'bj.originator', 'COALESCE(bi.route_id, 0)', $hiddenSql('bulk_job', 'bj.id'), $bulkChannel);
+    [$sel, $grp] = $dims('bulk', 'bj.user_id', 'COALESCE(bj.organization_id, 0)', 'bj.originator', 'COALESCE(bi.route_id, 0)', $bulkGateway, $hiddenSql('bulk_job', 'bj.id'), $bulkChannel);
     [$daySel, $dayGrp] = $day('bi.created_at');
     $sel .= $daySel;
     $grp .= $dayGrp;
@@ -412,7 +453,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
               AND a.attempted_at >= ? AND a.attempted_at < ?" . $memberIn('a.user_id', $p);
         $w .= vip_user_condition($vipFilter, 'a.user_id', $p);
         if ($sender !== null) { $w .= ' AND a.originator = ?'; $p[] = $sender; }
-        $w .= operator_report_route_filter('a.route_id', $routeIds, $p);
+        $w .= operator_report_gateway_filter('a.gateway_id', $gatewayId, $p);
         $w .= $exclude('attempt', 'a.id');
         $enc = $reportCols ? $encodingSql('a.content') : "'na'";
         $parts = message_parts_sql('ellsms_message_attempts', 'a', $reportCols ? 'a.content' : 'NULL');
@@ -423,7 +464,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         $attemptChannel = "CASE WHEN a.reference_type = 'schedule' THEN 'schedule' WHEN a.reference_type = 'autoreply' THEN 'autoreply' "
             . (send_channel_column_available('ellsms_message_attempts') ? "WHEN a.send_channel IS NOT NULL AND a.send_channel <> '' THEN a.send_channel " : '')
             . "ELSE 'direct' END";
-        [$sel, $grp] = $dims('gateway', 'a.user_id', 'COALESCE(a.organization_id, 0)', $reportCols ? "COALESCE(a.originator, '')" : "''", 'COALESCE(a.route_id, 0)', $hiddenSql('attempt', 'a.id'), $attemptChannel);
+        [$sel, $grp] = $dims('gateway', 'a.user_id', 'COALESCE(a.organization_id, 0)', $reportCols ? "COALESCE(a.originator, '')" : "''", 'COALESCE(a.route_id, 0)', 'COALESCE(a.gateway_id, 0)', $hiddenSql('attempt', 'a.id'), $attemptChannel);
         [$daySel, $dayGrp] = $day('a.attempted_at');
         $sel .= $daySel;
         $grp .= $dayGrp;
@@ -435,8 +476,8 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         array_push($rows, ...$st->fetchAll());
     }
 
-    /* Legacy backend sends (no route, no recorded operator, no channel). */
-    $ids = $routeIds === null ? operator_report_legacy_id_bounds($fromUtc, $toUtcExclusive) : null;
+    /* Legacy backend sends (no route, no gateway, no recorded operator, no channel). */
+    $ids = $gatewayId === null ? operator_report_legacy_id_bounds($fromUtc, $toUtcExclusive) : null;
     if ($ids !== null) {
         $p = [$ids[0], $ids[1], $fromUtc, $toUtcExclusive];
         $w = 'm.id >= ? AND m.id < ? AND m.sent_at >= ? AND m.sent_at < ?' . $memberIn('m.sender_user_id', $p);
@@ -445,7 +486,7 @@ function operator_report_raw_rows(string $fromUtc, string $toUtcExclusive, ?arra
         $w .= $exclude('outbound', 'm.id');
         $legacyStatus = "CASE WHEN m.status = 'delivered' THEN 'delivered' WHEN m.status = 'failed' THEN 'undelivered'
                               WHEN m.status = 'send_failed' THEN 'failed_send' WHEN m.status = 'sent' THEN 'sent' ELSE 'queued' END";
-        [$sel, $grp] = $dims('legacy', 'm.sender_user_id', '0', 'm.originator', '0', $hiddenSql('outbound', 'm.id'), "'direct'");
+        [$sel, $grp] = $dims('legacy', 'm.sender_user_id', '0', 'm.originator', '0', '0', $hiddenSql('outbound', 'm.id'), "'direct'");
         [$daySel, $dayGrp] = $day('m.sent_at');
         $sel .= $daySel;
         $grp .= $dayGrp;
@@ -569,12 +610,13 @@ function operator_report_legacy_id_bounds(string $fromUtc, string $toUtcExclusiv
 /**
  * Rebuilds one Tehran day of the summary from the message tables (DELETE + INSERT in one transaction).
  *
- * $upgradeOnly: the day is rebuilt only to add part totals (it was built before they existed). Such a
- * day can be long past, and its messages may no longer all be in the tables — archived
- * (app/BulkArchive.php), or left out of a restored backup (app/Backup.php keeps the summary, not the
- * messages). A rebuild that would count fewer messages than the day already holds therefore keeps the
- * day as it is and marks it parts_built = 2: counts kept, part totals unknown
- * (operator_report_parts_incomplete()). An upgrade never shrinks a day.
+ * $upgradeOnly: the day is rebuilt only to add part totals or the gateway column (it was built before
+ * they existed). Such a day can be long past, and its messages may no longer all be in the tables —
+ * archived (app/BulkArchive.php), or left out of a restored backup (app/Backup.php keeps the summary,
+ * not the messages). A rebuild that would count fewer messages than the day already holds therefore
+ * keeps the day as it is, marks it parts_built = 2 if it had no part totals (counts kept, part totals
+ * unknown — operator_report_parts_incomplete()) and moves it to the current layout with gateway 0
+ * (unknown: the «بر اساس تأمین‌کننده» view does not count its messages). An upgrade never shrinks a day.
  *
  * @return array{groups:int,messages:int,ms:int,kept?:bool}
  */
@@ -587,45 +629,55 @@ function operator_report_rebuild_day(string $day, bool $upgradeOnly = false): ar
     $groups = [];
     $messages = 0;
     $queued = 0;
+    // Without the gateway column every row is gateway 0, so rows that differ only by gateway fold together.
+    $withGateway = operator_report_summary_has_gateway();
     foreach ($raw as $r) {
         $operator = mb_substr(operator_report_row_operator($r, $names, $byPrefix), 0, 120);
         $enc = isset(OPERATOR_REPORT_ENCODINGS[$r['enc']]) ? (string)$r['enc'] : 'na';
         $status = operator_report_row_status($r);
         $channel = isset(SEND_CHANNELS[(string)($r['ch'] ?? '')]) ? (string)$r['ch'] : 'direct';
         $parts = max(0, min(65535, (int)($r['pt'] ?? 0)));
-        $row = [(string)$r['src'], (int)$r['uid'], (int)$r['org'], mb_substr((string)$r['snd'], 0, 32), (int)$r['rt'], $channel, $operator, $enc, $parts, $status, (int)(bool)$r['hid']];
+        $row = [(string)$r['src'], (int)$r['uid'], (int)$r['org'], mb_substr((string)$r['snd'], 0, 32), (int)$r['rt'], $withGateway ? (int)($r['gwy'] ?? 0) : 0, $channel, $operator, $enc, $parts, $status, (int)(bool)$r['hid']];
         $key = implode("\x1f", $row);
-        $groups[$key] ??= $row + [11 => 0, 12 => 0];
-        $groups[$key][11] += (int)$r['c'];
-        $groups[$key][12] += (int)($r['p'] ?? ((int)$r['c'] * $parts));
+        $groups[$key] ??= $row + [12 => 0, 13 => 0];
+        $groups[$key][12] += (int)$r['c'];
+        $groups[$key][13] += (int)($r['p'] ?? ((int)$r['c'] * $parts));
         $messages += (int)$r['c'];
         if ($status === 'queued') $queued += (int)$r['c'];
     }
     $ms = (int)round((microtime(true) - $started) * 1000);
     // part_count (the group's part total) and parts_built come from 2026_11_11_report_parts.sql.
     $withParts = operator_report_summary_has_parts();
-    if ($upgradeOnly && $withParts) {
+    // gateway_id comes from 2026_11_25_operator_report_gateway.sql; without it the day is written as layout 2.
+    $layout = operator_report_summary_write_layout();
+    if ($upgradeOnly) {
         $st = db()->prepare('SELECT COALESCE(SUM(message_count), 0) FROM ellsms_operator_report_daily WHERE period_date = ?');
         $st->execute([$day]);
         if ($messages < (int)$st->fetchColumn()) {
-            db()->prepare('UPDATE ellsms_operator_report_days SET parts_built = 2 WHERE period_date = ? AND parts_built = 0')->execute([$day]);
+            db()->prepare('UPDATE ellsms_operator_report_days SET layout = GREATEST(layout, ?)'
+                          . ($withParts ? ', parts_built = IF(parts_built = 0, 2, parts_built)' : '') . ' WHERE period_date = ?')
+               ->execute([$layout, $day]);
             return ['groups' => count($groups), 'messages' => $messages, 'ms' => $ms, 'kept' => true];
         }
     }
-    db_transaction(static function (PDO $db) use ($day, $groups, $queued, $ms, $withParts): void {
+    $cols = ['source', 'user_id', 'organization_id', 'sender', 'route_id', 'gateway_id', 'channel', 'operator', 'encoding', 'parts', 'status', 'hidden', 'message_count', 'part_count'];
+    $keep = array_keys(array_filter($cols, static fn(string $c): bool => ($c !== 'gateway_id' || $withGateway) && ($c !== 'part_count' || $withParts)));
+    db_transaction(static function (PDO $db) use ($day, $groups, $queued, $ms, $withParts, $layout, $cols, $keep): void {
         $db->prepare('DELETE FROM ellsms_operator_report_daily WHERE period_date = ?')->execute([$day]);
+        $placeholders = '(' . implode(',', array_fill(0, count($keep) + 1, '?')) . ')';
         foreach (array_chunk(array_values($groups), 500) as $chunk) {
             $params = [];
-            foreach ($chunk as $g) array_push($params, $day, ...($withParts ? $g : array_slice($g, 0, 12)));
-            $db->prepare('INSERT INTO ellsms_operator_report_daily
-                              (period_date, source, user_id, organization_id, sender, route_id, channel, operator, encoding, parts, status, hidden, message_count'
-                              . ($withParts ? ', part_count' : '') . ')
-                          VALUES ' . implode(',', array_fill(0, count($chunk), $withParts ? '(?,?,?,?,?,?,?,?,?,?,?,?,?,?)' : '(?,?,?,?,?,?,?,?,?,?,?,?,?)')))
+            foreach ($chunk as $g) {
+                $params[] = $day;
+                foreach ($keep as $i) $params[] = $g[$i];
+            }
+            $db->prepare('INSERT INTO ellsms_operator_report_daily (period_date, ' . implode(', ', array_map(static fn(int $i): string => $cols[$i], $keep)) . ')
+                          VALUES ' . implode(',', array_fill(0, count($chunk), $placeholders)))
                ->execute($params);
         }
         $db->prepare('REPLACE INTO ellsms_operator_report_days (period_date, built_at, queued_count, build_ms, layout' . ($withParts ? ', parts_built' : '') . ')
                       VALUES (?, UTC_TIMESTAMP(), ?, ?, ?' . ($withParts ? ', 1' : '') . ')')
-           ->execute([$day, $queued, $ms, OPERATOR_REPORT_SUMMARY_LAYOUT]);
+           ->execute([$day, $queued, $ms, $layout]);
     });
     return ['groups' => count($groups), 'messages' => $messages, 'ms' => $ms];
 }
@@ -685,25 +737,26 @@ function operator_report_worker_pass(int $budgetSeconds, int $backfillDays, int 
     }
     try {
         $today = (new DateTimeImmutable('now', new DateTimeZone('Asia/Tehran')))->format('Y-m-d');
-        // A day built with an older layout is not built at all: it is due like a never-built day.
+        // A day built with an unreadable layout is not built at all: it is due like a never-built day.
         $st = db()->prepare('SELECT period_date, built_at, queued_count FROM ellsms_operator_report_days WHERE period_date > ? AND layout >= ?');
-        $st->execute([(new DateTimeImmutable($today))->modify("-{$backfillDays} day")->format('Y-m-d'), OPERATOR_REPORT_SUMMARY_LAYOUT]);
+        $st->execute([(new DateTimeImmutable($today))->modify("-{$backfillDays} day")->format('Y-m-d'), OPERATOR_REPORT_SUMMARY_READABLE_LAYOUT]);
         $built = [];
         foreach ($st->fetchAll() as $r) {
             $built[(string)$r['period_date']] = ['built_at' => (int)strtotime($r['built_at'] . ' UTC'), 'queued' => (int)$r['queued_count']];
         }
         $due = operator_report_days_due($today, $built, time(), $backfillDays, $freshSeconds);
         // Days built by an older layout or without part totals, whatever their age: the reports count
-        // them live until they are rebuilt. After today/yesterday, newest first. A current-layout day
-        // rebuilt only to add part totals never shrinks (operator_report_rebuild_day()).
+        // them live (the gateway-filtered view: every day before layout 3) until they are rebuilt.
+        // After today/yesterday, newest first. A readable-layout day rebuilt only to add part totals or
+        // the gateway column never shrinks (operator_report_rebuild_day()).
         $old = db()->prepare('SELECT period_date, layout' . (operator_report_summary_has_parts() ? ', parts_built' : ', 1 AS parts_built')
             . ' FROM ellsms_operator_report_days WHERE layout < ?'
             . (operator_report_summary_has_parts() ? ' OR parts_built = 0' : '') . ' ORDER BY period_date DESC');
-        $old->execute([OPERATOR_REPORT_SUMMARY_LAYOUT]);
+        $old->execute([operator_report_summary_write_layout()]);
         $oldRows = $old->fetchAll();
         $upgradeOnly = [];
         foreach ($oldRows as $r) {
-            if ((int)$r['layout'] >= OPERATOR_REPORT_SUMMARY_LAYOUT && (int)$r['parts_built'] === 0) $upgradeOnly[(string)$r['period_date']] = true;
+            if ((int)$r['layout'] >= OPERATOR_REPORT_SUMMARY_READABLE_LAYOUT) $upgradeOnly[(string)$r['period_date']] = true;
         }
         $upgradeOnly = array_diff_key($upgradeOnly, array_flip($due));
         $due = operator_report_with_upgrades($due, array_map(static fn(array $r): string => (string)$r['period_date'], $oldRows), $today);
