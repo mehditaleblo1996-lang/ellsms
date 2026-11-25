@@ -44,8 +44,8 @@ of what was charged. To take back a sold line, remove its assignment on «ویر
 «خرید شماره» shows lines `on_sale` and unassigned, featured first, with search by digits, category
 chips, price range, length (≤ 8, 9–11, ≥ 12 digits) and sort (featured, cheapest, most expensive,
 newest), 12 per page. «خرید این شماره» opens the checkout: invoice summary (price + VAT from
-`BILLING_TAX_PERCENT`, the same formula as every invoice), the three steps, the payment method and
-acceptance of the terms/refund conditions.
+`BILLING_TAX_PERCENT`, the same formula as every invoice), the three steps, the payment method, and under the pay
+button a small line saying that paying accepts the terms and refund conditions (no checkbox).
 
 - **کسر از کیف پول** (only when the balance covers the total): the total is debited at once (wallet
   type `number_purchase`), a payment row with `gateway = 'wallet'` and a paid invoice are created.

@@ -34,10 +34,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/billing/packages');
     }
     if ($do === 'buy') {
-        if (($_POST['accept_refund_terms'] ?? '') !== '1') {
-            flash('error', 'برای پرداخت، پذیرش قوانین و شرایط انصراف و بازگشت وجه لازم است.');
-            redirect('/billing/packages');
-        }
         $code = (string)($_POST['code'] ?? '');
         if ($code !== '' && !rate_limit_hit(rate_limit_bucket('voucher_redeem', 'user', (string)$meId), 10, 600)) {
             flash('error', 'تعداد تلاش‌ها زیاد بود؛ چند دقیقه‌ی دیگر دوباره امتحان کنید.');
@@ -114,11 +110,8 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
           <input type="hidden" name="do" value="buy">
           <input type="hidden" name="package_id" value="<?= $p['id'] ?>">
           <label>کد تخفیف <input type="text" name="code" class="ltr" maxlength="32" autocomplete="off"></label>
-          <label class="consent-check" style="margin:8px 0">
-            <input type="checkbox" name="accept_refund_terms" value="1" required>
-            <span><a href="/terms" target="_blank" rel="noopener">قوانین</a> و <a href="/refund" target="_blank" rel="noopener">شرایط بازگشت وجه</a> را می‌پذیرم.</span>
-          </label>
           <button class="btn btn-primary btn-block">خرید</button>
+          <p class="pay-consent">با پرداخت این صورت‌حساب، <a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/refund" target="_blank" rel="noopener">شرایط انصراف و بازگشت وجه</a> را پذیرفته‌ام.</p>
         </form>
       </div>
     <?php endforeach; ?>

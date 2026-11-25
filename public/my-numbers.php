@@ -24,10 +24,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $kind = ($_POST['kind'] ?? '') === 'renewal' ? 'renewal' : 'purchase';
     $listingId = (int)($_POST['listing_id'] ?? 0);
     $back = '/my-numbers.php?' . ($kind === 'renewal' ? 'renew=' : 'buy=') . $listingId;
-    if (($_POST['accept_terms'] ?? '') !== '1') {
-        flash('error', 'برای پرداخت، پذیرش قوانین و شرایط بازگشت وجه لازم است.');
-        redirect($back);
-    }
     if (!rate_limit_hit(rate_limit_bucket('number_shop_checkout', 'user', (string)$meId), 20, 600)) {
         flash('error', 'تعداد تلاش‌ها زیاد بود؛ چند دقیقه‌ی دیگر دوباره امتحان کنید.');
         redirect($back);
@@ -172,11 +168,8 @@ require __DIR__ . '/../app/views/header.php';
             <small>موجودی: <?= $rial($checkout['balance']) ?> ریال<?= $walletEnough ? '' : ' — کافی نیست؛ <a href="/buy-credit.php">خرید اعتبار</a>' ?></small></span></span>
         </label>
       </fieldset>
-      <label class="ns-check">
-        <input type="checkbox" name="accept_terms" value="1" required>
-        <span><a href="/terms" target="_blank" rel="noopener">قوانین</a> و <a href="/refund" target="_blank" rel="noopener">شرایط بازگشت وجه</a> را می‌پذیرم.</span>
-      </label>
       <button class="btn btn-primary ns-pay-btn"><?= panel_icon('check') ?> پرداخت <?= $rial($a['total']) ?> ریال</button>
+      <p class="pay-consent">با پرداخت این صورت‌حساب، <a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/refund" target="_blank" rel="noopener">شرایط انصراف و بازگشت وجه</a> را پذیرفته‌ام.</p>
     </form>
   </div>
 
