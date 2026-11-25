@@ -102,10 +102,13 @@ require __DIR__ . '/../app/views/public_header.php';
 ?>
   <!-- Brand introduction (docs/landing.md#sections-top-to-bottom): the page's h1 and where to read more. -->
   <section class="dx-section dx-intro" aria-labelledby="dxIntroTitle">
-    <div class="dx-intro-grid">
-      <h1 id="dxIntroTitle" class="dx-rise">یک شریک فناوری برای <span class="dx-accent">همه‌ی نیازهای</span> کسب‌وکار شما</h1>
-      <div class="dx-intro-copy dx-rise" style="--i:1">
-        <p>از پیامک و بازاریابی تا زیرساخت ابری، هوش مصنوعی، پشتیبانی فناوری اطلاعات و تلفن سازمانی — داتیس رایان گستر ایرانیان همه را یکجا، با یک تیم پشتیبانی ارائه می‌دهد.</p>
+    <div class="dx-intro-inner">
+      <p class="dx-eyebrow dx-rise"><span class="dx-eyebrow-dot" aria-hidden="true"></span>پنج خط خدمت، یک تیم پشتیبانی</p>
+      <h1 id="dxIntroTitle" class="dx-rise" style="--i:1">یک شریک فناوری برای <span class="dx-accent dx-swash">همه‌ی نیازهای<svg viewBox="0 0 300 18" preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d="M4 13C70 4 170 2 296 9" pathLength="100"/></svg></span> کسب‌وکار شما</h1>
+      <p class="dx-intro-lead dx-rise" style="--i:2">از پیامک و بازاریابی تا زیرساخت ابری، هوش مصنوعی، پشتیبانی فناوری اطلاعات و تلفن سازمانی — داتیس رایان گستر ایرانیان همه را یکجا، با یک تیم پشتیبانی ارائه می‌دهد.</p>
+      <div class="dx-intro-actions dx-rise" style="--i:3">
+        <a href="/contact.php" class="btn btn-primary dx-btn-lg">مشاوره با کارشناسان</a>
+        <a href="<?= e($primaryHref) ?>" class="btn btn-ghost dx-btn-lg"><?= e($primaryLabel) ?></a>
         <a href="/about" class="dx-link">آشنایی با داتیس رایان <?= $dxIcon('arrow') ?></a>
       </div>
     </div>
@@ -118,6 +121,7 @@ require __DIR__ . '/../app/views/public_header.php';
        button: a click stops the orbit, highlights the node and opens its explanation card under the
        core (script at the end of this block). -->
   <section class="dx-hero" aria-label="خدمات داتیس">
+    <div class="dx-stage" aria-hidden="true"><span class="dx-stage-aura"></span><span class="dx-stage-floor"></span><span class="dx-stage-beam"></span></div>
     <div class="dx-hero-inner">
       <div class="dx-core" data-dx-core>
         <div class="dx-core-stage">
@@ -181,7 +185,7 @@ require __DIR__ . '/../app/views/public_header.php';
         </div>
       </div>
       <div class="dx-core-info" id="dxCoreInfo" aria-live="polite">
-        <p class="dx-core-hint" data-dx-hint>روی هر خدمت بزنید تا معرفی شود؛ مدار را بکشید تا بچرخد، یا روی هسته بزنید.</p>
+        <p class="dx-core-hint" data-dx-hint><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11"/><path d="M12 10V9a1.5 1.5 0 0 1 3 0v2"/><path d="M15 10.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-.6a6 6 0 0 1-4.9-2.6L4.3 15a1.5 1.5 0 0 1 2.4-1.8L9 15.5"/></svg>روی هر خدمت بزنید تا معرفی شود؛ مدار را بکشید تا بچرخد، یا روی هسته بزنید.</p>
         <?php foreach ($dxLines as $k => [$id, $name, $ico, $title, $desc, $items]): ?>
         <div class="dx-core-card" data-dx-card="<?= $k ?>" hidden>
           <div class="dx-core-card-head">
@@ -250,6 +254,8 @@ require __DIR__ . '/../app/views/public_header.php';
           <div class="dx-ui-row"><span class="ltr">0935•••1187</span><em class="is-ok">تحویل شد</em></div>
           <div class="dx-ui-row"><span class="ltr">0919•••0032</span><em class="is-wait">در حال ارسال</em></div>
         </div>
+        <div class="dx-float dx-float-ok"><span><svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><div><b>گزارش تحویل</b>هر پیام، همان لحظه</div></div>
+        <div class="dx-float dx-float-time"><span><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><div><b>زمان‌بندی</b>با تقویم شمسی</div></div>
       </div>
     </div>
   </section>
@@ -320,7 +326,7 @@ require __DIR__ . '/../app/views/public_header.php';
 
   <!-- IT services and enterprise telephony: two companion panels, each with its scene. -->
   <section class="dx-section dx-duo" aria-label="خدمات فناوری اطلاعات و تلفن سازمانی">
-    <article id="product-it" class="dx-panel lp-reveal" aria-labelledby="product-it-t">
+    <article id="product-it" class="dx-panel dx-spot lp-reveal" aria-labelledby="product-it-t">
       <?php $renderProdCarousel('it', 'نمایش خدمات فناوری اطلاعات', ['پشتیبانی و پایش شبکه', 'سرور و مجازی‌سازی', 'امنیت و نگهداری']); ?>
       <p class="dx-kicker">خدمات فناوری اطلاعات</p>
       <h2 id="product-it-t">یک تیم فنی کامل، بدون هزینه‌ی استخدام</h2>
@@ -333,7 +339,7 @@ require __DIR__ . '/../app/views/public_header.php';
       </ul>
       <a href="/contact.php" class="btn btn-primary">درخواست مشاوره و قیمت</a>
     </article>
-    <article id="product-voip" class="dx-panel lp-reveal" style="--i:1" aria-labelledby="product-voip-t">
+    <article id="product-voip" class="dx-panel dx-spot lp-reveal" style="--i:1" aria-labelledby="product-voip-t">
       <?php $renderProdCarousel('voip', 'نمایش خدمات تلفن سازمانی', ['سانترال تحت شبکه', 'منشی گویا و صف تماس', 'شعب، دورکاری و ضبط مکالمات']); ?>
       <p class="dx-kicker">تلفن و ارتباطات سازمانی</p>
       <h2 id="product-voip-t">هیچ تماس مشتری بی‌پاسخ نماند</h2>
@@ -361,6 +367,16 @@ require __DIR__ . '/../app/views/public_header.php';
     });
   }, { threshold: 0.25 });
   els.forEach(function (s) { io.observe(s); });
+  // Spotlight: cards marked .dx-spot light up under the pointer (--mx/--my, read by home.css).
+  if (window.matchMedia && matchMedia('(hover: hover)').matches) {
+    document.querySelectorAll('.dx-spot, .dx-feats li, .dx-ui, .dx-scene').forEach(function (el) {
+      el.addEventListener('pointermove', function (ev) {
+        var r = el.getBoundingClientRect();
+        el.style.setProperty('--mx', (ev.clientX - r.left).toFixed(0) + 'px');
+        el.style.setProperty('--my', (ev.clientY - r.top).toFixed(0) + 'px');
+      }, { passive: true });
+    });
+  }
 })();
 (function () {
   // Scene carousels (IT / telephony panels): the active dot's progress line runs 7 s (CSS) and its
@@ -710,7 +726,10 @@ require __DIR__ . '/../app/views/public_header.php';
 
   <section class="dx-section dx-cta-wrap">
     <div class="lp-cta dx-cta lp-reveal">
+      <span class="dx-cta-aura" aria-hidden="true"></span>
+      <span class="dx-cta-grid" aria-hidden="true"></span>
       <span class="dx-cta-ring" aria-hidden="true"></span>
+      <span class="dx-cta-ring is-2" aria-hidden="true"></span>
       <p class="dx-kicker">گام بعدی</p>
       <h2>برای کسب‌وکار خود، فناوری مناسبش را انتخاب کنید</h2>
       <p>با کارشناسان داتیس گفت‌وگو کنید تا سرویس مناسب شما را پیشنهاد دهند، یا مستقیم وارد پنل پیامک شوید و اولین ارسال خود را انجام دهید.</p>
