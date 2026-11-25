@@ -1601,7 +1601,8 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .pay-lines .pay-total { margin-top: 6px; padding: 14px; border-radius: 12px; background: var(--grad); color: #fff; }
 .pay-lines .pay-total dt { color: #dfe6ff; font-weight: 600; }
 .pay-lines .pay-total dd { font-size: var(--fs-xl); font-weight: 800; }
-.pay-consent { margin: 0 0 var(--sp-4); font-size: var(--fs-sm); }
+.pay-consent { margin: var(--sp-3) 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.9; text-align: center; }
+.pay-consent a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .pay-submit { width: 100%; min-height: 46px; font-size: var(--fs-md); }
 .pay-secure { display: flex; align-items: center; justify-content: center; gap: 6px; margin: var(--sp-3) 0 0; color: var(--muted); font-size: var(--fs-xs); }
 .pay-secure svg { width: 14px; height: 14px; }

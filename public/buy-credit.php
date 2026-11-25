@@ -31,8 +31,6 @@ if ($isPost) {
 
     if ($credits < $minPurchase) {
         flash('error', 'حداقل مبلغ خرید ' . to_persian_digits(number_format($minPurchase)) . ' ریال است.');
-    } elseif (($_POST['accept_refund_terms'] ?? '') !== '1') {
-        flash('error', 'برای پرداخت، پذیرش قوانین و شرایط انصراف و بازگشت وجه لازم است.');
     } elseif ($method !== 'online') {
         $kind = MANUAL_PAYMENT_DESTINATION_KIND[$method] ?? null;
         $input = [
@@ -254,11 +252,8 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
       <div><dt>ارزش افزوده (<?= to_persian_digits((string)$taxPercent) ?>٪)</dt><dd id="taxOut">۰ ریال</dd></div>
       <div class="pay-total"><dt id="priceLabel">مبلغ قابل پرداخت</dt><dd id="priceOut">۰ ریال</dd></div>
     </dl>
-    <label class="consent-check pay-consent">
-      <input type="checkbox" name="accept_refund_terms" value="1" required>
-      <span><a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/refund" target="_blank" rel="noopener">شرایط انصراف و بازگشت وجه</a> را خوانده‌ام و می‌پذیرم.</span>
-    </label>
     <button type="submit" class="btn btn-primary pay-submit" id="paySubmit">پرداخت</button>
+    <p class="pay-consent">با پرداخت این صورت‌حساب، <a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/refund" target="_blank" rel="noopener">شرایط انصراف و بازگشت وجه</a> را پذیرفته‌ام.</p>
     <p class="pay-secure"><?= $svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>') ?>پرداخت امن، با فاکتور رسمی و ارزش افزوده</p>
   </aside>
 </form>

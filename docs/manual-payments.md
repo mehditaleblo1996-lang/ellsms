@@ -16,7 +16,7 @@ Page layout (`public/buy-credit.php`, styles under `.pay-*` in `public/assets/cs
 right column holds numbered steps — ۱ «روش پرداخت» (method tiles), ۲ «مبلغ اعتبار» (package chips
 from `credit_packages`, the amount field in Rial with its Toman value in words), ۳ «درگاه پرداخت»
 (online) or «مشخصات پرداخت» (manual fields). The left column is a sticky «خلاصه‌ی پرداخت» card:
-current credit, credit amount, VAT, the payable total, the terms checkbox and the pay button. Below
+current credit, credit amount, VAT, the payable total, the pay button, and under it a small line saying that paying accepts «قوانین و مقررات» and «شرایط انصراف و بازگشت وجه» (both linked; there is no checkbox). Below
 1100px the columns stack. «تاریخچه‌ی پرداخت‌ها» (last 30 payments with their invoice) follows the form.
 
 Code: `app/ManualPayments.php`, `public/buy-credit.php`, the review/settings page body
