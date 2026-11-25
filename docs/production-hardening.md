@@ -105,7 +105,7 @@ token, missing token, and matching token, all against the actual `csrf_check()` 
 Already comprehensive before this phase (Phase 2, TD-031 fixed): `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN` +
 `frame-ancestors 'self'`, a real CSP (`default-src 'self'`, `object-src 'none'`,
-`base-uri 'self'`, `form-action 'self'`), and `Strict-Transport-Security` when the request is
+`base-uri 'self'`, `form-action 'self'` plus the Saman gateway `https://sep.shaparak.ir`), and `Strict-Transport-Security` when the request is
 detected as HTTPS. **TD-036 (open, unchanged)**: the CSP still allows `script-src`/`style-src
 'unsafe-inline'` because the app uses inline `<script>`/event-handler attributes/`style=""`
 widely — tightening this to a nonce/hash-based policy is a larger UI-touching change than this

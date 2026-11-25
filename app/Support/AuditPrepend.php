@@ -35,7 +35,7 @@ if (PHP_SAPI !== 'cli') {
                 "frame-src 'self' https://www.openstreetmap.org https://www.google.com https://maps.google.com; " .
                 "object-src 'none'; " .
                 "base-uri 'self'; " .
-                "form-action 'self' " . $origin . "; " .
+                "form-action 'self' " . $origin . " https://sep.shaparak.ir; " .
                 "frame-ancestors 'self'",
                 true
             );

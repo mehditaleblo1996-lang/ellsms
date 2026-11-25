@@ -292,7 +292,9 @@ function send_security_headers(array $extraImageOrigins = []): void {
         "frame-src 'self' https://www.openstreetmap.org https://www.google.com https://maps.google.com; " .
         "object-src 'none'; " .
         "base-uri 'self'; " .
-        "form-action 'self'; " .
+        // public/sep-redirect.php hands the buyer to Saman (SEP) with a browser-submitted POST form;
+        // without SEP's origin here the browser silently blocks that submit and the page hangs.
+        "form-action 'self' https://sep.shaparak.ir; " .
         "frame-ancestors 'self'"
     );
     // HSTS is inert over a plain HTTP response (browsers only ever honor
