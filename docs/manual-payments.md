@@ -12,6 +12,13 @@ Next to the online gateway (ZarinPal), a customer can buy credit on **/billing/c
 The customer enters the credit amount; VAT is added exactly as for an online purchase and the page
 shows the amount to transfer (a cheque must be written for exactly that total).
 
+Page layout (`public/buy-credit.php`, styles under `.pay-*` in `public/assets/css/style.css`): the
+right column holds numbered steps — ۱ «روش پرداخت» (method tiles), ۲ «مبلغ اعتبار» (package chips
+from `credit_packages`, the amount field in Rial with its Toman value in words), ۳ «درگاه پرداخت»
+(online) or «مشخصات پرداخت» (manual fields). The left column is a sticky «خلاصه‌ی پرداخت» card:
+current credit, credit amount, VAT, the payable total, the terms checkbox and the pay button. Below
+1100px the columns stack. «تاریخچه‌ی پرداخت‌ها» (last 30 payments with their invoice) follows the form.
+
 Code: `app/ManualPayments.php`, `public/buy-credit.php`, the review/settings page body
 `app/views/manual_payments_panel.php` used by `public/manual-payments.php` and
 `public/reseller-payments.php`, and `public/payment-receipt.php` (serves receipt images from

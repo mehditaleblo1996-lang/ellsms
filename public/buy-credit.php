@@ -92,13 +92,25 @@ $payments = $pst->fetchAll();
 $manualRows = manual_payments_for_payments(array_column($payments, 'id'));
 $statusFa = ['pending' => 'در انتظار', 'verification_failed' => 'در حال بررسی مجدد', 'paid' => 'موفق', 'failed' => 'ناموفق'];
 
+// Line icons (24×24, stroke = currentColor) for the payment-type tiles.
+$svg = static fn(string $body): string => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $body . '</svg>';
 $methodIcons = [
-    'online'  => '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="30" cy="24" r="13" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M17 24h26M30 11c-5 6-5 20 0 26M30 11c5 6 5 20 0 26" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="18" width="20" height="13" rx="2.5" fill="currentColor" opacity=".85"/><path d="M4 22h20" stroke="#fff" stroke-width="2"/></svg>',
-    'card'    => '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="9" width="30" height="20" rx="3" fill="currentColor" opacity=".85"/><path d="M3 15h30" stroke="#fff" stroke-width="3"/><rect x="15" y="20" width="30" height="20" rx="3" fill="#fff" stroke="currentColor" stroke-width="2.2"/><path d="M20 30h9M37 34h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
-    'account' => '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="5" width="26" height="16" rx="2.5" fill="currentColor" opacity=".85"/><path d="M4 10h26" stroke="#fff" stroke-width="2.5"/><rect x="18" y="27" width="26" height="16" rx="2.5" fill="#fff" stroke="currentColor" stroke-width="2.2"/><path d="M34 13h6v8m-3-3 3 3 3-3M14 35H8v-8m-3 3 3-3 3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    'cash'    => '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="4" y="10" width="40" height="28" rx="2" fill="none" stroke="currentColor" stroke-width="2.4"/><rect x="20" y="6" width="8" height="36" rx="1.5" fill="currentColor" opacity=".85"/><path d="M8 14h6M8 34h6M34 14h6M34 34h6" stroke="currentColor" stroke-width="2"/></svg>',
-    'cheque'  => '<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="12" y="10" width="33" height="26" rx="2.5" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M18 18h20M18 24h20M18 30h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M6 6v26l2 5 2-5V6z" fill="currentColor" opacity=".85"/></svg>',
+    'online'  => $svg('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.4 2.6 3.6 5.6 3.6 9s-1.2 6.4-3.6 9M12 3C9.6 5.6 8.4 8.6 8.4 12s1.2 6.4 3.6 9"/>'),
+    'card'    => $svg('<rect x="2.5" y="4" width="15" height="10" rx="2"/><path d="M2.5 7.5h15"/><rect x="6.5" y="10" width="15" height="10" rx="2" fill="var(--card)"/><path d="M9.5 16.5h4M17.5 16.5h1"/>'),
+    'account' => $svg('<path d="M3 9 12 4l9 5"/><path d="M5 10v7M9.7 10v7M14.3 10v7M19 10v7M3 20h18"/>'),
+    'cash'    => $svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v.01M18 14.5v.01"/>'),
+    'cheque'  => $svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h7M6 14h4"/><path d="m14.5 15 4.5-4.5 1.2 1.2-4.5 4.5h-1.2z"/>'),
 ];
+// The online gateway's badge: the official logo when one is dropped into public/assets/img/gateways/
+// (<gateway>.svg or .png), otherwise a secure-gateway shield.
+$gatewayLogo = static function (string $gateway) use ($svg): string {
+    foreach (['svg', 'png'] as $ext) {
+        if (is_file(__DIR__ . "/assets/img/gateways/{$gateway}.{$ext}")) {
+            return '<img src="/assets/img/gateways/' . e($gateway) . '.' . $ext . '" alt="">';
+        }
+    }
+    return $svg('<path d="M12 2.8 4.5 5.6v5.7c0 4.6 3.1 8.6 7.5 9.9 4.4-1.3 7.5-5.3 7.5-9.9V5.6z"/><rect x="8.3" y="10.6" width="7.4" height="5.6" rx="1.2"/><path d="M10 10.6V9.2a2 2 0 0 1 4 0v1.4"/>');
+};
 $bankOptions = static function (string $selected): string {
     $h = '<option value="">انتخاب بانک</option>';
     foreach (MANUAL_PAYMENT_BANKS as $key => $label) {
@@ -111,131 +123,158 @@ require __DIR__ . '/../app/views/header.php';
 $impersonationNoticeAction = 'billing.payment';
 require __DIR__ . '/../app/views/impersonation_notice.php';
 ?>
-<form method="post" enctype="multipart/form-data" class="card pay-form" id="payForm">
+<form method="post" enctype="multipart/form-data" class="pay-layout" id="payForm">
   <?= csrf_field() ?>
-  <h2 class="pay-title">نوع پرداخت</h2>
-  <div class="pay-methods" role="radiogroup" aria-label="نوع پرداخت">
-    <?php foreach ($methods as $key => $label): ?>
-      <label class="pay-method">
-        <input type="radio" name="method" value="<?= e($key) ?>" <?= $key === $method ? 'checked' : '' ?>>
-        <span class="pay-method-box"><span class="pay-method-icon"><?= $methodIcons[$key] ?></span><span><?= e($label) ?></span></span>
-      </label>
-    <?php endforeach; ?>
-  </div>
-  <?php if (is_admin() && ($hiddenMethods = manual_payment_hidden_reasons()) !== []): ?>
-  <div class="flash flash-info no-print">
-    <?php if (isset($hiddenMethods['*'])): ?><?= e($hiddenMethods['*']) ?>
-    <?php else: ?>این روش‌ها به کاربران نمایش داده نمی‌شوند:
-      <?php foreach ($hiddenMethods as $hm => $why): ?><strong><?= e(MANUAL_PAYMENT_METHODS[$hm]) ?></strong> (<?= e($why) ?>)<?= $hm !== array_key_last($hiddenMethods) ? '، ' : '' ?><?php endforeach; ?>.
-      <a href="/admin/billing/manual-payments?tab=settings">تعریف کارت‌ها و حساب‌ها و فعال‌سازی روش‌ها</a>
-    <?php endif; ?>
-    <div class="hint">این پیام فقط برای مدیر نمایش داده می‌شود.</div>
-  </div>
-  <?php endif; ?>
-  <hr class="pay-sep">
-
-  <p class="hint">اعتبار فعلی شما: <strong class="ltr"><?= to_persian_digits(number_format((int)$me['credit'])) ?></strong> ریال. به مبلغ خرید <?= to_persian_digits((string)$taxPercent) ?>٪ ارزش افزوده اضافه می‌شود.</p>
-
-  <?php if ($packages): ?>
-  <div class="toolbar" style="margin-bottom:16px">
-    <?php foreach ($packages as $p): ?>
-      <button type="button" class="btn btn-sm" onclick="pickPackage(<?= $p ?>)"><?= to_persian_digits(number_format($p)) ?> ریال</button>
-    <?php endforeach; ?>
-  </div>
-  <?php endif; ?>
-
-  <div class="pay-grid">
-    <label>مبلغ اعتبار (ریال) *
-      <input type="number" name="credits" id="creditsInput" min="<?= $minPurchase ?>" value="<?= $creditsValue ?>" oninput="updatePrice()" required>
-      <div class="hint">حداقل: <?= to_persian_digits(number_format($minPurchase)) ?> ریال — همین مبلغ به اعتبار شما اضافه می‌شود. <span id="creditsWords"></span></div>
-    </label>
-    <div class="stat"><div class="stat-label">مبلغ قبل از ارزش افزوده</div><div class="stat-value" id="subtotalOut">۰ ریال</div></div>
-    <div class="stat"><div class="stat-label">ارزش افزوده <?= to_persian_digits((string)$taxPercent) ?>٪</div><div class="stat-value" id="taxOut">۰ ریال</div></div>
-    <div class="stat stat-accent"><div class="stat-label" id="priceLabel">مبلغ قابل پرداخت</div><div class="stat-value" id="priceOut">۰ ریال</div></div>
-  </div>
-
-  <section data-section="online">
-    <?php $onlineGateway = payment_gateway_name(); ?>
-    <p class="hint">پرداخت آنلاین از طریق <?= e(payment_gateway_label($onlineGateway)) ?> انجام می‌شود. انتخاب درگاه با مدیر، در تنظیمات پرداخت است.</p>
-    <div class="pay-methods pay-gateways">
-      <label class="pay-method"><input type="radio" name="gateway_choice" value="<?= e($onlineGateway) ?>" checked><span class="pay-method-box"><span class="pay-method-icon"><?= $methodIcons['online'] ?></span><span><?= e(payment_gateway_label($onlineGateway)) ?></span></span></label>
-    </div>
-  </section>
-
-  <section data-section="manual" hidden>
-    <div class="flash flash-info pay-callout" id="payCallout"></div>
-    <div class="pay-grid">
-      <?php foreach (['card' => 'شماره کارت', 'account' => 'شماره حساب'] as $kind => $kindLabel): ?>
-        <?php $destinations = []; foreach ($manualOptions as $m => $option) { if ((MANUAL_PAYMENT_DESTINATION_KIND[$m] ?? null) === $kind) { foreach ($option['destinations'] as $d) $destinations[(int)$d['id']] = $d; } } ?>
-        <?php if ($destinations): ?>
-        <label data-section="dest-<?= $kind ?>" hidden><?= $kindLabel ?> *
-          <select name="destination_<?= $kind ?>" data-required>
-            <option value="">انتخاب کنید</option>
-            <?php foreach ($destinations as $d): ?>
-              <option value="<?= (int)$d['id'] ?>" data-owner="<?= (int)$d['owner_user_id'] ?>" <?= $old('destination_' . $kind) === (string)$d['id'] ? 'selected' : '' ?>><?= e(to_persian_digits(manual_payment_destination_label($d))) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </label>
-        <?php endif; ?>
-      <?php endforeach; ?>
-      <label>شماره سند / پیگیری *
-        <input type="text" name="document_number" maxlength="64" value="<?= e($old('document_number')) ?>" data-required autocomplete="off">
-      </label>
-      <label>تاریخ پرداخت *
-        <?= jalali_date_select('paid_on', $isPost ? jalali_request_to_gregorian('paid_on') : null, 0, 1) ?>
-      </label>
-      <label>ساعت پرداخت *
-        <input type="time" name="paid_time" value="<?= e($old('paid_time', date('H:i'))) ?>" data-required>
-      </label>
-    </div>
-
-    <div data-section="cheque" hidden>
-      <h3>مشخصات چک</h3>
-      <div class="pay-grid">
-        <label>مبلغ چک (ریال) *
-          <input type="number" name="cheque_amount" id="chequeAmount" min="1" value="<?= e($old('cheque_amount')) ?>" data-required>
-          <div class="hint">باید برابر مبلغ قابل پرداخت باشد.</div>
-        </label>
-        <label>بانک *<select name="cheque_bank" data-required><?= $bankOptions($old('cheque_bank')) ?></select></label>
-        <label>کد شعبه *<input type="text" name="cheque_branch_code" inputmode="numeric" maxlength="10" value="<?= e($old('cheque_branch_code')) ?>" data-required></label>
-        <label>تاریخ سررسید *<?= jalali_date_select('cheque_due', $isPost ? jalali_request_to_gregorian('cheque_due') : null, 3, 1, true) ?></label>
-        <label>نام صاحب حساب *<input type="text" name="cheque_owner_name" maxlength="120" value="<?= e($old('cheque_owner_name')) ?>" data-required></label>
-        <label>کدملی / شناسه ملی *<input type="text" name="cheque_owner_national_id" inputmode="numeric" maxlength="11" class="ltr" value="<?= e($old('cheque_owner_national_id')) ?>" data-required></label>
-        <label>شماره شبا صاحب چک *<input type="text" name="cheque_owner_sheba" maxlength="34" class="ltr" placeholder="IR" value="<?= e($old('cheque_owner_sheba', 'IR')) ?>" data-required></label>
-        <label>شماره صیادی *<input type="text" name="cheque_sayad_number" inputmode="numeric" maxlength="16" class="ltr" value="<?= e($old('cheque_sayad_number')) ?>" data-required></label>
-        <label>شماره سریال *<input type="text" name="cheque_serial" inputmode="numeric" maxlength="20" class="ltr" value="<?= e($old('cheque_serial')) ?>" data-required></label>
-        <label>شماره سری *<input type="text" name="cheque_series" maxlength="20" class="ltr" value="<?= e($old('cheque_series')) ?>" data-required></label>
+  <div class="pay-main">
+    <section class="card pay-step">
+      <h2 class="pay-step-title"><span class="pay-step-num">۱</span>روش پرداخت</h2>
+      <div class="pay-methods" role="radiogroup" aria-label="روش پرداخت">
+        <?php foreach ($methods as $key => $label): ?>
+          <label class="pay-method">
+            <input type="radio" name="method" value="<?= e($key) ?>" <?= $key === $method ? 'checked' : '' ?>>
+            <span class="pay-method-box"><span class="pay-method-icon"><?= $methodIcons[$key] ?></span><span class="pay-method-label"><?= e($label) ?></span></span>
+          </label>
+        <?php endforeach; ?>
       </div>
-    </div>
+      <?php if (is_admin() && ($hiddenMethods = manual_payment_hidden_reasons()) !== []): ?>
+      <div class="flash flash-info no-print pay-admin-note">
+        <?php if (isset($hiddenMethods['*'])): ?><?= e($hiddenMethods['*']) ?>
+        <?php else: ?>این روش‌ها به کاربران نمایش داده نمی‌شوند:
+          <?php foreach ($hiddenMethods as $hm => $why): ?><strong><?= e(MANUAL_PAYMENT_METHODS[$hm]) ?></strong> (<?= e($why) ?>)<?= $hm !== array_key_last($hiddenMethods) ? '، ' : '' ?><?php endforeach; ?>.
+          <a href="/admin/billing/manual-payments?tab=settings">تعریف کارت‌ها و حساب‌ها و فعال‌سازی روش‌ها</a>
+        <?php endif; ?>
+        <div class="hint">این پیام فقط برای مدیر نمایش داده می‌شود.</div>
+      </div>
+      <?php endif; ?>
+    </section>
 
-    <div class="pay-grid">
-      <label data-section="attachment" hidden><span id="attachmentLabel">تصویر پرداخت</span>
-        <input type="file" name="attachment" id="attachmentInput" accept="image/jpeg,image/png,image/webp">
-        <div class="hint">JPG، PNG یا WebP، حداکثر ۳ مگابایت.</div>
+    <section class="card pay-step">
+      <h2 class="pay-step-title"><span class="pay-step-num">۲</span>مبلغ اعتبار</h2>
+      <?php if ($packages): ?>
+      <div class="pay-packages" role="group" aria-label="مبالغ پیشنهادی">
+        <?php foreach ($packages as $p): ?>
+          <button type="button" class="pay-package" data-amount="<?= $p ?>" onclick="pickPackage(<?= $p ?>)"><?= to_persian_digits(number_format($p)) ?> <small>ریال</small></button>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+      <label class="pay-amount" for="creditsInput">مبلغ دلخواه
+        <span class="pay-amount-field">
+          <input type="number" name="credits" id="creditsInput" min="<?= $minPurchase ?>" value="<?= $creditsValue ?>" oninput="updatePrice()" inputmode="numeric" required>
+          <span class="pay-amount-unit">ریال</span>
+        </span>
       </label>
-      <label class="pay-wide">توضیحات
-        <textarea name="description" rows="2" maxlength="500"><?= e($old('description')) ?></textarea>
-      </label>
-    </div>
-  </section>
+      <div class="pay-amount-words" id="creditsWords"></div>
+      <p class="hint pay-amount-hint">حداقل مبلغ <?= to_persian_digits(number_format($minPurchase)) ?> ریال است و همین مبلغ به اعتبار شما اضافه می‌شود.</p>
+    </section>
 
-  <label class="consent-check" style="margin:14px 0">
-    <input type="checkbox" name="accept_refund_terms" value="1" required>
-    <span><a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/refund" target="_blank" rel="noopener">شرایط انصراف و بازگشت وجه</a> را خوانده‌ام و می‌پذیرم.</span>
-  </label>
-  <button type="submit" class="btn btn-primary pay-submit" id="paySubmit">پرداخت</button>
+    <section class="card pay-step" data-section="online">
+      <?php $onlineGateway = payment_gateway_name(); ?>
+      <h2 class="pay-step-title"><span class="pay-step-num">۳</span>درگاه پرداخت</h2>
+      <label class="pay-gateway">
+        <input type="radio" name="gateway_choice" value="<?= e($onlineGateway) ?>" checked>
+        <span class="pay-gateway-box">
+          <span class="pay-gateway-logo"><?= $gatewayLogo($onlineGateway) ?></span>
+          <span class="pay-gateway-text">
+            <strong><?= e(payment_gateway_label($onlineGateway)) ?></strong>
+            <span>پرداخت امن با همه‌ی کارت‌های عضو شبکه‌ی شتاب</span>
+          </span>
+          <span class="pay-gateway-check" aria-hidden="true"></span>
+        </span>
+      </label>
+      <p class="hint pay-gateway-hint">پس از زدن «پرداخت» به صفحه‌ی امن درگاه بانک منتقل می‌شوید و پس از پرداخت، اعتبار بلافاصله به حساب شما اضافه می‌شود.</p>
+    </section>
+
+    <section class="card pay-step" data-section="manual" hidden>
+      <h2 class="pay-step-title"><span class="pay-step-num">۳</span>مشخصات پرداخت</h2>
+      <div class="flash flash-info pay-callout" id="payCallout"></div>
+      <div class="pay-grid">
+        <?php foreach (['card' => 'شماره کارت', 'account' => 'شماره حساب'] as $kind => $kindLabel): ?>
+          <?php $destinations = []; foreach ($manualOptions as $m => $option) { if ((MANUAL_PAYMENT_DESTINATION_KIND[$m] ?? null) === $kind) { foreach ($option['destinations'] as $d) $destinations[(int)$d['id']] = $d; } } ?>
+          <?php if ($destinations): ?>
+          <label class="pay-wide" data-section="dest-<?= $kind ?>" hidden><?= $kindLabel ?> *
+            <select name="destination_<?= $kind ?>" data-required>
+              <option value="">انتخاب کنید</option>
+              <?php foreach ($destinations as $d): ?>
+                <option value="<?= (int)$d['id'] ?>" data-owner="<?= (int)$d['owner_user_id'] ?>" <?= $old('destination_' . $kind) === (string)$d['id'] ? 'selected' : '' ?>><?= e(to_persian_digits(manual_payment_destination_label($d))) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </label>
+          <?php endif; ?>
+        <?php endforeach; ?>
+        <label>شماره سند / پیگیری *
+          <input type="text" name="document_number" maxlength="64" value="<?= e($old('document_number')) ?>" data-required autocomplete="off">
+        </label>
+        <label>تاریخ پرداخت *
+          <?= jalali_date_select('paid_on', $isPost ? jalali_request_to_gregorian('paid_on') : null, 0, 1) ?>
+        </label>
+        <label>ساعت پرداخت *
+          <input type="time" name="paid_time" value="<?= e($old('paid_time', date('H:i'))) ?>" data-required>
+        </label>
+      </div>
+
+      <div data-section="cheque" hidden>
+        <h3 class="pay-subtitle">مشخصات چک</h3>
+        <div class="pay-grid">
+          <label>مبلغ چک (ریال) *
+            <input type="number" name="cheque_amount" id="chequeAmount" min="1" value="<?= e($old('cheque_amount')) ?>" data-required>
+            <div class="hint">باید برابر مبلغ قابل پرداخت باشد.</div>
+          </label>
+          <label>بانک *<select name="cheque_bank" data-required><?= $bankOptions($old('cheque_bank')) ?></select></label>
+          <label>کد شعبه *<input type="text" name="cheque_branch_code" inputmode="numeric" maxlength="10" value="<?= e($old('cheque_branch_code')) ?>" data-required></label>
+          <label>تاریخ سررسید *<?= jalali_date_select('cheque_due', $isPost ? jalali_request_to_gregorian('cheque_due') : null, 3, 1, true) ?></label>
+          <label>نام صاحب حساب *<input type="text" name="cheque_owner_name" maxlength="120" value="<?= e($old('cheque_owner_name')) ?>" data-required></label>
+          <label>کدملی / شناسه ملی *<input type="text" name="cheque_owner_national_id" inputmode="numeric" maxlength="11" class="ltr" value="<?= e($old('cheque_owner_national_id')) ?>" data-required></label>
+          <label>شماره شبا صاحب چک *<input type="text" name="cheque_owner_sheba" maxlength="34" class="ltr" placeholder="IR" value="<?= e($old('cheque_owner_sheba', 'IR')) ?>" data-required></label>
+          <label>شماره صیادی *<input type="text" name="cheque_sayad_number" inputmode="numeric" maxlength="16" class="ltr" value="<?= e($old('cheque_sayad_number')) ?>" data-required></label>
+          <label>شماره سریال *<input type="text" name="cheque_serial" inputmode="numeric" maxlength="20" class="ltr" value="<?= e($old('cheque_serial')) ?>" data-required></label>
+          <label>شماره سری *<input type="text" name="cheque_series" maxlength="20" class="ltr" value="<?= e($old('cheque_series')) ?>" data-required></label>
+        </div>
+      </div>
+
+      <div class="pay-grid">
+        <label class="pay-wide" data-section="attachment" hidden><span id="attachmentLabel">تصویر پرداخت</span>
+          <input type="file" name="attachment" id="attachmentInput" accept="image/jpeg,image/png,image/webp">
+          <div class="hint">JPG، PNG یا WebP، حداکثر ۳ مگابایت.</div>
+        </label>
+        <label class="pay-wide">توضیحات
+          <textarea name="description" rows="2" maxlength="500"><?= e($old('description')) ?></textarea>
+        </label>
+      </div>
+    </section>
+  </div>
+
+  <aside class="card pay-summary" aria-label="خلاصه‌ی پرداخت">
+    <h2>خلاصه‌ی پرداخت</h2>
+    <div class="pay-balance">
+      <span>اعتبار فعلی شما</span>
+      <strong><?= to_persian_digits(number_format((int)$me['credit'])) ?> <small>ریال</small></strong>
+    </div>
+    <dl class="pay-lines">
+      <div><dt>مبلغ اعتبار</dt><dd id="subtotalOut">۰ ریال</dd></div>
+      <div><dt>ارزش افزوده (<?= to_persian_digits((string)$taxPercent) ?>٪)</dt><dd id="taxOut">۰ ریال</dd></div>
+      <div class="pay-total"><dt id="priceLabel">مبلغ قابل پرداخت</dt><dd id="priceOut">۰ ریال</dd></div>
+    </dl>
+    <label class="consent-check pay-consent">
+      <input type="checkbox" name="accept_refund_terms" value="1" required>
+      <span><a href="/terms" target="_blank" rel="noopener">قوانین و مقررات</a> و <a href="/refund" target="_blank" rel="noopener">شرایط انصراف و بازگشت وجه</a> را خوانده‌ام و می‌پذیرم.</span>
+    </label>
+    <button type="submit" class="btn btn-primary pay-submit" id="paySubmit">پرداخت</button>
+    <p class="pay-secure"><?= $svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>') ?>پرداخت امن، با فاکتور رسمی و ارزش افزوده</p>
+  </aside>
 </form>
 
-<div class="card">
+<div class="card pay-history">
   <h2>تاریخچه‌ی پرداخت‌ها</h2>
   <div class="table-wrap">
   <table>
-    <tr><th>روش</th><th>اعتبار (ریال)</th><th>مبلغ پرداختی (ریال)</th><th>وضعیت</th><th>کد پیگیری / سند</th><th>تاریخ</th><th></th></tr>
+    <thead><tr><th>روش</th><th>اعتبار (ریال)</th><th>مبلغ پرداختی (ریال)</th><th>وضعیت</th><th>کد پیگیری / سند</th><th>تاریخ</th><th></th></tr></thead>
+    <tbody>
     <?php foreach ($payments as $p): $manual = $manualRows[(int)$p['id']] ?? null; ?>
       <?php
         if ($manual !== null && $manual['review_state'] === 'pending') { $label = 'در انتظار بررسی'; $badge = 'review'; }
         elseif ($manual !== null && $manual['review_state'] === 'rejected') { $label = 'ردشده'; $badge = 'off'; }
         else { $label = $statusFa[$p['status']] ?? $p['status']; $badge = $p['status'] === 'paid' ? 'ok' : (in_array($p['status'], ['pending', 'verification_failed'], true) ? 'pending' : 'off'); }
+        $ref = (string)($manual['document_number'] ?? ($p['ref_id'] ?: ''));
       ?>
       <tr>
         <td><?= e(manual_payment_method_label((string)($p['gateway'] ?? 'zarinpal'))) ?></td>
@@ -243,12 +282,13 @@ require __DIR__ . '/../app/views/impersonation_notice.php';
         <td class="num"><?= to_persian_digits(number_format($p['amount_rial'])) ?></td>
         <td><span class="badge badge-<?= $badge ?>"><?= e($label) ?></span>
           <?php if ($manual !== null && $manual['review_state'] === 'rejected' && $manual['review_note']): ?><div class="hint">دلیل: <?= e($manual['review_note']) ?></div><?php endif; ?></td>
-        <td class="num ltr"><?= e((string)($manual['document_number'] ?? ($p['ref_id'] ?: '—'))) ?></td>
+        <td><?php if ($ref !== ''): ?><span class="pay-ref ltr" title="<?= e($ref) ?>"><?= e($ref) ?></span><?php else: ?><span class="pay-none">—</span><?php endif; ?></td>
         <td class="num"><?= jdate($p['created_at']) ?></td>
-        <td><?php if (!empty($p['invoice_id'])): ?><a class="btn btn-sm" href="/invoices.php?id=<?= (int)$p['invoice_id'] ?>">فاکتور</a><?php endif; ?></td>
+        <td class="pay-actions"><?php if (!empty($p['invoice_id'])): ?><a class="btn btn-sm" href="/invoices.php?id=<?= (int)$p['invoice_id'] ?>">فاکتور</a><?php endif; ?></td>
       </tr>
     <?php endforeach; ?>
     <?php if (!$payments): ?><tr><td colspan="7" class="empty">هنوز پرداختی ثبت نشده.</td></tr><?php endif; ?>
+    </tbody>
   </table>
   </div>
 </div>
@@ -291,12 +331,13 @@ function updatePrice() {
   document.getElementById('subtotalOut').textContent = money(p.subtotal);
   document.getElementById('taxOut').textContent = money(p.tax);
   document.getElementById('priceOut').textContent = money(p.total);
-  document.getElementById('creditsWords').textContent = '(' + faWords(p.subtotal / 10) + ' تومان)';
+  document.getElementById('creditsWords').textContent = p.subtotal ? faWords(p.subtotal / 10) + ' تومان' : '';
   const method = currentMethod();
   const callout = document.getElementById('payCallout');
   if (method === 'cash') callout.textContent = 'مبلغ ' + money(p.total) + ' را نقدی پرداخت کنید و شماره سند/رسید را وارد کنید. اعتبار پس از تأیید اضافه می‌شود.';
   else if (method === 'cheque') callout.textContent = 'چکی به مبلغ ' + money(p.total) + ' صادر کنید و مشخصات و تصویر آن را وارد کنید. اعتبار پس از تأیید اضافه می‌شود.';
   else callout.textContent = 'مبلغ ' + money(p.total) + ' را به ' + (method === 'card' ? 'کارت' : 'حساب') + ' انتخاب‌شده واریز کنید و مشخصات واریز را وارد کنید. اعتبار پس از تأیید اضافه می‌شود.';
+  document.querySelectorAll('.pay-package').forEach(b => b.classList.toggle('is-on', +b.dataset.amount === p.subtotal));
   const cheque = document.getElementById('chequeAmount');
   if (cheque && method === 'cheque' && !cheque.dataset.touched) cheque.value = p.total;
 }
