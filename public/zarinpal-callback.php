@@ -26,7 +26,7 @@ if (!$payment || (int)$payment['user_id'] !== (int)$me['id']) {
     $result = ['ok' => true, 'message' => 'این پرداخت قبلاً با موفقیت ثبت شده است.'];
 } elseif ($status !== 'OK') {
     db()->prepare("UPDATE ellsms_payments SET status='failed' WHERE id=? AND status IN ('pending','verification_failed')")->execute([$paymentId]);
-    if (!empty($payment['reseller_order_id'])) reseller_package_order_fail_for_payment($paymentId);
+    payment_purchase_order_fail($payment);
     Logger::warning('payment.cancelled_or_failed_at_gateway', ['payment_id' => $paymentId, 'user_id' => $me['id']]);
     $result = ['ok' => false, 'message' => 'پرداخت توسط شما لغو شد یا ناموفق بود.'];
     $notificationEvent = 'payment.failed';
@@ -100,7 +100,9 @@ if (!$payment || (int)$payment['user_id'] !== (int)$me['id']) {
                 'payment_id' => $paymentId, 'user_id' => $me['id'], 'credits' => $payment['credits'],
                 'amount_rial' => $payment['amount_rial'], 'replayed' => $txResult['credit']['replayed'] ?? false,
             ]);
-            $result = ['ok' => true, 'message' => 'پرداخت با موفقیت انجام شد و اعتبار شما افزایش یافت.'];
+            $result = ['ok' => true, 'message' => !empty($payment['number_order_id'])
+                ? 'پرداخت با موفقیت انجام شد. وضعیت سفارش شماره را در «شماره‌ها ← سفارش‌های من» ببینید.'
+                : 'پرداخت با موفقیت انجام شد و اعتبار شما افزایش یافت.'];
             $notificationEvent = 'payment.success';
             $notificationTitle = 'پرداخت موفق';
             $notificationBody = 'پرداخت #' . $paymentId . ' با موفقیت انجام شد و اعتبار حساب افزایش یافت.';
@@ -130,13 +132,15 @@ require __DIR__ . '/../app/views/header.php';
   <div class="flash flash-<?= $result['ok'] ? 'success' : 'error' ?>"><?= e($result['message']) ?></div>
   <?php if ($payment): ?>
   <table>
-    <tr><th>اعتبار افزوده‌شده</th><td><span class="num"><?= to_persian_digits(number_format($payment['credits'])) ?></span> ریال</td></tr>
+    <?php if (empty($payment['number_order_id'])): ?><tr><th>اعتبار افزوده‌شده</th><td><span class="num"><?= to_persian_digits(number_format($payment['credits'])) ?></span> ریال</td></tr><?php else: ?><tr><th>بابت</th><td>خرید یا تمدید شماره (پس از پرداخت از کیف پول برداشت می‌شود)</td></tr><?php endif; ?>
     <tr><th>مبلغ</th><td><span class="num"><?= to_persian_digits(number_format($payment['amount_rial'])) ?></span> ریال</td></tr>
   </table>
   <?php endif; ?>
   <div class="toolbar" style="margin-top:14px">
     <?php if (!empty($payment['reseller_order_id'])): ?>
       <a class="btn btn-primary" href="/billing/packages">بازگشت به بسته‌ها</a>
+    <?php elseif (!empty($payment['number_order_id'])): ?>
+      <a class="btn btn-primary" href="/my-numbers.php?tab=orders">پیگیری سفارش شماره</a>
     <?php else: ?>
       <a class="btn btn-primary" href="/buy-credit.php">بازگشت به خرید اعتبار</a>
     <?php endif; ?>

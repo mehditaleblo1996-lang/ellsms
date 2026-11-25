@@ -42,6 +42,12 @@ if ($me['role'] === 'admin' || menu_access_allows($me, 'financial_log')) {
 if ($me['role'] !== 'admin') {
     $nav['my_tariff'] = ['/my-tariff.php', 'تعرفه من', '💱'];
 }
+// «شماره‌ها»: the customer's own lines and the number shop (app/NumberShop.php); admins sell from
+// «فروش شماره» instead.
+if ($me['role'] !== 'admin' && number_shop_ready()) {
+    $nav = array_slice($nav, 0, (int)array_search('buy_credit', array_keys($nav), true) + 1, true)
+        + ['my_numbers' => ['/my-numbers.php', 'شماره‌ها', '📞']] + $nav;
+}
 // Operator reports (public/operator-reports.php) open with the send report's menu; by provider is admin-only.
 if ($me['role'] === 'admin' || menu_access_allows($me, 'reports')) {
     // «گزارش وضعیت‌ها» (public/status-report.php): messages and parts per state, per month or day.
@@ -156,6 +162,7 @@ $adminNav = [
     'logs'                  => ['/logs.php',                  'لاگ فعالیت‌ها',       '📜'],
     'numbers'               => ['/numbers.php',               'شماره‌ها',            '📞'],
     'number_categories'     => ['/number-categories.php',     'دسته‌های شماره',      '🗂'],
+    'number_shop_admin'     => ['/number-shop-admin.php',     'فروش شماره' . (($shopPending = number_shop_pending_approval_count()) > 0 ? ' (' . to_persian_digits((string)$shopPending) . ')' : ''), '🛒'],
     'landing_videos'        => ['/landing-videos.php',        'ویدیوهای صفحه‌ی اصلی', '🎬'],
     'pricing'               => ['/pricing.php',               'بسته‌های قیمتی',      '🏷'],
     'price_quote'           => ['/price-quote.php',           'فاکتور / لیست قیمت', '🧾'],
@@ -186,7 +193,7 @@ if ($me['role'] === 'admin' && !ai_engines_available()) unset($adminNav['ai_engi
 $adminNavGroups = menu_group_items($adminNav, [
     'admin_users'    => ['کاربران و نمایندگان', ['users', 'registration_requests', 'menu_roles', 'reseller_profits', 'user_send_policies']],
     'admin_kyc'      => ['احراز هویت',          ['kyc_review', 'kyc_gates']],
-    'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_categories', 'sms_gateways', 'lba_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
+    'admin_numbers'  => ['شماره‌ها و درگاه‌ها',  ['numbers', 'number_shop_admin', 'number_categories', 'sms_gateways', 'lba_gateways', 'sms_gateway_clone', 'voice_settings', 'remote_db']],
     'admin_ai'       => ['هوش مصنوعی',          ['ai_engines']],
     'admin_finance'  => ['قیمت‌گذاری و مالی',    ['pricing', 'sms_pricing', 'price_quote', 'billing_admin', 'financial_admin', 'manual_payments']],
     'admin_sending'  => ['کنترل ارسال',          ['shared_otp', 'shared_service_admin', 'telegram_admin', 'prohibited_words', 'queue_cancellation', 'bulk_archive']],

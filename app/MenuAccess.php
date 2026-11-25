@@ -42,6 +42,8 @@ function menu_catalog(): array {
         'line_optouts'  => ['لغو عضویت (۱۱)',       '⛔', '/line-optouts.php',  ['line-optouts.php']],
         'tickets'       => ['پشتیبانی',             '🎫', '/tickets.php',       ['tickets.php']],
         'buy_credit'    => ['خرید اعتبار',          '💳', '/buy-credit.php',    ['buy-credit.php', 'packages.php']],
+        // Lines of one's own and the number shop (app/NumberShop.php).
+        'my_numbers'    => ['شماره‌ها',             '📞', '/my-numbers.php',    ['my-numbers.php']],
         'invoices'      => ['فاکتورها',             '🧾', '/invoices.php',      ['invoices.php']],
         // «صورت‌حساب ماهانه» (public/statement.php) is the same ledger by month, so it opens with this menu.
         'financial_log' => ['تاریخچه مالی',         '📒', '/financial-log.php', ['financial-log.php', 'statement.php']],
@@ -83,7 +85,7 @@ function menu_groups(): array {
         'telegram'     => ['تلگرام',            ['telegram', 'telegram_send', 'telegram_check']],
         'reports'      => ['گزارش و دریافت',    ['reports', 'reports_bulk', 'status_report', 'operator_reports', 'operator_reports_number', 'operator_reports_route', 'sent_count_report', 'inbox', 'received_count_report', 'bale']],
         'contacts'     => ['مخاطبین',           ['contacts', 'blacklist', 'line_optouts']],
-        'finance'      => ['مالی',              ['my_tariff', 'buy_credit', 'reseller_packages', 'invoices', 'financial_log', 'statement', 'billing']],
+        'finance'      => ['مالی',              ['my_tariff', 'buy_credit', 'my_numbers', 'reseller_packages', 'invoices', 'financial_log', 'statement', 'billing']],
         'integrations' => ['یکپارچه‌سازی',       ['api_keys', 'otp_templates', 'integrations', 'remote_db', 'webhooks', 'number_forwards']],
         'account'      => ['حساب و پشتیبانی',   ['reseller_panel', 'subaccounts', 'tickets']],
     ];

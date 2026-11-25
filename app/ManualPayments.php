@@ -85,6 +85,7 @@ function manual_payment_method_label(string $method): string {
         'zarinpal' => 'پرداخت آنلاین (زرین‌پال)',
         'sep' => 'پرداخت آنلاین (پرداخت الکترونیک سامان)',
         'fake' => 'پرداخت آنلاین (آزمایشی)',
+        'wallet' => 'کسر از کیف پول',
         default => $method,
     };
 }

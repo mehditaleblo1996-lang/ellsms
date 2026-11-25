@@ -284,6 +284,15 @@ function payment_claim_and_activate_subscription(array $payment, string $refId):
     });
 }
 
+/**
+ * A payment that failed or was cancelled at the gateway: the purchase it was started for (a
+ * reseller's package, a number from the number shop) is marked failed and anything it held is freed.
+ */
+function payment_purchase_order_fail(array $payment): void {
+    if (!empty($payment['reseller_order_id'])) reseller_package_order_fail_for_payment((int)$payment['id']);
+    if (!empty($payment['number_order_id'])) number_shop_fail_for_payment((int)$payment['id']);
+}
+
 function payment_claim_and_credit(array $payment, string $refId): array {
     $result = db_transaction(function (PDO $db) use ($payment, $refId): array {
         $claim = $db->prepare("UPDATE ellsms_payments SET status='paid', ref_id=? WHERE id=? AND status IN ('pending','verification_failed')");
@@ -305,6 +314,13 @@ function payment_claim_and_credit(array $payment, string $refId): array {
         if (!empty($payment['reseller_order_id'])) {
             $fulfilled = reseller_package_fulfil_payment($db, $payment);
             return ['claimed' => true, 'credit' => $fulfilled['credit'], 'reseller_package' => $fulfilled['ok']];
+        }
+
+        // A number bought or renewed online (app/NumberShop.php): the payment is credited to the
+        // wallet and the order is paid from it, in this same claim.
+        if (!empty($payment['number_order_id'])) {
+            $fulfilled = number_shop_fulfil_payment($db, $payment);
+            return ['claimed' => true, 'credit' => $fulfilled['credit'], 'number_order' => $fulfilled['ok']];
         }
 
         $credit = wallet_credit(
