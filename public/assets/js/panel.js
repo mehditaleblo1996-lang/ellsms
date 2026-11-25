@@ -415,3 +415,93 @@
   window.addEventListener('resize', function () { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(labelScrollableTables); });
   if (document.fonts) document.fonts.ready.then(labelScrollableTables);
 })();
+
+// Runs on every panel page, sidebar or not.
+(function () {
+  'use strict';
+  // File inputs become drop zones. The native <input type=file> is kept in place (same id, name,
+  // required, listeners) and stretched invisibly over the zone, so clicking and dropping a file are
+  // handled by the browser itself; the script only mirrors the chosen file into the zone's text.
+  var FILE_ICON_UP = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5"/><path d="M12 12v8"/><path d="m8.5 15.5 3.5-3.5 3.5 3.5"/></svg>';
+  var FILE_ICON_DOC = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>';
+  function faDigits(value) { return String(value).replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }); }
+  function fileSize(bytes) {
+    if (bytes < 1024) return faDigits(bytes) + ' بایت';
+    if (bytes < 1048576) return faDigits(Math.round(bytes / 1024)) + ' کیلوبایت';
+    return faDigits((bytes / 1048576).toFixed(1)) + ' مگابایت';
+  }
+  function acceptedFormats(accept) {
+    var seen = [];
+    (accept || '').split(',').forEach(function (part) {
+      part = part.trim().toLowerCase();
+      if (!part) return;
+      var name = part.charAt(0) === '.' ? part.slice(1) : (part.split('/')[1] || part);
+      name = ({ '*': part.split('/')[0], plain: 'txt', mpeg: 'mp3', jpg: 'jpeg' })[name] || name;
+      name = name === 'image' ? 'تصویر' : name === 'video' ? 'ویدیو' : name === 'audio' ? 'صوت' : name.toUpperCase();
+      if (seen.indexOf(name) < 0) seen.push(name);
+    });
+    return seen;
+  }
+  function dressFileInput(input) {
+    if (input.dataset.fdrop || input.closest('.file-picker, .fdrop')) return;
+    input.dataset.fdrop = '1';
+    var compact = !!input.closest('.lba-actions, .toolbar, td, [data-file-compact]');
+    var zone = document.createElement('span');
+    zone.className = 'fdrop' + (compact ? ' fdrop-compact' : '');
+    var formats = acceptedFormats(input.getAttribute('accept'));
+    zone.innerHTML =
+      '<span class="fdrop-icon">' + FILE_ICON_UP + '</span>' +
+      '<span class="fdrop-text">' +
+        '<span class="fdrop-title">' + (compact ? 'انتخاب فایل' : 'فایل را اینجا رها کنید یا <u>انتخاب کنید</u>') + '</span>' +
+        '<span class="fdrop-sub">' + (formats.length ? formats.map(function (f) { return '<span class="fdrop-chip">' + f + '</span>'; }).join('') : 'همه‌ی فرمت‌ها') + '</span>' +
+      '</span>' +
+      '<button type="button" class="fdrop-clear" aria-label="حذف فایل انتخاب‌شده" hidden>' +
+        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>';
+    input.parentNode.insertBefore(zone, input);
+    zone.appendChild(input);
+    var icon = zone.querySelector('.fdrop-icon');
+    var title = zone.querySelector('.fdrop-title');
+    var sub = zone.querySelector('.fdrop-sub');
+    var clear = zone.querySelector('.fdrop-clear');
+    var emptyIcon = icon.innerHTML, emptyTitle = title.innerHTML, emptySub = sub.innerHTML, preview = null;
+    function sync() {
+      var files = input.files ? Array.prototype.slice.call(input.files) : [];
+      if (preview) { URL.revokeObjectURL(preview); preview = null; }
+      zone.classList.toggle('has-file', files.length > 0);
+      clear.hidden = files.length === 0 || input.disabled;
+      if (!files.length) { icon.innerHTML = emptyIcon; title.innerHTML = emptyTitle; sub.innerHTML = emptySub; return; }
+      var first = files[0];
+      if (/^image\//.test(first.type) && window.URL && URL.createObjectURL) {
+        preview = URL.createObjectURL(first);
+        icon.innerHTML = '<img alt="" src="' + preview + '">';
+      } else {
+        icon.innerHTML = FILE_ICON_DOC;
+      }
+      title.textContent = files.length > 1 ? faDigits(files.length) + ' فایل انتخاب شد' : first.name;
+      title.title = first.name;
+      var total = files.reduce(function (sum, f) { return sum + f.size; }, 0);
+      sub.textContent = fileSize(total) + ' · آماده‌ی بارگذاری';
+    }
+    input.addEventListener('change', sync);
+    clear.addEventListener('click', function (event) {
+      event.preventDefault();
+      input.value = '';
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.focus();
+    });
+    ['dragenter', 'dragover'].forEach(function (type) {
+      input.addEventListener(type, function () { zone.classList.add('is-dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(function (type) {
+      input.addEventListener(type, function () { zone.classList.remove('is-dragover'); });
+    });
+    if (input.form) input.form.addEventListener('reset', function () { setTimeout(sync, 0); });
+    sync();
+  }
+  function dressFileInputs(root) {
+    Array.prototype.forEach.call((root || document).querySelectorAll('input[type=file]'), dressFileInput);
+  }
+  dressFileInputs(document);
+  document.addEventListener('lazy-part:inserted', function (event) { dressFileInputs(event.target); });
+  window.panelDressFileInputs = dressFileInputs;
+})();

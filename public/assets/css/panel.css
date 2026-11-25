@@ -425,3 +425,111 @@
   .panel .main { width: 100%; }
   .panel .content { padding: 0; animation: none; }
 }
+
+/* ---------- Modern form controls (inputs, dropdowns, date pickers, file drop zones) ---------- */
+.panel :where(input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=file]):not([type=range]):not([type=color]), select, textarea) {
+  border: 1px solid #dbe1ee; background-color: #fff; color: #10172e;
+  box-shadow: 0 1px 2px rgb(24 35 69 / 4%);
+  transition: border-color 160ms var(--panel-ease), box-shadow 160ms var(--panel-ease), background-color 160ms var(--panel-ease);
+}
+.panel :where(input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea):hover:not(:disabled):not(:focus) { border-color: #bfc8de; }
+.panel :where(input, select, textarea):focus { border-color: var(--indigo); box-shadow: 0 0 0 4px rgb(74 50 232 / 12%); outline: none; }
+.panel :where(input, textarea)::placeholder { color: #9aa3b9; opacity: 1; }
+.panel :where(input, select, textarea):disabled { background-color: #f3f5fa; color: #8a94ab; box-shadow: none; }
+
+/* Dropdowns: the OS arrow is replaced by one chevron, drawn at the inline end (left, in RTL). */
+.panel select:not([multiple]):not([size]) {
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+  padding-inline-end: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7590' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-size: 16px; background-position: left 13px center;
+}
+[dir=ltr] .panel select:not([multiple]):not([size]), .panel [dir=ltr] select:not([multiple]):not([size]) { background-position: right 13px center; }
+.panel select:not([multiple]):not([size]):focus {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234a32e8' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Persian date / time: the three (two) selects read as one field with a calendar mark. */
+.panel span.jdate, .panel span.jtime {
+  display: inline-flex; align-items: stretch; gap: 0; max-width: 100%;
+  border: 1px solid #dbe1ee; border-radius: 10px; background: #fff;
+  box-shadow: 0 1px 2px rgb(24 35 69 / 4%); overflow: hidden;
+  transition: border-color 160ms var(--panel-ease), box-shadow 160ms var(--panel-ease);
+}
+.panel span.jdate::before {
+  content: ''; flex: 0 0 38px; align-self: stretch; background: #f4f2ff;
+  border-inline-end: 1px solid #e6e3fb;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234a32e8' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15.5' rx='2.5'/%3E%3Cpath d='M3.5 10h17M8 3v4M16 3v4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 18px;
+}
+.panel span.jdate:hover, .panel span.jtime:hover { border-color: #bfc8de; }
+.panel span.jdate:focus-within, .panel span.jtime:focus-within { border-color: var(--indigo); box-shadow: 0 0 0 4px rgb(74 50 232 / 12%); }
+.panel span.jdate select, .panel span.jtime select {
+  margin: 0; min-height: 44px; border: 0; border-radius: 0; box-shadow: none; background-color: transparent;
+  padding-block: 0; padding-inline: 10px 26px; background-position: left 8px center; background-size: 13px;
+  flex: 1 1 auto; min-width: 0; width: auto;
+}
+.panel span.jdate select + select { border-inline-start: 1px solid #edf0f6; }
+.panel span.jdate select:focus, .panel span.jtime select:focus { box-shadow: none; background-color: #f7f6ff; }
+.panel span.jdate .jdate-m { flex-grow: 1.6; }
+.panel span.jtime .jtime-sep { display: flex; align-items: center; padding: 0 2px; }
+
+/* File drop zones (built by panel.js around every <input type=file>). */
+.panel .fdrop {
+  position: relative; display: flex; align-items: center; gap: 14px; width: 100%;
+  margin-top: var(--sp-1, 6px); padding: 16px 18px; min-height: 84px;
+  border: 1.5px dashed #c9c2f5; border-radius: 14px;
+  background: linear-gradient(180deg, #fbfaff, #f5f3ff);
+  color: #10172e; font-weight: 400; cursor: pointer;
+  transition: border-color 160ms var(--panel-ease), background-color 160ms var(--panel-ease), box-shadow 160ms var(--panel-ease), transform 160ms var(--panel-ease);
+}
+.panel .fdrop input[type=file] {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0;
+  opacity: 0; cursor: pointer; z-index: 1; min-height: 0; font-size: 0;
+}
+.panel .fdrop input[type=file]::file-selector-button { cursor: pointer; }
+.panel .fdrop:hover { border-color: var(--indigo); background: #f3f0ff; }
+.panel .fdrop:focus-within { border-color: var(--indigo); box-shadow: 0 0 0 4px rgb(74 50 232 / 12%); }
+.panel .fdrop.is-dragover { border-style: solid; border-color: var(--indigo); background: #ece8ff; transform: scale(1.01); box-shadow: 0 8px 24px rgb(74 50 232 / 14%); }
+.panel .fdrop-icon {
+  flex: 0 0 auto; display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px;
+  background: #fff; color: var(--indigo); box-shadow: 0 2px 8px rgb(74 50 232 / 12%); overflow: hidden;
+  transition: transform 200ms var(--panel-ease);
+}
+.panel .fdrop:hover .fdrop-icon, .panel .fdrop.is-dragover .fdrop-icon { transform: translateY(-2px); }
+.panel .fdrop-icon img { width: 100%; height: 100%; object-fit: cover; }
+.panel .fdrop-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 auto; }
+.panel .fdrop-title { font-size: 14px; font-weight: 600; line-height: 1.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel .fdrop-title u { color: var(--indigo); text-decoration: none; border-bottom: 1.5px solid rgb(74 50 232 / 35%); }
+.panel .fdrop-sub { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+.panel .fdrop-chip {
+  padding: 1px 9px; border-radius: 999px; background: #fff; border: 1px solid #e3def9;
+  color: #4b4f6b; font-size: 11.5px; font-weight: 600; letter-spacing: .02em; direction: ltr;
+}
+.panel .fdrop-clear {
+  position: relative; z-index: 2; flex: 0 0 auto; display: grid; place-items: center;
+  width: 34px; height: 34px; border-radius: 10px; border: 1px solid #f1d3da; background: #fff; color: #c0223a; cursor: pointer;
+  transition: background-color 160ms var(--panel-ease);
+}
+.panel .fdrop-clear:hover { background: #fdecef; }
+.panel .fdrop-clear[hidden] { display: none; }
+.panel .fdrop.has-file { border-style: solid; border-color: #b9e3cc; background: linear-gradient(180deg, #f8fdfa, #effaf4); }
+.panel .fdrop.has-file .fdrop-icon { color: #128a52; box-shadow: 0 2px 8px rgb(18 138 82 / 14%); }
+.panel .fdrop:has(input:disabled) { opacity: .55; cursor: not-allowed; }
+/* Compact zone: inside a table cell or an inline toolbar it stays one control-high row. */
+.panel .fdrop-compact { min-height: 46px; padding: 6px 10px; gap: 10px; border-radius: 10px; flex: 1 1 200px; width: auto; min-width: 0; margin-top: 0; }
+.panel .fdrop-compact .fdrop-icon { width: 32px; height: 32px; border-radius: 8px; }
+.panel .fdrop-compact .fdrop-icon svg { width: 18px; height: 18px; }
+.panel .fdrop-compact .fdrop-text { flex-direction: row; align-items: center; gap: 8px; }
+.panel .fdrop-compact .fdrop-title { font-size: 13px; }
+.panel .fdrop-compact .fdrop-sub { flex-wrap: nowrap; overflow: hidden; }
+.panel .fdrop-compact.has-file .fdrop-sub { display: none; }
+.panel .fdrop-compact .fdrop-clear { width: 30px; height: 30px; }
+@media (max-width: 560px) {
+  .panel .fdrop { padding: 14px; gap: 12px; }
+  .panel .fdrop-icon { width: 42px; height: 42px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel .fdrop, .panel .fdrop-icon { transition: none; }
+  .panel .fdrop.is-dragover { transform: none; }
+}
