@@ -1,4 +1,4 @@
-/* ELLSMS sign-in: a light, quiet surface using the panel brand and local Vazirmatn.
+/* ELLSMS sign-in (docs/login.md): a light surface using the panel brand and Estedad.
    The feature slider in the card's end half has its own stylesheet, login-slider.css. */
 
 .auth {
@@ -219,4 +219,252 @@
   .auth-toplink { font-size: 13px; }
   .auth-brand { gap: 8px; }
   .auth-logo { height: 50px; }
+}
+
+/* ============================================================
+   Depth and light (docs/login.md): an aurora behind the card, a fading grid, two brushed-metal rings
+   echoing the home page's core, a glass card with a lit edge, fields with icons, and a graphite band
+   with the core on narrow screens. Accents follow --a-brand, so a reseller's host gets its own hue.
+   Decoration only moves with transform/opacity and stands still for reduced motion.
+   ============================================================ */
+.auth { --a-glow: color-mix(in srgb, var(--a-brand) 26%, transparent); --a-glow-soft: color-mix(in srgb, var(--a-brand) 12%, transparent); }
+.auth-bg .b1 { background: radial-gradient(closest-side, var(--a-glow), transparent); }
+.auth-bg .b3 { width: 40vmax; height: 40vmax; top: auto; bottom: -6vmax; left: 30%; background: radial-gradient(closest-side, var(--a-glow-soft), transparent); }
+.auth-bg .b1, .auth-bg .b3 { will-change: transform; }
+.auth-grid {
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(37, 41, 43, .055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 41, 43, .055) 1px, transparent 1px);
+  background-size: 56px 56px; background-position: center center;
+  -webkit-mask-image: radial-gradient(ellipse 60% 55% at 50% 48%, #000 20%, transparent 78%);
+          mask-image: radial-gradient(ellipse 60% 55% at 50% 48%, #000 20%, transparent 78%);
+}
+/* Brushed-metal rings in perspective, one behind each side of the card. */
+.auth-ring {
+  position: absolute; border-radius: 50%;
+  background: conic-gradient(from 20deg, #9aa7aa, #f4f7f7 12%, #6c787b 26%, #d9e0e1 40%, #505b5e 55%, #eef2f2 68%, #7f8b8e 82%, #9aa7aa);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px), #000 calc(100% - 1px), transparent);
+          mask: radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px), #000 calc(100% - 1px), transparent);
+  opacity: .5;
+}
+.auth-ring.is-a { width: 760px; height: 760px; top: 50%; right: -260px; margin-top: -380px; transform: perspective(1200px) rotateX(68deg) rotateY(-14deg); }
+.auth-ring.is-b { width: 520px; height: 520px; bottom: -200px; left: -160px; transform: perspective(1200px) rotateX(64deg) rotateY(18deg) rotateZ(30deg); opacity: .35; }
+/* Light streaks gliding right to left, like the public pages' background. */
+.auth-spark {
+  position: absolute; left: 0; height: 2px; width: 180px; border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--a-glow) 60%, rgba(255, 255, 255, .9));
+  opacity: 0;
+}
+.auth-spark.is-a { top: 18%; } .auth-spark.is-b { top: 64%; width: 120px; } .auth-spark.is-c { top: 86%; width: 150px; }
+
+/* The card: frosted glass with a turquoise-lit edge and a deep, tinted shadow. */
+.auth-card {
+  position: relative; isolation: isolate;
+  background: rgba(255, 255, 255, .8);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2); backdrop-filter: blur(22px) saturate(1.2);
+  border-color: rgba(255, 255, 255, .9);
+  box-shadow:
+    0 1px 0 #fff inset,
+    0 0 0 1px rgba(37, 41, 43, .05),
+    0 50px 100px -40px rgba(8, 64, 70, .32),
+    0 18px 40px -24px rgba(37, 41, 43, .2);
+}
+.auth-card::before {
+  content: ""; position: absolute; inset: 0; z-index: 2; border-radius: inherit; pointer-events: none; padding: 1px;
+  background: linear-gradient(140deg, color-mix(in srgb, var(--a-brand) 70%, transparent), transparent 32%, transparent 68%, color-mix(in srgb, var(--a-brand) 40%, transparent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.auth-card::after { /* a hairline of light along the top edge */
+  content: ""; position: absolute; top: 0; inset-inline: 14%; height: 1px; z-index: 2; pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--a-brand) 80%, #fff), transparent);
+}
+
+/* Header: the about link becomes a quiet glass pill with an arrow. */
+.auth-top a.auth-toplink {
+  gap: 8px; padding: 0 16px; border-radius: 999px; text-decoration: none;
+  background: rgba(255, 255, 255, .7); border: 1px solid rgba(37, 41, 43, .1);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  transition: border-color .2s ease, background-color .2s ease, transform .2s var(--ease-out);
+}
+.auth-top a.auth-toplink::after {
+  content: ""; width: 14px; height: 14px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 12H5M11 6l-6 6 6 6'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: transform .2s var(--ease-out);
+}
+.auth-top a.auth-toplink:hover { background: #fff; border-color: color-mix(in srgb, var(--a-brand) 45%, transparent); }
+.auth-top a.auth-toplink:hover::after { transform: translateX(-3px); }
+
+/* Form side. */
+.auth-form-side { position: relative; display: flex; flex-direction: column; justify-content: center; }
+.auth-eyebrow {
+  display: inline-flex; align-items: center; gap: 9px; align-self: flex-start; margin: 0 0 14px; padding: 4px 14px 4px 12px;
+  font-size: var(--a-fs-xs); font-weight: 700; line-height: 1.9;
+  color: color-mix(in srgb, var(--a-brand-hover) 88%, #000);
+  border-radius: 999px; background: color-mix(in srgb, var(--a-brand) 10%, #fff); border: 1px solid color-mix(in srgb, var(--a-brand) 30%, transparent);
+}
+.auth-eyebrow span { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--a-brand); }
+.auth-eyebrow span::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid var(--a-brand); opacity: 0; }
+.auth-title { font-size: clamp(26px, 2.5vw, 34px); font-weight: 800; line-height: 1.5; }
+.auth-lede { color: #5b666b; }
+
+/* Fields: an icon at the start of the (left-to-right) field, a soft inner shade, a ring of light on focus. */
+.auth-field { position: relative; }
+.auth-field > .auth-ico, .auth-pass > .auth-ico {
+  position: absolute; left: 14px; z-index: 1; display: grid; place-items: center; width: 22px; height: 22px; pointer-events: none;
+  color: #8a9599; transition: color .2s ease;
+}
+.auth-field > .auth-ico { bottom: 15px; }
+.auth-pass > .auth-ico { top: 15px; }
+.auth-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.auth-field:focus-within > .auth-ico, .auth-pass:focus-within > .auth-ico { color: var(--a-brand-hover); }
+.auth-field input[type=text], .auth-field input[type=password] {
+  height: 54px; padding-left: 46px; border-radius: 14px;
+  background: rgba(248, 250, 250, .9);
+  box-shadow: inset 0 1px 2px rgba(37, 41, 43, .06);
+}
+.auth-field input:hover { background: #fff; border-color: rgba(37, 41, 43, .22); }
+.auth-field input:focus {
+  background: #fff;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--a-brand) 16%, transparent), 0 10px 24px -14px color-mix(in srgb, var(--a-brand) 70%, transparent);
+}
+/* The show / hide button: a small pill with an eye that closes when the password is shown. */
+.auth-reveal {
+  display: inline-flex; align-items: center; gap: 6px; top: 5px; bottom: 5px; right: 6px; padding: 0 12px; border-radius: 10px;
+  background: transparent; color: #5b666b;
+}
+.auth-reveal::before {
+  content: ""; width: 18px; height: 18px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.auth-reveal[aria-pressed="true"]::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2'/%3E%3C/svg%3E");
+          mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2'/%3E%3C/svg%3E");
+}
+.auth-reveal:hover { background: rgba(37, 41, 43, .06); color: var(--a-ink); }
+.auth-caps {
+  display: flex; align-items: center; gap: 8px; margin: 2px 0 0; font-size: var(--a-fs-xs); font-weight: 500; line-height: 1.6; color: #8a5a00;
+}
+.auth-caps::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #e0a100; }
+.auth-caps[hidden] { display: none; }
+
+/* The submit button: an arrow that slides on hover, a light sweep, and a spinner while signing in. */
+.auth-submit {
+  position: relative; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  height: 56px; border-radius: 14px; font-weight: 700; font-size: 16.5px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--a-brand) 88%, #fff), var(--a-brand));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .4) inset, 0 -2px 0 rgba(0, 0, 0, .06) inset, 0 16px 32px -14px color-mix(in srgb, var(--a-brand) 85%, transparent);
+  transition: background .2s ease, color .2s ease, transform .15s var(--ease-out), box-shadow .2s ease;
+}
+.auth-submit::before {
+  content: ""; position: absolute; inset: 0 auto 0 -40%; width: 40%; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .45), transparent);
+  transform: skewX(-18deg) translateX(0); transition: transform .7s var(--ease-out);
+}
+.auth-submit:hover { background: var(--a-brand-hover); transform: translateY(-1px); }
+.auth-submit:hover::before { transform: skewX(-18deg) translateX(420%); }
+.auth-submit:active { transform: translateY(0) scale(.99); }
+.auth-submit-arrow { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--ease-out); }
+.auth-submit:hover .auth-submit-arrow { transform: translateX(-4px); }
+.auth-spinner {
+  display: none; width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid currentColor; border-inline-end-color: transparent; animation: auth-spin .7s linear infinite;
+}
+.auth-submit.is-busy { pointer-events: none; }
+.auth-submit.is-busy .auth-submit-arrow { display: none; }
+.auth-submit.is-busy .auth-spinner { display: block; }
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+
+.auth-secure {
+  display: flex; align-items: flex-start; gap: 10px; margin: 26px 0 0; padding-top: 18px;
+  border-top: 1px dashed rgba(37, 41, 43, .12);
+  font-size: var(--a-fs-xs); line-height: 1.9; color: #6b767a;
+}
+.auth-secure svg { flex: none; width: 18px; height: 18px; margin-top: 2px; fill: none; stroke: var(--a-brand-hover); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.auth-register { margin-top: 14px; }
+.auth-register a { font-weight: 700; color: var(--a-brand-hover); text-decoration-color: color-mix(in srgb, var(--a-brand) 45%, transparent); }
+
+.auth-error { display: flex; gap: 10px; align-items: flex-start; border-color: rgba(163, 24, 43, .18); border-radius: 14px; }
+.auth-error::before { content: "!"; flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 2px; border-radius: 50%; background: var(--a-err); color: #fff; font-size: 13px; font-weight: 800; line-height: 1; }
+.auth-notice::before { content: "i"; background: var(--a-brand-hover); }
+
+.auth-bottom { opacity: .85; }
+
+/* Narrow screens: the slider is hidden, so a small graphite band with the DATIS core heads the card. */
+.auth-mhero { display: none; }
+@media (max-width: 860px) {
+  .auth-mhero {
+    position: relative; display: grid; place-items: center; height: 132px; margin: 10px 10px 0; border-radius: 18px; overflow: hidden; isolation: isolate;
+    background:
+      radial-gradient(90% 120% at 50% 120%, color-mix(in srgb, var(--a-brand) 45%, transparent), transparent 60%),
+      linear-gradient(165deg, #2c3135, #1b1e21);
+  }
+  .auth-mhero::before {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background-image: linear-gradient(rgba(255, 255, 255, .05) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, .05) 1px, transparent 1px);
+    background-size: 24px 24px;
+    -webkit-mask-image: radial-gradient(60% 90% at 50% 50%, #000, transparent); mask-image: radial-gradient(60% 90% at 50% 50%, #000, transparent);
+  }
+  .auth-mhero-ring {
+    position: absolute; left: 50%; top: 50%; width: 260px; height: 260px; margin: -130px 0 0 -130px; border-radius: 50%;
+    border: 1px solid rgba(111, 214, 223, .45); box-shadow: 0 0 12px rgba(17, 184, 197, .25);
+    transform: rotateX(74deg); 
+  }
+  .auth-mhero-core {
+    position: relative; display: grid; place-items: center; width: 74px; height: 74px; border-radius: 50%;
+    background:
+      radial-gradient(ellipse at 34% 20%, rgba(255, 255, 255, .24), transparent 42%),
+      radial-gradient(circle at 50% 118%, rgba(17, 184, 197, .6), transparent 48%),
+      radial-gradient(circle at 42% 36%, #4b5558, #2b3134 46%, #1a1e20 78%, #121516);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2), 0 0 0 6px rgba(17, 184, 197, .12), 0 0 40px rgba(17, 184, 197, .35);
+  }
+  .auth-mhero-core img { width: 36px; height: auto; }
+  .auth-mhero-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: #6fd6df; box-shadow: 0 0 10px 2px rgba(17, 184, 197, .6); }
+  .auth-mhero-dot.is-a { left: 22%; top: 56%; } .auth-mhero-dot.is-b { right: 20%; top: 40%; width: 4px; height: 4px; } .auth-mhero-dot.is-c { right: 34%; bottom: 22%; width: 3px; height: 3px; background: #fff; }
+  .auth-form-side { padding-top: 26px; }
+  .auth-ring.is-a { right: -420px; }
+}
+@media (max-width: 480px) {
+  .auth-mhero { height: 116px; }
+  .auth-title { font-size: 25px; }
+}
+
+/* Motion (decoration only). */
+@media (prefers-reduced-motion: no-preference) {
+  .auth-bg .b1 { animation: auth-drift 18s ease-in-out infinite alternate; }
+  .auth-bg .b3 { animation: auth-drift 22s ease-in-out -6s infinite alternate-reverse; }
+  .auth-ring.is-a { animation: auth-ring-a 40s linear infinite; }
+  .auth-spark { animation: auth-streak 9s linear infinite; }
+  .auth-spark.is-b { animation-delay: -3s; animation-duration: 11s; }
+  .auth-spark.is-c { animation-delay: -6.5s; animation-duration: 13s; }
+  .auth-eyebrow span::after { animation: auth-ping 2.2s cubic-bezier(0, 0, .2, 1) infinite; }
+  .auth-mhero-ring { animation: auth-mhero-spin 14s linear infinite; }
+  .auth-mhero-dot { animation: auth-twinkle 2.4s ease-in-out infinite alternate; }
+  .auth-mhero-dot.is-b { animation-delay: -1.2s; } .auth-mhero-dot.is-c { animation-delay: -.6s; }
+}
+@keyframes auth-drift { to { transform: translate(-6vmax, 5vmax) scale(1.08); } }
+@keyframes auth-ring-a { to { transform: perspective(1200px) rotateX(68deg) rotateY(-14deg) rotateZ(360deg); } }
+@keyframes auth-streak { 0% { transform: translateX(110vw); opacity: 0; } 8% { opacity: .9; } 70% { opacity: .9; } 100% { transform: translateX(-30vw); opacity: 0; } }
+@keyframes auth-ping { 0% { transform: scale(.6); opacity: .9; } 80%, 100% { transform: scale(1.7); opacity: 0; } }
+@keyframes auth-mhero-spin { to { transform: rotateX(74deg) rotateZ(360deg); } }
+@keyframes auth-twinkle { from { opacity: .25; } to { opacity: 1; } }
+@media (prefers-contrast: more) { .auth-grid, .auth-ring, .auth-spark { display: none; } }
+
+/* Short laptop screens: keep the whole card above the fold. */
+@media (min-width: 861px) and (max-height: 820px) {
+  .auth-shell { gap: 14px; padding-block: 14px; }
+  .auth-logo { height: 54px; }
+  .auth-form-side { padding-block: 30px; }
+  .auth-eyebrow { margin-bottom: 8px; }
+  .auth-lede { margin-bottom: 18px; }
+  .auth-form { gap: 14px; }
+  .auth-secure { margin-top: 18px; padding-top: 12px; }
+  .auth-register { margin-top: 4px; }
+}
+@media (max-width: 480px) {
+  .auth-top a.auth-toplink { white-space: nowrap; padding: 0 12px; font-size: 12px; }
+  .auth-top a.auth-toplink::after { width: 12px; height: 12px; }
 }

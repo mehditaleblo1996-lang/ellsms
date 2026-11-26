@@ -8,10 +8,10 @@ telephony panels, customers, FAQ and a closing call to action.
 
 | File | What |
 |---|---|
-| `public/landing.php` | The page: every section below, the `$customers` list, and two small inline scripts (on-screen animation trigger; the hero core's pointer tilt) |
+| `public/landing.php` | The page: every section below, the `$customers` list, and two small inline scripts (on-screen animation trigger plus the cards' pointer spotlight; the hero core's orbit and pointer tilt) |
 | `app/views/public_header.php` / `public_footer.php` | Shared public chrome: the floating nav (with the «درباره ما» submenu, see [about.md](about.md)), footer, scroll progress, `.lp-reveal` fade-in, and `--lp-nav-h` (the nav's measured height, used for anchor offsets). The header preloads the two main Estedad weights, takes an optional `$extraStyles` list of extra stylesheets for one page and an optional `$lpNavCurrent` (`'about'` / `'contact'`) that marks that nav link `aria-current="page"`. The footer's trust badges (ساماندهی، اینماد، the ecunion.ir «عضو اتحادیه کشوری کسب و کارهای مجازی» badge, which opens ecunion.ir's verification popup, and the «سازمان نظام صنفی رایانه‌ای کشور — استان تهران» badge, which for now links to the site's home page (`/`) — the company's member page on tehran.irannsr.org is kept commented out in `legal_nsr_badge_html()` to restore later; its green emblem and calligraphic caption are `public/assets/img/nsr-tehran-emblem.png` / `nsr-tehran-text.png`, the caption drawn as an SVG mask in the footer's text colour) come from `legal_trust_badges_html()` in `app/Legal.php` and are shared with the panel footer. The اینماد badge is the site's real eNamad seal (id `8308816`, constants `LEGAL_ENAMAD_ID` / `LEGAL_ENAMAD_CODE`): an image from `trustseal.enamad.ir` linked to its verification page, which is why the Content-Security-Policy `img-src` allows `https://trustseal.enamad.ir`. |
 | `public/assets/css/style.css` | Design tokens of the public pages (`.lp-body`), the floating nav, footer, FAQ list, customer rail, `.lp-reveal` |
-| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero and its 3D core with the explanation card, showcases, IT/telephony panels, FAQ layout, CTA. Loaded only by `landing.php`. |
+| `public/assets/css/home.css` | Everything specific to this page (prefix `.dx-`): intro, hero stage and its 3D core with the explanation card, showcases, IT/telephony panels, the visual layer (glows, spotlight, floating chips), FAQ layout, CTA. Loaded only by `landing.php`. |
 | `public/assets/css/landing-ai.css` | The «منشی هوشمند» chat in the AI showcase (`.lp-banner-ai`, `.lp-ai-*`). Loaded only by `landing.php`. |
 | `public/assets/css/landing-products.css` | The `.ps-*` primitives of the product scenes, and the IT / telephony carousels (`.pc-*`: carousel chrome and each slide's story). Loaded only by `landing.php`. |
 | `app/views/landing_product_scenes/cloud.php`, `it-{1,2,3}.php`, `voip-{1,2,3}.php` | Animated SVG scenes: the cloud showcase, and the three slides of each of the IT / telephony carousels |
@@ -49,7 +49,7 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
   fluid type scale, radii, shadows and the `--ease` timing). The graphite bands re-declare `--ink`,
   `--muted`, `--line`, `--card` light-on-dark in the rule just below it (the `.lp-dark` utility class
   was removed with the last graphite band on the home page). The sign-in page's tokens are the `.auth` block of
-  `public/assets/css/login.css` (slider: `.ls` in `login-slider.css`); the pages around sign-in get
+  `public/assets/css/login.css` (slider: `.ls` in `login-slider.css`; see [login.md](login.md)); the pages around sign-in get
   theirs from `.login-body` in `style.css`.
 - **Type:** Estedad (self-hosted, OFL) on the public and sign-in pages, with Vazirmatn as fallback;
   headings use `clamp()` sizes. The panel still uses Vazirmatn ([font-integration.md](font-integration.md)).
@@ -65,8 +65,8 @@ logged-in panel keeps its own indigo colours: every value below is scoped to `.l
 
 | Anchor | Section |
 |---|---|
-| — | **Intro** (first): the page's `<h1>` «یک شریک فناوری برای همه‌ی نیازهای کسب‌وکار شما», a short paragraph and «آشنایی با داتیس رایان» (→ `/about`) |
-| — | **Hero**: the signature core (below), centred, with the hint «برای آشنایی با هر خدمت، روی آن در مدار بزنید.» under it. Clicking a service node opens its explanation card (see below). The former headline, paragraph and «کشف خدمات داتیس» / «مشاوره با کارشناسان» buttons were removed; the consultation link stays in the closing CTA. |
+| — | **Intro** (first, centred): a frosted eyebrow pill «پنج خط خدمت، یک تیم پشتیبانی» with a pinging turquoise dot; the page's `<h1>` «یک شریک فناوری برای همه‌ی نیازهای کسب‌وکار شما» (accent words in a turquoise gradient ink with a hand-drawn stroke drawn in under them); a short paragraph; and three actions: «مشاوره با کارشناسان» (→ `/contact.php`), the panel login («ورود به پنل پیامک» / «بازگشت به داشبورد») and «آشنایی با داتیس رایان» (→ `/about`) |
+| — | **Hero**: the signature core (below), centred on a stage (see «Visual layer»), with the hint pill «روی هر خدمت بزنید تا معرفی شود؛ …» (a small hand icon nudging sideways) under it. Clicking a service node opens its explanation card (see below). |
 | `#product-sms` | Showcase: the SMS platform — four features, its channels (پیامک، پیام صوتی، پیام در بله), and a mock-up of «قالب ← پیام شخصی هر ردیف ← گزارش تحویل» |
 | `#product-cloud` | Showcase: cloud and infrastructure, with the animated rack scene |
 | `#product-ai` | Showcase on a light full-width band (page background with a faint turquoise tint, hairline borders): AI and automation, with the «منشی هوشمند» chat as a light chat window (white card, grey customer bubble, pale-turquoise reply bubble, white chips; colours from the `.lp-body` tokens in `landing-ai.css`) (its button opens `/guide.php#guide-ai-secretary`) |
@@ -85,6 +85,34 @@ The content of the old seven-slide banner lives on in the showcases: bulk SMS, t
 the live report in `#product-sms` (with voice and Bale as channels), «منشی هوشمند» in `#product-ai`.
 The products' texts are those of the former product rows, unchanged. No figures, clients or claims are
 invented: the one number on the page (۱۲٬۴۸۰ in the report mock-up) is labelled «نمونه».
+
+### Visual layer (depth, light and hover)
+
+All in `home.css` (blocks «intro», «the stage under the core», «depth and light», «call to action»), no
+images or libraries; everything decorative is `aria-hidden` with no pointer events.
+
+- **Hero stage** (`.dx-stage` in `.dx-hero`): a slowly turning turquoise aura (blurred conic + radial
+  gradient), a perspective grid floor that drifts towards the viewer under the core, and a soft white
+  light beam; the whole stage fades out at its top and bottom edges so no glow is cut off.
+- **Section kickers** (`.dx-kicker`) are small pale-turquoise pills with a dot instead of a dash;
+  accent words (`.dx-accent`) use a deep-to-bright turquoise gradient ink (plain colour in forced-colours
+  mode).
+- **Showcase visuals** (`.dx-show-visual`) sit on a soft turquoise glow over a fading dot grid. The SMS
+  mock-up has coloured window dots, deeper tinted shadows and two floating glass chips that bob gently:
+  «گزارش تحویل — هر پیام، همان لحظه» and «زمان‌بندی — با تقویم شمسی» (`.dx-float`; they fade in after the
+  mock-up has built; the second is hidden on phones).
+- **Spotlight**: the mock-up windows, the graphite scenes and the IT / telephony panels (`.dx-spot`)
+  get a turquoise border light that follows the pointer (`--mx`/`--my`, set by the small script after
+  the panels; hover-capable devices only). Feature rows (`.dx-feats li`) become a light card under the
+  pointer and their icon tile fills turquoise; the panels lift 4px on hover.
+- **Customers**: the logo rail runs on a frosted white band between two turquoise hairlines, with
+  slightly larger logos (72px).
+- **FAQ**: an open question gets a turquoise edge on its start side and a filled turquoise toggle;
+  closed ones nudge sideways on hover.
+- **Closing CTA**: graphite gradient with a drifting turquoise aura, a faint grid fading from the ring
+  side, and two brushed-metal rings (`.dx-cta-ring`, `.is-2`).
+- Reduced motion: the aura, floor, ping, swash, hint nudge, floating chips and CTA aura stand still (the
+  swash is shown drawn), and nothing lifts on hover.
 
 ### The signature core (hero)
 

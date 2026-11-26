@@ -27,6 +27,31 @@
     });
   }
 
+  // 1b. Caps Lock hint under the password field, and a busy state on the button once the form submits
+  //     (the submit event only fires after the browser's own required-field check has passed).
+  var caps = document.getElementById('authCaps');
+  if (pass && caps) {
+    var checkCaps = function (ev) {
+      if (ev.getModifierState) caps.hidden = !ev.getModifierState('CapsLock');
+    };
+    pass.addEventListener('keydown', checkCaps);
+    pass.addEventListener('keyup', checkCaps);
+    pass.addEventListener('blur', function () { caps.hidden = true; });
+  }
+  var form = document.querySelector('.auth-form');
+  var submit = document.getElementById('authSubmit');
+  if (form && submit) {
+    form.addEventListener('submit', function () {
+      submit.classList.add('is-busy');
+      submit.setAttribute('aria-busy', 'true');
+    });
+    // Coming back with the browser's back button must not leave the button spinning.
+    window.addEventListener('pageshow', function () {
+      submit.classList.remove('is-busy');
+      submit.removeAttribute('aria-busy');
+    });
+  }
+
   // 2. Feature slider.
   var root = document.getElementById('loginSlider');
   if (!root) return;
