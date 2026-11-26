@@ -68,4 +68,17 @@ final class SmsPartsTest extends TestCase
         $this->assertSame(1, sms_parts($content)); // 69 chars, <=70
         $this->assertSame(2, sms_parts($content . 'aa')); // 71 chars, >70
     }
+
+    public function testFormTextCountsANewlineAsOneCharacter(): void
+    {
+        // A browser submits textarea newlines as CRLF; the panel forms normalize them to one LF.
+        $this->assertSame("سلام\nخداحافظ", sms_text_from_form("  سلام\r\nخداحافظ\r\n"));
+        $this->assertSame("a\nb", sms_text_from_form("a\rb"));
+        $this->assertSame('', sms_text_from_form(null));
+
+        // 35 Persian letters + 35 CRLF newlines: 105 characters raw, 70 once normalized.
+        $typed = str_repeat("س\r\n", 35);
+        $this->assertSame(1, sms_parts(sms_text_from_form($typed) . 'س'));
+        $this->assertSame(2, sms_parts(rtrim($typed)));
+    }
 }

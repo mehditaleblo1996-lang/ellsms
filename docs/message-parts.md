@@ -25,6 +25,15 @@ deploy.
 | Persian / Unicode (any character outside printable ASCII) | 70 characters | 67 characters |
 | Latin / GSM-7 | 160 characters | 153 characters |
 
+**A newline is one character.** Browsers submit a `<textarea>`'s newlines as CRLF (`\r\n`), which
+would count as two characters. The panel forms that take a message text — «ارسال پیامک»
+(`send.php`, `new-send.php`, `send-queue.php`, the live cost `send-estimate.php`), LBA, «ارسال با
+کد پستی» (`aimed-bulk.php`), «ارسال منطقه‌ای» (`regional-bulk.php`) and the auto-reply text — read it
+with `sms_text_from_form()` (`app/bootstrap.php`), which turns CRLF/CR into one LF and trims. So a
+newline costs one character whether the text comes from the panel, the API (counted as sent) or the
+shared services (which already normalize). The composer's live meter (`sms-composer.js`) counts
+the same way.
+
 Pricing takes its segment count from the same function (`app/Sms/Pricing.php`), so the stored
 number is the number of parts the send was charged for.
 

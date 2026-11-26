@@ -895,6 +895,16 @@ function parse_destinations(string $raw): array {
     return array_map('strval', array_keys($out));
 }
 
+/**
+ * Message text as typed in a panel form, ready to send: newlines become a single LF and the ends are
+ * trimmed. Browsers submit a <textarea>'s newlines as CRLF, which sms_parts() would count as two
+ * characters each; normalizing here makes a panel newline one character, as it already is over the
+ * API and in the shared services (docs/message-parts.md).
+ */
+function sms_text_from_form(mixed $raw): string {
+    return trim(str_replace(["\r\n", "\r"], "\n", is_string($raw) ? $raw : ''));
+}
+
 /** Number of SMS parts for a message (GSM-7 vs Unicode). */
 function sms_parts(string $content): int {
     $isUnicode = (bool)preg_match('/[^\x20-\x7E\r\n]/u', $content);

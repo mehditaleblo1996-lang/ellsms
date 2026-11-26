@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } else {
             $count = (int)from_persian_digits((string)($form['count'] ?? '0'));
-            $r = aimed_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), optout_suffix_maybe(trim((string)($form['content'] ?? '')), optout_suffix_for_user((int)$me['id'])), $count > 0 ? $count : null, (string)($form['title'] ?? ''));
+            $r = aimed_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), optout_suffix_maybe(sms_text_from_form($form['content'] ?? ''), optout_suffix_for_user((int)$me['id'])), $count > 0 ? $count : null, (string)($form['title'] ?? ''));
             if ($r['ok']) {
                 unset($_SESSION['aimed_bulk_form'], $_SESSION['aimed_bulk_count_id']);
                 flash('success', 'درخواست ثبت شد. شماره‌ها در پس‌زمینه شمرده، آماده و قیمت‌گذاری می‌شوند؛ پس از آماده شدن، آن را در فهرست زیر تأیید کنید.');

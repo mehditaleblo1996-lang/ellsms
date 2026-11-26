@@ -259,7 +259,8 @@ All three have safe defaults; none is required, and none changes existing send b
   the credit cost — the number that actually matters — is always computed.
 - **A client-side character counter duplicates the segmentation rule.** `public/send.php` and
   `public/new-send.php` each carry a small JavaScript live counter (pre-dating this feature) that
-  reimplements the 70/67/160/153 thresholds and the same `[^\x20-\x7E\r\n]` Unicode test for
+  reimplements the 70/67/160/153 thresholds, the same `[^\x20-\x7E\r\n]` Unicode test and the
+  one-character newline of `sms_text_from_form()` for
   instant feedback while typing. It is *currently exactly equivalent* to `sms_parts()`, and it was
   deliberately left in place: a server round-trip per keystroke would be worse, and the number it
   shows is only a typing hint. **The authoritative figure is always the server-computed preview**,

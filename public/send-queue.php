@@ -40,7 +40,7 @@ if (!$policy['ok']) {
 }
 
 $originator = trim((string)($_POST['originator'] ?? '')) ?: user_default_send_originator($me);
-$content = trim((string)($_POST['content'] ?? ''));
+$content = sms_text_from_form($_POST['content'] ?? '');
 $dests = parse_destinations((string)($_POST['destinations'] ?? ''));
 $myOrgId = $me['organization_id'] ?? null;
 $contactOwnership = '(organization_id = ? OR (organization_id IS NULL AND user_id = ?))';

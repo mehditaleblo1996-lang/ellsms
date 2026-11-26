@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = (string)($_POST['do'] ?? '');
     // «افزودن لغو۱۱» (app/OptoutSuffix.php, per user, set by the admin) — applied to the text before it is priced/sent.
     if (in_array($do, ['send_simple', 'periodic_start', 'periodic_update'], true) && isset($_POST['body'])) {
-        $_POST['body'] = optout_suffix_maybe(trim((string)$_POST['body']), optout_suffix_for_user((int)$me['id']));
+        $_POST['body'] = optout_suffix_maybe(sms_text_from_form($_POST['body']), optout_suffix_for_user((int)$me['id']));
     }
     if ($do === 'check_polygon') {
         header('Content-Type: application/json; charset=utf-8');

@@ -2,7 +2,8 @@
  * ELLSMS — send composer (public/send.php, public/new-send.php).
  *
  *  1. Segment meter: characters, parts, and how many characters are left before the next part,
- *     counted exactly as sms_parts() counts the submitted text (trimmed, CRLF newlines).
+ *     counted exactly as sms_parts() counts the submitted text (sms_text_from_form(): trimmed, a
+ *     newline is one character).
  *  2. Recipient stats: valid / invalid / duplicate counts as the numbers are typed, with
  *     normalize_msisdn()'s rules; Persian/Arabic digits are turned into Latin ones in place.
  *  3. Phone preview of the message under the chosen sender line.
@@ -45,11 +46,11 @@
 
   /* ---------- 1. Segments (mirror of sms_parts() / cost_estimate_segments()) ---------- */
   function analyzeText(raw) {
-    // Browsers submit textarea newlines as CRLF and the server trims before counting.
-    var text = raw.replace(/\r\n/g, '\n').replace(/^[ \t\n\r\0\x0B]+|[ \t\n\r\0\x0B]+$/g, '');
+    // The server turns the CRLF a browser submits into one LF and trims (sms_text_from_form()).
+    var text = raw.replace(/\r\n?/g, '\n').replace(/^[ \t\n\r\0\x0B]+|[ \t\n\r\0\x0B]+$/g, '');
     var len = 0, odd = null, chars = 0, ascii = 0;
     for (var ch of text) {
-      len += ch === '\n' ? 2 : 1;
+      len++;
       chars++;
       if (/[\x20-\x7E\r\n]/.test(ch)) ascii++;
       else if (odd === null) odd = ch;

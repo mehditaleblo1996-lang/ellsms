@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     shared_otp_handle_send_form($me, '/send.php');
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
     // «افزودن لغو۱۱» (app/OptoutSuffix.php, per user, set by the admin) — before preview, schedule and send alike.
-    $content    = optout_suffix_maybe(trim($_POST['content'] ?? ''), optout_suffix_for_user((int)$me['id']));
+    $content    = optout_suffix_maybe(sms_text_from_form($_POST['content'] ?? ''), optout_suffix_for_user((int)$me['id']));
     $dests      = parse_destinations($_POST['destinations'] ?? '');
 
     // The RAW, pre-normalization tokens, collected alongside $dests purely so the cost preview can

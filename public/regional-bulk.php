@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $scheduledAt = $ts !== false ? date('Y-m-d H:i:s', $ts) : null;
             }
             $count = (int)from_persian_digits((string)($form['count'] ?? '0'));
-            $r = regional_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), optout_suffix_maybe(trim((string)($form['content'] ?? '')), optout_suffix_for_user((int)$me['id'])), $scheduledAt, $count > 0 ? $count : null);
+            $r = regional_bulk_create($me, $c['criteria'], (string)($form['originator'] ?? ''), optout_suffix_maybe(sms_text_from_form($form['content'] ?? ''), optout_suffix_for_user((int)$me['id'])), $scheduledAt, $count > 0 ? $count : null);
             if ($r['ok']) {
                 unset($_SESSION['regional_bulk_form']);
                 flash('success', 'درخواست ساخته و قیمت‌گذاری شد. برای ارسال، آن را در فهرست زیر تأیید کنید.');

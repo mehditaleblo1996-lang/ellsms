@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     shared_otp_handle_send_form($me, '/new-send.php');
     $mode       = in_array($_POST['mode'] ?? 'direct', ['direct', 'recurring', 'gradual'], true) ? ($_POST['mode'] ?? 'direct') : 'direct';
     $originator = trim($_POST['originator'] ?? '') ?: user_default_send_originator($me);
-    $content    = trim($_POST['content'] ?? '');
+    $content    = sms_text_from_form($_POST['content'] ?? '');
     // «افزودن لغو۱۱» (app/OptoutSuffix.php, per user, set by the admin): applied before preview, pricing and every
     // send branch below; a saved campaign keeps the text exactly as typed.
     $typedContent = $content;

@@ -33,7 +33,7 @@ if (count($tokens) > live_cost_max_recipients()) {
 }
 
 $originator = trim((string)($_POST['originator'] ?? '')) ?: user_default_send_originator($me);
-$content = trim((string)($_POST['content'] ?? ''));
+$content = sms_text_from_form($_POST['content'] ?? '');
 $estimate = estimate_message_cost($me, $originator, $tokens, $content, !empty($_POST['apply_blacklist']));
 
 send_estimate_respond(200, live_cost_payload($estimate));
