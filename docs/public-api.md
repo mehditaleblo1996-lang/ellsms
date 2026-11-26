@@ -487,7 +487,9 @@ no Idempotency-Key is taken (a preview is repeatable by definition, so no `Idemp
 is needed or honored).
 
 Any `estimated_cost` / `unit_price` / `segments` present in the request body is **ignored entirely** —
-every figure is computed server-side. The preview is advisory: the real send recomputes and reserves
+every figure is computed server-side. Segments are counted with the part sizes of the gateway the
+sender line goes out through (default 70/67 Persian, 160/153 Latin; `docs/gateway-part-limits.md`), the
+same count the send is charged with. The preview is advisory: the real send recomputes and reserves
 atomically, so a balance or quota that disappears in between causes the send to fail safely rather
 than the preview to have guaranteed anything.
 

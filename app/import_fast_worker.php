@@ -83,6 +83,7 @@ function import_fast_analyze_generated_job(array $job): void {
     $jobId = (int)$job['id'];
     $storageKey = (string)$job['storage_key'];
     $batchSize = max(1000, min(20000, (int)(env('FAST_IMPORT_BATCH_SIZE', '10000') ?? '10000')));
+    $partLimits = sms_part_limits_for_sender((string)($job['originator'] ?? '')); // app/SmsPartLimits.php
 
     $actualRows = import_fast_csv_record_count($storageKey);
     if ($actualRows <= 0) {
@@ -130,7 +131,7 @@ function import_fast_analyze_generated_job(array $job): void {
                 $totals['duplicate']++;
                 continue;
             }
-            $segments = sms_parts($content);
+            $segments = sms_parts($content, $partLimits);
             $candidates[$key] = [
                 'mobile' => $mobile,
                 'content' => $content,

@@ -126,16 +126,17 @@ function send_channel_column_available(string $table): bool {
  * @param list<string> $destinations
  * @param string|array<array-key,string> $content
  * @param callable(string):string $operatorOf normalized number => operator display name
+ * @param ?array $partLimits part sizes to count with (sms_parts()); null = the default
  * @return list<array{operator:string,encoding:string,parts:int,count:int}>
  */
-function send_drops_group(array $destinations, string|array $content, callable $operatorOf): array {
+function send_drops_group(array $destinations, string|array $content, callable $operatorOf, ?array $partLimits = null): array {
     $groups = [];
     $byIndex = is_array($content) && array_is_list($content);
     foreach (array_values($destinations) as $i => $destination) {
         $destination = (string)$destination;
         $text = is_array($content) ? (string)($byIndex ? ($content[$i] ?? '') : ($content[$destination] ?? '')) : $content;
         $encoding = $text === '' ? 'na' : sms_encoding($text);
-        $parts = min(65535, sms_parts($text));
+        $parts = min(65535, sms_parts($text, $partLimits));
         $number = normalize_msisdn($destination) ?? $destination;
         $operator = mb_substr($operatorOf($number), 0, 120);
         $key = $operator . "\x1f" . $encoding . "\x1f" . $parts;
@@ -185,7 +186,7 @@ function send_drops_record(int $userId, ?int $organizationId, string $sender, st
                  import_job_id, chunk_no, aimed_request_id, ref_key)
              VALUES (UTC_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
-        foreach (send_drops_group($destinations, $content, $operatorOf) as $g) {
+        foreach (send_drops_group($destinations, $content, $operatorOf, sms_part_limits_for_sender($sender)) as $g) {
             $insert->execute([
                 $userId, (int)($organizationId ?? 0), mb_substr(normalize_originator($sender) ?? $sender, 0, 32), $channel, $reason,
                 $g['operator'], $g['encoding'], $g['parts'], $g['count'], $importJobId, $chunkNo, $aimedId, $ref,

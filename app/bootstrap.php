@@ -40,6 +40,8 @@ require_once __DIR__ . '/Slo.php';
 require_once __DIR__ . '/tenant.php';
 require_once __DIR__ . '/Contacts.php';
 require_once __DIR__ . '/Pagination.php';
+// Per-gateway SMS part sizes (docs/gateway-part-limits.md); sms_parts() takes them.
+require_once __DIR__ . '/SmsPartLimits.php';
 require_once __DIR__ . '/MessageParts.php';
 require_once __DIR__ . '/LazyParts.php';
 require_once __DIR__ . '/LineOptouts.php';
@@ -905,13 +907,18 @@ function sms_text_from_form(mixed $raw): string {
     return trim(str_replace(["\r\n", "\r"], "\n", is_string($raw) ? $raw : ''));
 }
 
-/** Number of SMS parts for a message (GSM-7 vs Unicode). */
-function sms_parts(string $content): int {
+/**
+ * Number of SMS parts for a message (GSM-7 vs Unicode). $limits are the part sizes to count with
+ * (app/SmsPartLimits.php: fa_single, fa_multi, en_single, en_multi); null = the platform default
+ * 70/67/160/153. A send is counted with its gateway's sizes — sms_parts_for_sender().
+ */
+function sms_parts(string $content, ?array $limits = null): int {
+    $l = $limits === null ? SMS_PART_LIMITS_DEFAULT : sms_part_limits_normalize($limits);
     $isUnicode = (bool)preg_match('/[^\x20-\x7E\r\n]/u', $content);
     $len = mb_strlen($content, 'UTF-8');
     if ($len === 0) return 0;
-    if ($isUnicode) return $len <= 70  ? 1 : (int)ceil($len / 67);
-    return              $len <= 160 ? 1 : (int)ceil($len / 153);
+    if ($isUnicode) return $len <= $l['fa_single'] ? 1 : (int)ceil($len / $l['fa_multi']);
+    return              $len <= $l['en_single'] ? 1 : (int)ceil($len / $l['en_multi']);
 }
 
 /**

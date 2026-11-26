@@ -1103,13 +1103,14 @@ function sms_pricing_with_matrix_price(array $resolution, array $cell): array {
 
 /**
  * Convenience wrapper for the overwhelmingly common "one body, many recipients" send. Segments are
- * computed once from the shared content — the identical sms_parts() value dispatch_message_raw()
+ * computed once from the shared content — the identical sms_parts_for_sender() value dispatch_message_raw()
  * will report back.
  *
  * @param list<string> $destinations already normalized
  */
 function sms_pricing_price_single_content(array $destinations, string $content, string $sender, ?string $messageType = null, ?string $atUtc = null, bool $exempt = false, ?int $customerUserId = null): array {
-    $segments = sms_parts($content);
+    // The part sizes of the gateway this sender line goes out through (app/SmsPartLimits.php).
+    $segments = sms_parts_for_sender($content, $sender);
     $encoding = sms_encoding($content);
     $messages = array_map(static fn($d) => ['mobile' => (string)$d, 'segments' => $segments, 'encoding' => $encoding], $destinations);
     $priced = sms_pricing_price_messages($messages, $sender, $messageType, $atUtc, $exempt, $customerUserId);

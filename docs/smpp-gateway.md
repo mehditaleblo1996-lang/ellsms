@@ -117,6 +117,9 @@ shows the gateway's own sessions and their last error; they retry on their own w
   - Encoding is GSM 7-bit when every character fits, otherwise UCS-2 (or forced from the panel).
   - Long messages are split on character boundaries, never through a GSM escape or an emoji
     surrogate pair. They are sent as UDH, SAR TLVs or a single `message_payload`.
+  - Part sizes follow the gateway's «تعداد کاراکتر هر پارت» (`ellsms_sms_gateways.part_*`, at most
+    70 / 67 / 160 / 153); empty = the protocol sizes. The panel counts and charges with the same numbers
+    (`docs/gateway-part-limits.md`).
   - One token-bucket TPS limit applies per gateway, and each session has its own window.
   - `ESME_RTHROTTLED` / `ESME_RMSGQFUL` pause the gateway and retry the part (up to 3 times).
   - Other negative responses fail that recipient with its `command_status`, which becomes the row's

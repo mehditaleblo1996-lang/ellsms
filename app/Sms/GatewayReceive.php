@@ -157,7 +157,7 @@ function gateway_receive_store(PDO $db, int $gatewayId, array $message): ?int {
     );
     $st->execute([$gatewayId, $message['originator'], $message['destination'], $message['content'],
                   $message['received_at'], $message['provider_message_id'], $dedupeKey,
-                  ...($withParts ? [sms_parts((string)($message['content'] ?? ''))] : [])]);
+                  ...($withParts ? [sms_parts((string)($message['content'] ?? ''), sms_gateway_part_limits($gatewayId))] : [])]);
     return $st->rowCount() === 1 ? (int)$db->lastInsertId() : null;
 }
 

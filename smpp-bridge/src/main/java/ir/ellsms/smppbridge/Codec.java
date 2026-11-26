@@ -108,14 +108,29 @@ public final class Codec {
         return dc == DC_GSM ? 153 : 134;
     }
 
-    /** Splits on character boundaries. One element when it fits a single message. */
+    /** Splits on character boundaries with the protocol's own sizes. One element when it fits a single message. */
     public static List<byte[]> split(Encoded enc) {
+        return split(enc, 0, 0);
+    }
+
+    /**
+     * Splits on character boundaries with the gateway's own part sizes, in CHARACTERS as the panel sets
+     * them (ellsms_sms_gateways.part_* — docs/gateway-part-limits.md): {@code singleChars} for a one-part
+     * message, {@code partChars} per part beyond that; 0 = the protocol size. A UCS-2 character is two
+     * bytes, a GSM/Latin-1 one byte. A size larger than one SMS can carry is capped to the protocol
+     * size, so a part never exceeds what the SMSC accepts.
+     */
+    public static List<byte[]> split(Encoded enc, int singleChars, int partChars) {
+        byte dc = enc.dataCoding();
+        int perChar = dc == DC_UCS2 ? 2 : 1;
+        int single = singleChars > 0 ? Math.min(singleLimit(dc), singleChars * perChar) : singleLimit(dc);
+        int limit = partChars > 0 ? Math.min(partLimit(dc), partChars * perChar) : partLimit(dc);
+        limit = Math.max(perChar == 2 ? 4 : 2, Math.min(limit, single)); // room for a surrogate pair / GSM escape
         List<byte[]> parts = new ArrayList<>();
-        if (enc.length() <= singleLimit(enc.dataCoding())) {
+        if (enc.length() <= single) {
             parts.add(enc.bytes());
             return parts;
         }
-        int limit = partLimit(enc.dataCoding());
         ByteArrayOutputStream cur = new ByteArrayOutputStream();
         for (byte[] c : enc.chars()) {
             if (cur.size() + c.length > limit) {

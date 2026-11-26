@@ -25,6 +25,10 @@ deploy.
 | Persian / Unicode (any character outside printable ASCII) | 70 characters | 67 characters |
 | Latin / GSM-7 | 160 characters | 153 characters |
 
+These are the defaults; each gateway can set its own four numbers, and a send is counted with those of
+the gateway its sender line goes out through (`sms_parts_for_sender()` — `docs/gateway-part-limits.md`).
+A row that has no stored count yet is counted from its text with the defaults.
+
 **A newline is one character.** Browsers submit a `<textarea>`'s newlines as CRLF (`\r\n`), which
 would count as two characters. The panel forms that take a message text — «ارسال پیامک»
 (`send.php`, `new-send.php`, `send-queue.php`, the live cost `send-estimate.php`), LBA, «ارسال با

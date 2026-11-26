@@ -28,6 +28,17 @@
   function field(name) { return form.elements.namedItem(name); }
   function byId(id) { return document.getElementById(id); }
 
+  /* Part sizes per sender line: the page lists, as data-part-limits, the lines whose gateway counts
+     differently from the default ({"": [70,67,160,153], "<line>": [fa single, fa per part, en single,
+     en per part]} — sms_part_limits_for_senders(), docs/gateway-part-limits.md). */
+  var PART_LIMITS = { '': [70, 67, 160, 153] };
+  try { var pl = JSON.parse(form.getAttribute('data-part-limits') || '{}'); if (pl && pl['']) PART_LIMITS = pl; } catch (e) { /* keep the default */ }
+  function partLimits() {
+    var o = field('originator');
+    var line = o && o.value ? toLatinDigits(String(o.value)).replace(/\D/g, '') : '';
+    return PART_LIMITS[line] || PART_LIMITS[''];
+  }
+
   var content = field('content');
   var dest = field('destinations');
   var digitToggle = byId('digitConvert');
@@ -56,7 +67,8 @@
       else if (odd === null) odd = ch;
     }
     var unicode = odd !== null;
-    var single = unicode ? 70 : 160, multi = unicode ? 67 : 153;
+    var lim = partLimits();
+    var single = unicode ? lim[0] : lim[2], multi = Math.min(single, unicode ? lim[1] : lim[3]);
     var parts = len === 0 ? 0 : (len <= single ? 1 : Math.ceil(len / multi));
     var left = parts <= 1 ? single - len : multi * parts - len;
     var used = parts <= 1 ? len : len - multi * (parts - 1);
@@ -81,7 +93,7 @@
     meter.classList.toggle('is-full', a.parts > 0 && a.left === 0);
     meter.classList.toggle('is-multi', a.parts > 1);
     count.textContent = a.parts === 0 ? 'پیام هنوز خالی است' : fa(a.len) + ' نویسه · ' + fa(a.parts) + ' بخش';
-    if (a.parts === 0) next.textContent = 'تا ' + fa(a.unicode ? 70 : 160) + ' نویسه یک بخش است';
+    if (a.parts === 0) next.textContent = 'تا ' + fa(a.perPart) + ' نویسه یک بخش است';
     else if (a.left === 0) next.textContent = 'بخش ' + ordinal(a.parts) + ' پر شد؛ نویسه‌ی بعدی بخش ' + ordinal(a.parts + 1) + ' را شروع می‌کند';
     else next.textContent = fa(a.left) + ' نویسه تا بخش ' + ordinal(a.parts + 1);
     enc.textContent = a.unicode ? 'فارسی / یونیکد · ' + fa(a.perPart) + ' نویسه در هر بخش' : 'لاتین · ' + fa(a.perPart) + ' نویسه در هر بخش';

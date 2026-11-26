@@ -637,7 +637,7 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
     $cursor = (int)$req['cursor_id'];
     $surcharge = (float)$req['surcharge_percent'];
     $content = (string)$req['content'];
-    $segments = sms_parts($content);
+    $segments = sms_parts_for_sender($content, (string)$req['originator']);
     $encoding = sms_encoding($content);
 
     $batches = 0;
@@ -684,7 +684,7 @@ function aimed_bulk_stage_request(int $id, string $token, int $maxBatches): arra
             $adv->execute([$lastId, count($rows), $blocked, $unpriced, AIMED_BULK_LEASE_SECONDS, $id, $token, $cursor]);
             if ($adv->rowCount() !== 1) return false;
             foreach (array_chunk($rows, 500) as $chunk) {
-                import_insert_bulk_items_batch($db, $chunk);
+                import_insert_bulk_items_batch($db, $chunk, sms_part_limits_for_sender((string)$req['originator']));
             }
             // «لیست سیاه» in the status report (app/SendContext.php), counted once the request is confirmed.
             if ($blockedMobiles !== []) {

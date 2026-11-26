@@ -57,6 +57,11 @@ preview returns a `pricing.groups` breakdown. Two consequences worth stating exp
 | GSM-7 (plain ASCII) | 160 chars | 153 chars |
 | Unicode / UCS-2 (any Persian, emoji, or non-ASCII) | 70 chars | 67 chars |
 
+These are the defaults. A gateway can set its own sizes, and the preview counts with those of the
+gateway the sender line goes out through (`cost_estimate_segments($content, $limits)`, the limits from
+`sms_part_limits_for_sender()` — `docs/gateway-part-limits.md`); `single_segment_limit` and
+`concatenated_segment_limit` in the answer are that gateway's numbers.
+
 A single non-ASCII character forces the **whole** message to Unicode — 100 ASCII characters is one
 segment, but adding one Persian character makes those 101 characters two segments.
 
@@ -259,7 +264,8 @@ All three have safe defaults; none is required, and none changes existing send b
   the credit cost — the number that actually matters — is always computed.
 - **A client-side character counter duplicates the segmentation rule.** `public/send.php` and
   `public/new-send.php` each carry a small JavaScript live counter (pre-dating this feature) that
-  reimplements the 70/67/160/153 thresholds, the same `[^\x20-\x7E\r\n]` Unicode test and the
+  reimplements the thresholds (the default 70/67/160/153, or the selected line's gateway sizes from the
+  form's `data-part-limits`), the same `[^\x20-\x7E\r\n]` Unicode test and the
   one-character newline of `sms_text_from_form()` for
   instant feedback while typing. It is *currently exactly equivalent* to `sms_parts()`, and it was
   deliberately left in place: a server round-trip per keystroke would be worse, and the number it

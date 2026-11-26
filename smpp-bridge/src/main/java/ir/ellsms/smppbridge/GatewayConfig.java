@@ -12,8 +12,15 @@ public record GatewayConfig(
     int enquireLinkS, int reconnectDelayS, int submitTimeoutMs,
     int sourceTon, int sourceNpi, int destTon, int destNpi,
     String dataCoding, String longMessage, int registeredDelivery, int validityMinutes,
-    String destinationFormat, boolean receiveEnabled, String passwordError
+    String destinationFormat, boolean receiveEnabled, String passwordError,
+    // Part sizes in characters set on the panel (ellsms_sms_gateways.part_*); 0 = the protocol size.
+    int partFaSingle, int partFaMulti, int partEnSingle, int partEnMulti
 ) {
+    /** The gateway's single-part and per-part sizes (characters) for a message of data_coding {@code dc}. */
+    public int[] partChars(byte dc) {
+        return dc == Codec.DC_UCS2 ? new int[]{partFaSingle, partFaMulti} : new int[]{partEnSingle, partEnMulti};
+    }
+
     public String signature() {
         return String.join("|", String.valueOf(configVersion), host, String.valueOf(port), String.valueOf(useTls),
             systemId, String.valueOf(password == null ? 0 : password.hashCode()), systemType, interfaceVersion, bindMode,

@@ -87,6 +87,8 @@ function gateway_cache_reset(): void {
     // derived key would be an inconsistent half-reset.
     gateway_secret_key_reset();
     gateway_dns_cache_reset();
+    // Per-gateway part sizes (app/SmsPartLimits.php) are gateway configuration too.
+    sms_part_limits_cache_reset();
 }
 
 /**

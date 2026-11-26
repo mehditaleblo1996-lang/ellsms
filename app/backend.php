@@ -414,7 +414,8 @@ function dispatch_message_raw(array $user, string $originator, array $destinatio
         }
     }
 
-    $parts = sms_parts($content);
+    // Counted with the part sizes of the gateway this sender line goes out through (app/SmsPartLimits.php).
+    $parts = sms_parts_for_sender($content, $originator);
     $total = count($destinations);
 
     // The configured-gateway path (docs/sms-gateway-connectors.md). Returns null when the gateway
@@ -682,7 +683,7 @@ function dispatch_message(array $user, string $originator, array $destinations, 
     // gateway path (route/operator as ACTUALLY used, from $gatewayMeta) -- see
     // app/Reports/SendDimensionLog.php. Never influences routing; write failure never affects the
     // send outcome above.
-    send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta, sms_parts($content));
+    send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta, sms_parts_for_sender($content, $originator));
 
     // Settlement reads the ALREADY-ACCEPTED per-recipient prices; it never re-resolves a rate, so an
     // admin price change between acceptance and the gateway's reply cannot alter what this send
@@ -832,7 +833,7 @@ function dispatch_message_retryable(array $user, string $originator, array $dest
     // an in-flight retry is not yet a final outcome, and logging every attempt would double-count
     // one logical send across its retries.
     if ($isTerminal) {
-        send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta, sms_parts($content));
+        send_dimension_log_record($organizationId ?: null, message_class_from_pricing_type($messageType), $originator, $refType, $destinations, is_array($sentDestinations) ? $sentDestinations : [], $gatewayMeta, sms_parts_for_sender($content, $originator));
     }
     $settlement = sms_pricing_settlement($priced, $sentDestinations, $sentCount);
     if ($worstCaseCost > 0 && $isTerminal) {
@@ -1631,8 +1632,9 @@ function bulk_queue_job(
     // across two price periods — and the per-row price is then FROZEN onto the item itself below,
     // so the worker settles at the accepted rate no matter how long the queue takes or how many
     // times a row is retried (STEP 24).
+    $partLimits = sms_part_limits_for_sender($originator);
     $pricedMessages = array_map(
-        static fn(array $it): array => ['mobile' => (string)$it['mobile'], 'segments' => sms_parts((string)$it['content']), 'encoding' => sms_encoding((string)$it['content'])],
+        static fn(array $it): array => ['mobile' => (string)$it['mobile'], 'segments' => sms_parts((string)$it['content'], $partLimits), 'encoding' => sms_encoding((string)$it['content'])],
         $items
     );
     $priced = sms_pricing_price_messages($pricedMessages, $originator, $messageType, null, $isAdmin, $userId);
@@ -1645,7 +1647,7 @@ function bulk_queue_job(
     $totalCost = $priced['total_cost'];
 
     try {
-        $jobId = db_transaction(function (PDO $db) use ($user, $userId, $isAdmin, $type, $title, $originator, $template, $throttleCount, $throttleMinutes, $items, $totalCost, $priced, $messageClass): int {
+        $jobId = db_transaction(function (PDO $db) use ($user, $userId, $isAdmin, $type, $title, $originator, $template, $throttleCount, $throttleMinutes, $items, $totalCost, $priced, $messageClass, $partLimits): int {
             // Phase 6: organization_id comes only from $user['organization_id'] (server-resolved by
             // require_login()/current_organization() for the caller — never trusted from request
             // input) — NULL for an install that hasn't run tenant-backfill yet, which is fine, the
@@ -1720,7 +1722,7 @@ function bulk_queue_job(
                     $row[] = isset($it['source_ref']) ? (int)$it['source_ref'] : null;
                 }
                 if ($withParts) {
-                    $row[] = sms_parts((string)$it['content']);
+                    $row[] = sms_parts((string)$it['content'], $partLimits);
                 }
                 $ins->execute($row);
             }
@@ -2694,7 +2696,8 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
 
     // $batched: defer each item's row/counter writes and flush them set-based at the end. Only safe
     // inside the transaction below (all or nothing); the fallback path settles item by item.
-    $finalizeAll = static function (bool $batched) use ($db, $items, $ctx, $ok, $info, $retryable, $gatewayMeta, $accepted): int {
+    $partLimits = sms_part_limits_for_sender($originator);
+    $finalizeAll = static function (bool $batched) use ($db, $items, $ctx, $ok, $info, $retryable, $gatewayMeta, $accepted, $partLimits): int {
         $sent = 0;
         $deferred = $batched ? ['sent' => [], 'failed' => [], 'commits' => []] : null;
         foreach ($items as $item) {
@@ -2702,7 +2705,7 @@ function bulk_send_group(PDO $db, array $items, array $ctx): int {
             // matters here even though it is a fallback: bulk_finalize_item() only falls back to it when
             // the row's frozen price is NULL (pre-migration rows), but a wrong count in that fallback
             // would misprice exactly the rows Phase 9C makes it possible to co-batch with different text.
-            $itemParts = sms_parts((string)$item['content']);
+            $itemParts = sms_parts((string)$item['content'], $partLimits);
             if (bulk_finalize_item($db, $item, $ctx, (bool)$ok, (string)$info, $itemParts, (bool)$retryable, $gatewayMeta, $accepted, $deferred)) {
                 $sent++;
             }

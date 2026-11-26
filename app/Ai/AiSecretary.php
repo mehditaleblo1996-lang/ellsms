@@ -312,11 +312,21 @@ function ai_secretary_is_mobile(string $number): bool {
 }
 
 /** Pure: characters that fit in $parts SMS parts — Persian (UCS-2) by default, or GSM-7 Latin text. */
-function ai_secretary_part_chars(int $parts, bool $unicode = true): int {
+function ai_secretary_part_chars(int $parts, bool $unicode = true, ?array $limits = null): int {
+    $l = sms_part_limits_normalize($limits);
     if (!$unicode) {
-        return $parts <= 1 ? 160 : $parts * 153;
+        return $parts <= 1 ? $l['en_single'] : $parts * $l['en_multi'];
     }
-    return $parts <= 1 ? 70 : $parts * 67;
+    return $parts <= 1 ? $l['fa_single'] : $parts * $l['fa_multi'];
+}
+
+/**
+ * The part sizes an assistant's answers are counted with: those of the gateway its SMS line sends
+ * through (sms_part_limits_for_sender(), docs/gateway-part-limits.md); the default for a Telegram line.
+ */
+function ai_secretary_part_limits(array $assistant): array {
+    $line = (string)($assistant['line'] ?? '');
+    return $line === '' || str_starts_with($line, 'tg:') ? SMS_PART_LIMITS_DEFAULT : sms_part_limits_for_sender($line);
 }
 
 /**
@@ -351,18 +361,18 @@ function ai_secretary_chat(array $cfg, array $model, array $messages, int $maxTo
  * fits, with «…» when something was cut. Whitespace runs are collapsed and markdown emphasis is
  * dropped first, since an SMS shows it literally.
  */
-function ai_secretary_fit_parts(string $text, int $maxParts): string {
+function ai_secretary_fit_parts(string $text, int $maxParts, ?array $limits = null): string {
     $text = str_replace(["\r\n", "\r"], "\n", $text);
     $text = preg_replace('/\*\*|__|`{1,3}|^#{1,6}\s*/mu', '', $text) ?? $text;
     $text = preg_replace("/[ \t]+/u", ' ', $text) ?? $text;
     $text = trim(preg_replace("/\n{3,}/u", "\n\n", $text) ?? $text);
     $maxParts = max(1, $maxParts);
-    if ($text === '' || sms_parts($text) <= $maxParts) {
+    if ($text === '' || sms_parts($text, $limits) <= $maxParts) {
         return $text;
     }
     // The same Unicode test sms_parts() applies: any character outside printable ASCII.
     $unicode = (bool)preg_match('/[^\x20-\x7E\r\n]/u', $text);
-    $limit = min(mb_strlen($text), ai_secretary_part_chars($maxParts, $unicode) + 1);
+    $limit = min(mb_strlen($text), ai_secretary_part_chars($maxParts, $unicode, $limits) + 1);
     while ($limit > 1) {
         $cut = mb_substr($text, 0, $limit - 1);
         // Prefer ending on a sentence; otherwise on a word; otherwise a hard cut.
@@ -375,12 +385,12 @@ function ai_secretary_fit_parts(string $text, int $maxParts): string {
         } else {
             $candidate = rtrim($cut) . '…';
         }
-        if (sms_parts($candidate) <= $maxParts) {
+        if (sms_parts($candidate, $limits) <= $maxParts) {
             return $candidate;
         }
         $limit -= max(1, (int)(($limit) * 0.05));
     }
-    return mb_substr($text, 0, ai_secretary_part_chars($maxParts, $unicode) - 1) . '…';
+    return mb_substr($text, 0, ai_secretary_part_chars($maxParts, $unicode, $limits) - 1) . '…';
 }
 
 /**
@@ -389,7 +399,7 @@ function ai_secretary_fit_parts(string $text, int $maxParts): string {
  */
 function ai_secretary_system_prompt(array $assistant, array $ctx = []): string {
     $parts = max(1, (int)$assistant['max_parts']);
-    $chars = ai_secretary_part_chars($parts);
+    $chars = ai_secretary_part_chars($parts, true, ai_secretary_part_limits($assistant));
     $name = trim((string)($assistant['business_name'] ?? ''));
     $lines = [];
     if (($assistant['mode'] ?? 'business') === 'general') {
@@ -734,7 +744,7 @@ function ai_secretary_generate(array $assistant, array $model, array $history, s
         throw new AiProviderException('empty_response');
     }
     return [
-        'text' => ai_secretary_fit_parts($text, $parts),
+        'text' => ai_secretary_fit_parts($text, $parts, ai_secretary_part_limits($assistant)),
         'model' => $model,
         'input_tokens' => $in, 'output_tokens' => $out, 'tokens_estimated' => $unknownUsage,
         'latency_ms' => $latency,
@@ -818,7 +828,7 @@ function ai_secretary_process_job(array $job): void {
             db()->prepare('UPDATE ellsms_ai_jobs SET model_id = ?, reply_text = ?, reply_parts = ?, input_tokens = ?, output_tokens = ?,
                                   ' . (ai_billing_available() ? 'tokens_estimated = ' . ($answer['tokens_estimated'] ? 1 : 0) . ',' : '') . '
                                   cost_estimate = ?, ai_latency_ms = ?, error_code = NULL WHERE id = ?')
-                ->execute([(int)$model['id'], $reply, sms_parts($reply), $answer['input_tokens'], $answer['output_tokens'],
+                ->execute([(int)$model['id'], $reply, sms_parts($reply, ai_secretary_part_limits($assistant)), $answer['input_tokens'], $answer['output_tokens'],
                            $answer['cost'], $answer['latency_ms'], $jobId]);
         } catch (AiProviderException $e) {
             $attempts = (int)$job['attempt_count'];
@@ -834,9 +844,9 @@ function ai_secretary_process_job(array $job): void {
                     'info' => mb_strimwidth($e->getMessage(), 0, 500, '…')]);
                 return;
             }
-            $reply = ai_secretary_fit_parts($fallback, (int)$assistant['max_parts']);
+            $reply = ai_secretary_fit_parts($fallback, (int)$assistant['max_parts'], ai_secretary_part_limits($assistant));
             db()->prepare('UPDATE ellsms_ai_jobs SET model_id = ?, reply_text = ?, reply_parts = ?, is_fallback = 1, error_code = ?, info = ? WHERE id = ?')
-                ->execute([(int)$model['id'], $reply, sms_parts($reply), $e->errorCode, mb_strimwidth($e->getMessage(), 0, 500, '…'), $jobId]);
+                ->execute([(int)$model['id'], $reply, sms_parts($reply, ai_secretary_part_limits($assistant)), $e->errorCode, mb_strimwidth($e->getMessage(), 0, 500, '…'), $jobId]);
         }
     }
 
@@ -855,7 +865,7 @@ function ai_secretary_process_job(array $job): void {
             $fields['ai_charge'] = $charge['amount'];
         }
         ai_secretary_finish($jobId, 'sent', $fields);
-        Logger::info('ai.secretary.sent', ['job_id' => $jobId, 'line' => $job['line'], 'parts' => sms_parts($reply), 'ai_charge' => $charge['amount'] ?? null]);
+        Logger::info('ai.secretary.sent', ['job_id' => $jobId, 'line' => $job['line'], 'parts' => sms_parts($reply, ai_secretary_part_limits($assistant)), 'ai_charge' => $charge['amount'] ?? null]);
         return;
     }
     if ($retryable && $sendAttempts < job_max_attempts()) {
@@ -954,7 +964,7 @@ function ai_conversation_manual_reply(array $assistant, string $sender, string $
     if (!$ok) throw new AppException('ارسال پاسخ ناموفق بود: ' . $info);
     db()->prepare("INSERT INTO ellsms_ai_jobs (inbound_key, kind, assistant_id, user_id, line, sender, content, status, reply_text, reply_parts, info, completed_at)
                    VALUES (?, 'manual', ?, ?, ?, ?, '', 'sent', ?, ?, ?, NOW())")
-        ->execute([$ref, (int)$assistant['id'], (int)$assistant['user_id'], (string)$assistant['line'], $sender, $text, sms_parts($text),
+        ->execute([$ref, (int)$assistant['id'], (int)$assistant['user_id'], (string)$assistant['line'], $sender, $text, sms_parts($text, ai_secretary_part_limits($assistant)),
                    'پاسخ اپراتور (کاربر #' . $actorId . ')']);
     audit($actorId, 'ai.conversation.manual_reply', json_encode(['line' => $assistant['line'], 'sender' => $sender]) ?: '');
 }

@@ -192,7 +192,7 @@ $sharedOtpOpen = !$myNumbers;
 require __DIR__ . '/../app/views/shared_otp_send_card.php';
 ?>
 <?php require_once __DIR__ . '/../app/views/sms_composer.php'; ?>
-<form method="post" data-composer data-composer-estimate="/send-estimate.php" data-composer-live-max="<?= live_cost_max_recipients() ?>">
+<form method="post" data-composer data-composer-estimate="/send-estimate.php" data-composer-live-max="<?= live_cost_max_recipients() ?>" data-part-limits="<?= e(json_encode(sms_part_limits_for_senders(array_column($myNumbers, 'number')))) ?>">
 <?= csrf_field() ?>
 <div class="composer-layout">
 <div class="composer-main">

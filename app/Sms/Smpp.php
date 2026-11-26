@@ -91,11 +91,14 @@ function smpp_submit_deadline_ms(int $timeoutMs, int $submitTimeoutMs): int {
     return max(5000, $timeoutMs - max(1000, $submitTimeoutMs) - 5000 - 15000);
 }
 
-/** The most parts any of the send's texts needs — the bridge spends one TPS token per part. */
-function smpp_send_parts(array $input): int {
-    $parts = sms_parts((string)($input['message'] ?? ''));
+/**
+ * The most parts any of the send's texts needs — the bridge spends one TPS token per part. Counted with
+ * the gateway's own part sizes ($limits, sms_gateway_part_limits()), which the bridge splits with too.
+ */
+function smpp_send_parts(array $input, ?array $limits = null): int {
+    $parts = sms_parts((string)($input['message'] ?? ''), $limits);
     foreach ((array)($input['messages'] ?? []) as $text) {
-        $parts = max($parts, sms_parts((string)$text));
+        $parts = max($parts, sms_parts((string)$text, $limits));
     }
     return max(1, $parts);
 }
@@ -314,7 +317,7 @@ function smpp_gateway_send(array $connector, array $input, ?int $routeId, ?int $
     $perRecipient = is_array($input['messages'] ?? null) ? $input['messages'] : null;
     $tps = max(1, (int)($connector['smpp']['tps'] ?? 50));
     $submitTimeoutMs = (int)($connector['smpp']['submit_timeout_ms'] ?? 10000);
-    $parts = smpp_send_parts($input);
+    $parts = smpp_send_parts($input, sms_gateway_part_limits((int)$connector['gateway_id']));
     $budgetEnd = microtime(true) + smpp_send_budget_ms() / 1000;
     $sent = [];
     $messageIds = [];

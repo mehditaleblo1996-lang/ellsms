@@ -626,6 +626,9 @@ an organization permission, because a gateway decides where *every* tenant's mes
 
 Tabs: connectors, parameters, operators, secrets, cURL import, request preview.
 
+The settings tab also has **«تعداد کاراکتر هر پارت»**: the gateway's own SMS part sizes, which every
+send through it is counted and charged with — `docs/gateway-part-limits.md`.
+
 The **cURL import assistant** parses a pasted provider example into a draft. It is never executed —
 not by `shell_exec`, not by `proc_open`, not by a "safe" wrapper. Executing a command pasted into a
 web form would be remote code execution wearing a helpful hat. Credentials found in the pasted command

@@ -159,7 +159,8 @@ by (operator, encoding, parts), with the send's user, organization, line and cha
 ## SMS parts everywhere
 
 A part is one SMS segment: a Unicode (Persian) text up to 70 characters is one part, longer ones 67
-characters a part; an all-Latin text up to 160 is one part, longer ones 153 a part (`sms_parts()`).
+characters a part; an all-Latin text up to 160 is one part, longer ones 153 a part (`sms_parts()`) — the
+defaults; a gateway can set its own sizes (`docs/gateway-part-limits.md`).
 Every report reads the count stored on the message row (`parts`, the count the send was priced with)
 and falls back to the text for a row not filled yet (`message_parts_sql()`); the legacy backend's
 `outbound_message` from its text. This report labels it «بخش», as in its design; the other reports

@@ -145,7 +145,8 @@ public final class GatewayRuntime implements MessageReceiverListener {
         if (!cfg.sendEnabled()) return fail(recipient, 0, "sending is disabled for this gateway", "unavailable", null, true);
         Codec.Encoded enc = Codec.encode(text, cfg.dataCoding());
         boolean payload = "payload".equals(cfg.longMessage());
-        List<byte[]> chunks = payload ? List.of(enc.bytes()) : Codec.split(enc);
+        int[] sizes = cfg.partChars(enc.dataCoding());
+        List<byte[]> chunks = payload ? List.of(enc.bytes()) : Codec.split(enc, sizes[0], sizes[1]);
         int total = chunks.size();
         int ref = concatRef.incrementAndGet() & 0xFFFF;
         String destination = formatDestination(recipient);

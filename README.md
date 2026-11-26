@@ -275,6 +275,18 @@ for the admin. Messages sent before the migration keep the old rules. Migration
 reports these as `undelivered`). SMPP gateways have their own receipt mapping (default: `UNDELIV` and
 `EXPIRED` → `undelivered`; see the SMPP section above). See [`docs/delivery-states.md`](docs/delivery-states.md).
 
+## Characters per SMS part, per gateway (تعداد کاراکتر هر پارت)
+
+The default part sizes are Persian 70 (one-part message) / 67 (each part of a longer one) and Latin
+160 / 153. A platform admin can change the four numbers for each gateway on **Platform Admin →
+درگاه‌های پیامک → (gateway) → «تعداد کاراکتر هر پارت»** (empty = default). A send is counted — preview,
+live counter on «ارسال پیامک», price, wallet charge, the stored «تعداد پارت» — with the numbers of the
+gateway its **sender line** goes out through (the number's pinned gateway, else its route's gateway,
+else the default gateway); with no sender line the defaults apply. An SMPP gateway's bridge also splits
+the text with them (at most 70/67/160/153 there). API sends and previews follow the same rule; no route
+or setting changes. Migration `db/migrations/2026_11_29_gateway_part_limits.sql`. See
+[`docs/gateway-part-limits.md`](docs/gateway-part-limits.md).
+
 ## Status report (گزارش وضعیت‌ها) and SMS parts
 
 **«گزارش و دریافت» → «گزارش وضعیت‌ها»** (`/messages/reports/status`, `public/status-report.php`) shows, per
@@ -739,6 +751,7 @@ updated in the same change** — see `CLAUDE.md`.
 **Sending & gateways**
 [sms-gateway-connectors](docs/sms-gateway-connectors.md) ·
 [smpp-gateway](docs/smpp-gateway.md) ·
+[gateway-part-limits](docs/gateway-part-limits.md) ·
 [number-gateway](docs/number-gateway.md) ·
 [sms-callbacks](docs/sms-callbacks.md) ·
 [provider-response-normalization](docs/provider-response-normalization.md) ·

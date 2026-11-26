@@ -339,7 +339,8 @@ function backend_record_gateway_rejection(
         }
         $withParts = message_parts_available('ellsms_message_attempts') && isset($transport['content']);
         if ($withParts) {
-            $values[] = sms_parts((string)$transport['content']);
+            // Counted with the part sizes of the gateway that took it (app/SmsPartLimits.php).
+            $values[] = sms_parts((string)$transport['content'], sms_gateway_part_limits((int)($transport['gateway_id'] ?? 0)));
         }
         // «عامل ارسال پیام» (app/SendContext.php), once 2026_11_11_status_report.sql has run.
         $withChannel = isset($transport['send_channel']) && send_channel_column_available('ellsms_message_attempts');
@@ -457,7 +458,7 @@ function backend_record_gateway_send(
         $values[] = isset($transport['content']) ? (string)$transport['content'] : null;
     }
     if ($withParts) {
-        $values[] = sms_parts((string)$transport['content']);
+        $values[] = sms_parts((string)$transport['content'], sms_gateway_part_limits((int)$gatewayId));
     }
     if ($withChannel) {
         $values[] = (string)$transport['send_channel'];

@@ -122,6 +122,8 @@ function import_job_analyze_pass(array $job): void {
     }
     // «افزودن لغو۱۱» chosen on the send form (app/OptoutSuffix.php) — applied before pricing and dedupe.
     $addOptout = !empty($job['add_optout_suffix']);
+    // Part sizes of the gateway the job's sender line goes out through (app/SmsPartLimits.php).
+    $partLimits = sms_part_limits_for_sender((string)($job['originator'] ?? ''));
 
     $dedupeIns = $db->prepare(
         'INSERT IGNORE INTO ellsms_import_dedupe (import_job_id, mobile, content_fingerprint, content, segments)
@@ -208,7 +210,7 @@ function import_job_analyze_pass(array $job): void {
             if (isset($blockedMobiles[$c['mobile']])) {
                 continue;
             }
-            $toPrice[] = ['mobile' => $c['mobile'], 'segments' => sms_parts($c['content']), 'encoding' => sms_encoding($c['content'])];
+            $toPrice[] = ['mobile' => $c['mobile'], 'segments' => sms_parts($c['content'], $partLimits), 'encoding' => sms_encoding($c['content'])];
         }
 
         $priced = null;
@@ -229,7 +231,7 @@ function import_job_analyze_pass(array $job): void {
                 continue;
             }
 
-            $segments = sms_parts($c['content']);
+            $segments = sms_parts($c['content'], $partLimits);
             $dedupeIns->execute([$jobId, $c['mobile'], $c['fingerprint'], $c['content'], $segments]);
             if ($dedupeIns->rowCount() === 0) {
                 $chunkCounters['duplicate']++;
@@ -462,6 +464,7 @@ function import_process_insert_chunk(array $chunk): void {
         import_chunk_failed($chunkId, 'وضعیت درخواست واردسازی نامعتبر است.');
         return;
     }
+    $partLimits = sms_part_limits_for_sender((string)($job['originator'] ?? ''));
 
     $bulkSt = $db->prepare('SELECT id FROM ellsms_bulk_jobs WHERE source_import_job_id = ? AND status = \'staged\'');
     $bulkSt->execute([$jobId]);
@@ -523,13 +526,13 @@ function import_process_insert_chunk(array $chunk): void {
                 (string)($p['group_key'] ?? ''),
             ];
             if (count($insertBuffer) >= $batchSize) {
-                import_insert_bulk_items_batch($db, $insertBuffer);
+                import_insert_bulk_items_batch($db, $insertBuffer, $partLimits);
                 $inserted += count($insertBuffer);
                 $insertBuffer = [];
             }
         }
         if ($insertBuffer !== []) {
-            import_insert_bulk_items_batch($db, $insertBuffer);
+            import_insert_bulk_items_batch($db, $insertBuffer, $partLimits);
             $inserted += count($insertBuffer);
         }
 
@@ -548,17 +551,18 @@ function import_process_insert_chunk(array $chunk): void {
 /**
  * Insert a bounded batch of bulk_items rows in a single multi-row statement. Each row's SMS part
  * count (sms_parts() of its text, index 2) is added here, once the column exists
- * (app/MessageParts.php), so callers pass the same 8 values as before.
+ * (app/MessageParts.php), so callers pass the same 8 values as before. $partLimits are the part sizes of
+ * the job's sender line (sms_part_limits_for_sender()); null = the default.
  *
  * @param list<array{0:int,1:string,2:string,3:int,4:int,5:string,6:?int,7:string}> $rows
  */
-function import_insert_bulk_items_batch(PDO $db, array $rows): void {
+function import_insert_bulk_items_batch(PDO $db, array $rows, ?array $partLimits = null): void {
     if ($rows === []) {
         return;
     }
     $withParts = message_parts_available('ellsms_bulk_items');
     if ($withParts) {
-        $rows = array_map(static fn(array $r): array => [...array_values($r), sms_parts((string)$r[2])], $rows);
+        $rows = array_map(static fn(array $r): array => [...array_values($r), sms_parts((string)$r[2], $partLimits)], $rows);
     }
     $placeholders = implode(',', array_fill(0, count($rows), $withParts ? '(?,?,?,?,?,?,?,?,?)' : '(?,?,?,?,?,?,?,?)'));
     $flat = array_merge([], ...$rows);

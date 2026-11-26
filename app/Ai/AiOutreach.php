@@ -142,7 +142,7 @@ function ai_outreach_write(array $assistant, array $model, array $dataset, array
     $promptChars = array_sum(array_map(static fn(array $m): int => mb_strlen($m['content']), $messages));
     $billable = ai_billable_tokens($reply['input_tokens'], $reply['output_tokens'], $promptChars, mb_strlen($reply['text']));
     if (trim($text) === '') throw new AiProviderException('empty_response');
-    return ['text' => ai_secretary_fit_parts($text, $parts), 'usage' => [
+    return ['text' => ai_secretary_fit_parts($text, $parts, ai_secretary_part_limits($assistant)), 'usage' => [
         'input_tokens' => $billable['input'], 'output_tokens' => $billable['output'], 'estimated' => $billable['estimated'],
         'cost' => ai_call_cost($reply['cost'] ?? null, $billable['input'], $billable['output'], $model),
         'latency_ms' => $reply['latency_ms'],
@@ -257,7 +257,7 @@ function ai_outreach_process_job(array $job, array $assistant, array $user): voi
         $reply = $written['text'];
         db()->prepare('UPDATE ellsms_ai_jobs SET model_id = ?, reply_text = ?, reply_parts = ?, input_tokens = ?, output_tokens = ?, tokens_estimated = ?,
                               cost_estimate = ?, ai_latency_ms = ? WHERE id = ?')
-            ->execute([(int)$model['id'], $reply, sms_parts($reply), $written['usage']['input_tokens'], $written['usage']['output_tokens'],
+            ->execute([(int)$model['id'], $reply, sms_parts($reply, ai_secretary_part_limits($assistant)), $written['usage']['input_tokens'], $written['usage']['output_tokens'],
                        $written['usage']['estimated'] ? 1 : 0, $written['usage']['cost'], $written['usage']['latency_ms'], $jobId]);
     }
 

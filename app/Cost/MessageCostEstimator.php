@@ -83,14 +83,18 @@ function cost_preview_reconfirm_percent(): float {
  * The encoding test mirrors sms_parts()'s own: anything outside printable ASCII + CR/LF forces
  * UCS-2. That means a Persian message is ALWAYS unicode (70/67 char segments), which is exactly
  * why "one recipient = one SMS" is a wrong assumption this preview exists to correct.
+ *
+ * $limits are the part sizes of the gateway the sender line goes out through
+ * (sms_part_limits_for_sender(), docs/gateway-part-limits.md); null = the default 70/67/160/153.
  */
-function cost_estimate_segments(string $content): array {
+function cost_estimate_segments(string $content, ?array $limits = null): array {
+    $l = sms_part_limits_normalize($limits);
     $isUnicode = (bool)preg_match('/[^\x20-\x7E\r\n]/u', $content);
     $length    = mb_strlen($content, 'UTF-8');
-    $segments  = sms_parts($content);
+    $segments  = sms_parts($content, $l);
 
-    $singleLimit = $isUnicode ? 70 : 160;
-    $multiLimit  = $isUnicode ? 67 : 153;
+    $singleLimit = $isUnicode ? $l['fa_single'] : $l['en_single'];
+    $multiLimit  = $isUnicode ? $l['fa_multi'] : $l['en_multi'];
 
     if ($segments <= 1) {
         // Room left before this message would need a second segment at all.
@@ -373,7 +377,7 @@ function estimate_message_cost(array $user, string $originator, string|array $de
         return ['ok' => false, 'reason' => 'no_eligible_recipients', 'recipients' => $recipients];
     }
 
-    $segmentInfo = cost_estimate_segments($content);
+    $segmentInfo = cost_estimate_segments($content, sms_part_limits_for_sender((string)$sender['originator']));
     $recipientSummary = [
         'input_count'       => $recipients['input_count'],
         'invalid_count'     => $recipients['invalid_count'],
@@ -488,13 +492,14 @@ function estimate_bulk_cost(array $user, string $originator, array $items, bool 
 
     $ceiling = cost_preview_exact_recipient_ceiling();
     $exact = $eligibleCount <= $ceiling;
+    $partLimits = sms_part_limits_for_sender((string)$sender['originator']); // app/SmsPartLimits.php
 
     $distribution = [];
     $messages = [];
     if ($exact) {
         $totalSegments = 0;
         foreach ($candidates as $candidate) {
-            $segments = sms_parts($candidate['content']);
+            $segments = sms_parts($candidate['content'], $partLimits);
             $totalSegments += $segments;
             $distribution[(string)$segments] = ($distribution[(string)$segments] ?? 0) + 1;
             $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $segments, 'encoding' => sms_encoding($candidate['content'])];
@@ -510,7 +515,7 @@ function estimate_bulk_cost(array $user, string $originator, array $items, bool 
         $sample = array_slice($candidates, 0, $ceiling);
         $sampleSegments = 0;
         foreach ($sample as $candidate) {
-            $segments = sms_parts($candidate['content']);
+            $segments = sms_parts($candidate['content'], $partLimits);
             $sampleSegments += $segments;
             $distribution[(string)$segments] = ($distribution[(string)$segments] ?? 0) + 1;
             $messages[] = ['mobile' => $candidate['mobile'], 'segments' => $segments, 'encoding' => sms_encoding($candidate['content'])];
@@ -558,7 +563,7 @@ function estimate_bulk_cost(array $user, string $originator, array $items, bool 
             'empty_content_count' => $emptyContent,
             'eligible_count'      => $eligibleCount,
         ],
-        'message'  => cost_estimate_segments($longest) + ['represents' => 'longest_item'],
+        'message'  => cost_estimate_segments($longest, $partLimits) + ['represents' => 'longest_item'],
         'segments' => [
             'total'        => $totalSegments,
             'distribution' => $distribution,

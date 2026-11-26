@@ -45,14 +45,19 @@ public final class Store implements AutoCloseable {
     }
 
     public List<GatewayConfig> loadGateways() throws SQLException {
+        // The per-gateway part sizes (db/migrations/2026_11_29_gateway_part_limits.sql); 0 before that migration.
+        String partCols = hasPartColumns()
+            ? "COALESCE(g.part_fa_single, 0) part_fa_single, COALESCE(g.part_fa_multi, 0) part_fa_multi, "
+              + "COALESCE(g.part_en_single, 0) part_en_single, COALESCE(g.part_en_multi, 0) part_en_multi"
+            : "0 part_fa_single, 0 part_fa_multi, 0 part_en_single, 0 part_en_multi";
         String sql = """
-            SELECT g.id, g.code, g.config_version, g.send_enabled, c.*,
+            SELECT g.id, g.code, g.config_version, g.send_enabled, %s, c.*,
                    s.ciphertext, s.nonce, s.tag, s.key_fingerprint
               FROM ellsms_sms_gateways g
               JOIN ellsms_sms_gateway_smpp_connectors c ON c.gateway_id = g.id
               LEFT JOIN ellsms_sms_gateway_secrets s ON s.gateway_id = g.id AND s.secret_key = 'smpp_password'
              WHERE g.protocol = 'smpp' AND g.status = 'active'
-             ORDER BY g.id""";
+             ORDER BY g.id""".formatted(partCols);
         List<GatewayConfig> out = new ArrayList<>();
         try (Connection c = ds.getConnection(); PreparedStatement st = c.prepareStatement(sql); ResultSet rs = st.executeQuery()) {
             while (rs.next()) {
@@ -76,10 +81,20 @@ public final class Store implements AutoCloseable {
                     Math.max(5, rs.getInt("enquire_link_s")), Math.max(1, rs.getInt("reconnect_delay_s")), Math.max(1000, rs.getInt("submit_timeout_ms")),
                     rs.getInt("source_ton"), rs.getInt("source_npi"), rs.getInt("dest_ton"), rs.getInt("dest_npi"),
                     rs.getString("data_coding"), rs.getString("long_message"), rs.getInt("registered_delivery"), rs.getInt("validity_minutes"),
-                    rs.getString("destination_format"), rs.getBoolean("receive_enabled"), passwordError));
+                    rs.getString("destination_format"), rs.getBoolean("receive_enabled"), passwordError,
+                    rs.getInt("part_fa_single"), rs.getInt("part_fa_multi"), rs.getInt("part_en_single"), rs.getInt("part_en_multi")));
             }
         }
         return out;
+    }
+
+    private boolean hasPartColumns() throws SQLException {
+        try (Connection c = ds.getConnection(); PreparedStatement st = c.prepareStatement(
+            "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() "
+            + "AND table_name = 'ellsms_sms_gateways' AND column_name = 'part_fa_single'");
+             ResultSet rs = st.executeQuery()) {
+            return rs.next() && rs.getInt(1) > 0;
+        }
     }
 
     public void insertDlr(int gatewayId, String messageId, String stat, String err, Instant doneAt) throws SQLException {

@@ -35,6 +35,24 @@ class CodecAndVaultTest {
     }
 
     @Test
+    void splitsWithTheGatewaysOwnPartSizes() {
+        // Persian 60 single / 50 per part (characters): 61 chars -> 2 parts of 50 + 11 characters.
+        List<byte[]> fa = Codec.split(Codec.encode("س".repeat(61), "auto"), 60, 50);
+        assertEquals(2, fa.size());
+        assertEquals(100, fa.get(0).length);
+        assertEquals(1, Codec.split(Codec.encode("س".repeat(60), "auto"), 60, 50).size());
+        // Latin 100 / 90.
+        List<byte[]> en = Codec.split(Codec.encode("a".repeat(181), "auto"), 100, 90);
+        assertEquals(3, en.size());
+        assertEquals(90, en.get(0).length);
+        // Larger than one SMS can carry: capped to the protocol size.
+        assertEquals(2, Codec.split(Codec.encode("س".repeat(71), "auto"), 80, 80).size());
+        assertEquals(134, Codec.split(Codec.encode("س".repeat(71), "auto"), 80, 80).get(0).length);
+        // 0 = protocol default.
+        assertEquals(1, Codec.split(Codec.encode("س".repeat(70), "auto"), 0, 0).size());
+    }
+
+    @Test
     void autoPicksGsmOrUcs2AndSplitsOnCharacterBoundaries() {
         assertEquals(Codec.DC_GSM, Codec.encode("hello", "auto").dataCoding());
         assertEquals(Codec.DC_UCS2, Codec.encode("سلام", "auto").dataCoding());

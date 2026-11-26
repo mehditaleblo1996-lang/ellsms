@@ -100,6 +100,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             }
 
+            case 'part_limits_save': {
+                // «تعداد کاراکتر هر پارت» (app/SmsPartLimits.php, docs/gateway-part-limits.md).
+                $id = (int)$_POST['gateway_id'];
+                $st = $db->prepare('SELECT protocol FROM ellsms_sms_gateways WHERE id = ?');
+                $st->execute([$id]);
+                $protocol = $st->fetchColumn();
+                if ($protocol === false) {
+                    flash('error', 'درگاه پیدا نشد.');
+                    break;
+                }
+                $r = sms_gateway_part_limits_save($me, $id, (array)($_POST['part'] ?? []), $protocol === 'smpp');
+                flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'تعداد کاراکتر هر پارت ذخیره شد.' : $r['error']);
+                break;
+            }
+
             case 'gateway_default': {
                 $id = (int)$_POST['gateway_id'];
                 // default_slot is the application-maintained uniqueness column (never a generated
@@ -598,6 +613,27 @@ require __DIR__ . '/../app/views/header.php';
     <label><input type="checkbox" name="status_enabled" value="1"<?= $gateway['status_enabled'] ? ' checked' : '' ?>> استعلام وضعیت تحویل</label>
     <button class="btn btn-primary">ذخیره</button>
   </form>
+</div>
+
+<div class="card">
+  <h2>تعداد کاراکتر هر پارت</h2>
+  <p class="muted">پیامی که از این درگاه ارسال می‌شود با این اعداد پارت‌بندی و هزینه‌اش محاسبه می‌شود (همچنین شمارنده‌ی فرم ارسال برای خط‌هایی که از این درگاه می‌فرستند). خالی بگذارید تا پیش‌فرض استفاده شود: فارسی ۷۰ / ۶۷ و انگلیسی ۱۶۰ / ۱۵۳.<?= $isSmpp ? ' در درگاه SMPP متن پیام هم با همین اعداد تکه می‌شود و بیشتر از ظرفیت یک پیامک (۷۰ / ۶۷ / ۱۶۰ / ۱۵۳) ممکن نیست.' : ' در درگاه HTTP تکه‌کردن متن با خود سرویس‌دهنده است؛ این اعداد را مطابق قرارداد سرویس‌دهنده تنظیم کنید.' ?></p>
+  <?php if (!sms_part_limits_available()): ?>
+    <p class="muted">برای فعال شدن این بخش مایگریشن <span class="ltr">db/migrations/2026_11_29_gateway_part_limits.sql</span> را اجرا کنید.</p>
+  <?php else: ?>
+  <form method="post" class="toolbar">
+    <?= csrf_field() ?><input type="hidden" name="do" value="part_limits_save">
+    <input type="hidden" name="gateway_id" value="<?= $gatewayId ?>"><input type="hidden" name="tab" value="connector">
+    <?php foreach (SMS_PART_LIMIT_LABELS as $partKey => $partLabel): ?>
+      <label><?= e($partLabel) ?>
+        <input type="number" min="1" max="<?= $isSmpp ? SMS_PART_LIMITS_SMPP_MAX[$partKey] : SMS_PART_LIMIT_MAX ?>" name="part[<?= $partKey ?>]" style="width:7em"
+               value="<?= $gateway[SMS_PART_LIMIT_COLUMNS[$partKey]] !== null ? (int)$gateway[SMS_PART_LIMIT_COLUMNS[$partKey]] : '' ?>"
+               placeholder="<?= to_persian_digits((string)SMS_PART_LIMITS_DEFAULT[$partKey]) ?>">
+      </label>
+    <?php endforeach; ?>
+    <button class="btn btn-primary">ذخیره</button>
+  </form>
+  <?php endif; ?>
 </div>
 
 <?php if ($isSmpp) { require __DIR__ . '/../app/views/smpp-gateway-panel.php'; } ?>

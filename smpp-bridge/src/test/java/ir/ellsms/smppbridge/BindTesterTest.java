@@ -35,7 +35,7 @@ class BindTesterTest {
 
     private static GatewayConfig cfg(int port, String bindMode, String password) {
         return new GatewayConfig(9, "t", 1, true, "127.0.0.1", port, false, "ellsms", password, "", "3.4", bindMode,
-            1, 50, 10, 30, 5, 5000, 5, 0, 1, 1, "auto", "udh", 1, 0, "international", true, null);
+            1, 50, 10, 30, 5, 5000, 5, 0, 1, 1, "auto", "udh", 1, 0, "international", true, null, 0, 0, 0, 0);
     }
 
     private static SessionWorker.Snapshot bound() {

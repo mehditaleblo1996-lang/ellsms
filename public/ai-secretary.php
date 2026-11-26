@@ -302,7 +302,7 @@ require __DIR__ . '/../app/views/header.php';
       <label>حداکثر طول پاسخ
         <select name="max_parts">
           <?php for ($p = 1; $p <= 5; $p++): ?>
-            <option value="<?= $p ?>"<?= (int)$editing['max_parts'] === $p ? ' selected' : '' ?>><?= to_persian_digits((string)$p) ?> پارت (حدود <?= to_persian_digits((string)ai_secretary_part_chars($p)) ?> نویسه)</option>
+            <option value="<?= $p ?>"<?= (int)$editing['max_parts'] === $p ? ' selected' : '' ?>><?= to_persian_digits((string)$p) ?> پارت (حدود <?= to_persian_digits((string)ai_secretary_part_chars($p, true, ai_secretary_part_limits($editing))) ?> نویسه)</option>
           <?php endfor; ?>
         </select>
       </label>
@@ -454,7 +454,7 @@ require __DIR__ . '/../app/views/header.php';
       <div style="white-space:pre-wrap;border:1px solid var(--border, #ddd);border-radius:8px;padding:12px;margin-top:12px"><?= e($simulation['text']) ?></div>
       <p class="muted">
         مدل: <?= e($simulation['model']['display_name']) ?> ·
-        <?= to_persian_digits((string)sms_parts($simulation['text'])) ?> پارت (<?= to_persian_digits((string)mb_strlen($simulation['text'])) ?> نویسه) ·
+        <?= to_persian_digits((string)sms_parts($simulation['text'], ai_secretary_part_limits(['line' => $selectedLine]))) ?> پارت (<?= to_persian_digits((string)mb_strlen($simulation['text'])) ?> نویسه) ·
         زمان پاسخ: <span class="mono"><?= (int)$simulation['latency_ms'] ?> ms</span> ·
         توکن: <span class="mono"><?= $simulation['input_tokens'] ?? '—' ?> / <?= $simulation['output_tokens'] ?? '—' ?></span>
         <?php if ($simulation['history'] > 0): ?> · با <?= to_persian_digits((string)$simulation['history']) ?> پیام قبلی این شماره<?php endif; ?>

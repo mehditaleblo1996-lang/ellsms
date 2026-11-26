@@ -368,7 +368,7 @@ function remote_db_ingest(PDO $pdo, array $conn, array $user): array {
         $check = remote_db_check_row($conn, $user, (string)($r[1] ?? ''), (string)($r[2] ?? ''), isset($r[3]) ? (string)$r[3] : null);
         $insert->execute([
             $id, $remoteId, $check['ok'] ? 'claimed' : 'failed', $check['destination'], $check['originator'],
-            $check['ok'] ? sms_parts($check['content']) : null, $check['ok'] ? null : $check['error'],
+            $check['ok'] ? sms_parts_for_sender($check['content'], (string)$check['originator']) : null, $check['ok'] ? null : $check['error'],
         ]);
         if ($insert->rowCount() !== 1) continue; // raced with another insert of the same row
         $rowId = (int)$db->lastInsertId();
