@@ -36,7 +36,10 @@ would count as two characters. The panel forms that take a message text — «ا
 with `sms_text_from_form()` (`app/bootstrap.php`), which turns CRLF/CR into one LF and trims. So a
 newline costs one character whether the text comes from the panel, the API (counted as sent) or the
 shared services (which already normalize). The composer's live meter (`sms-composer.js`) counts
-the same way.
+a newline as one character too, and counts **as the text is typed**: a space or Enter counts the
+moment it is typed, including at the end of the text (a box holding only whitespace is empty).
+Whitespace at the very start or end is trimmed when the message is sent, so the confirmed count can
+be that much lower than the meter showed while typing, never higher.
 
 Pricing takes its segment count from the same function (`app/Sms/Pricing.php`), so the stored
 number is the number of parts the send was charged for.

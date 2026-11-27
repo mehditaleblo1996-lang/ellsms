@@ -2,8 +2,8 @@
  * ELLSMS — send composer (public/send.php, public/new-send.php).
  *
  *  1. Segment meter: characters, parts, and how many characters are left before the next part,
- *     counted exactly as sms_parts() counts the submitted text (sms_text_from_form(): trimmed, a
- *     newline is one character).
+ *     counted as sms_parts() counts the text, live as it is typed: every space and Enter counts at
+ *     once (a newline is one character, as sms_text_from_form() submits it).
  *  2. Recipient stats: valid / invalid / duplicate counts as the numbers are typed, with
  *     normalize_msisdn()'s rules; Persian/Arabic digits are turned into Latin ones in place.
  *  3. Phone preview of the message under the chosen sender line.
@@ -52,13 +52,18 @@
   function sentText() {
     var t = content.value, trimmed = t.replace(/\s+$/, '');
     if (!optoutBox || trimmed === '' || OPTOUT_RE.test(trimmed)) return t;
-    return trimmed + '\n' + optoutBox.dataset.optoutSuffix;
+    // The typed text is kept as is (not trimmed) so a space or Enter at the end counts as it is typed.
+    return t + '\n' + optoutBox.dataset.optoutSuffix;
   }
 
   /* ---------- 1. Segments (mirror of sms_parts() / cost_estimate_segments()) ---------- */
   function analyzeText(raw) {
-    // The server turns the CRLF a browser submits into one LF and trims (sms_text_from_form()).
-    var text = raw.replace(/\r\n?/g, '\n').replace(/^[ \t\n\r\0\x0B]+|[ \t\n\r\0\x0B]+$/g, '');
+    // Counted as typed, so every space and Enter shows up immediately: a newline is one character
+    // (the server turns the CRLF a browser submits into one LF, sms_text_from_form()). Only a box
+    // holding nothing but whitespace counts as empty. Whitespace at the very start or end is trimmed
+    // when the message is sent, so the confirmed count can be that much lower, never higher.
+    var text = raw.replace(/\r\n?/g, '\n');
+    if (!/[^ \t\n\r\0\x0B]/.test(text)) text = '';
     var len = 0, odd = null, chars = 0, ascii = 0;
     for (var ch of text) {
       len++;
