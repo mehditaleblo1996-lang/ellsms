@@ -74,7 +74,7 @@
 .composer-mode input { position: absolute; inset-block-start: 14px; inset-inline-end: 14px; inline-size: 18px; block-size: 18px; margin: 0; accent-color: var(--indigo); }
 .composer-mode strong { display: block; padding-inline-end: 26px; font-size: 15px; }
 .composer-mode span { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.7; }
-.composer-mode:hover { border-color: #c9cdf5; }
+.composer-mode:hover { border-color: var(--accent-300); }
 .composer-mode:has(input:checked) { border-color: var(--indigo); background: var(--tint); }
 .composer-mode:has(input:focus-visible) { outline: 3px solid var(--indigo); outline-offset: 2px; }
 .composer-modes-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }

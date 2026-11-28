@@ -69,7 +69,7 @@ require __DIR__ . '/../app/views/reseller_header.php';
       <label>دامنه <input type="text" name="host" class="ltr" placeholder="sms.example.com" value="<?= e((string)$settings['host']) ?>"></label>
       <label>نام برند * <input type="text" name="brand_name" maxlength="120" value="<?= e($settings['brand_name']) ?>"></label>
       <label>شعار / زیرعنوان <input type="text" name="brand_tagline" maxlength="190" value="<?= e($settings['brand_tagline']) ?>"></label>
-      <label>رنگ اصلی <input type="color" name="primary_color" value="<?= e($settings['primary_color'] !== '' ? $settings['primary_color'] : '#4a32e8') ?>"></label>
+      <label>رنگ اصلی <input type="color" name="primary_color" value="<?= e($settings['primary_color'] !== '' ? $settings['primary_color'] : '#076f7a') ?>"></label>
       <label>لوگو (PNG، JPEG یا WebP، حداکثر ۵۱۲ کیلوبایت) <input type="file" name="logo" accept="image/png,image/jpeg,image/webp"></label>
       <?php if ($settings['logo_file'] !== null): ?>
         <div class="field"><span class="hint">لوگوی فعلی:</span><br><img src="/brand/logo?r=<?= $resellerId ?>&amp;v=<?= e(substr(md5($settings['logo_file']), 0, 8)) ?>" alt="لوگوی فعلی" style="max-height:56px;max-width:220px"></div>
