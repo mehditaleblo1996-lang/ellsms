@@ -30,7 +30,7 @@ The public pages (home, «درباره ما», «تماس با ما», «راه�
 (login, «ثبت‌نام», «تأیید دومرحله‌ای», «خروج») use a **white + graphite + turquoise** identity in a
 60 / 30 / 10 split; the turquoise is the cyan-turquoise of the triangle in the DATIS logo. There is no
 blue and no green in the UI; status colours (success / warning / error) keep their own meaning. The
-logged-in panel keeps its own indigo colours: every value below is scoped to `.lp-body`, `.auth` or
+logged-in panel keeps its own teal glass theme ([panel-ui-review.md](panel-ui-review.md#colours-and-glass-theme)): every value below is scoped to `.lp-body`, `.auth` or
 `.login-body`, never to `:root`.
 
 | Token | Value | Use |

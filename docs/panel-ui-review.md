@@ -1,6 +1,42 @@
 # Panel UI refresh — staging review
 
-The customer panel and administration panel use a light interface while retaining the existing brand hues (`#4a32e8`, `#2e63f6`) and self-hosted Vazirmatn. The sign-in pages and the public marketing pages use the white + graphite + turquoise identity with Estedad instead ([landing.md](landing.md#colours-public-site-and-sign-in-pages)).
+The customer panel and administration panel use a light **teal glass** interface (see [Colours and glass theme](#colours-and-glass-theme)) with self-hosted Vazirmatn. The sign-in pages and the public marketing pages use the white + graphite + turquoise identity with Estedad instead ([landing.md](landing.md#colours-public-site-and-sign-in-pages)).
+
+## Colours and glass theme
+
+The panel's accent is the DATIS brand teal (it used to be indigo `#4a32e8` / blue `#2e63f6`):
+
+| Token (`public/assets/css/style.css`, `:root`) | Value | Use |
+|---|---|---|
+| `--indigo` | `#076f7a` | accent text, active menu item / tab, solid buttons, chart «تحویل‌شده» (5.9:1 on white, 5.3:1 on `--tint`) |
+| `--blue` | `#0a7d89` | links, focus rings, light end of gradients (4.9:1 on white) |
+| `--tint` | `#e8f6f7` | badge and info backgrounds |
+| `--accent-50` … `--accent-300`, `--accent-hover` | `color-mix()` of `--indigo` with white / black | hover, selected and border tints |
+
+The token names `--indigo` / `--blue` are historical and kept on purpose: every component reads them, and
+a reseller's own brand colour (`brand_color_style()` in `app/ResellerPanel.php`) overrides them on
+`:root`. Because the tints are `color-mix()`es of `--indigo`, a reseller host recolours them too. The
+reseller colour picker («رنگ اصلی», `/reseller-settings.php`) now defaults to `#076f7a`.
+
+**Glass theme** (`public/assets/css/panel.css`, «Glass theme», the «light aurora» look):
+- **Background:** large soft teal / cyan / mint colour fields (`.panel::before`, fixed) drift very slowly
+  behind the whole panel.
+- **Floating islands (desktop, above 1100px):** the sidebar and the sticky topbar stand off the screen edges
+  as rounded glass panels with a 14px gap (`--float-gap`); content scrolling up through the gap above the
+  topbar is frosted (`.main::before`).
+- **Frosted panes:** sidebar, topbar, open-page tabs, cards, stat tiles, table frames, tab bars and dropdowns
+  are translucent white with `backdrop-filter: blur(22px) saturate(180%)`, a bright hairline edge, an inner
+  top light and a teal-tinted shadow. Text always sits on near-white, so contrast is unchanged. The
+  «کل پیامک‌های امروز» tile is deep teal glass with a glossy highlight and glow.
+- **Subtle motion:** the aurora drifts, stat tiles lift on hover, a light sweeps across the headline tile on
+  hover, stat numbers fade in and the 7-day chart bars grow in. All of it stops under
+  `prefers-reduced-motion: reduce`.
+- **Fallbacks:** without `backdrop-filter` support the panes are almost opaque white; with
+  `prefers-reduced-transparency: reduce` the aurora is removed and the panes are opaque; the mobile drawer
+  is kept 90% opaque.
+
+The operator report charts (`app/Reports/OperatorReport.php`) use the same teal as their first series
+colour. No migration is needed.
 
 ## Changes
 
@@ -9,7 +45,7 @@ The customer panel and administration panel use a light interface while retainin
 - Measured touch targets, clearer typography, consistent surfaces, controls, tables and spacing. Narrow tables scroll inside their card and have a visible scrolling hint and keyboard access.
 - Short transform/opacity transitions, with reduced-motion support. The sign-in page removes continuously animated background fields and expensive backdrop blur; password-manager autocomplete is enabled.
 - Responsive fixes for the gateway clone source selector and forwarding-line grid at 320px.
-- Form controls (`public/assets/css/panel.css`, «Modern form controls»): text fields and dropdowns share one soft border, hover and indigo focus ring; every single `<select>` draws its own chevron at the inline end; the Persian date/time pickers (`jdate_select()` / `jtime_select()`) render as one grouped field with a calendar mark instead of three loose boxes.
+- Form controls (`public/assets/css/panel.css`, «Modern form controls»): text fields and dropdowns share one soft border, hover and teal focus ring; every single `<select>` draws its own chevron at the inline end; the Persian date/time pickers (`jdate_select()` / `jtime_select()`) render as one grouped field with a calendar mark instead of three loose boxes.
 - File uploads: `public/assets/js/panel.js` turns every `<input type=file>` on a panel page into a drop zone — icon, «فایل را اینجا رها کنید یا انتخاب کنید», the accepted formats as chips (from `accept`), then the chosen file's name and size (an image shows a thumbnail) and a «حذف فایل» button. The native input stays in place, invisible and stretched over the zone, so its id, name, `required`, form submission and page scripts listening for `change` are untouched; clicking and dropping are handled by the browser. Inside a table cell, `.toolbar`, `.lba-actions` or `[data-file-compact]` the zone is a one-line compact control. Inputs already wrapped in `.file-picker` (the profile document tiles) are left as they are. Content loaded later fires `lazy-part:inserted` and is dressed too; `window.panelDressFileInputs(root)` dresses anything else added by script.
 - Dropdown lists: on a mouse/trackpad device (`pointer: fine`) clicking a single `<select>` — or Space / Alt+↓ / F4 on it — opens a styled list (`.csel-pop`, built by `panel.js`) instead of the OS list: selected option with a check mark, disabled options greyed, optgroup headings, arrow/Home/End/PageUp/PageDown/Enter/Escape and type-ahead, and a search box («جست‌وجو…», Persian ی/ک and digits normalised) once there are more than nine options. The `<select>` remains the real control; choosing sets its value and fires `input` and `change`, so inline `onchange` handlers and page scripts work unchanged. Touch devices keep the native picker; wrap a select in `[data-native-select]` to opt it out. Chosen files show a coloured type badge (sheet, PDF, document, audio, video) with a check mark.
 - Local, deferred navigation JavaScript; no new production dependency or remote asset service. CSS is scoped to the authenticated `.panel` body. Existing send-confirmation behavior remains in the shared footer.

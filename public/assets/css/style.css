@@ -1,5 +1,5 @@
 /* ELLSMS — پنل هوشمند پیامک
-   طراحی بر پایه‌ی رنگ‌های لوگو: بنفش‌آبی (indigo) تا آبی روشن، با تایپوگرافی
+   طراحی بر پایه‌ی رنگ برند داتیس: فیروزه‌ای تیره (teal)، با تایپوگرافی
    فارسی یکدست (وزیرمتن) که سلسله‌مراتب را با وزن و اندازه می‌سازد، نه با
    ترکیب چند فونت. اعداد تاریخ و زمان همیشه فارسی؛ شماره‌موبایل و اعداد خام
    (اعتبار، کد) به‌صورت لاتین و چپ‌به‌راست ایزوله می‌مانند تا خوانا و
@@ -12,18 +12,28 @@
 @import url('/assets/css/fonts.css');
 
 :root {
-  --indigo: #4a32e8;
-  --blue:   #2e63f6;
+  /* Brand teal (DATIS logo). The names --indigo / --blue are historical: every component and the
+     reseller white-label override (brand_color_style() in app/ResellerPanel.php) read them, so they
+     keep their names. --indigo is the accent for text, active states and solid buttons (5.9:1 on
+     white, 5.3:1 on --tint); --blue is links and focus rings (4.9:1 on white). */
+  --indigo: #076f7a;
+  --blue:   #0a7d89;
   --ink:    #0b1023;
   --muted:  #5c657d; /* ≥4.5:1 on --card, --canvas, --tint and --line (was #666f87: 4.46 on --tint) */
-  --line:   #e6e4f5;
-  --canvas: #f7f7fb;
-  --tint:   #eef1ff;
+  --line:   #e1ebec;
+  --canvas: #f4f8f9;
+  --tint:   #e8f6f7;
   --card:   #ffffff;
   --ok:     #157347;  --ok-bg:   #e7f8ef;
   --warn:   #b45309;  --warn-bg: #fdf3e3;
   --err:    #c0223a;  --err-bg:  #fdeaee;
   --grad: linear-gradient(120deg, var(--indigo), var(--blue));
+  /* Accent tints derived from --indigo, so a reseller's own brand colour recolours them too. */
+  --accent-50:  color-mix(in srgb, var(--indigo) 6%, #fff);
+  --accent-100: color-mix(in srgb, var(--indigo) 11%, #fff);
+  --accent-200: color-mix(in srgb, var(--indigo) 20%, #fff);
+  --accent-300: color-mix(in srgb, var(--indigo) 36%, #fff);
+  --accent-hover: color-mix(in srgb, var(--indigo) 82%, #000);
   /* --lp-accent is a text/icon accent for the public marketing pages only.
      It defaults to --indigo (a no-op everywhere else) and is overridden to a
      brighter violet inside .lp-body's dark theme below, where plain --indigo
@@ -104,8 +114,8 @@ body {
   color: var(--ink);
   font-feature-settings: "ss01" 1;
   background:
-    radial-gradient(circle at 6% 4%, rgba(74,50,232,.05), transparent 32%),
-    radial-gradient(circle at 96% 96%, rgba(46,99,246,.05), transparent 32%),
+    radial-gradient(circle at 6% 4%, rgba(7,111,122,.05), transparent 32%),
+    radial-gradient(circle at 96% 96%, rgba(17,184,197,.06), transparent 32%),
     var(--canvas);
   overflow-x: hidden;
 }
@@ -298,7 +308,7 @@ input.mono, textarea.mono, input.provider-ref, textarea.api-key {
   font-family: inherit; font-size: var(--fs-xs); font-weight: 500; opacity: .75; unicode-bidi: isolate;
 }
 .stat.stat-accent { background: var(--grad); border: 0; color: #fff; }
-.stat.stat-accent .stat-label { color: #dfe6ff; }
+.stat.stat-accent .stat-label { color: #d8f3f5; }
 
 /* ---------- Forms ---------- */
 label { display: block; font-weight: 600; font-size: var(--fs-sm); line-height: var(--lh-snug); margin-bottom: var(--sp-3); }
@@ -335,7 +345,7 @@ select option, select optgroup {
   white-space: normal;
 }
 select option:disabled { color: #8a94ab; }
-input:focus, select:focus, textarea:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px rgba(46,99,246,.15); }
+input:focus, select:focus, textarea:focus { border-color: var(--blue); outline: none; box-shadow: 0 0 0 3px rgba(10,125,137,.15); }
 .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .hint { font-weight: 400; color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-base); margin-top: var(--sp-1); }
 /* The rules of a new password (password_policy_hint_html()); assets/js/password-policy.js marks each
@@ -1419,7 +1429,7 @@ label.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--in
   padding: 10px 18px; border-radius: 10px; background: #fff; color: #0b1023; font-weight: 700;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .25); text-decoration: none;
 }
-.skip-link:focus { top: 12px; outline: 3px solid #2e63f6; outline-offset: 2px; }
+.skip-link:focus { top: 12px; outline: 3px solid var(--blue); outline-offset: 2px; }
 main:focus { outline: none; }
 input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="true"] { border-color: var(--err); box-shadow: 0 0 0 2px rgba(192, 34, 58, .25); }
 
@@ -1470,7 +1480,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .fwd-lines { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 .fwd-line { border: 1px solid var(--line); border-radius: 14px; background: var(--card); display: flex; flex-direction: column; transition: box-shadow .15s ease, border-color .15s ease; }
 .fwd-line:hover { box-shadow: 0 6px 18px rgba(11,16,35,.06); border-color: #d6d2f2; }
-.fwd-line.is-editing { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(74,50,232,.12); }
+.fwd-line.is-editing { border-color: var(--indigo); box-shadow: 0 0 0 3px rgba(7,111,122,.12); }
 .fwd-line-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px 10px; }
 .fwd-line-number { font-size: var(--fs-lg); font-weight: 800; }
 .fwd-line-label { color: var(--muted); font-size: var(--fs-xs); }
@@ -1544,7 +1554,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .pay-method-icon { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 auto; border-radius: 10px; background: var(--canvas); color: var(--muted);
   transition: background .15s, color .15s; }
 .pay-method-icon svg { width: 22px; height: 22px; }
-.pay-method:hover .pay-method-box { border-color: #c9c2fb; }
+.pay-method:hover .pay-method-box { border-color: #a9dde2; }
 .pay-method input:focus-visible + .pay-method-box { outline: 2px solid var(--blue); outline-offset: 2px; }
 .pay-method input:checked + .pay-method-box { border-color: var(--indigo); background: var(--tint); box-shadow: 0 0 0 3px rgb(74 50 232 / 10%); color: var(--indigo); }
 .pay-method input:checked + .pay-method-box .pay-method-icon { background: var(--indigo); color: #fff; }
@@ -1555,7 +1565,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .pay-package { padding: 8px 14px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); font: inherit;
   font-size: var(--fs-sm); font-weight: 700; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
 .pay-package small { font-weight: 500; color: var(--muted); }
-.pay-package:hover { border-color: #c9c2fb; }
+.pay-package:hover { border-color: #a9dde2; }
 .pay-package.is-on { border-color: var(--indigo); background: var(--tint); color: var(--indigo); }
 .pay-amount { margin-bottom: var(--sp-1); max-width: 420px; }
 .pay-amount-field { position: relative; display: block; margin-top: 6px; }
@@ -1596,7 +1606,7 @@ input[aria-invalid="true"], textarea[aria-invalid="true"], select[aria-invalid="
 .pay-lines dt { color: var(--muted); }
 .pay-lines dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .pay-lines .pay-total { margin-top: 6px; padding: 14px; border-radius: 12px; background: var(--grad); color: #fff; }
-.pay-lines .pay-total dt { color: #dfe6ff; font-weight: 600; }
+.pay-lines .pay-total dt { color: #d8f3f5; font-weight: 600; }
 .pay-lines .pay-total dd { font-size: var(--fs-xl); font-weight: 800; }
 .pay-consent { margin: var(--sp-3) 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.9; text-align: center; }
 .pay-consent a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }

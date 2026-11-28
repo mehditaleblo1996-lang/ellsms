@@ -11,7 +11,7 @@ history). Test: `tests/Integration/FailedResendTest.php`.
 The same page also shows the job's counts as cards that filter the list — «کل», and, where delivery
 states are shown (`delivery_status_visible()`), «تحویل‌شده», «تحویل‌نشده» (DLR `failed` / `rejected` /
 `expired` / `undelivered`), «منتظر گزارش تحویل», «ناموفق» (the send failed or was cancelled) and
-«باقی‌مانده» — each row's status badge has its own colour (yellow pending, indigo sent / waiting for the
+«باقی‌مانده» — each row's status badge has its own colour (yellow pending, teal sent / waiting for the
 delivery report, green delivered, orange «تحویل‌نشده» `.badge-not-delivered`, red failed) — and each row (or its eye button) opens the message's detail drawer, the view of
 «لیست پیام‌های ارسالی» (`app/views/sent_message_detail.php`, loaded as `?id=…&_part=detail&m=<ref>`;
 a ref that is not one of this job's rows shows «پیام پیدا نشد»). HTTP test:

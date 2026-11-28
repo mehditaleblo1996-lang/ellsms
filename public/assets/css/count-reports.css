@@ -2,7 +2,7 @@
    table controls (assets/js/count-reports.js) — built only from the panel's own tokens (style.css). */
 
 .cc-stats .cc-range { font-size: clamp(18px, 1.6vw, 22px); }
-.cc-stats .stat-accent .stat-meta { color: #dfe6ff; }
+.cc-stats .stat-accent .stat-meta { color: #d8f3f5; }
 
 .cc-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 14px; }
 .cc-size { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; color: var(--muted); }

@@ -8,7 +8,7 @@
 .panel .sr-tool { inline-size: 44px; block-size: 40px; border-radius: 10px; background: var(--tint); color: var(--indigo); }
 .panel .sr-tool-ok { background: var(--ok-bg); color: var(--ok); }
 .panel .sr-tool-err { background: var(--err-bg); color: var(--err); }
-.panel .sr-tool-indigo { background: #ece9ff; color: var(--indigo); }
+.panel .sr-tool-indigo { background: var(--accent-100); color: var(--indigo); }
 .panel .sr-tool[aria-pressed="false"] { opacity: .5; }
 .sr-tool .ui-icon { inline-size: 20px; block-size: 20px; }
 
@@ -102,7 +102,7 @@
 .sr-bars .sr-grid { stroke: var(--line); stroke-width: 1; }
 .sr-bars .sr-axis { fill: var(--muted); font-size: 14px; font-family: var(--font-ui); }
 .sr-bars .sr-hit { fill: transparent; }
-.sr-bars .sr-hit:hover { fill: rgb(74 50 232 / 6%); }
+.sr-bars .sr-hit:hover { fill: color-mix(in srgb, var(--indigo) 6%, transparent); }
 .sr-parts-total { text-align: center; margin: 12px 0 0; }
 .sr-card[hidden] { display: none; }
 

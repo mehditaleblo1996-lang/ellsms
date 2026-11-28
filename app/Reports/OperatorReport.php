@@ -78,10 +78,10 @@ const OPERATOR_REPORT_STATUS_COLORS = [
 ];
 
 const OPERATOR_REPORT_ENCODINGS = ['fa' => 'فارسی', 'en' => 'انگلیسی', 'na' => 'نامشخص'];
-const OPERATOR_REPORT_ENCODING_COLORS = ['fa' => '#4a32e8', 'en' => '#38bdf8', 'na' => '#94a3b8'];
+const OPERATOR_REPORT_ENCODING_COLORS = ['fa' => '#076f7a', 'en' => '#38bdf8', 'na' => '#94a3b8'];
 
 /** Operator share colors, assigned in operator order. */
-const OPERATOR_REPORT_PALETTE = ['#4a32e8', '#2e63f6', '#38bdf8', '#157347', '#f59e0b', '#c0223a', '#a78bfa', '#0d9488', '#5c657d'];
+const OPERATOR_REPORT_PALETTE = ['#076f7a', '#2e63f6', '#38bdf8', '#157347', '#f59e0b', '#c0223a', '#a78bfa', '#4a32e8', '#5c657d'];
 
 const OPERATOR_REPORT_UNKNOWN = 'سایر / نامشخص';
 

@@ -23,10 +23,10 @@
 /* Summary cards: each one filters the list by its status */
 .report-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .panel .report-stats .stat { display: block; color: inherit; text-decoration: none; border: 1.5px solid transparent; transition: border-color 160ms, transform 160ms; }
-.panel .report-stats .stat:hover { border-color: #c9cdf5; }
+.panel .report-stats .stat:hover { border-color: var(--accent-300); }
 .panel .report-stats .stat.is-on { border-color: var(--indigo); }
 .report-stats .stat-meta { margin-top: 2px; color: var(--muted); font-size: 12px; }
-.panel .report-stats .stat-accent .stat-meta { color: #dfe6ff; }
+.panel .report-stats .stat-accent .stat-meta { color: #d8f3f5; }
 
 /* The list */
 .report-table tbody tr.is-clickable { cursor: pointer; transition: background-color 120ms; }

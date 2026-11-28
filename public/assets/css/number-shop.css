@@ -82,7 +82,7 @@
 
 .ns-card { position: relative; display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); border-radius: 16px; background: var(--card);
   border: 1px solid var(--line); box-shadow: var(--panel-shadow, 0 3px 16px rgb(24 35 69 / 4%)); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
-.ns-card:hover { transform: translateY(-2px); border-color: #cfd6f6; box-shadow: 0 10px 28px rgb(24 35 69 / 9%); }
+.ns-card:hover { transform: translateY(-2px); border-color: var(--accent-300); box-shadow: 0 10px 28px rgb(24 35 69 / 9%); }
 .ns-card.is-featured { border-color: #f2c94c; background: linear-gradient(180deg, #fffbea 0, var(--card) 120px); }
 .ns-card-top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 24px; }
 .ns-featured { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 999px; background: #fff1c2; color: #8a5a00; font-size: var(--fs-xs); font-weight: 700; }
@@ -126,7 +126,7 @@
 .ns-method-body > .ui-icon { width: 24px; height: 24px; color: var(--indigo); }
 .ns-method-body b { display: block; color: var(--ink); }
 .ns-method-body small { display: block; color: var(--muted); font-size: var(--fs-xs); line-height: var(--lh-base); }
-.ns-method input:checked + .ns-method-body { border-color: var(--indigo); background: var(--tint); box-shadow: 0 0 0 3px rgb(74 50 232 / 10%); }
+.ns-method input:checked + .ns-method-body { border-color: var(--indigo); background: var(--tint); box-shadow: 0 0 0 3px color-mix(in srgb, var(--indigo) 10%, transparent); }
 .ns-method input:focus-visible + .ns-method-body { outline: 2px solid var(--indigo); outline-offset: 2px; }
 .ns-method.is-disabled { cursor: not-allowed; }
 .ns-method.is-disabled .ns-method-body { opacity: .65; background: var(--canvas); }
