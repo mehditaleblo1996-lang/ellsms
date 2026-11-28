@@ -328,6 +328,15 @@ customers are highlighted in gold in the customer list, which can also show VIP 
 never see it; every change is audited. No public API route. Migration
 `db/migrations/2026_11_12_vip_customers.sql`. See [`docs/vip-customers.md`](docs/vip-customers.md).
 
+## User page header (کاربران → کاربر)
+
+The top of a user's admin page (`/users.php?edit=<id>`) is a profile card — status chips (active,
+suspended, role, customer type, 2FA), quick actions («ورود به پنل مشتری», «تغییر اعتبار», «رمز عبور») and
+facts (credit, sent messages, mobile/email with copy, sender line, last login, account expiry) — followed by
+**«تنظیمات و دسترسی‌ها»**: admin role, 2FA, «مشتری ویژه», «ارسال خودکار نظیر به نظیر» and «لغو۱۱» as
+switches that save on change. Admin-only; no migration of its own, no API route. See
+[`docs/user-admin-header.md`](docs/user-admin-header.md).
+
 ## Login model
 
 ELLSMS does **not** have its own user database. It authenticates against the shared `user_` table (same username/password), using the same SHA-256 hashing the backend's own account system currently uses. **That hashing is a known placeholder, not something ELLSMS chose** — it matches it purely for compatibility. `PASSWORD_HASH_MODE=argon2id` replaces it with Argon2id without anyone changing their password, once nothing but ELLSMS signs users in with that column (one way — see below).
@@ -812,6 +821,7 @@ updated in the same change** — see `CLAUDE.md`.
 [billing-operations](docs/billing-operations.md)
 
 **Customers, resellers & access**
+[user-admin-header](docs/user-admin-header.md) ·
 [vip-customers](docs/vip-customers.md) ·
 [p2p-auto-send](docs/p2p-auto-send.md) ·
 [resellers-and-menu-access](docs/resellers-and-menu-access.md) ·

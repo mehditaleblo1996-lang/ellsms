@@ -395,9 +395,6 @@ tr.row-vip > td, tr.row-vip > th { background: #fff9e6; }
 tr.row-vip > :first-child { box-shadow: inset -4px 0 0 #f2c94c; }
 tr.row-vip:hover > td, tr.row-vip:hover > th { background: #fff3cc; }
 .vip-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
-.vip-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.vip-form .check { margin: 0; }
-.summary-item.summary-vip { background: #fff9e6; border-color: #f2c94c; }
 
 .badge-open { background: var(--warn-bg); color: var(--warn); }
 .badge-answered { background: var(--tint); color: var(--indigo); }

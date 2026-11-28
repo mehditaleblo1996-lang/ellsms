@@ -17,7 +17,7 @@ affected.
 
 | | |
 |---|---|
-| Where to turn it on | Platform Admin → «کاربران» → a user → the «ارسال خودکار نظیر به نظیر» box in the header card («بدون تأیید»), then «ثبت» |
+| Where to turn it on | Platform Admin → «کاربران» → a user → the «ارسال خودکار نظیر به نظیر» switch under «تنظیمات و دسترسی‌ها» (on = «بدون تأیید»; saves on change, see [user-admin-header](user-admin-header.md)) |
 | Who | platform admins only (`public/users.php` is admin-only) |
 | Customer sees | a note above the upload form on `/messages/p2p` when it is on |
 | Code | `app/P2pAutoSend.php`, called from `import_job_check_insert_completion()` in `app/import_worker.php` |

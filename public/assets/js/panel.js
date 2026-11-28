@@ -797,3 +797,44 @@
     });
   });
 })();
+
+/* The user page's profile card and «تنظیمات و دسترسی‌ها» (app/views/user_admin_header.php):
+   switches that save on change (each is a plain POST form, so without JavaScript its «ثبت»
+   button does the same), copy buttons, and quick links that open a tab and scroll to a card. */
+(function () {
+  'use strict';
+  document.querySelectorAll('input[data-autosubmit]').forEach(function (input) {
+    var form = input.form;
+    if (!form) return;
+    form.classList.add('is-auto');
+    input.addEventListener('change', function () {
+      var message = input.getAttribute('data-confirm');
+      if (message && !window.confirm(message)) { input.checked = !input.checked; return; }
+      form.classList.add('is-saving');
+      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    });
+  });
+
+  document.addEventListener('click', function (event) {
+    var copy = event.target.closest('[data-copy]');
+    if (copy && navigator.clipboard) {
+      navigator.clipboard.writeText(copy.getAttribute('data-copy')).then(function () {
+        copy.classList.add('is-done');
+        copy.setAttribute('data-tip', 'کپی شد');
+        setTimeout(function () { copy.classList.remove('is-done'); copy.setAttribute('data-tip', 'کپی'); }, 1500);
+      });
+      return;
+    }
+    var jump = event.target.closest('a[data-jump]');
+    if (jump) {
+      var target = document.getElementById(jump.getAttribute('data-jump'));
+      if (!target) return;
+      // The href (#account) switches the tab via the tabs script's hashchange; then scroll.
+      setTimeout(function () {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        var field = target.querySelector('input:not([type=hidden]), select');
+        if (field) field.focus({ preventScroll: true });
+      }, 30);
+    }
+  });
+})();

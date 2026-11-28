@@ -6,7 +6,7 @@ internal tool: customers and resellers never see it.
 
 | | |
 |---|---|
-| Where to tick it | Platform Admin → «کاربران» → a user → the «مشتری ویژه» box in the header card, then «ثبت»; or the «مشتری ویژه» box on «ساخت حساب تازه» |
+| Where to tick it | Platform Admin → «کاربران» → a user → the «مشتری ویژه» switch under «تنظیمات و دسترسی‌ها» (saves on change; see [user-admin-header](user-admin-header.md)); or the «مشتری ویژه» box on «ساخت حساب تازه» |
 | Who | platform admins only (`public/users.php` is admin-only) |
 | Code | `app/VipCustomers.php` |
 | Migration | `db/migrations/2026_11_12_vip_customers.sql` |

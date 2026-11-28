@@ -2,7 +2,7 @@
 
 A **platform admin** decides **per user** whether the text `لغو۱۱` (Persian digits) is added on a
 **new line** at the end of every message that user sends from the panel: **Users → user →
-«افزودن «لغو۱۱» به انتهای پیام»** (`/users.php`, checkbox «فعال» + «ثبت», audited as
+«افزودن «لغو۱۱» به انتهای پیام»** (`/users.php`, a switch under «تنظیمات و دسترسی‌ها» that saves on change — [user-admin-header](user-admin-header.md) — audited as
 `user.optout_suffix_on` / `user.optout_suffix_off`). It is **on by default** for every user.
 Customers have **no checkbox**: while it is on for them, the send forms show a short read-only note
 under the message box; while it is off, nothing is shown and nothing is added.

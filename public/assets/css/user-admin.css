@@ -1,0 +1,112 @@
+/* The top of /users.php?edit=… (app/views/user_admin_header.php, docs/user-admin-header.md):
+   the profile card and «تنظیمات و دسترسی‌ها». Panel tokens only (style.css / panel.css). */
+
+/* ---------- Profile card ---------- */
+.panel .card.uh { padding: 0; overflow: hidden; }
+.uh-top {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap;
+  padding: 24px 24px 20px;
+  background: linear-gradient(180deg, var(--tint), var(--card));
+  border-bottom: 1px solid var(--line);
+}
+.uh-ident { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.uh-avatar {
+  flex: none; width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center;
+  background: var(--indigo); color: #fff; font-size: 26px; font-weight: 800; line-height: 1;
+  box-shadow: 0 8px 20px -10px var(--indigo);
+}
+.uh-avatar.is-vip { background: linear-gradient(135deg, #f2c94c, #c98a00); box-shadow: 0 8px 20px -10px #c98a00; }
+.uh-ident-text { min-width: 0; }
+.panel .uh h2 { margin: 0; font-size: 22px; line-height: 1.5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.uh-subtitle { margin: 2px 0 0; color: var(--muted); font-size: var(--fs-sm); display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.uh-dot { opacity: .6; }
+.uh-chips { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.uh-chips .badge { display: inline-flex; align-items: center; gap: 4px; }
+.uh-chips .ui-icon { width: 14px; height: 14px; }
+.uh-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.uh-actions .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.uh-actions .ui-icon { width: 16px; height: 16px; }
+.uh > .flash { margin: 16px 24px 0; }
+
+.uh-facts {
+  margin: 0; padding: 20px 24px 24px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;
+}
+.uh-fact { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--canvas); min-width: 0; }
+.uh-fact dt { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: var(--fs-xs); font-weight: 700; }
+.uh-fact dt .ui-icon { width: 15px; height: 15px; opacity: .8; }
+.uh-fact dd { margin: 6px 0 0; font-size: var(--fs-md); font-weight: 700; line-height: 1.6; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.uh-fact dd small { font-size: var(--fs-xs); font-weight: 400; color: var(--muted); }
+.uh-fact .muted { color: var(--muted); font-weight: 400; }
+.uh-fact-credit { background: var(--tint); border-color: transparent; }
+.uh-fact-credit dd { font-size: var(--fs-xl); color: var(--indigo); }
+.uh-fact.is-bad { background: var(--err-bg); border-color: transparent; }
+.uh-fact.is-bad dd { color: var(--err); }
+.uh-copyable { flex-wrap: nowrap !important; }
+.uh-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; direction: ltr; }
+.uh-ip { direction: ltr; }
+.uh-copy {
+  flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border: 1px solid transparent; border-radius: 7px; background: none; color: var(--muted); cursor: pointer;
+}
+.uh-copy .ui-icon { width: 15px; height: 15px; }
+.uh-copy:hover, .uh-copy:focus-visible { border-color: var(--line); background: var(--card); color: var(--indigo); }
+.uh-copy.is-done { color: var(--ok); }
+.uh-warn-link { color: var(--err); font-size: var(--fs-sm); }
+
+/* ---------- «تنظیمات و دسترسی‌ها» ---------- */
+.uh-settings .card-head { margin-bottom: 12px; }
+.uh-settings-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 12px; }
+.uh-setting {
+  display: flex; align-items: flex-start; gap: 14px; padding: 16px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+  transition: border-color .2s var(--panel-ease), background-color .2s var(--panel-ease);
+}
+.uh-setting.is-on { border-color: color-mix(in srgb, var(--indigo) 35%, var(--line)); background: color-mix(in srgb, var(--tint) 55%, var(--card)); }
+.uh-setting-vip.is-on { border-color: #f2c94c; background: #fffaeb; }
+.uh-setting-icon {
+  flex: none; width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
+  background: var(--canvas); color: var(--muted);
+}
+.uh-setting-icon .ui-icon { width: 20px; height: 20px; }
+.uh-setting.is-on .uh-setting-icon { background: var(--indigo); color: #fff; }
+.uh-setting-vip.is-on .uh-setting-icon { background: #f2c94c; color: #5c3d00; }
+.uh-setting-text { flex: 1; min-width: 0; }
+.uh-setting-title { font-weight: 700; font-size: var(--fs-base); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.uh-state { font-size: 12px; font-weight: 700; padding: 1px 9px; border-radius: 999px; background: var(--canvas); color: var(--muted); border: 1px solid var(--line); }
+.uh-setting.is-on .uh-state { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+.uh-setting-desc { margin: 4px 0 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.9; }
+.uh-setting-meta { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.uh-locked { flex: none; display: grid; place-items: center; width: 44px; height: 26px; color: var(--muted); }
+.uh-locked .ui-icon { width: 18px; height: 18px; }
+
+.uh-switch-form { flex: none; display: flex; align-items: center; gap: 8px; margin: 0; }
+.uh-switch { position: relative; display: inline-flex; cursor: pointer; margin: 0; }
+.uh-switch input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
+.uh-switch-track {
+  width: 46px; height: 26px; border-radius: 999px; background: #cfd5e3; position: relative;
+  transition: background-color .2s var(--panel-ease);
+}
+.uh-switch-track::after {
+  content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 25%); transition: transform .2s var(--panel-ease);
+}
+.uh-switch input:checked + .uh-switch-track { background: var(--indigo); }
+/* RTL: the thumb starts on the right and moves left when on. */
+.uh-switch input:checked + .uh-switch-track::after { transform: translateX(-20px); }
+[dir="ltr"] .uh-switch input:checked + .uh-switch-track::after { transform: translateX(20px); }
+.uh-switch input:focus-visible + .uh-switch-track { outline: 3px solid var(--indigo); outline-offset: 2px; }
+.uh-switch-form.is-saving { opacity: .6; pointer-events: none; }
+/* With JavaScript the switch saves itself; the «ثبت» button is the no-JS fallback. */
+.uh-switch-form.is-auto .uh-switch-submit { display: none; }
+
+@media (max-width: 640px) {
+  .uh-top { padding: 18px 16px 16px; }
+  .uh-facts { padding: 16px; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .uh-fact-credit { grid-column: 1 / -1; }
+  .uh-avatar { width: 52px; height: 52px; font-size: 21px; border-radius: 15px; }
+  .uh-actions { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .uh-switch-track, .uh-switch-track::after, .uh-setting { transition: none; }
+}

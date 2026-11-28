@@ -4,6 +4,7 @@ require_once __DIR__ . '/../app/PriceChanges.php';
 $me = require_admin();
 $pageTitle = 'کاربران';
 $active = 'users';
+$extraStyles = ['/assets/css/user-admin.css'];
 
 /*
  * حساب‌سازی واقعی: از اندپوینت خودِ سامانه‌ی مرکزی (POST /api/users/)
@@ -70,12 +71,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             Logger::info('user.revoke_access', ['actor_id' => $me['id'], 'target_id' => $id]);
             flash('info', 'دسترسی به داتیس رایان گستر ایرانیان لغو شد.');
         } elseif ($do === 'toggle_admin') {
-            db()->prepare('UPDATE ellsms_meta SET is_admin = 1 - is_admin WHERE user_id=?')->execute([$id]);
+            // The switch on the user's page sends the wanted state (set=1, on=1|absent), so a double
+            // submit cannot flip it back; a bare toggle_admin (older forms) still flips.
+            if (isset($_POST['set'])) {
+                db()->prepare('UPDATE ellsms_meta SET is_admin = ? WHERE user_id=?')->execute([empty($_POST['on']) ? 0 : 1, $id]);
+            } else {
+                db()->prepare('UPDATE ellsms_meta SET is_admin = 1 - is_admin WHERE user_id=?')->execute([$id]);
+            }
             audit((int)$me['id'], 'user.toggle_admin', "#{$id}");
             Logger::info('user.toggle_admin', ['actor_id' => $me['id'], 'target_id' => $id]);
             flash('info', 'نقش مدیر تغییر کرد.');
         } elseif ($do === 'toggle_2fa') {
-            db()->prepare('UPDATE ellsms_meta SET twofa_enabled = 1 - twofa_enabled WHERE user_id=?')->execute([$id]);
+            if (isset($_POST['set'])) {
+                db()->prepare('UPDATE ellsms_meta SET twofa_enabled = ? WHERE user_id=?')->execute([empty($_POST['on']) ? 0 : 1, $id]);
+            } else {
+                db()->prepare('UPDATE ellsms_meta SET twofa_enabled = 1 - twofa_enabled WHERE user_id=?')->execute([$id]);
+            }
             audit((int)$me['id'], 'user.toggle_2fa', "#{$id}");
             flash('info', 'وضعیت ورود دومرحله‌ای تغییر کرد.');
         } elseif ($do === 'originator') {
@@ -406,6 +417,13 @@ if (!empty($_GET['edit'])) {
         $editDeliveryTotals = delivery_refund_totals($editUserId);
         $editDeliveryPeriods = delivery_billing_periods($editUserId, 10);
         $editDeliveryRefunds = delivery_refunds_recent($editUserId, 20);
+        // The profile card at the top (app/views/user_admin_header.php).
+        $editSentCount = (int)(backend_outbound_sent_counts_for_users([$editUserId])[$editUserId] ?? 0);
+        $lastLogin = db()->prepare("SELECT created_at, ip FROM ellsms_audit_log
+                                    WHERE user_id = ? AND action IN ('login', 'login_2fa', 'login_totp')
+                                    ORDER BY id DESC LIMIT 1");
+        $lastLogin->execute([$editUserId]);
+        $editLastLogin = $lastLogin->fetch() ?: null;
     }
 }
 
@@ -490,110 +508,7 @@ require __DIR__ . '/../app/views/header.php';
 ?>
 
 <?php if ($editUser): ?>
-<div class="card">
-  <div class="card-head">
-    <div>
-      <h2><?= e($editUser['username']) ?><?= vip_is((int)$editUser['id']) ? ' ' . vip_badge() : '' ?></h2>
-      <p class="hint"><?= e(trim($editUser['first_name'] . ' ' . $editUser['last_name'])) ?></p>
-    </div>
-    <a class="btn btn-sm btn-ghost" href="/users.php">← بازگشت به فهرست</a>
-  </div>
-  <?php if (!$editUser['active'] || $editUser['deleted']): ?>
-    <div class="flash flash-error">این حساب غیرفعال یا حذف‌شده است — تا زمانی که در سامانه‌ی مرکزی اصلاح نشود، امکان ورود ندارد.</div>
-  <?php endif; ?>
-
-  <div class="summary-grid">
-    <div class="summary-item">
-      <div class="summary-label">موبایل</div>
-      <div class="summary-value ltr msisdn"><?= e((string)$editUser['mobile']) ?></div>
-    </div>
-    <div class="summary-item">
-      <div class="summary-label">نقش</div>
-      <div class="summary-value"><span class="badge badge-<?= $editUser['is_admin'] ? 'admin' : 'user' ?>"><?= $editUser['is_admin'] ? 'مدیر' : 'کاربر' ?></span></div>
-    </div>
-    <div class="summary-item">
-      <div class="summary-label">اعتبار (ریال)</div>
-      <div class="summary-value num"><?= to_persian_digits(number_format((float)$editUser['credit'])) ?></div>
-    </div>
-    <div class="summary-item">
-      <div class="summary-label">ورود دومرحله‌ای</div>
-      <div class="summary-value"><span class="badge badge-<?= $editUser['twofa_enabled'] ? 'ok' : 'off' ?>"><?= $editUser['twofa_enabled'] ? 'فعال' : 'غیرفعال' ?></span></div>
-    </div>
-    <?php if (vip_available()): $editVip = vip_details((int)$editUser['id']); ?>
-    <div class="summary-item<?= $editVip ? ' summary-vip' : '' ?>">
-      <div class="summary-label">مشتری ویژه</div>
-      <form method="post" class="summary-value vip-form">
-        <?= csrf_field() ?>
-        <input type="hidden" name="do" value="vip_save">
-        <input type="hidden" name="id" value="<?= (int)$editUser['id'] ?>">
-        <input type="hidden" name="back" value="1">
-        <label class="check"><input type="checkbox" name="is_vip" value="1"<?= $editVip ? ' checked' : '' ?>> مشتری ویژه</label>
-        <button class="btn btn-sm">ثبت</button>
-      </form>
-      <?php if ($editVip && $editVip['marked_at'] !== null): ?>
-        <div class="hint">از <?= jdate_from_utc($editVip['marked_at']) ?><?php if ($editVip['marked_by'] !== null): ?> — <?= e(backend_usernames_by_ids([$editVip['marked_by']])[$editVip['marked_by']] ?? '#' . $editVip['marked_by']) ?><?php endif; ?></div>
-      <?php endif; ?>
-    </div>
-    <?php endif; ?>
-    <?php if (p2p_auto_send_available()): $editAuto = p2p_auto_send_details((int)$editUser['id']); ?>
-    <div class="summary-item">
-      <div class="summary-label">ارسال خودکار نظیر به نظیر</div>
-      <form method="post" class="summary-value vip-form">
-        <?= csrf_field() ?>
-        <input type="hidden" name="do" value="p2p_auto_send_save">
-        <input type="hidden" name="id" value="<?= (int)$editUser['id'] ?>">
-        <input type="hidden" name="back" value="1">
-        <label class="check"><input type="checkbox" name="p2p_auto_send" value="1"<?= $editAuto ? ' checked' : '' ?>> بدون تأیید</label>
-        <button class="btn btn-sm">ثبت</button>
-      </form>
-      <div class="hint">فایل‌های حجیم نظیر به نظیر پس از بارگذاری، بدون «ادامه و تأیید ارسال» شروع به ارسال می‌کنند.<?php if ($editAuto && $editAuto['set_at'] !== null): ?> از <?= jdate_from_utc($editAuto['set_at']) ?><?php if ($editAuto['set_by'] !== null): ?> — <?= e(backend_usernames_by_ids([$editAuto['set_by']])[$editAuto['set_by']] ?? '#' . $editAuto['set_by']) ?><?php endif; ?><?php endif; ?></div>
-    </div>
-    <?php endif; ?>
-    <?php if (optout_suffix_user_column_available()): ?>
-    <div class="summary-item">
-      <div class="summary-label">افزودن «لغو۱۱» به انتهای پیام</div>
-      <form method="post" class="summary-value vip-form">
-        <?= csrf_field() ?>
-        <input type="hidden" name="do" value="optout_suffix_save">
-        <input type="hidden" name="id" value="<?= (int)$editUser['id'] ?>">
-        <input type="hidden" name="back" value="1">
-        <label class="check"><input type="checkbox" name="optout_suffix" value="1"<?= optout_suffix_for_user((int)$editUser['id']) ? ' checked' : '' ?>> فعال</label>
-        <button class="btn btn-sm">ثبت</button>
-      </form>
-      <div class="hint">«لغو۱۱» در یک خط جدید به انتهای همه‌ی پیام‌هایی که این کاربر از پنل می‌فرستد اضافه می‌شود (اگر از قبل در متن نباشد). خود کاربر نمی‌تواند آن را تغییر دهد؛ API تأثیری نمی‌گیرد.</div>
-    </div>
-    <?php endif; ?>
-  </div>
-
-  <div class="toolbar" style="margin:var(--sp-4) 0 0">
-    <?php if ((int)$editUser['id'] !== (int)$me['id']): ?>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="do" value="toggle_admin">
-      <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
-      <button class="btn btn-sm"><?= $editUser['is_admin'] ? 'حذف نقش مدیر' : 'تبدیل به مدیر' ?></button>
-    </form>
-    <?php endif; ?>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="do" value="toggle_2fa">
-      <input type="hidden" name="id" value="<?= $editUser['id'] ?>">
-      <button class="btn btn-sm"><?= $editUser['twofa_enabled'] ? 'غیرفعال‌سازی ۲مرحله‌ای' : 'فعال‌سازی ۲مرحله‌ای' ?></button>
-    </form>
-    <?php
-    /*
-     * Support impersonation (docs/admin-impersonation.md). A LINK to a confirmation page, not a
-     * one-click POST: entering a customer's account is exactly the kind of action that should
-     * cost a deliberate second step, and the confirmation page is where the reason is captured.
-     * Shown only when the target is actually impersonable, so the operator does not click into a
-     * refusal.
-     */
-    ?>
-    <?php if (impersonation_target_refusal($editUser, (int)$me['id']) === null): ?>
-      <a class="icon-act icon-act-primary" href="/impersonate.php?target=<?= (int)$editUser['id'] ?>" data-tip="ورود به پنل مشتری" aria-label="ورود به پنل مشتری"><?= panel_icon('login') ?></a>
-    <?php endif; ?>
-  </div>
-</div>
+<?php require __DIR__ . '/../app/views/user_admin_header.php'; ?>
 
 <div class="tabs" data-tabs="user-edit">
 <nav class="tabs-nav" role="tablist" aria-label="بخش‌های ویرایش کاربر">
@@ -683,7 +598,7 @@ require __DIR__ . '/../app/views/header.php';
   </div>
 
 <div class="grid grid-2">
-  <div class="card">
+  <div class="card" id="uh-password">
     <h2>تعیین رمز عبور جدید</h2>
     <p class="hint">این کار رمز عبور حساب را همه‌جا تغییر می‌دهد، نه فقط در داتیس رایان گستر ایرانیان.</p>
     <form method="post" style="margin-top:var(--sp-3)">
@@ -696,7 +611,7 @@ require __DIR__ . '/../app/views/header.php';
       <div class="form-actions"><button class="btn btn-primary btn-sm">تغییر رمز عبور</button></div>
     </form>
   </div>
-  <div class="card">
+  <div class="card" id="uh-credit">
     <h2>اعتبار — فعلی: <span class="num"><?= to_persian_digits(number_format((float)$editUser['credit'])) ?></span> ریال</h2>
     <form method="post">
       <?= csrf_field() ?>
