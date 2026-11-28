@@ -18,14 +18,25 @@ a reseller's own brand colour (`brand_color_style()` in `app/ResellerPanel.php`)
 `:root`. Because the tints are `color-mix()`es of `--indigo`, a reseller host recolours them too. The
 reseller colour picker («رنگ اصلی», `/reseller-settings.php`) now defaults to `#076f7a`.
 
-**Glass theme** (`public/assets/css/panel.css`, «Glass theme»): a soft, fixed teal light field sits behind
-the panel; the sidebar, sticky topbar, open-page tabs, cards, stat tiles, table frames and dropdowns are
-frosted panes (translucent white, `backdrop-filter: blur(18px) saturate(160%)`, a bright hairline edge, a
-teal-tinted shadow). Text always sits on near-white, so contrast is unchanged. The «کل پیامک‌های امروز»
-tile is deep teal with a glossy highlight and glow. Without `backdrop-filter` support the panes fall back
-to almost opaque white; with `prefers-reduced-transparency: reduce` they are opaque; the mobile drawer is
-kept 90% opaque. The operator report charts (`app/Reports/OperatorReport.php`) use the same teal as their
-first series colour. No migration is needed.
+**Glass theme** (`public/assets/css/panel.css`, «Glass theme», the «light aurora» look):
+- **Background:** large soft teal / cyan / mint colour fields (`.panel::before`, fixed) drift very slowly
+  behind the whole panel.
+- **Floating islands (desktop, above 1100px):** the sidebar and the sticky topbar stand off the screen edges
+  as rounded glass panels with a 14px gap (`--float-gap`); content scrolling up through the gap above the
+  topbar is frosted (`.main::before`).
+- **Frosted panes:** sidebar, topbar, open-page tabs, cards, stat tiles, table frames, tab bars and dropdowns
+  are translucent white with `backdrop-filter: blur(22px) saturate(180%)`, a bright hairline edge, an inner
+  top light and a teal-tinted shadow. Text always sits on near-white, so contrast is unchanged. The
+  «کل پیامک‌های امروز» tile is deep teal glass with a glossy highlight and glow.
+- **Subtle motion:** the aurora drifts, stat tiles lift on hover, a light sweeps across the headline tile on
+  hover, stat numbers fade in and the 7-day chart bars grow in. All of it stops under
+  `prefers-reduced-motion: reduce`.
+- **Fallbacks:** without `backdrop-filter` support the panes are almost opaque white; with
+  `prefers-reduced-transparency: reduce` the aurora is removed and the panes are opaque; the mobile drawer
+  is kept 90% opaque.
+
+The operator report charts (`app/Reports/OperatorReport.php`) use the same teal as their first series
+colour. No migration is needed.
 
 ## Changes
 
